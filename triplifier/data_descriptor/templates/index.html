@@ -13,17 +13,17 @@
     <div {% if not error %} style="display: none;" {% endif %}>
 
         {% block content %}
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-        {% for message in messages %}
-        <div class="alert alert-warning alert-dismissible">
-            <button type="button" class="close align-middle" data-dismiss="alert">&times;</button>
-            {{ message }}
-        </div>
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-warning alert-dismissible">
+                            <button type="button" class="close align-middle" data-dismiss="alert">&times;</button>
+                            {{ message }}
+                        </div>
 
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
         {% endblock %}
     </div>

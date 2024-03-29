@@ -145,6 +145,11 @@ def run_triplifier(properties_file=None):
     """
     This function runs the triplifier and checks if it ran successfully.
 
+    Parameters:
+    properties_file (str): The name of the properties file to be used by the triplifier.
+                           It can be either 'triplifierCSV.properties' for CSV files or 'triplifierSQL.properties' for SQL files.
+                           Defaults to None.
+
     Returns:
         tuple: A tuple containing a boolean indicating if the triplifier ran successfully,
         and a string containing the error message if it did not.
@@ -157,7 +162,7 @@ def run_triplifier(properties_file=None):
             session_cache.csvData.to_csv(session_cache.csvPath, index=False)
 
         process = subprocess.Popen(
-            f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
+            f"java -jar ./javaTool/triplifier.jar -p ./{properties_file}",
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         output, _ = process.communicate()
@@ -337,13 +342,13 @@ def unitNames():
 
 
 @app.route('/downloadSchema', methods=['GET'])
-def download_schema(filename='local_schema.json'):
+def download_schema(filename=None):
     """
     This function generates a modified version of the global schema by adding local definitions to it.
     The modified schema is then returned as a JSON response which can be downloaded as a file.
 
     Parameters:
-    filename (str): The name of the file to be downloaded. Defaults to 'local_schema.json'.
+    filename (str): The name of the file to be downloaded. Defaults to 'local_schema_{database_name}.json'.
 
     Returns:
         flask.Response: A Flask response object containing the modified schema as a JSON string.
@@ -351,8 +356,19 @@ def download_schema(filename='local_schema.json'):
                         an HTTP response with a status code of 500 (Internal Server Error)
                         is returned along with a message describing the error.
     """
+    database_name = session_cache.csvPath[session_cache.csvPath.rfind(os.path.sep) + 1:
+                                          session_cache.csvPath.rfind('.')]
+
+    if filename is None:
+        filename = f'local_schema_{database_name}.json'
+
     try:
         modified_schema = copy.deepcopy(session_cache.global_schema)
+
+        if isinstance(modified_schema.get('database_name'), str):
+            modified_schema['database_name'] = database_name
+        else:
+            modified_schema.update({'database_name': database_name})
 
         modified_schema['variable_info'] = \
             {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
@@ -372,7 +388,7 @@ def download_schema(filename='local_schema.json'):
 
 
 @app.route('/downloadOntology', methods=['GET'])
-def download_ontology(named_graph="http://ontology.local/", filename='local_ontology.nt'):
+def download_ontology(named_graph="http://ontology.local/", filename=None):
     """
     This function downloads an ontology from a specified graph and returns it as a response which
     can be downloaded as a file.
@@ -380,7 +396,7 @@ def download_ontology(named_graph="http://ontology.local/", filename='local_onto
     Parameters:
     named_graph (str): The URL of the graph from which the ontology is to be downloaded.
     Defaults to "http://ontology.local/".
-    filename (str): The name of the file to be downloaded. Defaults to 'local_ontology.nt'.
+    filename (str): The name of the file to be downloaded. Defaults to 'local_ontology_{database_name}.nt'.
 
     Returns:
         flask.Response: A Flask response object containing the ontology as a string if the download is successful,
@@ -389,6 +405,12 @@ def download_ontology(named_graph="http://ontology.local/", filename='local_onto
                         an HTTP response with a status code of 500 (Internal Server Error)
                          is returned along with a message describing the error.
     """
+    database_name = session_cache.csvPath[session_cache.csvPath.rfind(os.path.sep) + 1:
+                                          session_cache.csvPath.rfind('.')]
+
+    if filename is None:
+        filename = f'local_ontology_{database_name}.nt'
+
     try:
         response = requests.get(
             f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
