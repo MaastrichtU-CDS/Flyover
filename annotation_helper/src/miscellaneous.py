@@ -4,7 +4,7 @@ import os
 import requests
 
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
-dry_run = False
+dry_run = True
 
 # not a beauty but works
 _database = 'databasename'
@@ -174,6 +174,7 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
 
     construction_queries = None
     value_mapping_queries = None
+    construction_success = True
 
     if isinstance(annotation_data, str) and isinstance(path, str):
         annotation_data = read_file(file_name=annotation_data, path=path)
@@ -314,38 +315,39 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
                             nodes_insertion = (f'{nodes_insertion}\n\n        '
                                                f'?component{components + 1} {node_predicate} db:{database}.{node_label}.')
 
-        # add the annotation with specified reconstructions
-        response, query = _add_annotation(endpoint=endpoint, variable=generic_category,
-                                          database_name=database, local_definition=local_definition,
-                                          predicate=predicate, class_object=class_object,
-                                          classes_insertion=classes_insertion, classes_where=classes_where,
-                                          nodes_insertion=nodes_insertion, components=components)
+        if construction_success:
+            # add the annotation with specified reconstructions
+            response, query = _add_annotation(endpoint=endpoint, variable=generic_category,
+                                              database_name=database, local_definition=local_definition,
+                                              predicate=predicate, class_object=class_object,
+                                              classes_insertion=classes_insertion, classes_where=classes_where,
+                                              nodes_insertion=nodes_insertion, components=components)
 
-        # check whether the annotation was added successfully
-        if dry_run is False:
-            annotation_success = check_predicate(endpoint=endpoint, predicate=predicate,
-                                                 variable=generic_category,
-                                                 response=response)
-        else:
-            annotation_success = True
+            # check whether the annotation was added successfully
+            if dry_run is False:
+                annotation_success = check_predicate(endpoint=endpoint, predicate=predicate,
+                                                     variable=generic_category,
+                                                     response=response)
+            else:
+                annotation_success = True
 
-        # add the value mapping if necessary and possible
-        if annotation_success and isinstance(variable_data.get('value_mapping'), dict):
-            value_mapping_responses, value_mapping_queries = add_mapping(endpoint=endpoint,
-                                                                         variable=generic_category,
-                                                                         super_class=class_object,
-                                                                         value_map=variable_data['value_mapping'])
+            # add the value mapping if necessary and possible
+            if annotation_success and isinstance(variable_data.get('value_mapping'), dict):
+                value_mapping_responses, value_mapping_queries = add_mapping(endpoint=endpoint,
+                                                                             variable=generic_category,
+                                                                             super_class=class_object,
+                                                                             value_map=variable_data['value_mapping'])
 
-        # remove the 'has_column' section
-        if remove_has_column:
-            components_to_remove.update({local_definition: 'dbo:has_column'})
+            # remove the 'has_column' section
+            if remove_has_column:
+                components_to_remove.update({local_definition: 'dbo:has_column'})
 
-        # remove all specified components
-        for label, component in components_to_remove.items():
-            response, removal = _remove_component(endpoint=endpoint, database_name=database, local_variable=label,
-                                                  component_to_remove=component)
-            # store the removal queries for saving
-            removal_queries.update({label: removal})
+            # remove all specified components
+            for label, component in components_to_remove.items():
+                response, removal = _remove_component(endpoint=endpoint, database_name=database, local_variable=label,
+                                                      component_to_remove=component)
+                # store the removal queries for saving
+                removal_queries.update({label: removal})
 
         if save_query:
             if os.path.exists(os.path.join(path, 'generated_queries')) is False:
@@ -378,6 +380,18 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
                     write_file(f'{generic_category}_removal_in_{label}', removal,
                                os.path.join(path, 'generated_queries', generic_category, 'removals'), '.rq')
 
+        components = 0
+        components_to_remove = {}
+        removal_queries = {}
+        classes_insertion = ''
+        classes_where = ''
+        nodes_insertion = ''
+        construction_queries = None
+        value_mapping_queries = None
+        query = None
+        response = None
+        construction_success = True
+        annotation_success = None
 
 def add_mapping(endpoint, variable, super_class, value_map):
     """
@@ -623,6 +637,42 @@ def _add_mapping(endpoint, target_class, super_class, local_term, template_file=
 
     # retrieve the mapping template
     query = read_file(template_file)
+
+    # Create a dictionary to store the prefixes and their URIs
+    prefix_to_uri = {}
+
+    # Split the query into lines
+    lines = query.split("\n")
+
+    # Iterate over each line
+    for line in lines:
+        # Check if the line is a prefix declaration
+        if line.startswith("PREFIX"):
+            # Split the line into words
+            words = line.split()
+
+            # The second word is the prefix (remove the trailing ':')
+            prefix = words[1][:-1]
+
+            # The third word is the URI (remove the '<' and '>')
+            uri = words[2][1:-1]
+
+            # Store the prefix and URI in the dictionary
+            prefix_to_uri[prefix] = uri
+
+    # Extract the prefix from the target_class and super_class
+    target_class_prefix = target_class.split(":")[0] if ":" in target_class else target_class
+    super_class_prefix = super_class.split(":")[0] if ":" in super_class else super_class
+
+    target_class = target_class.replace(":", "")
+    super_class = super_class.replace(":", "")
+
+    # Replace the prefix with the URI in the target_class and super_class
+    if target_class_prefix in prefix_to_uri:
+        target_class = target_class.replace(target_class_prefix, prefix_to_uri[target_class_prefix])
+
+    if super_class_prefix in prefix_to_uri:
+        super_class = super_class.replace(super_class_prefix, prefix_to_uri[super_class_prefix])
 
     # add the target_class, super_class, and local_term
     query = query % (target_class, super_class, local_term)
