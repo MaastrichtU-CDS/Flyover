@@ -4,7 +4,7 @@ import os
 import requests
 
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
-dry_run = True
+dry_run = False
 
 # not a beauty but works
 _database = 'databasename'
