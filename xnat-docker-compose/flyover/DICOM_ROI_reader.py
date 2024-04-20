@@ -26,6 +26,7 @@ def index():
 
 @app.route("/repo", methods=['POST'])
 def queryresult():
+    # query to get unique IDs and their ROIs
     queryROIs = """
     PREFIX db: <https://johanvansoest.nl/ontologies/LinkedDicom/>
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
@@ -62,6 +63,7 @@ def queryresult():
         # roi = df['ROI'].values
         # id = df['ID'].values
         unique_ids = df['ID'].unique()
+        # make a dict of unique IDs and their corresponding ROIs
         id_roi_mapping = {id: df[df['ID'] == id]['ROI'].values.tolist() for id in unique_ids}
 
         # return render_template('roi.html', id=id, variable=roi)
@@ -74,6 +76,7 @@ def queryresult():
 def units():
     v.mydict = {}
     for key in request.form:
+        # from the GUI response, get the primary and node values and save it in a dictionary
         if not re.search("^node_", key):
             v.mydict[key] = {}
             if request.form.getlist(key):
@@ -95,6 +98,7 @@ def units():
 
 
 def equivalencies(URI, key, gtv):
+    # query to insert the annotation into the RDF repository based on the GUI input for GTV primary and node
     query = """
         PREFIX db: <https://johanvansoest.nl/ontologies/LinkedDicom/>
         PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
