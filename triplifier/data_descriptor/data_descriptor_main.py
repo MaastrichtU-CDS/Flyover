@@ -38,19 +38,37 @@ class Cache:
         self.csvPath = None
         self.uploaded_file = None
         self.global_schema = None
+        self.existing_graph = False
 
 
 session_cache = Cache()
 
 
-# Root URL
 @app.route('/')
 def index():
     """
-    This function renders the index.html page
+    This function is responsible for rendering the index.html page. It is mapped to the root URL ("/") of the Flask application.
 
-    :return:
+    The function first checks if a data graph already exists in the GraphDB repository. If it does, the index.html page is rendered with a flag indicating that the graph exists. If the graph does not exist or if an error occurs during the check, the index.html page is rendered without the flag.
+
+    Returns:
+        flask.render_template: A Flask function that renders a template. In this case, it renders the 'index.html' template.
+
+    Raises:
+        Exception: If an error occurs while checking if the data graph exists,
+        an exception is raised and its error message is flashed to the user.
     """
+    # Check whether a data graph already exists
+    try:
+        if check_graph_exists(session_cache.repo, "http://data.local/"):
+            # If the data graph exists, render the index.html page with a flag indicating that the graph exists
+            session_cache.existing_graph = True
+            return render_template('index.html', graph_exists=session_cache.existing_graph)
+    except Exception as e:
+        # If an error occurs, flash the error message to the user
+        flash(f"Failed to check if the a data graph already exists, error: {e}")
+
+    # If the data graph does not exist or if an error occurs, render the index.html page without the flag
     return render_template('index.html')
 
 
@@ -67,6 +85,38 @@ def allowed_file(filename, allowed_extensions):
     """
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+
+def check_graph_exists(repo, graph_uri):
+    """
+    This function checks if a graph exists in a GraphDB repository.
+
+    Parameters:
+    repo (str): The name of the repository in GraphDB.
+    graph_uri (str): The URI of the graph to check.
+
+    Returns:
+    bool: True if the graph exists, False otherwise.
+
+    Raises:
+    Exception: If the request to the GraphDB instance fails, an exception is raised with the status code of the failed request.
+    """
+    # Construct the SPARQL query
+    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
+
+    # Send a GET request to the GraphDB instance
+    response = requests.get(
+        f"{graphdb_url}/repositories/{repo}",
+        params={"query": query},
+        headers={"Accept": "application/sparql-results+json"}
+    )
+
+    # If the request is successful, return the result of the ASK query
+    if response.status_code == 200:
+        return response.json()['boolean']
+    # If the request fails, raise an exception with the status code
+    else:
+        raise Exception(f"Query failed with status code {response.status_code}")
 
 
 @app.route('/upload', methods=['POST'])
@@ -86,10 +136,11 @@ def upload_file():
     5. It returns a response indicating whether the triplifier run was successful.
 
     Returns:
-        flask.Response: A Flask response object containing the rendered 'triples.html' template if the triplifier run was successful, or the 'index.html' template if it was not.
+        flask.Response: A Flask response object containing the rendered 'triples.html' template
+         if the triplifier run was successful, or the 'index.html' template if it was not.
     """
     file_type = request.form.get('fileType')
-    json_file = request.files.get('jsonFile')
+    json_file = request.files.get('jsonFile') or request.files.get('jsonFile2')
     csv_file = request.files.get('csvFile')
 
     if json_file:
@@ -134,11 +185,23 @@ def upload_file():
                              request.form.get('table'))
         success, message = run_triplifier('triplifierSQL.properties')
 
+    elif json_file and file_type != 'Postgres' and not csv_file:
+        success = True
+        message = "Global schema was submitted successfully, please proceed to describe the data."
+
+    elif not json_file and file_type != 'Postgres' and not csv_file:
+        success = True
+        message = "Note that no data or global schema was submitted, please proceed to describe the data with caution."
+
+    else:
+        success = False
+        message = "An unexpected error occurred. Please try again."
+
     if success:
         return render_template('triples.html', variable=message)
     else:
-        flash(f"Attempting to run the Triplifier resulted in an error: {message}")
-        return render_template('index.html', error=True)
+        flash(f"Attempting to proceed resulted in an error: {message}")
+        return render_template('index.html', error=True, graph_exists=session_cache.existing_graph)
 
 
 def run_triplifier(properties_file=None):
@@ -162,7 +225,7 @@ def run_triplifier(properties_file=None):
             session_cache.csvData.to_csv(session_cache.csvPath, index=False)
 
         process = subprocess.Popen(
-            f"java -jar ./javaTool/triplifier.jar -p ./{properties_file}",
+            f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         output, _ = process.communicate()

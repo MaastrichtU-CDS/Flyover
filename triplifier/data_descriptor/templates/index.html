@@ -77,31 +77,72 @@
             <label for="jsonPath"><i>Note that this is optional and only serves to guide data annotation.</i></label>
             <br>
             <input type="text" id="jsonPath" name="jsonPath" placeholder="Enter JSON File Path">
-            <input type="button" class="btn btn-primary" value="..."
+            <input type="button" id="jsonFileButton" class="btn btn-primary" value="..."
                    onclick="document.getElementById('jsonFile').click();">
             <input type="file" id="jsonFile" name="jsonFile" style="display:none;" onchange="updateFilePath(this)">
         </div>
-        <br>
-        <input type="submit" value="Submit Files" class="btn btn-primary">
+        <input type="submit" id="submitFilesButton" value="Submit Files" class="btn btn-primary">
+
+        {% if graph_exists %}
+            <hr>
+            <p>&#x26A0;<i><b>The associated GraphDB instance already contains a data graph.</b></i><br>
+                <i>It is possible to add more data to this graph, for that you can use the data upload available
+                    above.</i><br>
+                <i>It is, however, possible to describe the existing data without having to add new,
+                    for that please use the options below.</i></p>
+            <i>The existing data graph can also be removed through the GraphDB workbench.</i></p>
+
+            <div id="jsonform">
+                <hr>
+                <p>
+                    <span for="jsonPath2">If you do wish to proceed (i.e. describe the existing data),
+                        you can provide a path to the global schema JSON file if it is available.</span><br>
+                    <span for="jsonPath2">
+                        <i>Note that this is optional and only serves to guide data annotation.</i></span><br>
+                    <span for="jsonPath2" id="data-addition-note1" style="display: none;">
+                        <br>
+                        <b><i>It is also important to consider that only one global schema can be selected.</i></b></span><br>
+                    <span for="jsonPath2" id="data-addition-note2" style="display: none;">
+                        <b><i>In case you need a different schema for multiple different data sources that you wish to
+                            add to a single data graph then please describe them separately.</i></b></span>
+                </p>
+                <input type="text" id="jsonPath2" name="jsonPath2" placeholder="Enter JSON File Path">
+                <input type="button" id="jsonFile2Button" class="btn btn-primary" value="..."
+                       onclick="document.getElementById('jsonFile2').click();">
+                <input type="file" id="jsonFile2" name="jsonFile2" style="display:none;"
+                       onchange="updateFilePath(this)">
+            </div>
+            <br>
+            <input type="submit" id="submitWithoutData" value="Proceed without adding data" class="btn btn-primary">
+
+        {% endif %}
     </form>
 </div>
 
 <script>
+
     function updateFilePath(input) {
         var fullPath = input.value;
         var fileName = fullPath.split('\\').pop();  // Get the filename
         if (input.id === 'jsonFile') {
             $("#jsonPath").val(fileName);  // Set only the filename in the input box
+            $("#jsonPath2").prop("disabled", true);  // Disable the jsonPath2 input box
+            $("#jsonFile2Button").prop("disabled", true);  // Disable the button next to jsonPath2
         } else if (input.id === 'csvFile') {
             $("#csvPath").val(fileName);  // Set only the filename in the input box
+            $("#submitWithoutData").prop("disabled", true);  // Disable the button to proceed without data
+        } else if (input.id === 'jsonFile2') {
+            $("#jsonPath2").val(fileName);  // Set only the filename in the input box
+            $("#jsonPath").prop("disabled", true);  // Disable the jsonPath2 input box
+            $("#jsonFileButton").prop("disabled", true);  // Disable the button next to jsonPath
         }
     }
 
     $(document).ready(function () {
-        // Initially disable the submit button
-        $("input[type=submit]").prop("disabled", true);
+        // Initially disable the other submit button
+        $("#submitFilesButton").prop("disabled", true);
 
-        // Enable the submit button when the necessary fields are filled
+        // Enable the other submit button when the necessary fields are filled
         $("input[type=text], input[type=file], input[type=password]").on("change keyup", function () {
             var csvFile = $("#csvFile").val();
             var username = $("#username").val();
@@ -110,9 +151,9 @@
             var postgresDb = $("#POSTGRES_DB").val();
 
             if (($("#CSV").is(":checked") && csvFile) || ($("#Postgres").is(":checked") && username && password && postgresUrl && postgresDb)) {
-                $("input[type=submit]").prop("disabled", false);
+                $("#submitFilesButton").prop("disabled", false);
             } else {
-                $("input[type=submit]").prop("disabled", true);
+                $("#submitFilesButton").prop("disabled", true);
             }
         });
 
@@ -120,12 +161,16 @@
             $("#csvform").show();
             $("#postgresform").hide();
             $("#jsonform").show();  // Show JSON path selection
+            $("#data-addition-note1").show();  // Show the data-addition-note
+            $("#data-addition-note2").show();  // Show the data-addition-note
         });
 
         $("#Postgres").click(function () {
             $("#csvform").hide();
             $("#postgresform").show();
             $("#jsonform").show();  // Show JSON path selection
+            $("#data-addition-note1").show();  // Show the data-addition-note
+            $("#data-addition-note2").show();  // Show the data-addition-note
         });
     });
 </script>
