@@ -9,7 +9,7 @@ import subprocess
 
 import pandas as pd
 
-from flask import abort, after_this_request,Flask, render_template, request, flash, Response
+from flask import abort, after_this_request, Flask, render_template, request, flash, Response
 from io import StringIO
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
@@ -74,53 +74,6 @@ def index():
 
     # If the data graph does not exist or if an error occurs, render the index.html page without the flag
     return render_template('index.html')
-
-
-def allowed_file(filename, allowed_extensions):
-    """
-    This function checks if the uploaded file has an allowed extension.
-
-    Parameters:
-    filename (str): The name of the file to be checked.
-    allowed_extensions (set): A set of strings representing the allowed file extensions.
-
-    Returns:
-    bool: True if the file has an allowed extension, False otherwise.
-    """
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in allowed_extensions
-
-
-def check_graph_exists(repo, graph_uri):
-    """
-    This function checks if a graph exists in a GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the repository in GraphDB.
-    graph_uri (str): The URI of the graph to check.
-
-    Returns:
-    bool: True if the graph exists, False otherwise.
-
-    Raises:
-    Exception: If the request to the GraphDB instance fails, an exception is raised with the status code of the failed request.
-    """
-    # Construct the SPARQL query
-    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
-
-    # Send a GET request to the GraphDB instance
-    response = requests.get(
-        f"{graphdb_url}/repositories/{repo}",
-        params={"query": query},
-        headers={"Accept": "application/sparql-results+json"}
-    )
-
-    # If the request is successful, return the result of the ASK query
-    if response.status_code == 200:
-        return response.json()['boolean']
-    # If the request fails, raise an exception with the status code
-    else:
-        raise Exception(f"Query failed with status code {response.status_code}")
 
 
 @app.route('/upload', methods=['POST'])
@@ -206,84 +159,6 @@ def upload_file():
     else:
         flash(f"Attempting to proceed resulted in an error: {message}")
         return render_template('index.html', error=True, graph_exists=session_cache.existing_graph)
-
-
-def run_triplifier(properties_file=None):
-    """
-    This function runs the triplifier and checks if it ran successfully.
-
-    Parameters:
-    properties_file (str): The name of the properties file to be used by the triplifier.
-                           It can be either 'triplifierCSV.properties' for CSV files or 'triplifierSQL.properties' for SQL files.
-                           Defaults to None.
-
-    Returns:
-        tuple: A tuple containing a boolean indicating if the triplifier ran successfully,
-        and a string containing the error message if it did not.
-    """
-    try:
-        if properties_file == 'triplifierCSV.properties':
-            if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
-                return False, "Unable to temporarily save the CSV file: no write access to the application folder."
-
-            session_cache.csvData.to_csv(session_cache.csvPath, index=False)
-
-        process = subprocess.Popen(
-            f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-        output, _ = process.communicate()
-        print(output.decode())
-
-        if process.returncode == 0:
-            return True, "Triplifier ran successfully!"
-        else:
-            return False, output
-    except OSError as e:
-        return False, f'Unexpected error attempting to create the upload folder, error: {e}'
-    except Exception as e:
-        return False, f'Unexpected error attempting to run the Triplifier, error: {e}'
-
-
-def handle_postgres_data(username, password, postgres_url, postgres_db, table):
-    """
-    This function handles the PostgreSQL data. It caches the provided information, establishes a connection to the PostgreSQL database, and writes the connection details to a properties file.
-
-    Parameters:
-    username (str): The username for the PostgreSQL database.
-    password (str): The password for the PostgreSQL database.
-    postgres_url (str): The URL of the PostgreSQL database.
-    postgres_db (str): The name of the PostgreSQL database.
-    table (str): The name of the table in the PostgreSQL database.
-
-    Returns:
-    flask.Response: A Flask response object containing the rendered 'index.html' template if the connection to the PostgreSQL database fails.
-    None: If the connection to the PostgreSQL database is successful.
-    """
-    # Cache information
-    session_cache.username, session_cache.password, session_cache.url, session_cache.db_name, session_cache.table = username, password, postgres_url, postgres_db, table
-
-    try:
-        # Establish PostgreSQL connection
-        session_cache.conn = connect(dbname=session_cache.db_name, user=session_cache.username,
-                                     host=session_cache.url,
-                                     password=session_cache.password)
-        print("Connection:", session_cache.conn)
-    except Exception as err:
-        print("connect() ERROR:", err)
-        session_cache.conn = None
-        flash('Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!')
-        return render_template('index.html', error=True)
-
-    # Write connection details to properties file
-    with open("/app/data_descriptor/triplifierSQL.properties", "w") as f:
-        f.write(f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
-                f"jdbc.user = {session_cache.username}\n"
-                f"jdbc.password = {session_cache.password}\n"
-                f"jdbc.driver = org.postgresql.Driver\n\n"
-                f"repo.type = rdf4j\n"
-                f"repo.url = {graphdb_url}\n"
-                f"repo.id = userRepo")
 
 
 @app.route("/repo", methods=['POST'])
@@ -399,32 +274,6 @@ def retrieve_descriptive_info():
 
     # Render the 'units.html' template with the list of variables to further specify
     return render_template('units.html', variable=variables_to_further_describe)
-
-
-def getCategories(repo, key):
-    queryCategories = """
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://'%s'.local/rdf/ontology/>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        SELECT ?value (COUNT(?value) as ?count)
-        WHERE 
-        {  
-           ?a a ?v.
-           ?v dbo:column '%s'.
-           ?a dbo:has_cell ?cell.
-           ?cell dbo:has_value ?value
-        } groupby(?value)
-        """ % (repo, key)
-
-    endpoint = f"{graphdb_url}/repositories/" + repo
-    annotationResponse = requests.post(endpoint,
-                                       data="query=" + queryCategories,
-                                       headers={
-                                           "Content-Type": "application/x-www-form-urlencoded",
-                                           # "Accept": "application/json"
-                                       })
-    output = annotationResponse.text
-    return output
 
 
 @app.route("/end", methods=['POST'])
@@ -588,6 +437,53 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
         abort(500, description=f"An error occurred while processing the ontology, error: {str(e)}")
 
 
+def allowed_file(filename, allowed_extensions):
+    """
+    This function checks if the uploaded file has an allowed extension.
+
+    Parameters:
+    filename (str): The name of the file to be checked.
+    allowed_extensions (set): A set of strings representing the allowed file extensions.
+
+    Returns:
+    bool: True if the file has an allowed extension, False otherwise.
+    """
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+
+def check_graph_exists(repo, graph_uri):
+    """
+    This function checks if a graph exists in a GraphDB repository.
+
+    Parameters:
+    repo (str): The name of the repository in GraphDB.
+    graph_uri (str): The URI of the graph to check.
+
+    Returns:
+    bool: True if the graph exists, False otherwise.
+
+    Raises:
+    Exception: If the request to the GraphDB instance fails, an exception is raised with the status code of the failed request.
+    """
+    # Construct the SPARQL query
+    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
+
+    # Send a GET request to the GraphDB instance
+    response = requests.get(
+        f"{graphdb_url}/repositories/{repo}",
+        params={"query": query},
+        headers={"Accept": "application/sparql-results+json"}
+    )
+
+    # If the request is successful, return the result of the ASK query
+    if response.status_code == 200:
+        return response.json()['boolean']
+    # If the request fails, raise an exception with the status code
+    else:
+        raise Exception(f"Query failed with status code {response.status_code}")
+
+
 def execute_query(repo, query):
     """
     This function executes a SPARQL query on a specified GraphDB repository.
@@ -618,6 +514,32 @@ def execute_query(repo, query):
         # If an error occurs, flash the error message to the user and render the 'index.html' template
         flash(f'Unexpected error when connecting to GraphDB, error: {e}.')
         return render_template('index.html')
+
+
+def getCategories(repo, key):
+    queryCategories = """
+        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+        PREFIX db: <http://'%s'.local/rdf/ontology/>
+        PREFIX roo: <http://www.cancerdata.org/roo/>
+        SELECT ?value (COUNT(?value) as ?count)
+        WHERE 
+        {  
+           ?a a ?v.
+           ?v dbo:column '%s'.
+           ?a dbo:has_cell ?cell.
+           ?cell dbo:has_value ?value
+        } groupby(?value)
+        """ % (repo, key)
+
+    endpoint = f"{graphdb_url}/repositories/" + repo
+    annotationResponse = requests.post(endpoint,
+                                       data="query=" + queryCategories,
+                                       headers={
+                                           "Content-Type": "application/x-www-form-urlencoded",
+                                           # "Accept": "application/json"
+                                       })
+    output = annotationResponse.text
+    return output
 
 
 def get_global_names():
@@ -675,6 +597,84 @@ def equivalencies(mydict, key):
     print(output)
 
 
-if (__name__ == "__main__"):
+def handle_postgres_data(username, password, postgres_url, postgres_db, table):
+    """
+    This function handles the PostgreSQL data. It caches the provided information, establishes a connection to the PostgreSQL database, and writes the connection details to a properties file.
+
+    Parameters:
+    username (str): The username for the PostgreSQL database.
+    password (str): The password for the PostgreSQL database.
+    postgres_url (str): The URL of the PostgreSQL database.
+    postgres_db (str): The name of the PostgreSQL database.
+    table (str): The name of the table in the PostgreSQL database.
+
+    Returns:
+    flask.Response: A Flask response object containing the rendered 'index.html' template if the connection to the PostgreSQL database fails.
+    None: If the connection to the PostgreSQL database is successful.
+    """
+    # Cache information
+    session_cache.username, session_cache.password, session_cache.url, session_cache.db_name, session_cache.table = username, password, postgres_url, postgres_db, table
+
+    try:
+        # Establish PostgreSQL connection
+        session_cache.conn = connect(dbname=session_cache.db_name, user=session_cache.username,
+                                     host=session_cache.url,
+                                     password=session_cache.password)
+        print("Connection:", session_cache.conn)
+    except Exception as err:
+        print("connect() ERROR:", err)
+        session_cache.conn = None
+        flash('Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!')
+        return render_template('index.html', error=True)
+
+    # Write connection details to properties file
+    with open("/app/data_descriptor/triplifierSQL.properties", "w") as f:
+        f.write(f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
+                f"jdbc.user = {session_cache.username}\n"
+                f"jdbc.password = {session_cache.password}\n"
+                f"jdbc.driver = org.postgresql.Driver\n\n"
+                f"repo.type = rdf4j\n"
+                f"repo.url = {graphdb_url}\n"
+                f"repo.id = userRepo")
+
+
+def run_triplifier(properties_file=None):
+    """
+    This function runs the triplifier and checks if it ran successfully.
+
+    Parameters:
+    properties_file (str): The name of the properties file to be used by the triplifier.
+                           It can be either 'triplifierCSV.properties' for CSV files or 'triplifierSQL.properties' for SQL files.
+                           Defaults to None.
+
+    Returns:
+        tuple: A tuple containing a boolean indicating if the triplifier ran successfully,
+        and a string containing the error message if it did not.
+    """
+    try:
+        if properties_file == 'triplifierCSV.properties':
+            if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
+                return False, "Unable to temporarily save the CSV file: no write access to the application folder."
+
+            session_cache.csvData.to_csv(session_cache.csvPath, index=False)
+
+        process = subprocess.Popen(
+            f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
+            shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+        output, _ = process.communicate()
+        print(output.decode())
+
+        if process.returncode == 0:
+            return True, "Triplifier ran successfully!"
+        else:
+            return False, output
+    except OSError as e:
+        return False, f'Unexpected error attempting to create the upload folder, error: {e}'
+    except Exception as e:
+        return False, f'Unexpected error attempting to run the Triplifier, error: {e}'
+
+
+if __name__ == "__main__":
     # app.run(port = 5001)
     app.run(host='0.0.0.0')
