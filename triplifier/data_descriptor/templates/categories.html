@@ -1,84 +1,147 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/css/bootstrap-select.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/css/bootstrap-select.css"/>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/js/bootstrap-select.min.js"></script>
 <head>
     <meta charset="UTF-8">
-    <title>Categories</title>
+    <title>Flyover | Variable description</title>
+    <style>
+        .toggle-button {
+            cursor: pointer;
+            display: inline-block;
+            border: none;
+            background: none;
+            font-size: 2rem;
+            line-height: 1;
+            color: inherit;
+            float: right;
+        }
+
+        .toggle-button:before {
+            content: '\1F781';
+        }
+
+        .toggle-button.open:before {
+            content: '\1F783';
+        }
+
+        .content {
+            width: 100%;
+            transition: max-height 0.2s ease-out;
+            max-height: 0;
+            overflow-y: auto;
+        }
+
+        .content.active {
+            max-height: 500px;
+        }
+
+    </style>
 </head>
 <body>
-    <h3 class="col-lg-10 control-label">Choose the type and description of your columns</h3><br>
-     <form class="form-horizontal" method="POST" action="units">
-        {% for item in local_variable_names %}
-         <div id="div1" class="form-group">
-             <label for= "{{ item }}"  class="col-lg-4 control-label">{{item}}</label>
-             <select id= "{{ item }}" name= "{{ item }}" class="selectpicker">
-                    <option value="">Choose here</option>
-                    <option value="Categorical Ordinal">Categorical Ordinal</option>
-                    <option value="Categorical Nominal">Categorical Nominal</option>
-                    <option value="Continuous">Continuous</option>
-                    <option value="Identifier">Identifier</option>
-             </select>
-             <label for= "ncit_comment_{{ item }}"></label>
-             <select id= "ncit_comment_{{ item }}" name= "ncit_comment_{{ item }}" class="selectpicker">
-                    {% if global_variable_names %}
-                        <option value="">Choose here</option>
-                        {% for value in global_variable_names %}
-                            <option>{{ value }}</option>
-                        {% endfor %}
-                    {% else %}
-                        <option value="">Choose here</option>
-                        <option value="Patient Identifier">Patient Identifier</option>
-                        <option value="Age">Age</option>
-                        <option value="Gender">Gender</option>
-                        <option value="T Stage">T Stage</option>
-                        <option value="N Stage">N Stage</option>
-                        <option value="M Stage">M Stage</option>
-                        <option value="HPV Status">HPV Status</option>
-                        <option value="ASA Score">ASA Score</option>
-                        <option value="WHO/ECOG Status">WHO/ECOG Status</option>
-                        <option value="AJCC Stage">AJCC Stage</option>
-                        <option value="Tumour Site">Tumour Site</option>
-                        <option value="Metastasis">Metastasis</option>
-                        <option value="Metastasis Days">Metastasis Days</option>
-                        <option value="Event Recurrence">Event Recurrence</option>
-                        <option value="Event Recurrence Days">Event Recurrence Days</option>
-                        <option value="Local Recurrence">Local Recurrence</option>
-                        <option value="Local Recurrence Days">Local Recurrence Days</option>
-                        <option value="Regional Recurrence">Regional Recurrence</option>
-                        <option value="Regional Recurrence Days">Regional Recurrence Days</option>
-                        <option value="Event Survival">Event Survival</option>
-                        <option value="Overall Survival Days">Overall Survival Days</option>
-                        <option value="Surgery">Surgery</option>
-                        <option value="Chemotherapy">Chemotherapy</option>
-                        <option value="Radiotherapy time">Radiotherapy treatment time</option>
-                        <option value="RT Total Dose">RT Total Dose</option>
-                        <option value="RT Dose per fraction">RT Dose per fraction</option>
-                        <option value="RT Fractions">RT Fractions</option>
-                        <option value="Other">Other</option>
-                    {% endif %}
-             </select>
-             <label for= "comment_{{ item }}"></label>
-                <input class="form-group" type="text" id="comment_{{ item }}" name="comment_{{ item }}" placeholder="If other, please specify" disabled='disabled'/><br>
-             <script>
-                $(document).ready(function () {
-                   $("#ncit_comment_{{ item }}").change(function () {
-                      if ($(this).find("option:selected").val() == "Other") {
-                           $("#comment_{{ item }}").removeAttr("disabled")
-                      } else {
-                           $("#comment_{{ item }}").attr("disabled","disabled")
-                      }
-                   });
-                });
-             </script>
-         </div>
+<div class="container">
+    <br>
+    <h1>Describe your data</h1>
+    <hr>
+    <p>Please inspect the variables (i.e. columns) of your database(s) by clicking on the '>' next to the database's
+        name.<br>
+        For every database that you would like to describe,
+        please select the type and description of your columns from the drop-down menu.<br>
+        <br>
+        &#x1F914;<i>Does none of the available descriptions accurately represent a given variable?</i><br>
+        <i>Please select 'Other' and specify what the variable represents in the text box.</i><br>
+        <i>Find the list of available descriptions to be too brief? Please consider providing a global
+            schema, as the descriptions change accordingly.</i></p>
+    <form class="form-horizontal" method="POST" action="units">
+        <hr>
+        {% for database, df in dataframes.items() %}
+            <h2 style="display: inline-block;"> {{ database }}</h2>
+            <button class="toggle-button" type="button"></button>
+            <div class="content hidden">
+                {% for item in df['column'].tolist() %}
+                    <div id="div1" class="form-group">
+                        <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
+                        <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}" class="selectpicker">
+                            <option value="">Data type</option>
+                            <option value="Categorical Ordinal">Categorical Ordinal</option>
+                            <option value="Categorical Nominal">Categorical Nominal</option>
+                            <option value="Continuous">Continuous</option>
+                            <option value="Identifier">Identifier</option>
+                        </select>
+                        <label for="ncit_comment_{{ database }}_{{ item }}"></label>
+                        <select id="ncit_comment_{{ database }}_{{ item }}"
+                                name="ncit_comment_{{ database }}_{{ item }}" class="selectpicker">
+                            {% if global_variable_names %}
+                                <option value="">Description</option>
+                                {% for value in global_variable_names %}
+                                    <option>{{ value }}</option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="">Description</option>
+                                <option value="Patient Identifier">Patient Identifier</option>
+                                <option value="Age">Age</option>
+                                <option value="Gender">Gender</option>
+                                <option value="T Stage">T Stage</option>
+                                <option value="N Stage">N Stage</option>
+                                <option value="M Stage">M Stage</option>
+                                <option value="HPV Status">HPV Status</option>
+                                <option value="ASA Score">ASA Score</option>
+                                <option value="WHO/ECOG Status">WHO/ECOG Status</option>
+                                <option value="AJCC Stage">AJCC Stage</option>
+                                <option value="Tumour Site">Tumour Site</option>
+                                <option value="Metastasis">Metastasis</option>
+                                <option value="Metastasis Days">Metastasis Days</option>
+                                <option value="Event Recurrence">Event Recurrence</option>
+                                <option value="Event Recurrence Days">Event Recurrence Days</option>
+                                <option value="Local Recurrence">Local Recurrence</option>
+                                <option value="Local Recurrence Days">Local Recurrence Days</option>
+                                <option value="Regional Recurrence">Regional Recurrence</option>
+                                <option value="Regional Recurrence Days">Regional Recurrence Days</option>
+                                <option value="Event Survival">Event Survival</option>
+                                <option value="Overall Survival Days">Overall Survival Days</option>
+                                <option value="Surgery">Surgery</option>
+                                <option value="Chemotherapy">Chemotherapy</option>
+                                <option value="Radiotherapy time">Radiotherapy treatment time</option>
+                                <option value="RT Total Dose">RT Total Dose</option>
+                                <option value="RT Dose per fraction">RT Dose per fraction</option>
+                                <option value="RT Fractions">RT Fractions</option>
+                                <option value="Other">Other</option>
+                            {% endif %}
+                        </select>
+                        <label for="comment_{{ database }}_{{ item }}"></label>
+                        <input class="form-group" type="text" id="comment_{{ database }}_{{ item }}"
+                               name="comment_{{ database }}_{{ item }}"
+                               placeholder="If other, please specify" disabled='disabled'/><br>
+                        <script>
+                            $(document).ready(function () {
+                                $("#ncit_comment_{{ database }}_{{ item }}").change(function () {
+                                    if ($(this).find("option:selected").val() == "Other") {
+                                        $("#comment_{{ database }}_{{ item }}").removeAttr("disabled")
+                                    } else {
+                                        $("#comment_{{ database }}_{{ item }}").attr("disabled", "disabled")
+                                    }
+                                });
+                            });
+                        </script>
+                    </div>
+                {% endfor %}
+            </div>
+            <hr>
         {% endfor %}
 
-         <p><input type="submit" value="Submit"></p>
+        <p><input type="submit" value="Submit" class="btn btn-primary"></p>
     </form>
-
+    <script>
+        $(document).ready(function () {
+            $('.toggle-button').click(function () {
+                $(this).toggleClass('open');
+                $(this).next('.content').toggleClass('active');
+            });
+        });
+    </script>
+</div>
 </body>
 </html>

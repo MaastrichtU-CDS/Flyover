@@ -2,12 +2,14 @@ import copy
 import json
 import os
 import re
+import zipfile
+
 import requests
 import subprocess
 
 import pandas as pd
 
-from flask import abort, Flask, render_template, request, flash, Response
+from flask import abort, after_this_request,Flask, render_template, request, flash, Response
 from io import StringIO
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
@@ -17,7 +19,7 @@ graphdb_url = "http://rdf-store:7200"
 app = Flask(__name__)
 app.secret_key = "secret_key"
 # enable debugging mode
-app.config["DEBUG"] = True
+app.config["DEBUG"] = False
 app.config['UPLOAD_FOLDER'] = os.path.join('data_descriptor', 'static', 'files')
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -39,6 +41,8 @@ class Cache:
         self.uploaded_file = None
         self.global_schema = None
         self.existing_graph = False
+        self.databases = None
+        self.descriptive_info = None
 
 
 session_cache = Cache()
@@ -282,82 +286,119 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
                 f"repo.id = userRepo")
 
 
-# Get the uploaded files
 @app.route("/repo", methods=['POST'])
-def queryresult():
-    queryColumn = """
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        select ?o where { 
-        ?s dbo:column ?o .
-    }
+def retrieve_columns():
     """
+    This function is mapped to the "/repo" URL and is invoked when a POST request is made to this URL.
+    It retrieves column information from a GraphDB repository and
+    prepares it for rendering in the 'categories.html' template.
 
-    def queryresult(repo, query):
-        try:
-            endpoint = f"{graphdb_url}/repositories/" + repo
-            annotationResponse = requests.post(endpoint,
-                                               data="query=" + query,
-                                               headers={
-                                                   "Content-Type": "application/x-www-form-urlencoded",
-                                                   # "Accept": "application/json"
-                                               })
-            output = annotationResponse.text
-            return output
+    The function performs the following steps:
+    1. Executes a SPARQL query to fetch the URI and column name of each column in the GraphDB repository.
+    2. Reads the query results into a pandas DataFrame.
+    3. Extracts the database name from the URI and adds it as a new column in the DataFrame.
+    4. Drops the 'uri' column from the DataFrame.
+    5. Gets the unique values in the 'database' column and stores them in the session cache.
+    6. Creates a dictionary of dataframes, where the key is the unique database name and
+    the value is the corresponding dataframe.
+    7. Gets the global variable names for the description drop-down menu.
+    8. Renders the 'categories.html' template with the dictionary of dataframes and the global variable names.
 
-        except Exception as err:
-            flash('Connection unsuccessful. Please check your details!')
-            return render_template('index.html')
+    Returns:
+        flask.render_template: A Flask function that renders a template. In this case,
+        it renders the 'categories.html' template with the dictionary of dataframes and the global variable names.
+    """
+    # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
+    column_query = """
+    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+        SELECT ?uri ?column 
+        WHERE {
+        ?uri dbo:column ?column .
+        }
+    """
+    # Execute the query and read the results into a pandas DataFrame
+    column_info = pd.read_csv(StringIO(execute_query(session_cache.repo, column_query)))
+    # Extract the database name from the URI and add it as a new column in the DataFrame
+    column_info['database'] = column_info['uri'].str.extract(r'.*/(.*?)\.', expand=False)
 
-    columns = queryresult(session_cache.repo, queryColumn)
-    local_column_names = pd.read_csv(StringIO(columns))
-    local_column_names = local_column_names[local_column_names.columns[0]]
+    # Drop the 'uri' column from the DataFrame
+    column_info = column_info.drop(columns=['uri'])
 
-    # if a global schema was defined, read it
-    if isinstance(session_cache.global_schema, dict) is False:
-        global_names = ['Research subject identifier', 'Biological sex', 'Age at inclusion', 'Other']
-        session_cache.global_schema = None
-    else:
-        try:
-            # get the global variable names
-            global_names = [global_name.capitalize().replace('_', ' ')
-                            for global_name in session_cache.global_schema['variable_info'].keys()]
+    # Get unique values in 'database' column and store them in the session cache
+    unique_values = column_info['database'].unique()
+    session_cache.databases = unique_values
 
-            # add an option to select 'Other'
-            global_names.append('Other')
-        except Exception as e:
-            flash(f"Failed to read the global schema. Error: {e}")
-            return render_template('index.html', error=True)
+    # Create a dictionary of dataframes, where the key is the database name, and the value is the corresponding dataframe
+    dataframes = {value: column_info[column_info['database'] == value] for value in unique_values}
 
-    return render_template('categories.html', local_variable_names=local_column_names,
-                           global_variable_names=global_names)
+    # Get the global variable names for the description drop-down menu
+    global_names = get_global_names()
+
+    # Render the 'categories.html' template with the dictionary of dataframes and the global variable names
+    return render_template('categories.html',
+                           dataframes=dataframes, global_variable_names=global_names)
 
 
 @app.route("/units", methods=['POST'])
-def units():
-    conList = []
-    session_cache.mydict = {}
-    for local_variable_name in request.form:
-        if not re.search("^ncit_comment_", local_variable_name):
-            session_cache.mydict[local_variable_name] = {}
-            data_type = request.form.get(local_variable_name)
-            global_variable_name = request.form.get('ncit_comment_' + local_variable_name)
-            comment = request.form.get('comment_' + local_variable_name)
-            session_cache.mydict[local_variable_name]['type'] = data_type
-            session_cache.mydict[local_variable_name]['description'] = global_variable_name
-            session_cache.mydict[local_variable_name]['comments'] = comment
-            if data_type == 'Categorical Nominal' or data_type == 'Categorical Ordinal':
-                cat = getCategories(session_cache.repo, local_variable_name)
-                TESTDATA = StringIO(cat)
-                df = pd.read_csv(TESTDATA, sep=",")
-                df = df.to_dict('records')
-                session_cache.mydict[local_variable_name]['categories'] = df
-                equivalencies(session_cache.mydict, local_variable_name)
-            elif data_type == 'Continuous':
-                conList.append(local_variable_name)
-            else:
-                equivalencies(session_cache.mydict, local_variable_name)
+def retrieve_descriptive_info():
+    """
+    This function is responsible for retrieving descriptive information about the variables in the databases.
+    It is mapped to the "/units" URL and is invoked when a POST request is made to this URL.
 
-    return render_template('units.html', variable=conList)
+    The function performs the following steps:
+    1. Iterates over each database in the session cache.
+    2. For each database, it iterates over each local variable name in the form data.
+    3. If the local variable name does not start with "ncit_comment_" and
+       does not contain the name of any other database, it processes the local variable.
+    4. It retrieves the data type, global variable name, and comment for the local variable from the form data.
+    5. It stores this information in the session cache.
+    6. If the data type of the local variable is 'Categorical Nominal' or 'Categorical Ordinal',
+       it retrieves the categories for the local variable and stores them in the session cache.
+    7. If the data type of the local variable is 'Continuous',
+    it adds the local variable to a list of variables to further specify.
+    8. Finally, it renders the 'units.html' template with the list of variables to further specify.
+
+    Returns:
+        flask.render_template: A Flask function that renders a template. In this case,
+        it renders the 'units.html' template with the list of variables to further specify.
+    """
+    variables_to_further_describe = []
+    session_cache.descriptive_info = {}
+    for database in session_cache.databases:
+        session_cache.descriptive_info[database] = {}
+        for local_variable_name in request.form:
+            if (not re.search("^ncit_comment_", local_variable_name) and
+                    not any(db in local_variable_name for db in session_cache.databases if db != database)):
+                local_variable_name = local_variable_name.replace(f'{database}_', '')
+                form_local_variable_name = f'{database}_{local_variable_name}'
+
+                data_type = request.form.get(form_local_variable_name)
+                global_variable_name = request.form.get('ncit_comment_' + form_local_variable_name)
+                comment = request.form.get('comment_' + form_local_variable_name)
+
+                # Store the data type, global variable name, and comment for the local variable in the session cache
+                session_cache.descriptive_info[database][local_variable_name] = {
+                    'type': data_type,
+                    'description': global_variable_name,
+                    'comments': comment
+                }
+
+                # If the data type of the local variable is 'Categorical Nominal' or 'Categorical Ordinal',
+                # retrieve the categories for the local variable and store them in the session cache
+                if data_type in ['Categorical Nominal', 'Categorical Ordinal']:
+                    cat = getCategories(session_cache.repo, local_variable_name)
+                    df = pd.read_csv(StringIO(cat), sep=",")
+                    session_cache.descriptive_info[database][local_variable_name]['categories'] = df.to_dict('records')
+                    equivalencies(session_cache.descriptive_info[database], local_variable_name)
+                # If the data type of the local variable is 'Continuous',
+                # add the local variable to a list of variables to further specify
+                elif data_type == 'Continuous':
+                    variables_to_further_describe.append(local_variable_name)
+                else:
+                    equivalencies(session_cache.descriptive_info[database], local_variable_name)
+
+    # Render the 'units.html' template with the list of variables to further specify
+    return render_template('units.html', variable=variables_to_further_describe)
 
 
 def getCategories(repo, key):
@@ -389,14 +430,15 @@ def getCategories(repo, key):
 @app.route("/end", methods=['POST'])
 def unitNames():
     # items = getColumns(file_path)
-    for key in request.form:
-        unitValue = request.form.get(key)
-        if unitValue != "":
-            session_cache.mydict[key]['units'] = unitValue
-        equivalencies(session_cache.mydict, key)
+    for database in session_cache.databases:
+        for key in request.form:
+            unitValue = request.form.get(key)
+            if unitValue != "":
+                session_cache.descriptive_info[database][key]['units'] = unitValue
+            equivalencies(session_cache.descriptive_info[database], key)
 
     # try to fetch the global schema if it was read previously
-    if isinstance(session_cache.global_schema, dict) and isinstance(session_cache.mydict, dict):
+    if isinstance(session_cache.global_schema, dict) and isinstance(session_cache.descriptive_info, dict):
         return render_template('download.html',
                                graphdb_location="http://localhost:7200/", show_schema=True)
     else:
@@ -405,7 +447,7 @@ def unitNames():
 
 
 @app.route('/downloadSchema', methods=['GET'])
-def download_schema(filename=None):
+def download_schema():
     """
     This function generates a modified version of the global schema by adding local definitions to it.
     The modified schema is then returned as a JSON response which can be downloaded as a file.
@@ -419,33 +461,86 @@ def download_schema(filename=None):
                         an HTTP response with a status code of 500 (Internal Server Error)
                         is returned along with a message describing the error.
     """
-    database_name = session_cache.csvPath[session_cache.csvPath.rfind(os.path.sep) + 1:
-                                          session_cache.csvPath.rfind('.')]
-
-    if filename is None:
-        filename = f'local_schema_{database_name}.json'
-
     try:
-        modified_schema = copy.deepcopy(session_cache.global_schema)
+        # Check if there are multiple databases
+        if len(session_cache.databases) > 1:
+            _filename = 'local_schemas.zip'
+            # Loop through each database
+            for database in session_cache.databases:
+                filename = f'local_schema_{database}.json'
 
-        if isinstance(modified_schema.get('database_name'), str):
-            modified_schema['database_name'] = database_name
+                # Open the zip file in append mode
+                with zipfile.ZipFile(_filename, 'a') as zipf:
+                    # Create a deep copy of the global schema
+                    modified_schema = copy.deepcopy(session_cache.global_schema)
+
+                    # Update the 'database_name' field in the schema
+                    if isinstance(modified_schema.get('database_name'), str):
+                        modified_schema['database_name'] = database
+                    else:
+                        modified_schema.update({'database_name': database})
+
+                    # Update the 'variable_info' field in the schema
+                    modified_schema['variable_info'] = \
+                        {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
+                            'local_definition': ""}
+                         for variable_name, variable_info in modified_schema['variable_info'].items()}
+
+                    # Add local definitions to the schema
+                    for local_variable, local_value in session_cache.descriptive_info[database].items():
+                        global_variable = local_value['description'].lower().replace(' ', '_')
+                        if global_variable:
+                            modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+
+                    # Write the modified schema to the zip file
+                    zipf.writestr(filename, json.dumps(modified_schema, indent=4))
+
+            # Define a function to remove the zip file after the request has been handled
+            @after_this_request
+            def remove_file(response):
+                try:
+                    os.remove(_filename)
+                except Exception as error:
+                    app.logger.error("Error removing or closing downloaded file handle", error)
+                return response
+
+            # Open the zip file in binary mode and return it as a response
+            with open(_filename, 'rb') as f:
+                return Response(f.read(), mimetype='application/zip',
+                                headers={'Content-Disposition': f'attachment;filename={_filename}'})
         else:
-            modified_schema.update({'database_name': database_name})
+            # If there is only one database
+            database = session_cache.databases[0]
+            filename = f'local_schema_{database}.json'
+            try:
+                # Create a deep copy of the global schema
+                modified_schema = copy.deepcopy(session_cache.global_schema)
 
-        modified_schema['variable_info'] = \
-            {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
-                'local_definition': ""}
-             for variable_name, variable_info in modified_schema['variable_info'].items()}
+                # Update the 'database_name' field in the schema
+                if isinstance(modified_schema.get('database_name'), str):
+                    modified_schema['database_name'] = database
+                else:
+                    modified_schema.update({'database_name': database})
 
-        for local_variable, local_value in session_cache.mydict.items():
-            global_variable = local_value['description'].lower().replace(' ', '_')
-            if global_variable:
-                modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+                # Update the 'variable_info' field in the schema
+                modified_schema['variable_info'] = \
+                    {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
+                        'local_definition': ""}
+                     for variable_name, variable_info in modified_schema['variable_info'].items()}
 
-        return Response(json.dumps(modified_schema, indent=4),
-                        mimetype='application/json',
-                        headers={'Content-Disposition': f'attachment;filename={filename}'})
+                # Add local definitions to the schema
+                for local_variable, local_value in session_cache.descriptive_info[database].items():
+                    global_variable = local_value['description'].lower().replace(' ', '_')
+                    if global_variable:
+                        modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+
+                # Return the modified schema as a JSON response
+                return Response(json.dumps(modified_schema, indent=4),
+                                mimetype='application/json',
+                                headers={'Content-Disposition': f'attachment;filename={filename}'})
+            except Exception as e:
+                abort(500, description=f"An error occurred while processing the schema, error: {str(e)}")
+
     except Exception as e:
         abort(500, description=f"An error occurred while processing the schema, error: {str(e)}")
 
@@ -468,8 +563,11 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         an HTTP response with a status code of 500 (Internal Server Error)
                          is returned along with a message describing the error.
     """
-    database_name = session_cache.csvPath[session_cache.csvPath.rfind(os.path.sep) + 1:
-                                          session_cache.csvPath.rfind('.')]
+    if session_cache.csvPath is not None or session_cache.existing_graph is False:
+        database_name = session_cache.csvPath[session_cache.csvPath.rfind(os.path.sep) + 1:
+                                              session_cache.csvPath.rfind('.')]
+    else:
+        database_name = 'for_multiple_databases'
 
     if filename is None:
         filename = f'local_ontology_{database_name}.nt'
@@ -488,6 +586,65 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
 
     except Exception as e:
         abort(500, description=f"An error occurred while processing the ontology, error: {str(e)}")
+
+
+def execute_query(repo, query):
+    """
+    This function executes a SPARQL query on a specified GraphDB repository.
+
+    Parameters:
+    repo (str): The name of the GraphDB repository on which the query is to be executed.
+    query (str): The SPARQL query to be executed.
+
+    Returns:
+    str: The result of the query execution as a string if the execution is successful.
+    flask.render_template: A Flask function that renders the 'index.html' template
+    if an error occurs during the query execution.
+
+    Raises:
+    Exception: If an error occurs during the query execution,
+    an exception is raised and its error message is flashed to the user.
+    """
+    try:
+        # Construct the endpoint URL
+        endpoint = f"{graphdb_url}/repositories/" + repo
+        # Execute the query
+        response = requests.post(endpoint,
+                                 data={"query": query},
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+        # Return the result of the query execution
+        return response.text
+    except Exception as e:
+        # If an error occurs, flash the error message to the user and render the 'index.html' template
+        flash(f'Unexpected error when connecting to GraphDB, error: {e}.')
+        return render_template('index.html')
+
+
+def get_global_names():
+    """
+    This function retrieves the names of global variables from the session cache.
+
+    The function first checks if the global schema in the session cache is a dictionary.
+    If it is not, it returns a list of default global variable names.
+    If it is a dictionary, it attempts to retrieve the keys from the 'variable_info' field of the global schema,
+    capitalise them, replace underscores with spaces, and return them as a list.
+    If an error occurs during this process,
+    it flashes an error message to the user and renders the 'index.html' template.
+
+    Returns:
+        list: A list of strings representing the names of the global variables.
+        flask.render_template: A Flask function that renders a template.
+        In this case, it renders the 'index.html' template if an error occurs.
+    """
+    if not isinstance(session_cache.global_schema, dict):
+        return ['Research subject identifier', 'Biological sex', 'Age at inclusion', 'Other']
+    else:
+        try:
+            return [name.capitalize().replace('_', ' ') for name in
+                    session_cache.global_schema['variable_info'].keys()] + ['Other']
+        except Exception as e:
+            flash(f"Failed to read the global schema. Error: {e}")
+            return render_template('index.html', error=True)
 
 
 def equivalencies(mydict, key):
