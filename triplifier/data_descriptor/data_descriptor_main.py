@@ -51,16 +51,21 @@ session_cache = Cache()
 @app.route('/')
 def index():
     """
-    This function is responsible for rendering the index.html page. It is mapped to the root URL ("/") of the Flask application.
+    This function is responsible for rendering the index.html page.
+    It is mapped to the root URL ("/") of the Flask application.
 
-    The function first checks if a data graph already exists in the GraphDB repository. If it does, the index.html page is rendered with a flag indicating that the graph exists. If the graph does not exist or if an error occurs during the check, the index.html page is rendered without the flag.
+    The function first checks if a data graph already exists in the GraphDB repository.
+    If it does, the index.html page is rendered with a flag indicating that the graph exists.
+    If the graph does not exist or if an error occurs during the check,
+    the index.html page is rendered without the flag.
 
     Returns:
-        flask.render_template: A Flask function that renders a template. In this case, it renders the 'index.html' template.
+        flask.render_template: A Flask function that renders a template. In this case,
+        it renders the 'index.html' template.
 
     Raises:
         Exception: If an error occurs while checking if the data graph exists,
-        an exception is raised and its error message is flashed to the user.
+        an exception is raised, and its error message is flashed to the user.
     """
     # Check whether a data graph already exists
     try:
@@ -203,7 +208,7 @@ def retrieve_columns():
     unique_values = column_info['database'].unique()
     session_cache.databases = unique_values
 
-    # Create a dictionary of dataframes, where the key is the database name, and the value is the corresponding dataframe
+    # Create a dictionary of dataframes, where the key is the database name, and the value is a corresponding dataframe
     dataframes = {value: column_info[column_info['database'] == value] for value in unique_values}
 
     # Get the global variable names for the description drop-down menu
@@ -309,6 +314,20 @@ def download_schema():
                         If an error occurs during the processing of the schema,
                         an HTTP response with a status code of 500 (Internal Server Error)
                         is returned along with a message describing the error.
+
+    The function performs the following steps:
+    1. Checks if there are multiple databases.
+    2. If there are multiple databases, it creates a zip file named 'local_schemas.zip'.
+    3. It then loops through each database,
+       generates a modified version of the global schema by adding local definitions to it,
+       and writes the modified schema to the zip file.
+    4. After the request has been handled, it removes the zip file.
+    5. If there is only one database,
+       it generates a modified version of the global schema by adding local definitions to it,
+       and returns the modified schema as a JSON response.
+    6. If an error occurs during the processing of the schema,
+       it returns an HTTP response with a status code of 500 (Internal Server Error)
+       along with a message describing the error.
     """
     try:
         # Check if there are multiple databases
@@ -320,26 +339,8 @@ def download_schema():
 
                 # Open the zip file in append mode
                 with zipfile.ZipFile(_filename, 'a') as zipf:
-                    # Create a deep copy of the global schema
-                    modified_schema = copy.deepcopy(session_cache.global_schema)
-
-                    # Update the 'database_name' field in the schema
-                    if isinstance(modified_schema.get('database_name'), str):
-                        modified_schema['database_name'] = database
-                    else:
-                        modified_schema.update({'database_name': database})
-
-                    # Update the 'variable_info' field in the schema
-                    modified_schema['variable_info'] = \
-                        {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
-                            'local_definition': ""}
-                         for variable_name, variable_info in modified_schema['variable_info'].items()}
-
-                    # Add local definitions to the schema
-                    for local_variable, local_value in session_cache.descriptive_info[database].items():
-                        global_variable = local_value['description'].lower().replace(' ', '_')
-                        if global_variable:
-                            modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+                    # Generate a modified version of the global schema by adding local definitions to it
+                    modified_schema = formulate_local_schema(database)
 
                     # Write the modified schema to the zip file
                     zipf.writestr(filename, json.dumps(modified_schema, indent=4))
@@ -361,27 +362,10 @@ def download_schema():
             # If there is only one database
             database = session_cache.databases[0]
             filename = f'local_schema_{database}.json'
+
             try:
-                # Create a deep copy of the global schema
-                modified_schema = copy.deepcopy(session_cache.global_schema)
-
-                # Update the 'database_name' field in the schema
-                if isinstance(modified_schema.get('database_name'), str):
-                    modified_schema['database_name'] = database
-                else:
-                    modified_schema.update({'database_name': database})
-
-                # Update the 'variable_info' field in the schema
-                modified_schema['variable_info'] = \
-                    {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
-                        'local_definition': ""}
-                     for variable_name, variable_info in modified_schema['variable_info'].items()}
-
-                # Add local definitions to the schema
-                for local_variable, local_value in session_cache.descriptive_info[database].items():
-                    global_variable = local_value['description'].lower().replace(' ', '_')
-                    if global_variable:
-                        modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+                # Generate a modified version of the global schema by adding local definitions to it
+                modified_schema = formulate_local_schema(database)
 
                 # Return the modified schema as a JSON response
                 return Response(json.dumps(modified_schema, indent=4),
@@ -464,7 +448,8 @@ def check_graph_exists(repo, graph_uri):
     bool: True if the graph exists, False otherwise.
 
     Raises:
-    Exception: If the request to the GraphDB instance fails, an exception is raised with the status code of the failed request.
+    Exception: If the request to the GraphDB instance fails,
+    an exception is raised with the status code of the failed request.
     """
     # Construct the SPARQL query
     query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
@@ -569,6 +554,51 @@ def get_global_names():
             return render_template('index.html', error=True)
 
 
+def formulate_local_schema(database):
+    """
+    This function modifies the global schema by adding local definitions to it.
+    The modified schema is then returned.
+
+    Parameters:
+    database (str): The name of the database for which the local schema is to be formulated.
+
+    Returns:
+    dict: A dictionary representing the modified schema.
+
+    The function performs the following steps:
+    1. Creates a deep copy of the global schema stored in the session cache.
+    2. Updates the 'database_name' field in the schema with the provided database name.
+    3. Updates the 'variable_info' field in the schema. If a variable does not have a 'local_definition' field,
+       it adds one with an empty string as its value.
+    4. Adds local definitions to the schema. For each local variable in the session cache,
+       it retrieves the corresponding global variable name, converts it to lowercase, replaces spaces with underscores,
+       and adds the local variable name as the 'local_definition' for the global variable in the schema.
+    5. Returns the modified schema.
+    """
+    # Create a deep copy of the global schema
+    modified_schema = copy.deepcopy(session_cache.global_schema)
+
+    # Update the 'database_name' field in the schema
+    if isinstance(modified_schema.get('database_name'), str):
+        modified_schema['database_name'] = database
+    else:
+        modified_schema.update({'database_name': database})
+
+    # Update the 'variable_info' field in the schema
+    modified_schema['variable_info'] = \
+        {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
+            'local_definition': ""}
+         for variable_name, variable_info in modified_schema['variable_info'].items()}
+
+    # Add local definitions to the schema
+    for local_variable, local_value in session_cache.descriptive_info[database].items():
+        global_variable = local_value['description'].lower().replace(' ', '_')
+        if global_variable:
+            modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+
+    return modified_schema
+
+
 def equivalencies(mydict, key):
     query = """
         PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
@@ -599,7 +629,8 @@ def equivalencies(mydict, key):
 
 def handle_postgres_data(username, password, postgres_url, postgres_db, table):
     """
-    This function handles the PostgreSQL data. It caches the provided information, establishes a connection to the PostgreSQL database, and writes the connection details to a properties file.
+    This function handles the PostgreSQL data. It caches the provided information,
+    establishes a connection to the PostgreSQL database, and writes the connection details to a properties file.
 
     Parameters:
     username (str): The username for the PostgreSQL database.
@@ -609,11 +640,13 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
     table (str): The name of the table in the PostgreSQL database.
 
     Returns:
-    flask.Response: A Flask response object containing the rendered 'index.html' template if the connection to the PostgreSQL database fails.
+    flask.Response: A Flask response object containing the rendered 'index.html' template if
+                    the connection to the PostgreSQL database fails.
     None: If the connection to the PostgreSQL database is successful.
     """
     # Cache information
-    session_cache.username, session_cache.password, session_cache.url, session_cache.db_name, session_cache.table = username, password, postgres_url, postgres_db, table
+    session_cache.username, session_cache.password, session_cache.url, session_cache.db_name, session_cache.table = (
+        username, password, postgres_url, postgres_db, table)
 
     try:
         # Establish PostgreSQL connection
@@ -644,7 +677,8 @@ def run_triplifier(properties_file=None):
 
     Parameters:
     properties_file (str): The name of the properties file to be used by the triplifier.
-                           It can be either 'triplifierCSV.properties' for CSV files or 'triplifierSQL.properties' for SQL files.
+                           It can be either 'triplifierCSV.properties' for CSV files or
+                           'triplifierSQL.properties' for SQL files.
                            Defaults to None.
 
     Returns:
