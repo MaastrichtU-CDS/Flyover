@@ -696,9 +696,7 @@ def insert_equivalencies(descriptive_info, variable):
             ?s dbo:column '{variable}'.
             }}        
     """
-    response = execute_query(session_cache.repo, query)
-
-    return response
+    return execute_query(session_cache.repo, query)
 
 
 def run_triplifier(properties_file=None):
