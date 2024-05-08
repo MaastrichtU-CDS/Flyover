@@ -212,7 +212,7 @@ def retrieve_columns():
     dataframes = {value: column_info[column_info['database'] == value] for value in unique_values}
 
     # Get the global variable names for the description drop-down menu
-    global_names = get_global_names()
+    global_names = retrieve_global_names()
 
     # Render the 'categories.html' template with the dictionary of dataframes and the global variable names
     return render_template('categories.html',
@@ -266,16 +266,16 @@ def retrieve_descriptive_info():
                 # If the data type of the local variable is 'Categorical Nominal' or 'Categorical Ordinal',
                 # retrieve the categories for the local variable and store them in the session cache
                 if data_type in ['Categorical Nominal', 'Categorical Ordinal']:
-                    cat = getCategories(session_cache.repo, local_variable_name)
+                    cat = retrieve_categories(session_cache.repo, local_variable_name)
                     df = pd.read_csv(StringIO(cat), sep=",")
                     session_cache.descriptive_info[database][local_variable_name]['categories'] = df.to_dict('records')
-                    equivalencies(session_cache.descriptive_info[database], local_variable_name)
+                    insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
                 elif data_type == 'Continuous':
                     variables_to_further_describe.append(local_variable_name)
                 else:
-                    equivalencies(session_cache.descriptive_info[database], local_variable_name)
+                    insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
 
     # Render the 'units.html' template with the list of variables to further specify
     return render_template('units.html', variable=variables_to_further_describe)
@@ -289,7 +289,7 @@ def unitNames():
             unitValue = request.form.get(key)
             if unitValue != "":
                 session_cache.descriptive_info[database][key]['units'] = unitValue
-            equivalencies(session_cache.descriptive_info[database], key)
+            insert_equivalencies(session_cache.descriptive_info[database], key)
 
     # try to fetch the global schema if it was read previously
     if isinstance(session_cache.global_schema, dict) and isinstance(session_cache.descriptive_info, dict):
@@ -501,33 +501,45 @@ def execute_query(repo, query):
         return render_template('index.html')
 
 
-def getCategories(repo, key):
-    queryCategories = """
+def retrieve_categories(repo, column_name):
+    """
+    This function executes a SPARQL query on a specified GraphDB repository
+    to retrieve the categories of a given column.
+
+    Parameters:
+    repo (str): The name of the GraphDB repository on which the query is to be executed.
+    column_name (str): The name of the column for which the categories are to be retrieved.
+
+    Returns:
+    str: The result of the query execution as a string if the execution is successful.
+
+    The function performs the following steps:
+    1. Constructs a SPARQL query that selects the value and count of each category in the specified column.
+    2. Executes the query on the specified GraphDB repository using the execute_query function.
+    3. Returns the result of the query execution.
+
+    The SPARQL query works as follows:
+    1. It selects the value and count of each category in the specified column.
+    2. It groups the results by the value of the category.
+    """
+    query_categories = f"""
         PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://'%s'.local/rdf/ontology/>
+        PREFIX db: <http://{repo}.local/rdf/ontology/>
         PREFIX roo: <http://www.cancerdata.org/roo/>
         SELECT ?value (COUNT(?value) as ?count)
         WHERE 
-        {  
+        {{  
            ?a a ?v.
-           ?v dbo:column '%s'.
+           ?v dbo:column '{column_name}'.
            ?a dbo:has_cell ?cell.
            ?cell dbo:has_value ?value
-        } groupby(?value)
-        """ % (repo, key)
-
-    endpoint = f"{graphdb_url}/repositories/" + repo
-    annotationResponse = requests.post(endpoint,
-                                       data="query=" + queryCategories,
-                                       headers={
-                                           "Content-Type": "application/x-www-form-urlencoded",
-                                           # "Accept": "application/json"
-                                       })
-    output = annotationResponse.text
-    return output
+        }} 
+        GROUP BY (?value)
+    """
+    return execute_query(repo, query_categories)
 
 
-def get_global_names():
+def retrieve_global_names():
     """
     This function retrieves the names of global variables from the session cache.
 
@@ -599,34 +611,6 @@ def formulate_local_schema(database):
     return modified_schema
 
 
-def equivalencies(mydict, key):
-    query = """
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://%s.local/rdf/ontology/>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-        INSERT  
-            {
-            GRAPH <http://ontology.local/>
-            { ?s owl:equivalentClass "%s". }}
-        WHERE 
-            {
-            ?s dbo:column '%s'.
-            }        
-    """ % (session_cache.repo, list(mydict[key].values()), key)
-
-    endpoint = f"{graphdb_url}/repositories/" + session_cache.repo + "/statements"
-    annotationResponse = requests.post(endpoint,
-                                       data="update=" + query,
-                                       headers={
-                                           "Content-Type": "application/x-www-form-urlencoded",
-                                           # "Accept": "application/json"
-                                       })
-    output = annotationResponse.text
-    print(output)
-
-
 def handle_postgres_data(username, password, postgres_url, postgres_db, table):
     """
     This function handles the PostgreSQL data. It caches the provided information,
@@ -669,6 +653,52 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
                 f"repo.type = rdf4j\n"
                 f"repo.url = {graphdb_url}\n"
                 f"repo.id = userRepo")
+
+
+def insert_equivalencies(descriptive_info, variable):
+    """
+    This function inserts equivalencies into a GraphDB repository.
+
+    Parameters:
+    descriptive_info (dict): A dictionary containing descriptive information about the variables.
+                             The keys are the variable names and the values are dictionaries containing
+                             the type, description, comments, and categories of the variables.
+    variable (str): The name of the variable for which the equivalency is to be inserted.
+
+    Returns:
+    str: The result of the query execution as a string if the execution is successful.
+
+    The function performs the following steps:
+    1. Constructs a SPARQL INSERT query that inserts an owl:equivalentClass triple into the ontology graph.
+       The subject of the triple is the URI of the variable, and the object is the first value in the
+       'values' field of the variable in the descriptive_info dictionary.
+    2. Executes the query on the GraphDB repository using the execute_query function.
+    3. Returns the result of the query execution.
+
+    The SPARQL query works as follows:
+    1. It selects the URI of the variable in the ontology graph.
+    2. It inserts an owl:equivalentClass triple into the ontology graph.
+       The subject of the triple is the selected URI, and the object is the first value in the
+       'values' field of the variable in the descriptive_info dictionary.
+    """
+    query = f"""
+        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+        PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
+        PREFIX roo: <http://www.cancerdata.org/roo/>
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+        INSERT  
+            {{
+            GRAPH <http://ontology.local/>
+            {{ ?s owl:equivalentClass "{list(descriptive_info[variable].values())[0]}". }}
+            WHERE 
+            {{
+            ?s dbo:column '{variable}'.
+            }}        
+    """
+    response = execute_query(session_cache.repo, query)
+
+    return response
 
 
 def run_triplifier(properties_file=None):
