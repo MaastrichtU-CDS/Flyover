@@ -240,7 +240,8 @@ def retrieve_descriptive_info():
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'units.html' template with the list of variables to further specify.
+        it renders the 'units.html' template with the list of variables to further specify,
+        or proceeds to 'download.html' in case there are not variables to specify.
     """
     variables_to_further_describe = []
     session_cache.descriptive_info = {}
@@ -278,8 +279,15 @@ def retrieve_descriptive_info():
                     insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
 
     # Render the 'units.html' template with the list of variables to further specify
-    return render_template('units.html', variable=variables_to_further_describe)
-
+    if variables_to_further_describe:
+        return render_template('units.html', variable=variables_to_further_describe)
+    # Render the 'download.html' template if there are no variables to further specify
+    elif isinstance(session_cache.global_schema, dict):
+        return render_template('download.html',
+                               graphdb_location=graphdb_url, show_schema=True)
+    else:
+        return render_template('download.html',
+                               graphdb_location=graphdb_url, show_schema=False)
 
 @app.route("/end", methods=['POST'])
 def unitNames():
