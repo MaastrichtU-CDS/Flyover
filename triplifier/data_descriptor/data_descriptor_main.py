@@ -284,10 +284,10 @@ def retrieve_descriptive_info():
     # Render the 'download.html' template if there are no variables to further specify
     elif isinstance(session_cache.global_schema, dict):
         return render_template('download.html',
-                               graphdb_location=graphdb_url, show_schema=True)
+                               graphdb_location="http://localhost:7200/", show_schema=True)
     else:
         return render_template('download.html',
-                               graphdb_location=graphdb_url, show_schema=False)
+                               graphdb_location="http://localhost:7200/", show_schema=False)
 
 @app.route("/end", methods=['POST'])
 def unitNames():
