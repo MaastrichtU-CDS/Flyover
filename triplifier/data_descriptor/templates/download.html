@@ -1,13 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.bundle.min.js"></script>
+
 <head>
+    <meta charset="UTF-8">
     <title>Flyover | Metadata download</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.bundle.min.js"></script>
 </head>
+
 <body>
 <div class="container">
+    <br>
     <h1>Download your local metadata</h1>
     <hr>
 
@@ -31,9 +35,11 @@
         <p style="line-height: 1.5; margin: 0;"> As you have also provided a global schema,
             you can download the corresponding local version through the 'Download local
             schema' button below.</p>
-        <p style="line-height: 1.5; margin: 0;">&#x26A0;<i>Please do consider that the local schema is only partially completed and
+        <p style="line-height: 1.5; margin: 0;">&#x26A0;<i>Please do consider that the local schema is only partially
+            completed and
             is based on the inputs provided through this web interface.</i></p>
-        <p style="line-height: 1.5; margin: 0;"><i style="line-height: 1.5; margin: 0;">The local schema file should thus always be evaluated prior to
+        <p style="line-height: 1.5; margin: 0;"><i style="line-height: 1.5; margin: 0;">The local schema file should
+            thus always be evaluated prior to
             using it with Flyover's annotation helper.</i></p>
         <a href="/downloadSchema" download="local_schema.json">
             <button class="btn btn-primary " {% if not show_schema %} style="display: none;" {% endif %}>Download local

@@ -11,6 +11,7 @@ import pandas as pd
 
 from flask import abort, after_this_request, Flask, render_template, request, flash, Response
 from io import StringIO
+from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
 
@@ -149,18 +150,24 @@ def upload_file():
 
     elif json_file and file_type != 'Postgres' and not csv_file:
         success = True
-        message = "Global schema was submitted successfully, please proceed to describe the data."
+        message = Markup("You have opted to not submit any new data, "
+                         "you can now proceed to describe your data using the global schema that you have provided."
+                         "<br>"
+                         "<i>In case you do wish to submit data, please return to the welcome page.</i>")
 
     elif not json_file and file_type != 'Postgres' and not csv_file:
         success = True
-        message = "Note that no data or global schema was submitted, please proceed to describe the data with caution."
+        message = Markup("You have opted to not submit any new data, "
+                         "you can now proceed to describe your data."
+                         "<br>"
+                         "<i>In case you do wish to submit data, please return to the welcome page.</i>")
 
     else:
         success = False
         message = "An unexpected error occurred. Please try again."
 
     if success:
-        return render_template('triples.html', variable=message)
+        return render_template('triples.html', message=message)
     else:
         flash(f"Attempting to proceed resulted in an error: {message}")
         return render_template('index.html', error=True, graph_exists=session_cache.existing_graph)
@@ -241,7 +248,7 @@ def retrieve_descriptive_info():
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
         it renders the 'units.html' template with the list of variables to further specify,
-        or proceeds to 'download.html' in case there are not variables to specify.
+        or proceeds to 'download.html' in case there are no variables to specify.
     """
     variables_to_further_describe = []
     session_cache.descriptive_info = {}
@@ -288,6 +295,7 @@ def retrieve_descriptive_info():
     else:
         return render_template('download.html',
                                graphdb_location="http://localhost:7200/", show_schema=False)
+
 
 @app.route("/end", methods=['POST'])
 def unitNames():
@@ -736,7 +744,18 @@ def run_triplifier(properties_file=None):
         print(output.decode())
 
         if process.returncode == 0:
-            return True, "Triplifier ran successfully!"
+            return True, Markup("The data you have submitted was triplified successfully and "
+                                "is now available in GraphDB."
+                                "<br>"
+                                "You can now proceed to describe your data, "
+                                "but please note that this requires in-depth knowledge of the data."
+                                "<br><br>"
+                                "<i>In case you do not yet wish to describe your data, "
+                                "or you would like to add more data, "
+                                "please return to the welcome page.</i>"
+                                "<br>"
+                                "<i>You can always return to Flyover to "
+                                "describe the data that is present in GraphDB.</i>")
         else:
             return False, output
     except OSError as e:
