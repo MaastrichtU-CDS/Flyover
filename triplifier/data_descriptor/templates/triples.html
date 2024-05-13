@@ -1,18 +1,29 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/css/bootstrap-select.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/css/bootstrap-select.css"/>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/js/bootstrap-select.min.js"></script>
+
 <head>
     <meta charset="UTF-8">
-    <title>End</title>
+    <title>Flyover | Data submission finalised</title>
 </head>
+
 <body>
+<div class="container">
+    <br>
+    <h1>Data submission finalised</h1>
+    <hr>
+
+    <p> {{ message }} </p>
+
     <form method="POST" action="repo">
-        <p> {{ variable }} </p><br>
-        <p><input type="submit" value="Click to go to next page" ></p>
+        <p><input class="btn btn-primary" type="submit" value="Click here to describe the data"></p>
     </form>
+    <hr>
+    <a href="/">Click here to return to the welcome page.</a>
+</div>
 </body>
 </html>
