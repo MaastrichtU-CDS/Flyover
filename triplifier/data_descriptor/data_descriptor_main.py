@@ -9,7 +9,7 @@ import subprocess
 
 import pandas as pd
 
-from flask import abort, after_this_request, Flask, render_template, request, flash, Response
+from flask import abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for
 from io import StringIO
 from markupsafe import Markup
 from psycopg2 import connect
@@ -44,6 +44,8 @@ class Cache:
         self.existing_graph = False
         self.databases = None
         self.descriptive_info = None
+        self.DescriptiveInfoDetails = None
+        self.StatusToDisplay = None
 
 
 session_cache = Cache()
@@ -167,13 +169,34 @@ def upload_file():
         message = "An unexpected error occurred. Please try again."
 
     if success:
-        return render_template('triples.html', message=message)
+        session_cache.StatusToDisplay = message
+        # Redirect to the new route after processing the POST request
+        return redirect(url_for('data_submission'))
     else:
         flash(f"Attempting to proceed resulted in an error: {message}")
         return render_template('index.html', error=True, graph_exists=session_cache.existing_graph)
 
 
-@app.route("/repo", methods=['POST'])
+@app.route('/data-submission')
+def data_submission():
+    """
+    This function is mapped to the "/data-submission" URL and is invoked when a GET request is made to this URL.
+    It retrieves a status message from the session cache and renders the 'triples.html' template with the message.
+
+    The function performs the following steps:
+    1. Retrieves the status message from the 'StatusToDisplay' object in the session cache.
+    2. The status message is marked as safe for inclusion in HTML/XML output using the Markup function from the 'markupsafe' module.
+    3. Renders the 'triples.html' template with the status message.
+
+    Returns:
+        flask.render_template: A Flask function that renders a template. In this case,
+        it renders the 'triples.html' template with the status message.
+    """
+    # Render the 'triples.html' template with the 'title', 'message', and 'route'
+    return render_template('triples.html', message=Markup(session_cache.StatusToDisplay))
+
+
+@app.route("/repo", methods=['GET', 'POST'])
 def retrieve_columns():
     """
     This function is mapped to the "/repo" URL and is invoked when a POST request is made to this URL.
@@ -250,8 +273,9 @@ def retrieve_descriptive_info():
         it renders the 'units.html' template with the list of variables to further specify,
         or proceeds to 'download.html' in case there are no variables to specify.
     """
-    variables_to_further_describe = []
     session_cache.descriptive_info = {}
+    session_cache.DescriptiveInfoDetails = []
+
     for database in session_cache.databases:
         session_cache.descriptive_info[database] = {}
         for local_variable_name in request.form:
@@ -281,23 +305,30 @@ def retrieve_descriptive_info():
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
                 elif data_type == 'Continuous':
-                    variables_to_further_describe.append(local_variable_name)
+                    session_cache.DescriptiveInfoDetails.append(local_variable_name)
                 else:
                     insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
 
     # Render the 'units.html' template with the list of variables to further specify
-    if variables_to_further_describe:
-        return render_template('units.html', variable=variables_to_further_describe)
-    # Render the 'download.html' template if there are no variables to further specify
-    elif isinstance(session_cache.global_schema, dict):
-        return render_template('download.html',
-                               graphdb_location="http://localhost:7200/", show_schema=True)
+    if session_cache.DescriptiveInfoDetails:
+        return redirect(url_for('variable_details'))
     else:
-        return render_template('download.html',
-                               graphdb_location="http://localhost:7200/", show_schema=False)
+        # Redirect to the new route after processing the POST request
+        return redirect(url_for('download_page'))
 
 
-@app.route("/end", methods=['POST'])
+@app.route("/variable-details")
+def variable_details():
+    """
+    This function is responsible for rendering the 'units.html' page.
+
+    Returns:
+        flask.render_template: A Flask function that renders the 'variable-details.html' template.
+    """
+    return render_template('units.html', variable=session_cache.DescriptiveInfoDetails)
+
+
+@app.route("/end", methods=['GET', 'POST'])
 def unitNames():
     # items = getColumns(file_path)
     for database in session_cache.databases:
@@ -307,7 +338,17 @@ def unitNames():
                 session_cache.descriptive_info[database][key]['units'] = unitValue
             insert_equivalencies(session_cache.descriptive_info[database], key)
 
-    # try to fetch the global schema if it was read previously
+    return redirect(url_for('download_page'))
+
+
+@app.route('/download')
+def download_page():
+    """
+    This function is responsible for rendering the 'download.html' page.
+
+    Returns:
+        flask.render_template: A Flask function that renders the 'download.html' template.
+    """
     if isinstance(session_cache.global_schema, dict) and isinstance(session_cache.descriptive_info, dict):
         return render_template('download.html',
                                graphdb_location="http://localhost:7200/", show_schema=True)
