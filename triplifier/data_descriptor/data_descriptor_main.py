@@ -526,13 +526,15 @@ def check_graph_exists(repo, graph_uri):
         raise Exception(f"Query failed with status code {response.status_code}")
 
 
-def execute_query(repo, query):
+def execute_query(repo, query, query_type=None, endpoint_appendices=None):
     """
     This function executes a SPARQL query on a specified GraphDB repository.
 
     Parameters:
     repo (str): The name of the GraphDB repository on which the query is to be executed.
     query (str): The SPARQL query to be executed.
+    query_type (str, optional): The type of the SPARQL query. Defaults to "query".
+    endpoint_appendices (str, optional): Additional endpoint parameters. Defaults to "".
 
     Returns:
     str: The result of the query execution as a string if the execution is successful.
@@ -542,13 +544,26 @@ def execute_query(repo, query):
     Raises:
     Exception: If an error occurs during the query execution,
     an exception is raised and its error message is flashed to the user.
+
+    The function performs the following steps:
+    1. Checks if query_type and endpoint_appendices are None. If they are, sets them to their default values.
+    2. Constructs the endpoint URL using the provided repository name and endpoint_appendices.
+    3. Executes the SPARQL query on the constructed endpoint URL.
+    4. If the query execution is successful, returns the result as a string.
+    5. If an error occurs during the query execution,
+    flashes an error message to the user and renders the 'index.html' template.
     """
+    if query_type is None:
+        query_type = "query"
+
+    if endpoint_appendices is None:
+        endpoint_appendices = ""
     try:
         # Construct the endpoint URL
-        endpoint = f"{graphdb_url}/repositories/" + repo
+        endpoint = f"{graphdb_url}/repositories/" + repo + endpoint_appendices
         # Execute the query
         response = requests.post(endpoint,
-                                 data={"query": query},
+                                 data={query_type: query},
                                  headers={"Content-Type": "application/x-www-form-urlencoded"})
         # Return the result of the query execution
         return response.text
@@ -739,21 +754,22 @@ def insert_equivalencies(descriptive_info, variable):
        'values' field of the variable in the descriptive_info dictionary.
     """
     query = f"""
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+                PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+                PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
+                PREFIX roo: <http://www.cancerdata.org/roo/>
+                PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-        INSERT  
-            {{
-            GRAPH <http://ontology.local/>
-            {{ ?s owl:equivalentClass "{list(descriptive_info[variable].values())[0]}". }}
-            WHERE 
-            {{
-            ?s dbo:column '{variable}'.
-            }}        
-    """
-    return execute_query(session_cache.repo, query)
+                INSERT  
+                {{
+                    GRAPH <http://ontology.local/>
+                    {{ ?s owl:equivalentClass "{list(descriptive_info[variable].values())}". }}
+                }}
+                WHERE 
+                {{
+                    ?s dbo:column '{variable}'.
+                }}        
+            """
+    return execute_query(session_cache.repo, query, "update", "/statements")
 
 
 def run_triplifier(properties_file=None):
