@@ -292,9 +292,9 @@ def retrieve_descriptive_info():
 
                 # Store the data type, global variable name, and comment for the local variable in the session cache
                 session_cache.descriptive_info[database][local_variable_name] = {
-                    'type': data_type,
-                    'description': global_variable_name,
-                    'comments': comment
+                    'type': f'Variable type: {data_type}',
+                    'description': f'Variable description: {global_variable_name}',
+                    'comments': f'Variable comment: {comment if comment else "No comment provided"}'
                 }
 
                 # If the data type of the local variable is 'Categorical Nominal' or 'Categorical Ordinal',
@@ -769,7 +769,7 @@ def formulate_local_schema(database):
 
     # Add local definitions to the schema
     for local_variable, local_value in session_cache.descriptive_info[database].items():
-        global_variable = local_value['description'].lower().replace(' ', '_')
+        global_variable = local_value['description'].split('Variable description: ')[1].lower().replace(' ', '_')
         if global_variable:
             modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
 
