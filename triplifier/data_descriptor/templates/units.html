@@ -1,22 +1,204 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/css/bootstrap-select.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/css/bootstrap-select.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.13.1/js/bootstrap-select.min.js"></script>
+
 <head>
     <meta charset="UTF-8">
-    <title>Data description</title>
+    <title>Flyover | Variable details</title>
+    <style>
+        .toggle-button {
+            cursor: pointer;
+            display: inline-block;
+            border: none;
+            background: none;
+            font-size: 1.56rem;
+            line-height: 1;
+            color: inherit;
+            float: right;
+        }
+
+        .item-toggle-button {
+            cursor: pointer;
+            display: inline-block;
+            border: none;
+            background: none;
+            font-size: 0.91rem;
+            line-height: 1;
+            color: inherit;
+            float: right;
+        }
+
+        .item-toggle-button:before {
+            content: 'Show more +';
+        }
+
+        .item-toggle-button.open:before {
+            content: 'Show less −';
+        }
+
+        .toggle-content {
+            display: none;
+        }
+
+        .toggle-content.active {
+            display: block;
+        }
+
+        .content {
+            width: 100%;
+            transition: max-height 0.2s ease-out;
+            max-height: 0;
+            overflow-y: auto;
+        }
+
+        .content.active {
+            max-height: 500px;
+        }
+
+        .toggle-button:focus, .item-toggle-button:focus {
+            outline: none;
+        }
+
+    </style>
 </head>
+
 <body>
-     <h3 class="col-lg-10 control-label">Specify units for continuous columns, if any</h3><br>
-     <form method="POST" action="end">
-        {% for item in variable %}
-            <label for= "{{ item }}" class="col-lg-4 control-label">{{item}}</label>
-            <input id= "{{ item }}" type="text" name= "{{ item }}" placeholder="type unit here"><br><br></input>
+<div class="container">
+    <br>
+    <h1>Describe categories and units</h1>
+    <hr>
+    <p>Please provide more information for the categorical and continuous variables.<br><br>
+        For each categorical variable, please select the categories that best describe the data it contains.<br>
+        If none of the available categories accurately represent a given category,
+        please select 'Other' and specify what the column represents in the text box.<br><br>
+
+        For each continuous variable, please specify the unit in the text field.<br><br>
+
+        &#x26A0;<i><b>Please do note that categorical variables that are by definition standardised
+            <u>do not have to be described</u>.</b><br>
+            Examples thereof are variables like CIM/CIE/ICD-10 disease classifications,
+            or EORTC-QLQ-C30 and EuroQoL EQ5D responses.</i></p>
+    <form class="form-horizontal" method="POST" action="end">
+        <hr>
+        {% for database, df in dataframes.items() %}
+            <h2 style="display: inline-block;"> {{ database }}</h2>
+            <button class="toggle-button" type="button">
+                <span class="toggle-text">Show more</span>
+                <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                </svg>
+            </button>
+            <div class="content hidden">
+                {% for item in df['column'].unique().tolist() %}
+                    {% set local_variable_name = item.split('"')[1].split('"')[0].strip() %}
+                    {% set global_variable_name = item.split("(")[0].strip().lower().replace(' ', '_') %}
+                    <div id="div1" class="form-group">
+                        <label for="{{ database }}_{{ local_variable_name }}"
+                               class="col-lg-4 control-label">{{ item }}</label>
+                        {% if df[df['column'] == item]['value'].values[0] is none %}
+                            &nbsp;&nbsp;
+                            <input id="{{ database }}_{{ local_variable_name }}" type="text"
+                                   name="{{ database }}_{{ local_variable_name }}"
+                                   placeholder="Type unit here"><br></input>
+                        {% else %}
+                            <button class="item-toggle-button" type="button"></button>
+                            <div class="toggle-content hidden">
+                                <hr>
+
+                                {% for value_dict in df[df['column'] == item]['value'].tolist() %}
+
+                                    <label for="{{ database }}_{{ item }}_{{ value_dict['value'] }}"
+                                           class="col-lg-4 control-label">&nbsp;&nbsp;
+                                        {{ value_dict['value'] }} (counted: {{ value_dict['count'] }})</label>
+                                    <label for="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
+                                    <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                            name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                            class="selectpicker">
+                                        {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
+                                        {% if item_info and 'value_mapping' in item_info %}
+                                            <option value="">Description</option>
+                                            {% for value in item_info.get('value_mapping').get('terms').keys() %}
+                                                <option>{{ value.title().replace('_', ' ') }}</option>
+                                            {% endfor %}
+                                            <option value="Missing">Missing value</option>
+                                            <option value="Other">Other</option>
+                                        {% else %}
+                                            <option value="">Description</option>
+                                            <option value="Yes">Yes</option>
+                                            <option value="No">No</option>
+                                            <option value="Male">Male sex</option>
+                                            <option value="Female">Female sex</option>
+                                            <option value="Primary Education">Primary education</option>
+                                            <option value="Secondary Education">Secondary education</option>
+                                            <option value="Tertiary Education">Tertiary education</option>
+                                            <option value="Missing">Missing value</option>
+                                            <option value="Other">Other</option>
+                                        {% endif %}
+                                    </select>
+                                    <label for="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
+                                    <input class="form-group" type="text"
+                                           id="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                           name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                           placeholder="If other, please specify"/><br>
+                                    <input type="hidden"
+                                           id="count_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                           name='count_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                           value="{{ value_dict['count'] }}"/>
+                                {% endfor %}
+                            </div>
+
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+            <hr>
         {% endfor %}
-         <p><input type="submit" value="Submit" ></p>
+
+        <p><input type="submit" value="Submit" class="btn btn-primary"></p>
     </form>
+    <script>
+        $(document).ready(function () {
+            $('.toggle-button').click(function () {
+                var textElement = $(this).find('.toggle-text');
+                var svgElement = $(this).find('.angle-icon path');
+                if (textElement.text() === 'Show more') {
+                    textElement.text('Show less');
+                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z'); // SVG path for angle down
+                } else {
+                    textElement.text('Show more');
+                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z'); // SVG path for angle up
+                }
+                $(this).toggleClass('open');
+                $(this).next('.content').toggleClass('active');
+            });
+
+            $('.item-toggle-button').click(function () {
+                $(this).toggleClass('open');
+                $(this).next('.toggle-content').toggleClass('active');
+            });
+
+            // Initialize the selectpicker
+            $('.selectpicker').selectpicker();
+
+            $(".selectpicker").change(function () {
+                // TODO Decide whether to only enable the comment field if the selected value is "Other" or allow comments to always be entered
+                // var commentId = 'comment_' + $(this).attr('id');
+                // console.log("commentId: ", commentId); // print out the id
+                // if ($(this).find("option:selected").val() == "Other") {
+                //     console.log($("#" + commentId).length > 0 ? "Element exists" : "Element does not exist"); // check if the element exists
+                //     $("#" + commentId).removeAttr("disabled");
+                // } else {
+                //     $("#" + commentId).attr("disabled", "disabled");
+                // }
+                $(this).selectpicker('render');
+            });
+        });
+    </script>
+</div>
 </body>
 </html>

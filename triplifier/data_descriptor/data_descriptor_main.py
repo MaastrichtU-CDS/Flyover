@@ -185,7 +185,8 @@ def data_submission():
 
     The function performs the following steps:
     1. Retrieves the status message from the 'StatusToDisplay' object in the session cache.
-    2. The status message is marked as safe for inclusion in HTML/XML output using the Markup function from the 'markupsafe' module.
+    2. The status message is marked as safe for inclusion in HTML/XML output
+    using the Markup function from the 'markupsafe' module.
     3. Renders the 'triples.html' template with the status message.
 
     Returns:
@@ -274,9 +275,10 @@ def retrieve_descriptive_info():
         or proceeds to 'download.html' in case there are no variables to specify.
     """
     session_cache.descriptive_info = {}
-    session_cache.DescriptiveInfoDetails = []
+    session_cache.DescriptiveInfoDetails = {}
 
     for database in session_cache.databases:
+        session_cache.DescriptiveInfoDetails[database] = []
         session_cache.descriptive_info[database] = {}
         for local_variable_name in request.form:
             if (not re.search("^ncit_comment_", local_variable_name) and
@@ -300,12 +302,13 @@ def retrieve_descriptive_info():
                 if data_type in ['Categorical Nominal', 'Categorical Ordinal']:
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
                     df = pd.read_csv(StringIO(cat), sep=",")
-                    session_cache.descriptive_info[database][local_variable_name]['categories'] = df.to_dict('records')
-                    insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
+                    session_cache.DescriptiveInfoDetails[database].append(
+                        {f'{global_variable_name} (or "{local_variable_name}")': df.to_dict('records')})
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
                 elif data_type == 'Continuous':
-                    session_cache.DescriptiveInfoDetails.append(local_variable_name)
+                    session_cache.DescriptiveInfoDetails[database].append(
+                        f'{global_variable_name} (or "{local_variable_name}")')
                 else:
                     insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
 
@@ -325,19 +328,106 @@ def variable_details():
     Returns:
         flask.render_template: A Flask function that renders the 'variable-details.html' template.
     """
-    return render_template('units.html', variable=session_cache.DescriptiveInfoDetails)
+    dataframes = {}
+
+    # Iterate over the items in the dictionary
+    for database, variables in session_cache.DescriptiveInfoDetails.items():
+        # Initialize an empty list to hold the rows of the dataframe
+        rows = []
+
+        # Iterate over the variables
+        for variable in variables:
+            # Check if the variable is a string (continuous variable)
+            if isinstance(variable, str):
+                # Add a row to the dataframe with the column name as the variable name and the value as pd.NA
+                rows.append({'column': variable, 'value': None})
+            # Check if the variable is a dictionary (categorical variable)
+            elif isinstance(variable, dict):
+                # Iterate over the items in the variable dictionary
+                for var_name, categories in variable.items():
+                    # Iterate over the categories
+                    for category in categories:
+                        # Add a row to the dataframe for each category with
+                        # the column name as the variable name and the value as the category
+                        rows.append({'column': var_name, 'value': category})
+
+        # Convert the list of rows to a dataframe
+        df = pd.DataFrame(rows)
+
+        # Add the dataframe to the result dictionary with the database name as the key
+        dataframes[database] = df
+
+    if isinstance(session_cache.global_schema, dict):
+        variable_info = session_cache.global_schema.get('variable_info')
+    else:
+        variable_info = {}
+
+    return render_template('units.html', dataframes=dataframes,
+                           global_variable_info=variable_info)
 
 
 @app.route("/end", methods=['GET', 'POST'])
-def unitNames():
-    # items = getColumns(file_path)
-    for database in session_cache.databases:
-        for key in request.form:
-            unitValue = request.form.get(key)
-            if unitValue != "":
-                session_cache.descriptive_info[database][key]['units'] = unitValue
-            insert_equivalencies(session_cache.descriptive_info[database], key)
+def retrieve_detailed_descriptive_info():
+    """
+    This function is responsible for retrieving detailed descriptive information about the variables in the databases.
+    It is mapped to the "/end" URL and is invoked when a POST request is made to this URL.
 
+    The function performs the following steps:
+    1. Iterates over each database in the session cache.
+    2. For each database, it retrieves all keys from the request form that start with the database name.
+    3. It then identifies the variables associated with these keys.
+    4. For each unique variable, it retrieves all keys from the request form that contain the variable name and
+     do not start with 'comment_'.
+    5. If there is only one key, it retrieves the value associated with this key from the request form and
+    stores it in the 'units' field of the variable in the session cache.
+    6. If there are multiple keys, it iterates over each key. If the key contains '_category_',
+    it retrieves the category and the associated value, comment and count from the request form and
+    stores them in the session cache.
+    7. It then calls the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository.
+    8. Finally, it redirects the user to the 'download_page' URL.
+
+    Returns:
+        flask.redirect: A Flask function that redirects the user to another URL.
+        In this case, it redirects the user to the 'download_page' URL.
+    """
+    # Iterate over each database in the session cache
+    for database in session_cache.databases:
+        # Retrieve all keys from the request form that start with the database name
+        keys = [key for key in request.form if key.startswith(database)]
+        # Identify the variables associated with these keys
+        variables = [
+            key.split('_category_')[0].split(f'{database}_')[1] if '_category_' in key else key.split(f'{database}_')[1]
+            for key in keys]
+
+        # Iterate over each unique variable
+        for variable in set(variables):
+            # Retrieve all keys from the request form that contain the variable name and do not start with 'comment_'
+            keys = [key for key in request.form if variable in key and not key.startswith('comment_')
+                    and not key.startswith('count_')]
+            # If there is only one key
+            if len(keys) == 1:
+                # Retrieve the value associated with this key from the request form and
+                # store it in the 'units' field of the variable in the session cache
+                session_cache.descriptive_info[database][variable]['units'] = request.form.get(
+                    keys[0]) or 'No units specified'
+            else:
+                # If there are multiple keys, iterate over each key
+                for key in keys:
+                    # If the key contains '_category_'
+                    if '_category_' in key and not key.startswith('count_'):
+                        # Retrieve the category and the associated value and comment from the request form and
+                        # store them in the session cache
+                        category = key.split('_category_"')[1].split(f'"')[0]
+                        session_cache.descriptive_info[database][variable][f'Category: {category}'] = \
+                            (f'Category {category}: {request.form.get(key)}, comment: '
+                             f'{request.form.get(f"comment_{key}") or "No comment provided"},  '
+                             f'count: {request.form.get(f'count_{database}_{variable}_category_"{category}"') 
+                                       or "No count available"}')
+
+            # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
+            insert_equivalencies(session_cache.descriptive_info[database], variable)
+
+    # Redirect the user to the 'download_page' URL
     return redirect(url_for('download_page'))
 
 
@@ -657,7 +747,10 @@ def formulate_local_schema(database):
     4. Adds local definitions to the schema. For each local variable in the session cache,
        it retrieves the corresponding global variable name, converts it to lowercase, replaces spaces with underscores,
        and adds the local variable name as the 'local_definition' for the global variable in the schema.
-    5. Returns the modified schema.
+    5. Adds local terms to the schema. For each local variable in the session cache,
+       it retrieves the corresponding value mapping terms, converts it to lowercase, replaces spaces with underscores,
+       and adds the local term name as the 'local_term' for the global term in the schema.
+    6. Returns the modified schema.
     """
     # Create a deep copy of the global schema
     modified_schema = copy.deepcopy(session_cache.global_schema)
@@ -679,6 +772,18 @@ def formulate_local_schema(database):
         global_variable = local_value['description'].lower().replace(' ', '_')
         if global_variable:
             modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+
+        # Update the 'value_mapping' field in the schema
+        # For each category of the local variable,
+        # find the corresponding term in the global variable and set its 'local_term' to the category
+        for category, value in local_value.items():
+            if category.startswith('Category: '):
+                key = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
+                if 'value_mapping' in modified_schema['variable_info'][global_variable] and \
+                        'terms' in modified_schema['variable_info'][global_variable]['value_mapping'] and \
+                        key in modified_schema['variable_info'][global_variable]['value_mapping']['terms']:
+                    modified_schema['variable_info'][global_variable]['value_mapping']['terms'][key]['local_term'] =\
+                        category.split(': ')[1]
 
     return modified_schema
 
