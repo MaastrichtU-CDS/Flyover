@@ -15,18 +15,10 @@
             display: inline-block;
             border: none;
             background: none;
-            font-size: 2rem;
+            font-size: 1.56rem;
             line-height: 1;
             color: inherit;
             float: right;
-        }
-
-        .toggle-button:before {
-            content: '\1F781';
-        }
-
-        .toggle-button.open:before {
-            content: '\1F783';
         }
 
         .content {
@@ -48,8 +40,7 @@
     <br>
     <h1>Describe your data</h1>
     <hr>
-    <p>Please inspect the variables (i.e. columns) of your database(s) by clicking on the '>' next to the database's
-        name.<br>
+    <p>Please inspect the variables (i.e. columns) of your database(s).<br>
         For every database that you would like to describe,
         please select the type and description of your columns from the drop-down menu.<br>
         <br>
@@ -61,7 +52,12 @@
         <hr>
         {% for database, df in dataframes.items() %}
             <h2 style="display: inline-block;"> {{ database }}</h2>
-            <button class="toggle-button" type="button"></button>
+            <button class="toggle-button" type="button">
+                <span class="toggle-text">Show more</span>
+                <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                </svg>
+            </button>
             <div class="content hidden">
                 {% for item in df['column'].tolist() %}
                     <div id="div1" class="form-group">
@@ -139,6 +135,15 @@
     <script>
         $(document).ready(function () {
             $('.toggle-button').click(function () {
+                var textElement = $(this).find('.toggle-text');
+                var svgElement = $(this).find('.angle-icon path');
+                if (textElement.text() === 'Show more') {
+                    textElement.text('Show less');
+                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z'); // SVG path for angle down
+                } else {
+                    textElement.text('Show more');
+                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z'); // SVG path for angle up
+                }
                 $(this).toggleClass('open');
                 $(this).next('.content').toggleClass('active');
             });
