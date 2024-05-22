@@ -418,11 +418,11 @@ def retrieve_detailed_descriptive_info():
                         # Retrieve the category and the associated value and comment from the request form and
                         # store them in the session cache
                         category = key.split('_category_"')[1].split(f'"')[0]
+                        count_form = f'count_{database}_{variable}_category_"{category}"'
                         session_cache.descriptive_info[database][variable][f'Category: {category}'] = \
                             (f'Category {category}: {request.form.get(key)}, comment: '
                              f'{request.form.get(f"comment_{key}") or "No comment provided"},  '
-                             f'count: {request.form.get(f'count_{database}_{variable}_category_"{category}"') 
-                                       or "No count available"}')
+                             f'count: {request.form.get(count_form) or "No count available"}')
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
             insert_equivalencies(session_cache.descriptive_info[database], variable)
