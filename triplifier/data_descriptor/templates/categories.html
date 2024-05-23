@@ -32,6 +32,11 @@
             max-height: 500px;
         }
 
+        .toggle-button:focus {
+            outline: none;
+        }
+
+
     </style>
 </head>
 
@@ -146,6 +151,20 @@
                 }
                 $(this).toggleClass('open');
                 $(this).next('.content').toggleClass('active');
+            });
+
+            $(".selectpicker").on('show.bs.select', function (e) {
+                var dropdownMenu = $(this).parent().find('.dropdown-menu');
+                var toggleContent = $(this).closest('.content');
+                var newHeight = Math.max(toggleContent.height(), dropdownMenu.height());
+                toggleContent.height(newHeight + 53);
+                toggleContent.css('overflow-y', 'hidden');
+            });
+
+            $(".selectpicker").on('hide.bs.select', function (e) {
+                var toggleContent = $(this).closest('.content');
+                toggleContent.height('auto');
+                toggleContent.css('overflow-y', 'auto');
             });
         });
     </script>

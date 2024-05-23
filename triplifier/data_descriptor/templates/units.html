@@ -59,6 +59,17 @@
             max-height: 500px;
         }
 
+        .toggle-content {
+            width: 100%;
+            transition: max-height 0.2s ease-out;
+            max-height: 0;
+            overflow-y: auto;
+        }
+
+        .toggle-content.active {
+            max-height: 500px;
+        }
+
         .toggle-button:focus, .item-toggle-button:focus {
             outline: none;
         }
@@ -181,8 +192,19 @@
                 $(this).next('.toggle-content').toggleClass('active');
             });
 
-            // Initialize the selectpicker
-            $('.selectpicker').selectpicker();
+            $(".selectpicker").on('show.bs.select', function (e) {
+                var dropdownMenu = $(this).parent().find('.dropdown-menu');
+                var toggleContent = $(this).closest('.toggle-content');
+                var newHeight = Math.max(toggleContent.height(), dropdownMenu.height());
+                toggleContent.height(newHeight + 53);
+                toggleContent.css('overflow-y', 'hidden');
+            });
+
+            $(".selectpicker").on('hide.bs.select', function (e) {
+                var toggleContent = $(this).closest('.toggle-content');
+                toggleContent.height('auto');
+                toggleContent.css('overflow-y', 'auto');
+            });
 
             $(".selectpicker").change(function () {
                 // TODO Decide whether to only enable the comment field if the selected value is "Other" or allow comments to always be entered
