@@ -11,6 +11,10 @@ This so-called "Triplifier" tool works with PostGreSQL and CSV tables.
 For user data, a new module (data_descriptor) is created where the user can describe their own data and provide us with
 the metadata, which can then be used to create annotations.
 
+For a detailed explanation and a practical example of this tool, please refer to the following published paper:
+https://academic.oup.com/bjrai/article/1/1/ubae005/7623642#445743545 (open access)
+
+
 ## Components
 
 ### 1. Data Descriptor Module
