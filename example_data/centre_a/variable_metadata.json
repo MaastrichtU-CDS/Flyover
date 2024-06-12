@@ -1,6 +1,6 @@
 {
   "endpoint": "http://localhost:7200/repositories/userRepo/statements",
-  "database_name": "mock",
+  "database_name": "HEAD-NECK-RADIOMICS-HN1_Clinical_data_updated_July_2020",
   "variable_info": {
     "identifier": {
       "predicate": "roo:P100061",
