@@ -170,6 +170,15 @@ def upload_file():
 
     if success:
         session_cache.StatusToDisplay = message
+
+        # Upload files to GraphDB
+        subprocess.run(
+            ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary", "@/app/ontology.owl",
+             f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://ontology.local/"])
+        subprocess.run(
+            ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary", "@/app/output.ttl",
+             f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://data.local/"])
+
         # Redirect to the new route after processing the POST request
         return redirect(url_for('data_submission'))
     else:

@@ -7,6 +7,7 @@ RUN apt-get update -y && \
     apt-get install -y wget && \
     apt-get install -y openjdk-11-jdk && \
 	apt-get clean && rm -rf var/lib/apt/lists/* && \
+    apt-get install curl -y && \
 	apt-get install -y python3 python3-pip python3-dev libpq-dev
 
 RUN pip install -U \
