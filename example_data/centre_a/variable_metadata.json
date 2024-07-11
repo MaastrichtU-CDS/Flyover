@@ -3,12 +3,12 @@
   "database_name": "HEAD-NECK-RADIOMICS-HN1_Clinical_data_updated_July_2020",
   "variable_info": {
     "identifier": {
-      "predicate": "roo:P100061",
+      "predicate": "sio:000008",
       "class": "ncit:C25364",
       "local_definition": "id"
     },
     "biological_sex": {
-      "predicate": "roo:P100018",
+      "predicate": "sio:000008",
       "class": "ncit:C28421",
       "local_definition": "biological_sex",
       "schema_reconstruction": [
@@ -34,7 +34,7 @@
       }
     },
     "age_at_diagnosis": {
-      "predicate": "roo:hasage",
+      "predicate": "sio:000008",
       "class": "ncit:C156420",
       "local_definition": "age_at_diagnosis",
       "schema_reconstruction": [
@@ -55,7 +55,7 @@
       ]
     },
     "performance_status": {
-      "predicate": "roo:haswhostatus",
+      "predicate": "sio:000008",
       "class": "ncit:C105721",
       "local_definition": "performance_status_ecog",
       "schema_reconstruction": [
@@ -81,7 +81,7 @@
       }
     },
     "hpv_status": {
-      "predicate": "roo:P100022",
+      "predicate": "sio:000008",
       "class": "ncit:C14226",
       "local_definition": "overall_hpv_p16_status",
       "schema_reconstruction": [
@@ -107,7 +107,7 @@
       }
     },
     "tumour_location": {
-      "predicate": "roo:P100202",
+      "predicate": "sio:000008",
       "class": "ncit:C3263",
       "local_definition": "index_tumour_location",
       "schema_reconstruction": [
@@ -140,7 +140,7 @@
       }
     },
     "t_stage": {
-      "predicate": "roo:P100244",
+      "predicate": "sio:000008",
       "class": "ncit:C48885",
       "local_definition": "clin_t",
       "schema_reconstruction": [
@@ -185,7 +185,7 @@
       }
     },
     "n_stage": {
-      "predicate": "roo:P100242",
+      "predicate": "sio:000008",
       "class": "ncit:C48884",
       "local_definition": "clin_n",
       "schema_reconstruction": [
@@ -226,7 +226,7 @@
       }
     },
     "m_stage": {
-      "predicate": "roo:P100241",
+      "predicate": "sio:000008",
       "class": "ncit:C48883",
       "local_definition": "clin_m",
       "schema_reconstruction": [
@@ -259,7 +259,7 @@
       }
     },
     "survival_status": {
-      "predicate": "roo:P100028",
+      "predicate": "sio:000008",
       "class": "ncit:C25717",
       "local_definition": "event_overall_survival",
       "schema_reconstruction": [
@@ -292,7 +292,7 @@
       }
     },
     "survival_days": {
-      "predicate": "roo:P100026",
+      "predicate": "sio:000008",
       "class": "roo:overallsurvivaldays",
       "local_definition": "overall_survival_in_days",
       "schema_reconstruction": [
