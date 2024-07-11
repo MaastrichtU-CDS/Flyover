@@ -104,6 +104,7 @@ def upload_file():
         flask.Response: A Flask response object containing the rendered 'triples.html' template
          if the triplifier run was successful, or the 'index.html' template if it was not.
     """
+    upload = True
     file_type = request.form.get('fileType')
     json_file = request.files.get('jsonFile') or request.files.get('jsonFile2')
     csv_file = request.files.get('csvFile')
@@ -152,6 +153,7 @@ def upload_file():
 
     elif json_file and file_type != 'Postgres' and not csv_file:
         success = True
+        upload = False
         message = Markup("You have opted to not submit any new data, "
                          "you can now proceed to describe your data using the global schema that you have provided."
                          "<br>"
@@ -159,6 +161,7 @@ def upload_file():
 
     elif not json_file and file_type != 'Postgres' and not csv_file:
         success = True
+        upload = False
         message = Markup("You have opted to not submit any new data, "
                          "you can now proceed to describe your data."
                          "<br>"
@@ -171,13 +174,14 @@ def upload_file():
     if success:
         session_cache.StatusToDisplay = message
 
-        # Upload files to GraphDB
-        subprocess.run(
-            ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary", "@/app/ontology.owl",
-             f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://ontology.local/"])
-        subprocess.run(
-            ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary", "@/app/output.ttl",
-             f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://data.local/"])
+        if upload:
+            # Upload files to GraphDB
+            subprocess.run(
+                ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary", "@/app/ontology.owl",
+                 f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://ontology.local/"])
+            subprocess.run(
+                ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary", "@/app/output.ttl",
+                 f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://data.local/"])
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for('data_submission'))
