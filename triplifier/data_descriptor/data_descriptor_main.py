@@ -314,7 +314,7 @@ def retrieve_descriptive_info():
                 # retrieve the categories for the local variable and store them in the session cache
                 if data_type in ['Categorical Nominal', 'Categorical Ordinal']:
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
-                    df = pd.read_csv(StringIO(cat), sep=",")
+                    df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
                     session_cache.DescriptiveInfoDetails[database].append(
                         {f'{global_variable_name} (or "{local_variable_name}")': df.to_dict('records')})
                 # If the data type of the local variable is 'Continuous',
@@ -409,7 +409,10 @@ def retrieve_detailed_descriptive_info():
         keys = [key for key in request.form if key.startswith(database)]
         # Identify the variables associated with these keys
         variables = [
-            key.split('_category_')[0].split(f'{database}_')[1] if '_category_' in key else key.split(f'{database}_')[1]
+            key.split('_category_')[0].split(f'{database}_')[1] if '_category_' in key else
+            (key.split('_notation_missing_or_unspecified')[0].split(f'{database}_')[
+                 1] if '_notation_missing_or_unspecified' in key else
+             key.split(f'{database}_')[1])
             for key in keys]
 
         # Iterate over each unique variable
@@ -417,25 +420,27 @@ def retrieve_detailed_descriptive_info():
             # Retrieve all keys from the request form that contain the variable name and do not start with 'comment_'
             keys = [key for key in request.form if variable in key and not key.startswith('comment_')
                     and not key.startswith('count_')]
-            # If there is only one key
-            if len(keys) == 1:
-                # Retrieve the value associated with this key from the request form and
-                # store it in the 'units' field of the variable in the session cache
-                session_cache.descriptive_info[database][variable]['units'] = request.form.get(
-                    keys[0]) or 'No units specified'
-            else:
-                # If there are multiple keys, iterate over each key
-                for key in keys:
-                    # If the key contains '_category_'
-                    if '_category_' in key and not key.startswith('count_'):
-                        # Retrieve the category and the associated value and comment from the request form and
-                        # store them in the session cache
-                        category = key.split('_category_"')[1].split(f'"')[0]
-                        count_form = f'count_{database}_{variable}_category_"{category}"'
-                        session_cache.descriptive_info[database][variable][f'Category: {category}'] = \
-                            (f'Category {category}: {request.form.get(key)}, comment: '
-                             f'{request.form.get(f"comment_{key}") or "No comment provided"},  '
-                             f'count: {request.form.get(count_form) or "No count available"}')
+
+            for key in keys:
+
+                if '_notation_missing_or_unspecified' in key:
+                    session_cache.descriptive_info[database][variable][f'Category: {request.form.get(key)}'] = (
+                            f'Category {request.form.get(key)}: missing_or_unspecified' or
+                            "No missing value notation provided")
+
+                elif '_category_' in key and not key.startswith('count_'):
+                    # Retrieve the category and the associated value and comment from the request form and
+                    # store them in the session cache
+                    category = key.split('_category_"')[1].split(f'"')[0]
+                    count_form = f'count_{database}_{variable}_category_"{category}"'
+                    session_cache.descriptive_info[database][variable][f'Category: {category}'] = \
+                        (f'Category {category}: {request.form.get(key)}, comment: '
+                         f'{request.form.get(f"comment_{key}") or "No comment provided"},  '
+                         f'count: {request.form.get(count_form) or "No count available"}')
+                # Handle units
+                elif 'count_' not in key:
+                    session_cache.descriptive_info[database][variable]['units'] = request.form.get(
+                        key) or 'No units specified'
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
             insert_equivalencies(session_cache.descriptive_info[database], variable)

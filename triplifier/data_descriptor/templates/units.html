@@ -114,7 +114,10 @@
                             &nbsp;&nbsp;
                             <input id="{{ database }}_{{ local_variable_name }}" type="text"
                                    name="{{ database }}_{{ local_variable_name }}"
-                                   placeholder="Type unit here"><br></input>
+                                   placeholder="Type unit here"></input>
+                            <input id="{{ database }}_{{ local_variable_name }}" type="text"
+                                   name="{{ database }}_{{ local_variable_name }}_notation_missing_or_unspecified"
+                                   placeholder="Type missing value notation here" style="width: 300px;"><br></input>
                         {% else %}
                             <button class="item-toggle-button" type="button"></button>
                             <div class="toggle-content hidden">
@@ -124,7 +127,11 @@
 
                                     <label for="{{ database }}_{{ item }}_{{ value_dict['value'] }}"
                                            class="col-lg-4 control-label">&nbsp;&nbsp;
-                                        {{ value_dict['value'] }} (counted: {{ value_dict['count'] }})</label>
+                                        {% if value_dict['value'] %}
+                                            {{ value_dict['value'] }} (counted: {{ value_dict['count'] }})
+                                        {% else %}
+                                            Empty cells (counted: {{ value_dict['count'] }})
+                                        {% endif %}</label>
                                     <label for="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
                                     <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
                                             name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
@@ -135,7 +142,6 @@
                                             {% for value in item_info.get('value_mapping').get('terms').keys() %}
                                                 <option>{{ value.title().replace('_', ' ') }}</option>
                                             {% endfor %}
-                                            <option value="Missing">Missing value</option>
                                             <option value="Other">Other</option>
                                         {% else %}
                                             <option value="">Description</option>

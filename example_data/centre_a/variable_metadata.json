@@ -23,12 +23,16 @@
       "value_mapping": {
         "terms": {
           "male": {
-            "local_term": "male",
+            "local_term": null,
             "target_class": "ncit:C20197"
           },
           "female": {
-            "local_term": "female",
+            "local_term": null,
             "target_class": "ncit:C16576"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -52,7 +56,15 @@
           "node_label": "years",
           "aesthetic_label": "Years"
         }
-      ]
+      ],
+      "value_mapping": {
+        "terms": {
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
+          }
+        }
+      }
     },
     "performance_status": {
       "predicate": "sio:000008",
@@ -70,12 +82,16 @@
       "value_mapping": {
         "terms": {
           "0": {
-            "local_term": "0",
+            "local_term": null,
             "target_class": "ncit:C105722"
           },
           "1": {
-            "local_term": "1",
+            "local_term": null,
             "target_class": "ncit:C105723"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -96,12 +112,16 @@
       "value_mapping": {
         "terms": {
           "positive": {
-            "local_term": "positive",
+            "local_term": null,
             "target_class": "ncit:C128839"
           },
           "negative": {
-            "local_term": "negative",
+            "local_term": null,
             "target_class": "ncit:C131488"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -129,12 +149,16 @@
       "value_mapping": {
         "terms": {
           "oropharynx": {
-            "local_term": "oropharynx",
+            "local_term": null,
             "target_class": "ncit:C12762"
           },
           "larynx": {
-            "local_term": "larynx",
+            "local_term": null,
             "target_class": "ncit:C12420"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -162,24 +186,28 @@
       "value_mapping": {
         "terms": {
           "0": {
-            "local_term": "0",
+            "local_term": null,
             "target_class": "ncit:C48719"
           },
           "1": {
-            "local_term": "1",
+            "local_term": null,
             "target_class": "ncit:C48720"
           },
           "2": {
-            "local_term": "2",
+            "local_term": null,
             "target_class": "ncit:C48724"
           },
           "3": {
-            "local_term": "3",
+            "local_term": null,
             "target_class": "ncit:C48728"
           },
           "4": {
-            "local_term": "4",
+            "local_term": null,
             "target_class": "ncit:C48732"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -207,20 +235,24 @@
       "value_mapping": {
         "terms": {
           "0": {
-            "local_term": "0",
+            "local_term": null,
             "target_class": "ncit:C48705"
           },
           "1": {
-            "local_term": "1",
+            "local_term": null,
             "target_class": "ncit:C48706"
           },
           "2": {
-            "local_term": "2",
+            "local_term": null,
             "target_class": "ncit:C48786"
           },
           "3": {
-            "local_term": "3",
+            "local_term": null,
             "target_class": "ncit:C48714"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -248,12 +280,16 @@
       "value_mapping": {
         "terms": {
           "0": {
-            "local_term": "0",
+            "local_term": null,
             "target_class": "ncit:C48699"
           },
           "1": {
-            "local_term": "1",
+            "local_term": null,
             "target_class": "ncit:C48700"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -281,12 +317,16 @@
       "value_mapping": {
         "terms": {
           "Dead": {
-            "local_term": "1",
+            "local_term": null,
             "target_class": "ncit:C28554"
           },
           "Alive": {
-            "local_term": "0",
+            "local_term": null,
             "target_class": "ncit:C37987"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
           }
         }
       }
@@ -317,7 +357,15 @@
           "node_label": "days",
           "aesthetic_label": "Days"
         }
-      ]
+      ],
+      "value_mapping": {
+        "terms": {
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
+          }
+        }
+      }
     }
   }
 }
