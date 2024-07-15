@@ -780,23 +780,76 @@ def formulate_local_schema(database):
             'local_definition': ""}
          for variable_name, variable_info in modified_schema['variable_info'].items()}
 
+    modified_schema['variable_info'] = {}
+
     # Add local definitions to the schema
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         global_variable = local_value['description'].split('Variable description: ')[1].lower().replace(' ', '_')
         if global_variable:
-            modified_schema['variable_info'][global_variable]['local_definition'] = local_variable
+            # Add the global variable to a temporary schema if it is selected as a local variable
+            _schema_info = {global_variable:
+                                copy.deepcopy(session_cache.global_schema['variable_info'].get(global_variable, {}))}
 
-        # Update the 'value_mapping' field in the schema
-        # For each category of the local variable,
-        # find the corresponding term in the global variable and set its 'local_term' to the category
-        for category, value in local_value.items():
-            if category.startswith('Category: '):
-                key = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
-                if 'value_mapping' in modified_schema['variable_info'][global_variable] and \
-                        'terms' in modified_schema['variable_info'][global_variable]['value_mapping'] and \
-                        key in modified_schema['variable_info'][global_variable]['value_mapping']['terms']:
-                    modified_schema['variable_info'][global_variable]['value_mapping']['terms'][key]['local_term'] =\
-                        category.split(': ')[1]
+            # Specify the local definition for the global variable
+            _schema_info[global_variable]['local_definition'] = local_variable
+
+            # Create a clean value_mapping section
+            _value_map = {}
+
+            # Update the 'value_mapping' field in the schema
+            # For each category of the local variable,
+            # find the corresponding term in the global variable and set its 'local_term' to the category
+            for category, value in local_value.items():
+                if category.startswith('Category: '):
+                    global_term = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
+
+                    if global_term:
+                        # Add the global variable's value mapping to the schema if it is selected as a local value
+                        __value_map = {global_term: copy.deepcopy(
+                            session_cache.global_schema['variable_info'][global_variable]['value_mapping']['terms'].get(
+                                global_term,
+                                {
+                                    "local_term": "",
+                                    "target_class": "t.b.d."
+                                }
+                            )
+                        )}
+
+                        # Set the local term for the global term
+                        __value_map[global_term]['local_term'] = category.split(': ')[1]
+
+                        # Handling duplicate global terms by appending a suffix
+                        if global_term in _value_map:
+                            suffix = 1
+                            new_global_term = f"{global_term}_{suffix}"
+                            while new_global_term in _value_map:
+                                suffix += 1
+                                new_global_term = f"{global_term}_{suffix}"
+                        else:
+                            new_global_term = global_term
+
+                        # Copy the specific value map to the general mapping, ensuring duplicates are handled correctly
+                        __value_map[new_global_term] = __value_map.pop(global_term)
+                        _value_map.update(copy.deepcopy(__value_map))
+                        __value_map.clear()
+
+            # Place the value mapping section in the schema
+            if _value_map:
+                _schema_info[global_variable]['value_mapping'] = copy.deepcopy(_value_map)
+
+            # Handling duplicate global variables by appending a suffix
+            if global_variable in modified_schema['variable_info']:
+                suffix = 1
+                new_global_variable = f"{global_variable}_{suffix}"
+                while new_global_variable in modified_schema['variable_info']:
+                    suffix += 1
+                    new_global_variable = f"{global_variable}_{suffix}"
+
+            else:
+                new_global_variable = global_variable
+
+            # Append the new global variable to the actual schema
+            modified_schema['variable_info'][new_global_variable] = copy.deepcopy(_schema_info[global_variable])
 
     return modified_schema
 
