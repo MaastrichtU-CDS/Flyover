@@ -5,6 +5,8 @@ PREFIX db: <http://data.local/rdf/ontology/>
 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX sio: <http://semanticscience.org/resource/>
+PREFIX sct: <http://snomed.info/id/>
 
 DELETE { ?tablerow dbo:has_column ?variable . }
 

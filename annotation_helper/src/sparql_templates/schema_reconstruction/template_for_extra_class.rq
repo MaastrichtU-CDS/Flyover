@@ -9,6 +9,8 @@ PREFIX owl: <http://www.w3.org/2002/07/owl#>
 PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
 PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
 PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX sct: <http://snomed.info/id/>
+PREFIX sio: <http://semanticscience.org/resource/>
 PREFIX PLACEHOLDER: <>
 
 INSERT {
