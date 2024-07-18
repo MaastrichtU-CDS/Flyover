@@ -135,7 +135,7 @@
                                     <label for="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
                                     <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
                                             name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                            class="selectpicker">
+                                            class="selectpicker" , data-live-search="true">
                                         {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
                                         {% if item_info and 'value_mapping' in item_info %}
                                             <option value="">Description</option>

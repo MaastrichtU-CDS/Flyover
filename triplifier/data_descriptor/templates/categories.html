@@ -67,7 +67,8 @@
                 {% for item in df['column'].tolist() %}
                     <div id="div1" class="form-group">
                         <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
-                        <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}" class="selectpicker">
+                        <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
+                                class="selectpicker" , data-live-search="true">
                             <option value="">Data type</option>
                             <option value="Categorical Ordinal">Categorical Ordinal</option>
                             <option value="Categorical Nominal">Categorical Nominal</option>
@@ -76,7 +77,8 @@
                         </select>
                         <label for="ncit_comment_{{ database }}_{{ item }}"></label>
                         <select id="ncit_comment_{{ database }}_{{ item }}"
-                                name="ncit_comment_{{ database }}_{{ item }}" class="selectpicker">
+                                name="ncit_comment_{{ database }}_{{ item }}"
+                                class="selectpicker" , data-live-search="true">
                             {% if global_variable_names %}
                                 <option value="">Description</option>
                                 {% for value in global_variable_names %}
