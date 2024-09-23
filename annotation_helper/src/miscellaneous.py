@@ -25,7 +25,7 @@ _class_iri_label = 'reconstructioniri'
 string_to_remove = 'PREFIX PLACEHOLDER: <>'
 
 
-def add_annotation(endpoint, database, annotation_data, path, remove_has_column=True, save_query=True):
+def add_annotation(endpoint, database, annotation_data, path, remove_has_column=False, save_query=True):
     """
     Add the annotation for a series of variables
 
@@ -238,7 +238,7 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
                                                  class_class_object=class_class_object,
                                                  class_label=class_label,
                                                  class_aesthetic_label=class_aesthetic_label.capitalize(),
-                                                 class_iri_label=class_aesthetic_label.lower())
+                                                 class_iri_label=class_aesthetic_label.lower().replace(' ', '_'))
 
                     # check whether the statement has been added
                     if dry_run is False:
