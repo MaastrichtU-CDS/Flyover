@@ -1,2 +1,1 @@
-FROM ontotext/graphdb:10.2.2
-
+FROM ontotext/graphdb:10.7.4
