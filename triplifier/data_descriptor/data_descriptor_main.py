@@ -132,7 +132,15 @@ def upload_file():
             return render_template('index.html', error=True)
 
         try:
-            session_cache.csvData = pd.read_csv(csv_file)
+            seperator_sign = str(request.form.get('csv_seperator_sign'))
+            if len(seperator_sign) == 0:
+                seperator_sign = ','
+
+            decimal_sign = str(request.form.get('csv_decimal_sign'))
+            if len(decimal_sign) == 0:
+                decimal_sign = '.'
+
+            session_cache.csvData = pd.read_csv(csv_file, sep=seperator_sign, decimal=decimal_sign)
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
@@ -967,7 +975,7 @@ def run_triplifier(properties_file=None):
             if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
                 return False, "Unable to temporarily save the CSV file: no write access to the application folder."
 
-            session_cache.csvData.to_csv(session_cache.csvPath, index=False)
+            session_cache.csvData.to_csv(session_cache.csvPath, index=False, sep=',', decimal='.', encoding='utf-8')
 
         process = subprocess.Popen(
             f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
