@@ -132,15 +132,15 @@ def upload_file():
             return render_template('index.html', error=True)
 
         try:
-            seperator_sign = str(request.form.get('csv_seperator_sign'))
-            if len(seperator_sign) == 0:
-                seperator_sign = ','
+            separator_sign = str(request.form.get('csv_separator_sign'))
+            if len(separator_sign) == 0:
+                separator_sign = ','
 
             decimal_sign = str(request.form.get('csv_decimal_sign'))
             if len(decimal_sign) == 0:
                 decimal_sign = '.'
 
-            session_cache.csvData = pd.read_csv(csv_file, sep=seperator_sign, decimal=decimal_sign)
+            session_cache.csvData = pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
