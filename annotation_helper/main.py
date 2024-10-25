@@ -51,10 +51,15 @@ def main():
         logging.error("'database' key not found in the settings or not provided as string, exiting.")
         sys.exit(1)
 
+    prefixes = settings_content.get("prefixes")
+    if isinstance(prefixes, str) is False:
+        logging.error("'prefixes' key not found in the settings or not provided as string, exiting.")
+        sys.exit(1)
+
     # run annotations if specified
     annotations = settings_content.get("variable_info")
     if annotations:
-        add_annotation(endpoint=endpoint, database=database, annotation_data=annotations, path=path)
+        add_annotation(endpoint=endpoint, database=database, prefixes=prefixes, annotation_data=annotations, path=path)
 
 
 if __name__ == "__main__":

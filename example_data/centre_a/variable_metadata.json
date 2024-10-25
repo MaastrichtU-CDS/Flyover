@@ -1,6 +1,7 @@
 {
   "endpoint": "http://localhost:7200/repositories/userRepo/statements",
   "database_name": "HEAD-NECK-RADIOMICS-HN1_Clinical_data_updated_July_2020",
+  "prefixes": "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>\nPREFIX sio: <http://semanticscience.org/resource/>\n",
   "variable_info": {
     "identifier": {
       "predicate": "sio:000008",
@@ -120,7 +121,7 @@
             "target_class": "ncit:C131488"
           },
           "missing_or_unspecified": {
-            "local_term": null,
+            "local_term": "",
             "target_class": "ncit:C54031"
           }
         }

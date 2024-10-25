@@ -7,9 +7,6 @@ PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX owl: <http://www.w3.org/2002/07/owl#>
 PREFIX roo: <http://www.cancerdata.org/roo/>
 PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
-PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
-PREFIX sio: <http://semanticscience.org/resource/>
-PREFIX sct: <http://snomed.info/id/>
 PREFIX PLACEHOLDER: <>
 
 INSERT {

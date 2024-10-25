@@ -4,7 +4,7 @@ import os
 import requests
 
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
-dry_run = False
+dry_run = True
 
 # not a beauty but works
 _database = 'databasename'
@@ -22,15 +22,16 @@ _class_class = 'PLACEHOLDER:reconstructionclass'
 _class_aesthetic_label = 'reconstructionaestheticlabel'
 _class_iri_label = 'reconstructioniri'
 
-string_to_remove = 'PREFIX PLACEHOLDER: <>'
+_prefixes_to_add = 'PREFIX PLACEHOLDER: <>'
 
 
-def add_annotation(endpoint, database, annotation_data, path, remove_has_column=False, save_query=True):
+def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_has_column=False, save_query=True):
     """
     Add the annotation for a series of variables
 
     :param str endpoint: endpoint to add the mapping to
     :param str database: database to add the annotation to, e.g., db:'dataset'
+    :param str prefixes: prefixes to add to the query
     :param dict/str annotation_data: dict with annotation data or path to JSON containing a dict can consist of
       "variable_info": {
         "identifier": {
@@ -233,6 +234,7 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
                     # first construct the extra class
                     construction_response, construction_query \
                         = _construct_extra_class(endpoint=endpoint,
+                                                 prefixes=prefixes,
                                                  database_name=database,
                                                  class_predicate=class_predicate,
                                                  class_class_object=class_class_object,
@@ -288,7 +290,7 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
                         break
 
                     construction_response, construction_query \
-                        = _construct_extra_node(endpoint=endpoint, database_name=database,
+                        = _construct_extra_node(endpoint=endpoint, database_name=database, prefixes=prefixes,
                                                 node_label=node_label, node_class=node_class,
                                                 node_aesthetic_label=node_aesthetic_label.capitalize())
 
@@ -318,7 +320,8 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
         if construction_success:
             # add the annotation with specified reconstructions
             response, query = _add_annotation(endpoint=endpoint, variable=generic_category,
-                                              database_name=database, local_definition=local_definition,
+                                              database_name=database, prefixes=prefixes,
+                                              local_definition=local_definition,
                                               predicate=predicate, class_object=class_object,
                                               classes_insertion=classes_insertion, classes_where=classes_where,
                                               nodes_insertion=nodes_insertion, components=components)
@@ -344,8 +347,8 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
 
             # remove all specified components
             for label, component in components_to_remove.items():
-                response, removal = _remove_component(endpoint=endpoint, database_name=database, local_variable=label,
-                                                      component_to_remove=component)
+                response, removal = _remove_component(endpoint=endpoint, database_name=database, prefixes=prefixes,
+                                                      local_variable=label, component_to_remove=component)
                 # store the removal queries for saving
                 removal_queries.update({label: removal})
 
@@ -392,6 +395,7 @@ def add_annotation(endpoint, database, annotation_data, path, remove_has_column=
         response = None
         construction_success = True
         annotation_success = None
+
 
 def add_mapping(endpoint, variable, super_class, value_map):
     """
@@ -551,12 +555,13 @@ def write_file(file_name, content, path=None, file_extension=None):
         logging.error(f'An error occurred while writing the file: {e}')
 
 
-def _add_annotation(endpoint, variable, database_name, local_definition, predicate, class_object,
+def _add_annotation(endpoint, prefixes, variable, database_name, local_definition, predicate, class_object,
                     classes_insertion, classes_where, nodes_insertion, components, template_file=None):
     """
     Directly add an annotation
 
     :param str endpoint: endpoint to add the mapping to
+    :param str prefixes: prefixes to add to the query
     :param str variable: name of the variable for logging purposes
     :param str database_name: _database to add the annotation to, e.g., db:dataset
     :param str local_definition: variable name to annotate, e.g., biological_sex
@@ -603,7 +608,7 @@ def _add_annotation(endpoint, variable, database_name, local_definition, predica
                     _database: database_name,
                     _variable_definition: local_definition,
                     _variable_class: class_object,
-                    string_to_remove: '',
+                    _prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 
@@ -616,11 +621,12 @@ def _add_annotation(endpoint, variable, database_name, local_definition, predica
     return response, query
 
 
-def _add_mapping(endpoint, target_class, super_class, local_term, template_file=None):
+def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, template_file=None):
     """
     directly add a mapping between various classes and data-specific term
 
     :param str endpoint: endpoint to add the mapping to
+    :param str prefixes: prefixes to add to the query
     :param str target_class: specific class, e.g., male or female
     :param str super_class: overarching class, e.g., biological sex
     :param str local_term: a value in the data e.g., 0 for females and 1 for males
@@ -678,7 +684,7 @@ def _add_mapping(endpoint, target_class, super_class, local_term, template_file=
     query = query % (target_class, super_class, local_term)
 
     # replace the placeholders
-    replacements = {string_to_remove: '',
+    replacements = {_prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 
@@ -691,12 +697,13 @@ def _add_mapping(endpoint, target_class, super_class, local_term, template_file=
     return response, query
 
 
-def _check_for_data_class(endpoint, database_name, class_label, template_file=None):
+def _check_for_data_class(endpoint, database_name, prefixes, class_label, template_file=None):
     """
     check whether a statement has been added
 
     :param str endpoint: endpoint to add the mapping to
     :param str database_name: predicate to check whether present
+    :param str prefixes: prefixes to add to the query
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
@@ -713,7 +720,7 @@ def _check_for_data_class(endpoint, database_name, class_label, template_file=No
     # replace the placeholders
     replacements = {_database: database_name,
                     _class_label: class_label,
-                    string_to_remove: '',
+                    _prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 
@@ -727,11 +734,12 @@ def _check_for_data_class(endpoint, database_name, class_label, template_file=No
     return response, query
 
 
-def _check_for_predicate(endpoint, predicate, template_file=None):
+def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     """
     check whether a statement has been added
 
     :param str endpoint: endpoint to add the mapping to
+    :param str prefixes: prefixes to add to the query
     :param str predicate: predicate to check whether present
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
@@ -748,7 +756,7 @@ def _check_for_predicate(endpoint, predicate, template_file=None):
 
     # replace the placeholders
     replacements = {_variable_predicate: predicate,
-                    string_to_remove: '',
+                    _prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 
@@ -756,7 +764,7 @@ def _check_for_predicate(endpoint, predicate, template_file=None):
         query = query.replace(old, new)
 
     # remove the prefix for cleanliness
-    query.replace(string_to_remove, '')
+    query.replace(_prefixes_to_add, '')
 
     # run the query
     response = __post_query(endpoint=endpoint.rsplit('/statements', 1)[0], query=query,
@@ -765,7 +773,7 @@ def _check_for_predicate(endpoint, predicate, template_file=None):
     return response, query
 
 
-def _construct_extra_class(endpoint, database_name, class_label, class_predicate, class_class_object,
+def _construct_extra_class(endpoint, database_name, prefixes, class_label, class_predicate, class_class_object,
                            class_aesthetic_label, class_iri_label,
                            template_file=None):
     """
@@ -773,6 +781,7 @@ def _construct_extra_class(endpoint, database_name, class_label, class_predicate
 
     :param str endpoint: endpoint to add the mapping to
     :param str database_name: _database to add the annotation to, e.g., db:dataset
+    :param str prefixes: prefixes to add to the query
     :param str class_label: label to associate with the extra class e.g., neoplasmClass
     :param str class_predicate: predicate to associate with the extra class
     :param str class_class_object: class to associate with the extra class
@@ -800,7 +809,7 @@ def _construct_extra_class(endpoint, database_name, class_label, class_predicate
                     _class_class: class_class_object,
                     _class_aesthetic_label: class_aesthetic_label,
                     _class_iri_label: class_iri_label,
-                    string_to_remove: '',
+                    _prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 
@@ -808,7 +817,7 @@ def _construct_extra_class(endpoint, database_name, class_label, class_predicate
         query = query.replace(old, new)
 
     # remove the prefix for cleanliness
-    query.replace(string_to_remove, '')
+    query.replace(_prefixes_to_add, '')
 
     # run the query
     response = __post_query(endpoint, query)
@@ -816,12 +825,14 @@ def _construct_extra_class(endpoint, database_name, class_label, class_predicate
     return response, query
 
 
-def _construct_extra_node(endpoint, database_name, node_label, node_class, node_aesthetic_label, template_file=None):
+def _construct_extra_node(endpoint, database_name, prefixes, node_label, node_class, node_aesthetic_label,
+                          template_file=None):
     """
     Add an extra node that can be used to associate to an actual variable
 
     :param str endpoint: endpoint to add the mapping to
     :param str database_name: _database to add the annotation to, e.g., db:dataset
+    :param str prefixes: prefixes to add to the query
     :param str node_label: label to associate with the extra class e.g., neoplasmClass
     :param str node_class: class to associate with the extra node
     :param str node_aesthetic_label: label to associate with the extra class, e.g., Neoplasm
@@ -845,7 +856,7 @@ def _construct_extra_node(endpoint, database_name, node_label, node_class, node_
                     _node_label: node_label,
                     _node_class: node_class,
                     _node_aesthetic_label: node_aesthetic_label,
-                    string_to_remove: '',
+                    _prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 
@@ -853,7 +864,7 @@ def _construct_extra_node(endpoint, database_name, node_label, node_class, node_
         query = query.replace(old, new)
 
     # remove the prefix for cleanliness
-    query.replace(string_to_remove, '')
+    query.replace(_prefixes_to_add, '')
 
     # run the query
     response = __post_query(endpoint, query)
@@ -861,13 +872,14 @@ def _construct_extra_node(endpoint, database_name, node_label, node_class, node_
     return response, query
 
 
-def _remove_component(endpoint, database_name, local_variable, component_to_remove='dbo:has_column',
+def _remove_component(endpoint, database_name, prefixes, local_variable, component_to_remove='dbo:has_column',
                       template_file=None):
     """
     remove a component such as dbo:has_column for a certain local variable name
 
     :param str endpoint: endpoint to add the mapping to
     :param str database_name: _database to add the annotation to, e.g., db:dataset
+    :param str prefixes: prefixes to add to the query
     :param str local_variable: variable name to annotate, e.g., biological_sex
     :param str component_to_remove: component to remove, e.g., dbo:has_column
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
@@ -889,7 +901,7 @@ def _remove_component(endpoint, database_name, local_variable, component_to_remo
     replacements = {_database: database_name,
                     _variable_definition: local_variable,
                     'dbo:has_column': component_to_remove,
-                    string_to_remove: '',
+                    _prefixes_to_add: prefixes,
                     '# Template that is automatically filled using Python.':
                         '# This query was automatically generated using the annotation helper.'}
 

@@ -2,8 +2,7 @@
 
 # Ensure that the necessary prefixes are included in the query as these are not automatically filled in.
 PREFIX roo: <http://www.cancerdata.org/roo/>
-PREFIX sio: <http://semanticscience.org/resource/>
-PREFIX sct: <http://snomed.info/id/>
+PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
 PREFIX PLACEHOLDER: <>
 
 ASK {
