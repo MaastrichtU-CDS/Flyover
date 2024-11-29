@@ -338,7 +338,7 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
 
             # add the value mapping if necessary and possible
             if annotation_success and isinstance(variable_data.get('value_mapping'), dict):
-                value_mapping_responses, value_mapping_queries = add_mapping(endpoint=endpoint,
+                value_mapping_responses, value_mapping_queries = add_mapping(endpoint=endpoint, prefixes=prefixes,
                                                                              variable=generic_category,
                                                                              super_class=class_object,
                                                                              value_map=variable_data['value_mapping'])
@@ -399,11 +399,12 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         annotation_success = None
 
 
-def add_mapping(endpoint, variable, super_class, value_map):
+def add_mapping(endpoint, prefixes, variable, super_class, value_map):
     """
     add a mapping between various classes
 
     :param str endpoint: endpoint to add the mapping to
+    :param str prefixes: prefixes to add to the query
     :param str variable: variable name for logging purposes
     :param str super_class: class to add the mapping to
     :param dict value_map: dictionary containing the mapping data to save the query generated for the mapping
@@ -423,7 +424,7 @@ def add_mapping(endpoint, variable, super_class, value_map):
                 break
 
             # call your add_mapping function with the appropriate arguments
-            response, query = _add_mapping(endpoint=endpoint,
+            response, query = _add_mapping(endpoint=endpoint, prefixes=prefixes,
                                            target_class=target_class, super_class=super_class, local_term=local_term)
 
             # store response and query in a list
