@@ -245,6 +245,7 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                     # check whether the statement has been added
                     if dry_run is False:
                         construction_success = check_data_class(endpoint=endpoint, database_name=database,
+                                                                prefixes=prefixes,
                                                                 class_label=class_label,
                                                                 variable=generic_category,
                                                                 response=construction_response)
@@ -297,6 +298,7 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                     # check whether the statement has been added
                     if dry_run is False:
                         construction_success = check_data_class(endpoint=endpoint, database_name=database,
+                                                                prefixes=prefixes,
                                                                 class_label=node_label,
                                                                 variable=generic_category,
                                                                 response=construction_response)
@@ -330,7 +332,7 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
             if dry_run is False:
                 annotation_success = check_predicate(endpoint=endpoint, predicate=predicate,
                                                      variable=generic_category,
-                                                     response=response)
+                                                     response=response, prefixes=prefixes)
             else:
                 annotation_success = True
 
@@ -435,19 +437,20 @@ def add_mapping(endpoint, variable, super_class, value_map):
         return None, None
 
 
-def check_data_class(endpoint, database_name, class_label, variable, response):
+def check_data_class(endpoint, database_name, prefixes, class_label, variable, response):
     """
     check whether a predicate has been added to the endpoint
 
     :param str endpoint: endpoint to add the mapping to
     :param str database_name: _database to add the annotation to, e.g., db:dataset
+    :param str prefixes: prefixes to add to the query
     :param str class_label: label to associate with the extra class e.g., neoplasmClass
     :param str variable: variable name for logging purposes
     :param requests.response response: response object from the Requests library
     :return:
     """
     if 200 <= response.status_code < 300:
-        response, check_query = _check_for_data_class(endpoint=endpoint, database_name=database_name,
+        response, check_query = _check_for_data_class(endpoint=endpoint, database_name=database_name, prefixes=prefixes,
                                                       class_label=class_label)
         _response = json.loads(response.text)
         if _response.get('boolean', True) is True:
@@ -468,18 +471,19 @@ def check_data_class(endpoint, database_name, class_label, variable, response):
         return False
 
 
-def check_predicate(endpoint, predicate, variable, response):
+def check_predicate(endpoint, prefixes, predicate, variable, response):
     """
     check whether a predicate has been added to the endpoint
 
     :param str endpoint: endpoint to add the mapping to
+    :param str prefixes: prefixes to add to the query
     :param str predicate: predicate to check
     :param str variable: variable name for logging purposes
     :param requests.response response: response object from the Requests library
     :return:
     """
     if 200 <= response.status_code < 300:
-        response, check_query = _check_for_predicate(endpoint=endpoint, predicate=predicate)
+        response, check_query = _check_for_predicate(endpoint=endpoint, predicate=predicate, prefixes=prefixes)
         _response = json.loads(response.text)
         if _response.get('boolean', True) is True:
             logging.info(
