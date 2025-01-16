@@ -650,7 +650,7 @@ def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, temp
     query = read_file(template_file)
 
     # Create a dictionary to store the prefixes and their URIs
-    prefix_to_uri = {}
+    prefix_to_uri = {prefix.split()[1][:-1]: prefix.split()[2][1:-1] for prefix in prefixes.split('\n') if prefix}
 
     # Split the query into lines
     lines = query.split("\n")
