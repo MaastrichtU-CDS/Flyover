@@ -4,12 +4,12 @@
   "prefixes": "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>\nPREFIX sio: <http://semanticscience.org/resource/>\n",
   "variable_info": {
     "identifier": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000673 ",
       "class": "ncit:C25364",
       "local_definition": "id"
     },
     "biological_sex": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C28421",
       "local_definition": "biological_sex",
       "schema_reconstruction": [
@@ -19,16 +19,24 @@
           "class": "mesh:D000091569",
           "class_label": "demographicClass",
           "aesthetic_label": "Demographic"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
         "terms": {
           "male": {
-            "local_term": null,
+            "local_term": "male",
             "target_class": "ncit:C20197"
           },
           "female": {
-            "local_term": null,
+            "local_term": "female",
             "target_class": "ncit:C16576"
           },
           "missing_or_unspecified": {
@@ -39,7 +47,7 @@
       }
     },
     "age_at_diagnosis": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C156420",
       "local_definition": "age_at_diagnosis",
       "schema_reconstruction": [
@@ -49,6 +57,22 @@
           "class": "mesh:D000091569",
           "class_label": "demographicClass",
           "aesthetic_label": "Demographic"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "promClass",
+          "aesthetic_label": "PROM"
         },
         {
           "type": "node",
@@ -68,7 +92,7 @@
       }
     },
     "performance_status": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C105721",
       "local_definition": "performance_status_ecog",
       "schema_reconstruction": [
@@ -78,6 +102,14 @@
           "class": "mesh:D000091569",
           "class_label": "demographicClass",
           "aesthetic_label": "Demographic"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -98,7 +130,7 @@
       }
     },
     "hpv_status": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C14226",
       "local_definition": "overall_hpv_p16_status",
       "schema_reconstruction": [
@@ -108,6 +140,14 @@
           "class": "mesh:D000091569",
           "class_label": "demographicClass",
           "aesthetic_label": "Demographic"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -128,7 +168,7 @@
       }
     },
     "tumour_location": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C3263",
       "local_definition": "index_tumour_location",
       "schema_reconstruction": [
@@ -145,6 +185,14 @@
           "class": "ncit:C3262",
           "class_label": "neoplasmClass",
           "aesthetic_label": "Neoplasm"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -165,7 +213,7 @@
       }
     },
     "t_stage": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C48885",
       "local_definition": "clin_t",
       "schema_reconstruction": [
@@ -182,6 +230,14 @@
           "class": "ncit:C3262",
           "class_label": "neoplasmClass",
           "aesthetic_label": "Neoplasm"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -214,7 +270,7 @@
       }
     },
     "n_stage": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C48884",
       "local_definition": "clin_n",
       "schema_reconstruction": [
@@ -231,6 +287,14 @@
           "class": "ncit:C3262",
           "class_label": "neoplasmClass",
           "aesthetic_label": "Neoplasm"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -259,7 +323,7 @@
       }
     },
     "m_stage": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C48883",
       "local_definition": "clin_m",
       "schema_reconstruction": [
@@ -276,6 +340,14 @@
           "class": "ncit:C3262",
           "class_label": "neoplasmClass",
           "aesthetic_label": "Neoplasm"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -296,7 +368,7 @@
       }
     },
     "survival_status": {
-      "predicate": "sio:000008",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C25717",
       "local_definition": "event_overall_survival",
       "schema_reconstruction": [
@@ -313,6 +385,14 @@
           "class": "ncit:C3262",
           "class_label": "neoplasmClass",
           "aesthetic_label": "Neoplasm"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         }
       ],
       "value_mapping": {
@@ -333,8 +413,8 @@
       }
     },
     "survival_days": {
-      "predicate": "sio:000008",
-      "class": "roo:overallsurvivaldays",
+      "predicate": "sio:SIO_000008",
+      "class": "ncit:C168844",
       "local_definition": "overall_survival_in_days",
       "schema_reconstruction": [
         {
@@ -350,6 +430,14 @@
           "class": "ncit:C3262",
           "class_label": "neoplasmClass",
           "aesthetic_label": "Neoplasm"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
         },
         {
           "type": "node",

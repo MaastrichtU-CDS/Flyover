@@ -49,8 +49,10 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
               "predicate": "roo:hassociodemographicvariable",
               "class": "mesh:D000091569",
               "class_label": "sociodemographicClass",
-              "aesthetic_label": "Sociodemographic"
-            }
+              "aesthetic_label": "Sociodemographic",
+              "placement": "before"
+            },
+
           ],
           "value_mapping": {
             "terms": {
@@ -75,7 +77,8 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
               "predicate": "roo:hassociodemographicvariable",
               "class": "mesh:D000091569",
               "class_label": "sociodemographicClass",
-              "aesthetic_label": "Sociodemographic information"
+              "aesthetic_label": "Sociodemographic information",
+              "placement": "before"
             },
             {
               "type": "node",
@@ -96,14 +99,16 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
               "predicate": "roo:hasclinicalvariable",
               "class": "ncit:C326200",
               "class_label": "clinicalClass",
-              "aesthetic_label": "Clinical information"
+              "aesthetic_label": "Clinical information",
+              "placement": "before"
             },
             {
               "type": "class",
               "predicate": "roo:P100029",
               "class": "ncit:C3262",
               "class_label": "neoplasmClass",
-              "aesthetic_label": "Neoplasm"
+              "aesthetic_label": "Neoplasm",
+              "placement": "after"
             }
           ],
           "value_mapping": {
@@ -133,14 +138,16 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
               "predicate": "roo:hasclinicalvariable",
               "class": "ncit:C326200",
               "class_label": "clinicalClass",
-              "aesthetic_label": "Clinical information"
+              "aesthetic_label": "Clinical information",
+              "placement": "before"
             },
             {
               "type": "class",
               "predicate": "roo:P100029",
               "class": "ncit:C3262",
               "class_label": "neoplasmClass",
-              "aesthetic_label": "Neoplasm"
+              "aesthetic_label": "Neoplasm",
+              "placement": "after"
             }
           ],
           "value_mapping": {
@@ -173,7 +180,7 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         logging.info('Please not that this was specified as dry run in miscellaneous.py; '
                      'no queries will be posted to the endpoint.')
 
-    construction_queries = None
+    construction_queries = {}
     value_mapping_queries = None
     construction_success = True
 
@@ -184,8 +191,70 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         logging.warning('Annotation data incorrectly formatted, please see function docstring for an example.')
         return None
 
+    # identify all necessary classes and nodes
+    necessary_classes = set()
+    necessary_nodes = set()
+
     for generic_category, variable_data in annotation_data.items():
-        # object to trace the number of added components
+        reconstruction_data = variable_data.get('schema_reconstruction')
+        if isinstance(reconstruction_data, list):
+            for reconstruction in reconstruction_data:
+                if 'class' in reconstruction.get('type'):
+                    class_label = reconstruction.get('class_label')
+                    class_predicate = reconstruction.get('predicate')
+                    class_class_object = reconstruction.get('class')
+                    class_aesthetic_label = reconstruction.get('aesthetic_label')
+                    necessary_classes.add((class_label, class_predicate, class_class_object, class_aesthetic_label))
+                elif 'node' in reconstruction.get('type'):
+                    node_label = reconstruction.get('node_label')
+                    node_class = reconstruction.get('class')
+                    node_aesthetic_label = reconstruction.get('aesthetic_label')
+                    necessary_nodes.add((node_label, node_class, node_aesthetic_label))
+
+    # add all necessary classes and nodes
+    for class_label, class_predicate, class_class_object, class_aesthetic_label in necessary_classes:
+        construction_response, construction_query = _construct_extra_class(endpoint=endpoint,
+                                                                           prefixes=prefixes,
+                                                                           database_name=database,
+                                                                           class_predicate=class_predicate,
+                                                                           class_class_object=class_class_object,
+                                                                           class_label=class_label,
+                                                                           class_aesthetic_label=class_aesthetic_label.capitalize(),
+                                                                           class_iri_label=class_aesthetic_label.lower().replace(
+                                                                               ' ', '_'))
+
+        if dry_run is False:
+            construction_success = check_data_class(endpoint=endpoint, database_name=database,
+                                                    prefixes=prefixes,
+                                                    class_label=class_label,
+                                                    variable=generic_category,
+                                                    response=construction_response)
+        else:
+            construction_success = True
+
+        if construction_success:
+            construction_queries.update({class_label: construction_query})
+
+    for node_label, node_class, node_aesthetic_label in necessary_nodes:
+        construction_response, construction_query = _construct_extra_node(endpoint=endpoint, database_name=database,
+                                                                          prefixes=prefixes,
+                                                                          node_label=node_label, node_class=node_class,
+                                                                          node_aesthetic_label=node_aesthetic_label.capitalize())
+
+        if dry_run is False:
+            construction_success = check_data_class(endpoint=endpoint, database_name=database,
+                                                    prefixes=prefixes,
+                                                    class_label=node_label,
+                                                    variable=generic_category,
+                                                    response=construction_response)
+        else:
+            construction_success = True
+
+        if construction_success:
+            construction_queries.update({node_label: construction_query})
+
+    # annotate variables
+    for generic_category, variable_data in annotation_data.items():
         components = 0
 
         # specify certain components to remove, e.g., dbo:has_column or other predicates
@@ -203,9 +272,10 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                             f'please see function docstring for an example.')
             break
 
-        # list to store the items that should be added to the query
-        classes_insertion = ''
-        classes_where = ''
+        classes_insertion_before = ''
+        classes_insertion_after = ''
+        classes_where_before = ''
+        classes_where_after = ''
         nodes_insertion = ''
 
         # check if schema reconstruction was defined
@@ -220,6 +290,7 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                     class_class_object = reconstruction.get('class')
                     class_label = reconstruction.get('class_label')
                     class_aesthetic_label = reconstruction.get('aesthetic_label')
+                    placement = reconstruction.get('placement', 'before')
 
                     # break the loop if schema reconstruction is necessary but not properly defined
                     if not all(isinstance(var, str) for var in (
@@ -229,52 +300,38 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                             'please see function docstring for an example.')
                         break
 
-                    components += 1
-
-                    # first construct the extra class
-                    construction_response, construction_query \
-                        = _construct_extra_class(endpoint=endpoint,
-                                                 prefixes=prefixes,
-                                                 database_name=database,
-                                                 class_predicate=class_predicate,
-                                                 class_class_object=class_class_object,
-                                                 class_label=class_label,
-                                                 class_aesthetic_label=class_aesthetic_label.capitalize(),
-                                                 class_iri_label=class_aesthetic_label.lower().replace(' ', '_'))
-
-                    # check whether the statement has been added
-                    if dry_run is False:
-                        construction_success = check_data_class(endpoint=endpoint, database_name=database,
-                                                                prefixes=prefixes,
-                                                                class_label=class_label,
-                                                                variable=generic_category,
-                                                                response=construction_response)
-                    else:
-                        construction_success = True
-
-                    # only proceed if extra class was successfully added
-                    if construction_success:
-                        construction_queries.update({class_aesthetic_label: construction_query})
-
-                        # add to existing insertion and where strings
+                    if placement == 'before':
+                        components += 1
                         if components == 1:
-                            classes_insertion = f'{class_predicate} ?component{components}.\n\n        '
+                            classes_insertion_before = f'{class_predicate} ?component{components}.\n\n        '
                         else:
-                            # if there already is an added component, associate the component with that first component
-                            classes_insertion = (f'{classes_insertion}'
-                                                 f'?component{components - 1} {class_predicate} ?component{components}.'
-                                                 f'\n\n        ')
+                            classes_insertion_before = (f'{classes_insertion_before}'
+                                                        f'?component{components - 1} {class_predicate} ?component{components}.'
+                                                        f'\n\n        ')
 
-                            # additional classes should not be connected to the main component
-                            components_to_remove.update({class_label: class_predicate})
+                        classes_where_before = (f'{classes_where_before}'
+                                                f'?tablerow dbo:has_column ?component{components} .'
+                                                f'\n\n    '
+                                                f'?component{components} rdf:type db:{database}.{class_label} .'
+                                                f'\n\n\n    ')
 
-                        classes_where = (f'{classes_where}'
-                                         f'?tablerow {class_predicate} ?component{components} .'
-                                         f'\n\n    '
-                                         f'?component{components} rdf:type db:{database}.{class_label} .'
-                                         f'\n\n\n    ')
+                    elif placement == 'after':
+                        classes_insertion_after = (f'\n\n        {classes_insertion_after}'
+                                                   f'?component{components + 1} {class_predicate} ?component{components + 2}.')
 
-                # when the reconstruction class is specified is node, create a 'hollow' node for the schema
+                        components_to_remove.update({class_label: class_predicate})
+
+                        classes_where_after = (f'\n\n\n    '
+                                               f'{classes_where_after}'
+                                               f'?tablerow dbo:has_column ?component{components + 2} .'
+                                               f'\n\n    '
+                                               f'?component{components + 2} rdf:type db:{database}.{class_label} .')
+                    else:
+                        logging.warning(
+                            f'Placement for class {class_label} in variable {generic_category} is incorrectly defined, '
+                            'please see function docstring for an example.')
+                        break
+
                 elif 'node' in reconstruction.get('type'):
                     node_predicate = reconstruction.get('predicate')
                     node_class = reconstruction.get('class')
@@ -290,34 +347,17 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                             'please see function docstring for an example.')
                         break
 
-                    construction_response, construction_query \
-                        = _construct_extra_node(endpoint=endpoint, database_name=database, prefixes=prefixes,
-                                                node_label=node_label, node_class=node_class,
-                                                node_aesthetic_label=node_aesthetic_label.capitalize())
+                    if len(classes_insertion_before) == 0:
+                        nodes_insertion = (f'{nodes_insertion}\n\n        '
+                                           f'?component1 {node_predicate} db:{database}.{node_label}.')
 
-                    # check whether the statement has been added
-                    if dry_run is False:
-                        construction_success = check_data_class(endpoint=endpoint, database_name=database,
-                                                                prefixes=prefixes,
-                                                                class_label=node_label,
-                                                                variable=generic_category,
-                                                                response=construction_response)
+                    # if classes are added, the component number is the last class and not the variable; thus +1
                     else:
-                        construction_success = True
+                        nodes_insertion = (f'{nodes_insertion}\n\n        '
+                                           f'?component{components + 1} {node_predicate} db:{database}.{node_label}.')
 
-                    # only proceed if extra class was successfully added
-                    if construction_success:
-                        construction_queries.update({node_aesthetic_label: construction_query})
-
-                        # if no classes should be added, the 'zeroth' component is the variable the node should succeed
-                        if len(classes_insertion) == 0:
-                            nodes_insertion = (f'{nodes_insertion}\n\n        '
-                                               f'?component1 {node_predicate} db:{database}.{node_label}.')
-
-                        # if classes are added, the component number is the last class and not the variable; thus +1
-                        else:
-                            nodes_insertion = (f'{nodes_insertion}\n\n        '
-                                               f'?component{components + 1} {node_predicate} db:{database}.{node_label}.')
+        # reset construction_success for each variable
+        construction_success = True
 
         if construction_success:
             # add the annotation with specified reconstructions
@@ -325,7 +365,10 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                                               database_name=database, prefixes=prefixes,
                                               local_definition=local_definition,
                                               predicate=predicate, class_object=class_object,
-                                              classes_insertion=classes_insertion, classes_where=classes_where,
+                                              classes_insertion_before=classes_insertion_before,
+                                              classes_insertion_after=classes_insertion_after,
+                                              classes_where_before=classes_where_before,
+                                              classes_where_after=classes_where_after,
                                               nodes_insertion=nodes_insertion, components=components)
 
             # check whether the annotation was added successfully
@@ -358,16 +401,14 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
             if os.path.exists(os.path.join(path, 'generated_queries')) is False:
                 os.mkdir(os.path.join(path, 'generated_queries'))
 
+            if os.path.exists(os.path.join(path, 'generated_queries', 'schema_reconstruction')) is False:
+                os.mkdir(os.path.join(path, 'generated_queries', 'schema_reconstruction'))
+
             if os.path.exists(os.path.join(path, 'generated_queries', generic_category)) is False:
                 os.mkdir(os.path.join(path, 'generated_queries', generic_category))
 
             write_file(f'{generic_category}', query,
                        os.path.join(path, 'generated_queries', generic_category), '.rq')
-
-            if isinstance(construction_queries, dict):
-                for aesthetic_label, construction_query in construction_queries.items():
-                    write_file(f'{generic_category}_schema_reconstruction_{aesthetic_label}', construction_query,
-                               os.path.join(path, 'generated_queries', generic_category), '.rq')
 
             if isinstance(value_mapping_queries, dict):
                 if os.path.exists(os.path.join(path, 'generated_queries', generic_category, 'mappings')) is False:
@@ -385,11 +426,18 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
                     write_file(f'{generic_category}_removal_in_{label}', removal,
                                os.path.join(path, 'generated_queries', generic_category, 'removals'), '.rq')
 
+        if isinstance(construction_queries, dict):
+            for aesthetic_label, construction_query in construction_queries.items():
+                write_file(f'schema_reconstruction_{aesthetic_label}', construction_query,
+                           os.path.join(path, 'generated_queries', 'schema_reconstruction'), '.rq')
+
         components = 0
         components_to_remove = {}
         removal_queries = {}
-        classes_insertion = ''
-        classes_where = ''
+        classes_insertion_before = ''
+        classes_insertion_after = ''
+        classes_where_before = ''
+        classes_where_after = ''
         nodes_insertion = ''
         construction_queries = None
         value_mapping_queries = None
@@ -561,7 +609,8 @@ def write_file(file_name, content, path=None, file_extension=None):
 
 
 def _add_annotation(endpoint, prefixes, variable, database_name, local_definition, predicate, class_object,
-                    classes_insertion, classes_where, nodes_insertion, components, template_file=None):
+                    classes_insertion_before, classes_insertion_after, classes_where_before, classes_where_after,
+                    nodes_insertion, components, template_file=None):
     """
     Directly add an annotation
 
@@ -572,8 +621,10 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
     :param str local_definition: variable name to annotate, e.g., biological_sex
     :param str predicate: predicate to associate with the variable
     :param str class_object: class to associate with the variable
-    :param str classes_insertion: string to insert the classes
-    :param str classes_where: string to insert the classes in the where clause
+    :param str classes_insertion_before: string to insert the classes before the variable
+    :param str classes_insertion_after: string to insert the classes after the variable
+    :param str classes_where_before: string to insert the classes in the where clause before the variable
+    :param str classes_where_after: string to insert the classes in the where clause after the variable
     :param str nodes_insertion: string to insert the nodes
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
@@ -603,8 +654,8 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
                       f'{variable_component_name} rdf:type db:{database_name}.{local_definition} .')
 
     # concatenate the insertions and where statements in a logical order
-    full_insertion = f'{classes_insertion}{variable_insertion}{nodes_insertion}'
-    full_where = f'{classes_where}{variable_where}'
+    full_insertion = f'{classes_insertion_before}{variable_insertion}{classes_insertion_after}{nodes_insertion}'
+    full_where = f'{classes_where_before}{variable_where}{classes_where_after}'
 
     # establish what components go where
     replacements = {f'{_variable_predicate} ?component0.': full_insertion,
