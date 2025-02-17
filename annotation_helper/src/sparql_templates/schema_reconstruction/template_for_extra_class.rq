@@ -23,7 +23,7 @@ INSERT {
         db:databasename.reconstructionlabel owl:equivalentClass PLACEHOLDER:reconstructionclass.
 
 
-        ?tablerow PLACEHOLDER:reconstructionpredicate ?class.
+        ?tablerow dbo:has_column ?class.
 
         ?class rdf:type db:databasename.reconstructionlabel.
 
