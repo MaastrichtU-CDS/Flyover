@@ -62,7 +62,8 @@ def main():
         logging.error("'prefixes' key not found in the settings or not provided as string, exiting.")
         sys.exit(1)
     elif len(prefixes) < 1:
-        logging.error("Prefixes are empty, exiting.")
+        logging.warning("Prefixes are empty, please note that default prefixes are limited to: "
+                        "'db', 'dbo', 'rdf', 'owl', 'roo', and 'ncit'.")
         sys.exit(1)
 
     # run annotations if specified
