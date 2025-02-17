@@ -1,0 +1,13 @@
+Data dictionary for HEAD-NECK-RADIOMICS-HN1 Clinical data		
+Field	Range	Description
+id	"characters : ""HN1[0-9][0-9][0-0]"""	This is a collection identifier number pertaining to a human subject in this dataset.
+index_tumour_location	categorical factor of 2 levels	"Location of the primary tumour, either larynx or oropharynx."
+age_at_diagnosis	numerical	The age of the subject at the time of diagnosis (date of diagnosis minus date of birth) in units of years.
+biological_sex	categorical factor of 2 levels	"The biological sex independent of stated gender, of the research subject, either male or female."
+performance_status_ecog	categorical factor of 6 levels	"The performance status according to the WHO/ECOG scale, allowed range in integers from 0-5 inclusive. Missing values are possible."
+overall_hpv_p16_status	categorical factor of 2 levels	"The presence (""positive"") or absence (""negative"") of the tumour suppressor protein p16 used as a diagnostic marker for Human Papilloma Virus-related oropharyngeal cancer, according INK4A staining. Missing values are possible, implying test not done or test result not known."
+clin_t	categorical factor of 4 levels	Clinical T staging of the disease according to the AJCC 7th Edition. Allowed values are 1-4.
+clin_n	categorical factor of 4 levels	Clinical N staging of the disease according to the AJCC 7th Edition. Allowed values are 0-3.
+clin_m	categorical factor of 2 levels	Clinical M staging of the disease according to the AJCC 7th Edition. Allowed values are 0 or 1.
+event_overall_survival	categorical factor of 2 levels	"Binary variable denoting if the subject was alive and thus censored in survival analysis (""0"") or deceased (""1"")."
+overall_survival_in_days	numerical	"The interval between the first fraction of radiotherapy to either the date of last audit if alive, or date of death if deceased, as integer number in units of days."

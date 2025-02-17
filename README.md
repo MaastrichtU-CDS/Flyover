@@ -14,7 +14,6 @@ the metadata, which can then be used to create annotations.
 For a detailed explanation and a practical example of this tool, please refer to the following published paper:
 https://academic.oup.com/bjrai/article/1/1/ubae005/7623642#445743545 (open access)
 
-
 ## Components
 
 ### 1. Data Descriptor Module
@@ -64,7 +63,7 @@ file.
 
 ##### Specification of metadata
 
-Specify the metadata in the `metadata.json` file.
+Specify the metadata in the `data_schema.json` file.
 
 The basic metadata should be in the following format; here with an example of a variable for biological sex:
 
@@ -74,9 +73,9 @@ The basic metadata should be in the following format; here with an example of a 
   "database_name": "my_database",
   "variable_info": {
     "biological_sex": {
-      "predicate": "roo:P100018",
+      "predicate": "sio:SIO_000008",
       "class": "ncit:C28421",
-      "local_definition": "geslacht"
+      "local_definition": null
   }
 }
 ```
@@ -93,10 +92,10 @@ The previous example is expanded as such
       "schema_reconstruction": [
         {
           "type": "class",
-          "predicate": "roo:hassociodemographicvariable",
+          "predicate": "sio:SIO_000235",
           "class": "mesh:D000091569",
-          "class_label": "sociodemographicClass",
-          "aesthetic_label": "Sociodemographic"
+          "class_label": "demographicClass",
+          "aesthetic_label": "Demographic"
         }
       ]
 
@@ -115,11 +114,11 @@ The previous example is expanded as such
       "value_mapping": {
         "terms": {
           "male": {
-            "local_term": "0",
+            "local_term": null,
             "target_class": "ncit:C20197"
           },
           "female": {
-            "local_term": "1",
+            "local_term": null,
             "target_class": "ncit:C16576"
           }
         }
@@ -127,7 +126,8 @@ The previous example is expanded as such
 
 #### Running the script
 
-After specifying the metadata in JSON, you can run the script with the following command from the repository folder:
+After specifying the metadata in JSON, you can fill in local terminology and run the script with the following command
+from the repository folder:
 
 ```
 python ./annotation_helper/main.py 
@@ -146,11 +146,13 @@ for those variables that were unsuccessfully annotated.
 
 ### Example data
 
-In the `example_data` folder, you can find an example of a CSV data file and JSON metadata file.
+In the `example_data` folder, you can find an example of a general data schema in `data_schema.json`
+Additionally there is data (`.csv`) and a mapping file (`.json`) of two fictitious centres
+(centre a, which uses English terminology, and centre b, which uses Dutch terminology).
 These files can be used
 to test the Data Descriptor Module and the Annotation Helper.
 Additionally, this JSON metadata contains all supported
-scenarios of  `schema_reconstruction`. The example data is a subset of the HEAD-NECK-RADIOMICS-HN1 dataset 
+scenarios of  `schema_reconstruction`. The example data is a subset of the HEAD-NECK-RADIOMICS-HN1 dataset
 (Wee, L., & Dekker, A. (2019). Data from HEAD-NECK-RADIOMICS-HN1 [Data set].
 The Cancer Imaging Archive. https://doi.org/10.7937/tcia.2019.8kap372n)
 
