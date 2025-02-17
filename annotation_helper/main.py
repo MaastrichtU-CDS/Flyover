@@ -44,16 +44,25 @@ def main():
     if isinstance(endpoint, str) is False:
         logging.error("'endpoint' key not found in the settings or not provided as string, exiting.")
         sys.exit(1)
+    elif len(endpoint) < 1:
+        logging.error("Endpoint is empty, exiting.")
+        sys.exit(1)
 
     # check for 'database_name' key existence in settings
     database = settings_content.get("database_name")
     if isinstance(database, str) is False:
         logging.error("'database' key not found in the settings or not provided as string, exiting.")
         sys.exit(1)
+    elif len(database) < 1:
+        logging.error("Database name is empty, exiting.")
+        sys.exit(1)
 
     prefixes = settings_content.get("prefixes")
     if isinstance(prefixes, str) is False:
         logging.error("'prefixes' key not found in the settings or not provided as string, exiting.")
+        sys.exit(1)
+    elif len(prefixes) < 1:
+        logging.error("Prefixes are empty, exiting.")
         sys.exit(1)
 
     # run annotations if specified
