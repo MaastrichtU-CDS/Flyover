@@ -99,10 +99,17 @@ The previous example is expanded as such
         }
       ]
 
-_Note that you can add multiple schema reconstructions, these will be added to the graph in the same order as they are
-specified (from top to bottom).
+Note that you can add multiple schema reconstructions, these will be added to the graph in the same order as they are
+specified (from top to bottom).  
+The schema reconstruction of type 'class' also takes a placement argument - either 'before' or 'after' -
+which specifies the location of the new class to be added.
+Placement defaults to 'before'.   
+'Before' refers to a class that is placed between an individual's class (e.g. a patient or participant), and the
+variable class.  
+'After' refers to a class that is placed between the variable class and the class the reconstruction itself is referring to.
+
 An example of multiple schema reconstructions for a single variable is provided in the
-example data._
+example data.
 
 ###### Specifying your value mapping
 
@@ -123,6 +130,53 @@ The previous example is expanded as such
           }
         }
       }
+
+###### Complete example of metadata for biological sex
+
+Below, we display the complete example of how the schema entry for the class 'biological_sex' could look like:
+
+    "biological_sex": {
+      "predicate": "sio:SIO_000008",
+      "class": "ncit:C28421",
+      "local_definition": null,
+      "schema_reconstruction": [
+        {
+          "type": "class",
+          "predicate": "sio:SIO_000235",
+          "class": "mesh:D000091569",
+          "class_label": "demographicClass",
+          "aesthetic_label": "Demographic"
+        },
+        {
+          "type": "class",
+          "placement": "after",
+          "predicate": "sio:SIO_000253",
+          "class": "ncit:C142529",
+          "class_label": "ehrClass",
+          "aesthetic_label": "EHR"
+        }
+      ],
+      "value_mapping": {
+        "terms": {
+          "male": {
+            "local_term": null,
+            "target_class": "ncit:C20197"
+          },
+          "female": {
+            "local_term": null,
+            "target_class": "ncit:C16576"
+          },
+          "intersex": {
+            "local_term": null,
+            "target_class": "ncit:C45908"
+          },
+          "missing_or_unspecified": {
+            "local_term": null,
+            "target_class": "ncit:C54031"
+          }
+        }
+      }
+    }
 
 #### Running the script
 
@@ -146,7 +200,7 @@ for those variables that were unsuccessfully annotated.
 
 ### Example data
 
-In the `example_data` folder, you can find an example of a general data schema in `data_schema.json`
+In the `example_data` folder, you can find an example of a general data schema in `data_schema.json`.  
 Additionally there is data (`.csv`) and a mapping file (`.json`) of two fictitious centres
 (centre a, which uses English terminology, and centre b, which uses Dutch terminology).
 These files can be used
