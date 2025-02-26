@@ -447,6 +447,28 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         annotation_success = None
 
 
+def get_unique_prefixes(query, prefixes):
+    """
+    Extract unique prefixes from the input prefixes string and the template query.
+
+    :param str query: The template query containing existing prefixes.
+    :param str prefixes: The input prefixes string.
+    :return: A string of unique prefixes.
+    """
+    # Extract prefixes from the template query
+    template_prefixes = set()
+    for line in query.split('\n'):
+        if line.startswith('PREFIX'):
+            template_prefixes.add(line)
+
+    # Extract prefixes from the input prefixes string
+    input_prefixes = set(prefixes.split('\n'))
+
+    # Only add prefixes that are not already in the template
+    unique_prefixes = input_prefixes - template_prefixes
+    return '\n'.join(unique_prefixes)
+
+
 def add_mapping(endpoint, prefixes, variable, super_class, value_map):
     """
     add a mapping between various classes
@@ -639,6 +661,7 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # the classes should precede the variable if present
     if components > 0:
@@ -699,6 +722,7 @@ def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, temp
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # Create a dictionary to store the prefixes and their URIs
     prefix_to_uri = {prefix.split()[1][:-1]: prefix.split()[2][1:-1] for prefix in prefixes.split('\n') if prefix}
@@ -772,6 +796,7 @@ def _check_for_data_class(endpoint, database_name, prefixes, class_label, templa
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the placeholders
     replacements = {_database: database_name,
@@ -809,6 +834,7 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the placeholders
     replacements = {_variable_predicate: predicate,
@@ -857,6 +883,7 @@ def _construct_extra_class(endpoint, database_name, prefixes, class_label, class
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the components
     replacements = {_database: database_name,
@@ -906,6 +933,7 @@ def _construct_extra_node(endpoint, database_name, prefixes, node_label, node_cl
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the components
     replacements = {_database: database_name,
@@ -952,6 +980,7 @@ def _remove_component(endpoint, database_name, prefixes, local_variable, compone
 
     # retrieve the mapping template
     query = read_file(template_file)
+    prefixes = get_unique_prefixes(query, prefixes)
 
     # replace components
     replacements = {_database: database_name,
