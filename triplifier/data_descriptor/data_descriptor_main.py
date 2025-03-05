@@ -266,9 +266,39 @@ def retrieve_columns():
     # Get the global variable names for the description drop-down menu
     global_names = retrieve_global_names()
 
-    # Render the 'categories.html' template with the dictionary of dataframes and the global variable names
+    # Create dictionaries to store preselected values
+    preselected_descriptions = {}
+    preselected_datatypes = {}
+
+    # If a global schema exists and contains variable_info
+    if isinstance(session_cache.global_schema, dict) and 'variable_info' in session_cache.global_schema:
+        for var_name, var_info in session_cache.global_schema['variable_info'].items():
+            for db in unique_values:  # For each database
+                # Match by local_definition if available
+                local_def = var_info.get('local_definition', var_name)
+                key = f"{db}_{local_def}"
+                preselected_descriptions[key] = var_name.capitalize().replace('_', ' ')
+                if 'data_type' in var_info:
+                    preselected_datatypes[key] = var_info['data_type']
+
+                # Match by column name variations
+                variations = [
+                    var_name,
+                    var_name.lower(),
+                    var_name.replace('_', ''),
+                    var_name.replace('_', ' '),
+                ]
+                for variation in variations:
+                    key_variation = f"{db}_{variation}"
+                    if key_variation not in preselected_descriptions and 'data_type' in var_info:
+                        preselected_datatypes[key_variation] = var_info['data_type']
+
+    # Render the 'categories.html' template with all the necessary data
     return render_template('categories.html',
-                           dataframes=dataframes, global_variable_names=global_names)
+                           dataframes=dataframes,
+                           global_variable_names=global_names,
+                           preselected_descriptions=preselected_descriptions,
+                           preselected_datatypes=preselected_datatypes)
 
 
 @app.route("/units", methods=['POST'])
@@ -350,6 +380,7 @@ def variable_details():
         flask.render_template: A Flask function that renders the 'variable-details.html' template.
     """
     dataframes = {}
+    preselected_values = {}
 
     # Iterate over the items in the dictionary
     for database, variables in session_cache.DescriptiveInfoDetails.items():
@@ -366,11 +397,34 @@ def variable_details():
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
-                    # Iterate over the categories
-                    for category in categories:
-                        # Add a row to the dataframe for each category with
-                        # the column name as the variable name and the value as the category
-                        rows.append({'column': var_name, 'value': category})
+                    # Get global variable name (removing the local name in parentheses)
+                    global_var = var_name.split(' (or')[0].lower().replace(' ', '_')
+
+                    # If this variable exists in the global schema
+                    if isinstance(session_cache.global_schema, dict):
+                        var_info = session_cache.global_schema['variable_info'].get(global_var, {})
+                        value_mapping = var_info.get('value_mapping', {}).get('terms', {})
+
+                        # Iterate over the categories
+                        for category in categories:
+                            # Find matching term in value_mapping
+                            matching_term = None
+                            category_value = category.get('value')
+
+                            for term, term_info in value_mapping.items():
+                                local_term = term_info.get('local_term')
+                                # Convert both to strings for comparison
+                                if str(local_term) == str(category_value):
+                                    matching_term = term.title().replace('_', ' ')
+                                    break
+
+                            # Add preselected value to dictionary
+                            if matching_term:
+                                key = f"{database}_{var_info.get('local_definition', '')}_category_\"{category.get('value')}\""
+                                preselected_values[key] = matching_term
+
+                            # Add a row to the dataframe
+                            rows.append({'column': var_name, 'value': category})
 
         # Convert the list of rows to a dataframe
         df = pd.DataFrame(rows)
@@ -383,8 +437,10 @@ def variable_details():
     else:
         variable_info = {}
 
-    return render_template('units.html', dataframes=dataframes,
-                           global_variable_info=variable_info)
+    return render_template('units.html',
+                           dataframes=dataframes,
+                           global_variable_info=variable_info,
+                           preselected_values=preselected_values)
 
 
 @app.route("/end", methods=['GET', 'POST'])

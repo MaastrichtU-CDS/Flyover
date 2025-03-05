@@ -4,11 +4,13 @@
   "prefixes": "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>\nPREFIX sio: <http://semanticscience.org/resource/>\n",
   "variable_info": {
     "identifier": {
+      "data_type": "Identifier",
       "predicate": "sio:SIO_000673 ",
       "class": "ncit:C25364",
       "local_definition": "id"
     },
     "biological_sex": {
+      "data_type": "Categorical Nominal",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C28421",
       "local_definition": "biological_sex",
@@ -47,6 +49,7 @@
       }
     },
     "age_at_diagnosis": {
+      "data_type": "Continuous",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C156420",
       "local_definition": "age_at_diagnosis",

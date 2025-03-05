@@ -10,6 +10,10 @@
     <meta charset="UTF-8">
     <title>Flyover | Variable description</title>
     <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
         .toggle-button {
             cursor: pointer;
             display: inline-block;
@@ -17,13 +21,13 @@
             background: none;
             font-size: 1.56rem;
             line-height: 1;
-            color: inherit;
+            color: #007bff;
             float: right;
         }
 
         .content {
             width: 100%;
-            transition: max-height 0.2s ease-out;
+            transition: max-height 0.5s ease-out;
             max-height: 0;
             overflow-y: auto;
         }
@@ -36,7 +40,55 @@
             outline: none;
         }
 
+        /* Pagination styles */
+        .column-group {
+            display: none;
+        }
 
+        .column-group.active {
+            display: block;
+        }
+
+        .pagination-controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .pagination-controls button {
+            padding: 5px 15px;
+            margin: 0 5px;
+            border: none;
+            background-color: transparent;
+            color: #007bff;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .pagination-controls button:hover {
+            transform: scale(1.2);
+        }
+
+        .pagination-controls button:disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .page-indicator {
+            margin: 0 10px;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+            border-color: #004085;
+        }
     </style>
 </head>
 
@@ -60,85 +112,116 @@
             <button class="toggle-button" type="button">
                 <span class="toggle-text">Show more</span>
                 <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
-                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5-12.5-32.8-12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
                 </svg>
             </button>
             <div class="content hidden">
-                {% for item in df['column'].tolist() %}
-                    <div id="div1" class="form-group">
-                        <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
-                        <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
-                                class="selectpicker" , data-live-search="true">
-                            <option value="">Data type</option>
-                            <option value="Categorical Ordinal">Categorical Ordinal</option>
-                            <option value="Categorical Nominal">Categorical Nominal</option>
-                            <option value="Continuous">Continuous</option>
-                            <option value="Identifier">Identifier</option>
-                        </select>
-                        <label for="ncit_comment_{{ database }}_{{ item }}"></label>
-                        <select id="ncit_comment_{{ database }}_{{ item }}"
-                                name="ncit_comment_{{ database }}_{{ item }}"
-                                class="selectpicker" , data-live-search="true">
-                            {% if global_variable_names %}
-                                <option value="">Description</option>
-                                {% for value in global_variable_names %}
-                                    <option>{{ value }}</option>
-                                {% endfor %}
-                            {% else %}
-                                <option value="">Description</option>
-                                <option value="Patient Identifier">Patient Identifier</option>
-                                <option value="Age">Age</option>
-                                <option value="Gender">Gender</option>
-                                <option value="T Stage">T Stage</option>
-                                <option value="N Stage">N Stage</option>
-                                <option value="M Stage">M Stage</option>
-                                <option value="HPV Status">HPV Status</option>
-                                <option value="ASA Score">ASA Score</option>
-                                <option value="WHO/ECOG Status">WHO/ECOG Status</option>
-                                <option value="AJCC Stage">AJCC Stage</option>
-                                <option value="Tumour Site">Tumour Site</option>
-                                <option value="Metastasis">Metastasis</option>
-                                <option value="Metastasis Days">Metastasis Days</option>
-                                <option value="Event Recurrence">Event Recurrence</option>
-                                <option value="Event Recurrence Days">Event Recurrence Days</option>
-                                <option value="Local Recurrence">Local Recurrence</option>
-                                <option value="Local Recurrence Days">Local Recurrence Days</option>
-                                <option value="Regional Recurrence">Regional Recurrence</option>
-                                <option value="Regional Recurrence Days">Regional Recurrence Days</option>
-                                <option value="Event Survival">Event Survival</option>
-                                <option value="Overall Survival Days">Overall Survival Days</option>
-                                <option value="Surgery">Surgery</option>
-                                <option value="Chemotherapy">Chemotherapy</option>
-                                <option value="Radiotherapy time">Radiotherapy treatment time</option>
-                                <option value="RT Total Dose">RT Total Dose</option>
-                                <option value="RT Dose per fraction">RT Dose per fraction</option>
-                                <option value="RT Fractions">RT Fractions</option>
-                                <option value="Other">Other</option>
-                            {% endif %}
-                        </select>
-                        <label for="comment_{{ database }}_{{ item }}"></label>
-                        <input class="form-group" type="text" id="comment_{{ database }}_{{ item }}"
-                               name="comment_{{ database }}_{{ item }}"
-                               placeholder="If other, please specify" disabled='disabled'/><br>
-                        <script>
-                            $(document).ready(function () {
-                                $("#ncit_comment_{{ database }}_{{ item }}").change(function () {
-                                    if ($(this).find("option:selected").val() == "Other") {
-                                        $("#comment_{{ database }}_{{ item }}").removeAttr("disabled")
-                                    } else {
-                                        $("#comment_{{ database }}_{{ item }}").attr("disabled", "disabled")
-                                    }
-                                });
-                            });
-                        </script>
+                {% set columns = df['column'].tolist() %}
+                {% set total_groups = ((columns|length + 9) // 10)|int %}
+
+                {% for group_index in range(total_groups) %}
+                    <div class="column-group {% if group_index == 0 %}active{% endif %}" id="group-{{ database }}-{{ group_index }}">
+                        {% for i in range(group_index * 10, [group_index * 10 + 10, columns|length]|min) %}
+                            {% set item = columns[i] %}
+                            <div id="div1" class="form-group">
+                                <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
+                                <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
+                                        class="selectpicker" data-live-search="true">
+                                    <option value="">Data type</option>
+                                    <option value="Categorical Ordinal"
+                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Categorical Ordinal' %}selected{% endif %}>
+                                        Categorical Ordinal
+                                    </option>
+                                    <option value="Categorical Nominal"
+                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Categorical Nominal' %}selected{% endif %}>
+                                        Categorical Nominal
+                                    </option>
+                                    <option value="Continuous"
+                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Continuous' %}selected{% endif %}>
+                                        Continuous
+                                    </option>
+                                    <option value="Identifier"
+                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Identifier' %}selected{% endif %}>
+                                        Identifier
+                                    </option>
+                                </select>
+                                <label for="ncit_comment_{{ database }}_{{ item }}"></label>
+                                <select id="ncit_comment_{{ database }}_{{ item }}"
+                                        name="ncit_comment_{{ database }}_{{ item }}"
+                                        class="selectpicker" data-live-search="true">
+                                    {% if global_variable_names %}
+                                        <option value="">Description</option>
+                                        {% for value in global_variable_names %}
+                                            <option {% if preselected_descriptions and preselected_descriptions.get(database ~ '_' ~ item) == value %}selected{% endif %}>
+                                                {{ value }}
+                                            </option>
+                                        {% endfor %}
+                                    {% else %}
+                                        <option value="">Description</option>
+                                        <option value="Patient Identifier">Patient Identifier</option>
+                                        <option value="Age">Age</option>
+                                        <option value="Gender">Gender</option>
+                                        <option value="T Stage">T Stage</option>
+                                        <option value="N Stage">N Stage</option>
+                                        <option value="M Stage">M Stage</option>
+                                        <option value="HPV Status">HPV Status</option>
+                                        <option value="ASA Score">ASA Score</option>
+                                        <option value="WHO/ECOG Status">WHO/ECOG Status</option>
+                                        <option value="AJCC Stage">AJCC Stage</option>
+                                        <option value="Tumour Site">Tumour Site</option>
+                                        <option value="Metastasis">Metastasis</option>
+                                        <option value="Metastasis Days">Metastasis Days</option>
+                                        <option value="Event Recurrence">Event Recurrence</option>
+                                        <option value="Event Recurrence Days">Event Recurrence Days</option>
+                                        <option value="Local Recurrence">Local Recurrence</option>
+                                        <option value="Local Recurrence Days">Local Recurrence Days</option>
+                                        <option value="Regional Recurrence">Regional Recurrence</option>
+                                        <option value="Regional Recurrence Days">Regional Recurrence Days</option>
+                                        <option value="Event Survival">Event Survival</option>
+                                        <option value="Overall Survival Days">Overall Survival Days</option>
+                                        <option value="Surgery">Surgery</option>
+                                        <option value="Chemotherapy">Chemotherapy</option>
+                                        <option value="Radiotherapy time">Radiotherapy treatment time</option>
+                                        <option value="RT Total Dose">RT Total Dose</option>
+                                        <option value="RT Dose per fraction">RT Dose per fraction</option>
+                                        <option value="RT Fractions">RT Fractions</option>
+                                        <option value="Other">Other</option>
+                                    {% endif %}
+                                </select>
+                                <label for="comment_{{ database }}_{{ item }}"></label>
+                                <input class="form-group" type="text" id="comment_{{ database }}_{{ item }}"
+                                       name="comment_{{ database }}_{{ item }}"
+                                       placeholder="If other, please specify" disabled='disabled'/><br>
+                                <script>
+                                    $(document).ready(function () {
+                                        $("#ncit_comment_{{ database }}_{{ item }}").change(function () {
+                                            if ($(this).find("option:selected").val() == "Other") {
+                                                $("#comment_{{ database }}_{{ item }}").removeAttr("disabled");
+                                            } else {
+                                                $("#comment_{{ database }}_{{ item }}").attr("disabled", "disabled");
+                                            }
+                                        });
+                                    });
+                                </script>
+                            </div>
+                        {% endfor %}
                     </div>
                 {% endfor %}
+
+                {% if total_groups > 1 %}
+                    <div class="pagination-controls">
+                        <button type="button" class="prev-btn" onclick="changePage('{{ database }}', -1)" disabled>&#x2190;</button>
+                        <span class="page-indicator">Page <span id="current-page-{{ database }}">1</span> of {{ total_groups }}</span>
+                        <button type="button" class="next-btn" onclick="changePage('{{ database }}', 1)">&#x2192;</button>
+                    </div>
+                {% endif %}
             </div>
             <hr>
         {% endfor %}
 
-        <p><input type="submit" value="Submit" class="btn btn-primary"></p>
+        <p><input type="submit" id="submitBtn" value="Submit" class="btn btn-primary" disabled></p>
     </form>
+
     <script>
         $(document).ready(function () {
             $('.toggle-button').click(function () {
@@ -146,10 +229,10 @@
                 var svgElement = $(this).find('.angle-icon path');
                 if (textElement.text() === 'Show more') {
                     textElement.text('Show less');
-                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z'); // SVG path for angle down
+                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
                 } else {
                     textElement.text('Show more');
-                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z'); // SVG path for angle up
+                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
                 }
                 $(this).toggleClass('open');
                 $(this).next('.content').toggleClass('active');
@@ -168,6 +251,56 @@
                 toggleContent.height('auto');
                 toggleContent.css('overflow-y', 'auto');
             });
+
+            // Initialize bootstrap-select
+            $('.selectpicker').each(function() {
+                $(this).selectpicker('refresh');
+            });
+        });
+
+        function changePage(database, direction) {
+            const groups = document.querySelectorAll(`[id^="group-${database}-"]`);
+            const currentPage = parseInt(document.getElementById(`current-page-${database}`).textContent);
+            const totalPages = groups.length;
+            const newPage = currentPage + direction;
+
+            if (newPage >= 1 && newPage <= totalPages) {
+                // Hide current group
+                document.getElementById(`group-${database}-${currentPage-1}`).classList.remove('active');
+                // Show new group
+                document.getElementById(`group-${database}-${newPage-1}`).classList.add('active');
+                // Update page number
+                document.getElementById(`current-page-${database}`).textContent = newPage;
+
+                // Update button states
+                const prevBtn = document.querySelector(`#group-${database}-${newPage-1}`).parentElement.querySelector('.prev-btn');
+                const nextBtn = document.querySelector(`#group-${database}-${newPage-1}`).parentElement.querySelector('.next-btn');
+                prevBtn.disabled = newPage === 1;
+                nextBtn.disabled = newPage === totalPages;
+            }
+        }
+        // Function to check if any description is selected
+        function checkDescriptions() {
+            let hasSelection = false;
+
+            // Check preselected descriptions
+            $('.selectpicker[id^="ncit_comment_"]').each(function() {
+                if ($(this).val() && $(this).val() !== '') {
+                    hasSelection = true;
+                    return false; // break the loop
+                }
+            });
+
+            // Enable/disable submit button based on selection
+            $('#submitBtn').prop('disabled', !hasSelection);
+        }
+
+        // Check on page load (for preselected values)
+        checkDescriptions();
+
+        // Check whenever a description is selected
+        $('.selectpicker[id^="ncit_comment_"]').on('changed.bs.select', function() {
+            checkDescriptions();
         });
     </script>
 </div>

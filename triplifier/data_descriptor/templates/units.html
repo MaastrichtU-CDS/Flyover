@@ -17,7 +17,7 @@
             background: none;
             font-size: 1.56rem;
             line-height: 1;
-            color: inherit;
+            color: #007bff;
             float: right;
         }
 
@@ -28,7 +28,7 @@
             background: none;
             font-size: 0.91rem;
             line-height: 1;
-            color: inherit;
+            color: #007bff;
             float: right;
         }
 
@@ -124,10 +124,12 @@
                                 <hr>
 
                                 {% for value_dict in df[df['column'] == item]['value'].tolist() %}
+                                    {% set value = value_dict.get('value') if value_dict is mapping else value_dict %}
+                                    {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
 
-                                    <label for="{{ database }}_{{ item }}_{{ value_dict['value'] }}"
+                                   <label for="{{ database }}_{{ item }}_{{ value_dict['value'] }}"
                                            class="col-lg-4 control-label">&nbsp;&nbsp;
-                                        {% if value_dict['value'] %}
+                                        {% if value_dict['value'] is not none and value_dict['value'] != '' %}
                                             {{ value_dict['value'] }} (counted: {{ value_dict['count'] }})
                                         {% else %}
                                             Empty cells (counted: {{ value_dict['count'] }})
@@ -140,7 +142,9 @@
                                         {% if item_info and 'value_mapping' in item_info %}
                                             <option value="">Description</option>
                                             {% for value in item_info.get('value_mapping').get('terms').keys() %}
-                                                <option>{{ value.title().replace('_', ' ') }}</option>
+                                                <option {% if preselected == value.title().replace('_', ' ') %}selected{% endif %}>
+                                                    {{ value.title().replace('_', ' ') }}
+                                                </option>
                                             {% endfor %}
                                             <option value="Other">Other</option>
                                         {% else %}
