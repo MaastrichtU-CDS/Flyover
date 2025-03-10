@@ -128,22 +128,13 @@
                                 <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
                                         class="selectpicker" data-live-search="true">
                                     <option value="">Data type</option>
-                                    <option value="Categorical Ordinal"
-                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Categorical Ordinal' %}selected{% endif %}>
-                                        Categorical Ordinal
-                                    </option>
-                                    <option value="Categorical Nominal"
-                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Categorical Nominal' %}selected{% endif %}>
-                                        Categorical Nominal
-                                    </option>
-                                    <option value="Continuous"
-                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Continuous' %}selected{% endif %}>
-                                        Continuous
-                                    </option>
-                                    <option value="Identifier"
-                                            {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == 'Identifier' %}selected{% endif %}>
-                                        Identifier
-                                    </option>
+                                    {% set datatype_options = ['Categorical Ordinal', 'Categorical Nominal', 'Continuous', 'Identifier'] %}
+                                    {% for option in datatype_options %}
+                                        <option value="{{ option }}"
+                                                {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
+                                            {{ option }}
+                                        </option>
+                                    {% endfor %}
                                 </select>
                                 <label for="ncit_comment_{{ database }}_{{ item }}"></label>
                                 <select id="ncit_comment_{{ database }}_{{ item }}"

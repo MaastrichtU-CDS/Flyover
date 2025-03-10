@@ -279,7 +279,9 @@ def retrieve_columns():
                 key = f"{db}_{local_def}"
                 preselected_descriptions[key] = var_name.capitalize().replace('_', ' ')
                 if 'data_type' in var_info:
-                    preselected_datatypes[key] = var_info['data_type']
+                    datatype = var_info['data_type'].lower()
+                    words = datatype.split()
+                    preselected_datatypes[key] = ' '.join(word.capitalize() for word in words)
 
                 # Match by column name variations
                 variations = [
@@ -291,7 +293,9 @@ def retrieve_columns():
                 for variation in variations:
                     key_variation = f"{db}_{variation}"
                     if key_variation not in preselected_descriptions and 'data_type' in var_info:
-                        preselected_datatypes[key_variation] = var_info['data_type']
+                        datatype = var_info['data_type'].lower()
+                        words = datatype.split()
+                        preselected_datatypes[key_variation] = ' '.join(word.capitalize() for word in words)
 
     # Render the 'categories.html' template with all the necessary data
     return render_template('categories.html',
