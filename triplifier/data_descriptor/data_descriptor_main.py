@@ -29,7 +29,7 @@ else:
     # Assume it is not running in Docker
     graphdb_url = 'http://localhost:7200'
     repo = 'userRepo'
-    app.config["DEBUG"] = False
+    app.config["DEBUG"] = True
     root_dir = ''
     child_dir = '.'
 
@@ -700,7 +700,7 @@ def custom_static(filename):
         To serve a CSS file located at 'triplifier/data_descriptor/assets/css/bootstrap.min.css',
         you would access it via the URL '/data_descriptor/assets/css/bootstrap.min.css'.
     """
-    return send_from_directory(f'{root_dir}/{child_dir}/assets', filename)
+    return send_from_directory(f'{root_dir}{child_dir}/assets', filename)
 
 
 def allowed_file(filename, allowed_extensions):
