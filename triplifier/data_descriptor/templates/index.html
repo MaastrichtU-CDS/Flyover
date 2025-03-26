@@ -48,18 +48,16 @@
 
         <div id="csvform" style="display: none;">
             <hr>
-            <label for="csvPath">Please specify the path of the CSV file you would like to process</label>
+            <label for="csvPath">Please specify the path of the CSV file(s) you would like to process</label>
             <br>
-            <input type="text" id="csvPath" name="csvPath" placeholder="Enter CSV File Path">
+            <input type="text" id="csvPath" name="csvPath" placeholder="Enter CSV File Path(s)" readonly>
             <input type="button" class="btn btn-primary" value="..."
                    onclick="document.getElementById('csvFile').click();">
-            <input type="file" id="csvFile" name="csvFile" style="display:none;" onchange="updateFilePath(this)">
+            <input type="file" id="csvFile" name="csvFile" style="display:none;" multiple accept=".csv" onchange="updateFilePaths(this)">
             <input type="text" id="csv_separator_sign" name="csv_separator_sign" placeholder="Separator sign (defaults to ',')"
                    style="width: 250px; margin-left: 10px;">
             <input type="text" id="csv_decimal_sign" name="csv_decimal_sign" placeholder="Decimal sign (defaults to '.')"
                    style="width: 250px; margin-left: 10px;">
-
-
         </div>
 
         <div id="postgresform" style="display: none;">
@@ -87,7 +85,7 @@
             <input type="text" id="jsonPath" name="jsonPath" placeholder="Enter JSON File Path">
             <input type="button" id="jsonFileButton" class="btn btn-primary" value="..."
                    onclick="document.getElementById('jsonFile').click();">
-            <input type="file" id="jsonFile" name="jsonFile" style="display:none;" onchange="updateFilePath(this)">
+            <input type="file" id="jsonFile" name="jsonFile" style="display:none;" accept=".json" onchange="updateFilePath(this)">
         </div>
         <input type="submit" id="submitFilesButton" value="Submit Files" class="btn btn-primary">
 
@@ -117,7 +115,7 @@
                 <input type="text" id="jsonPath2" name="jsonPath2" placeholder="Enter JSON File Path">
                 <input type="button" id="jsonFile2Button" class="btn btn-primary" value="..."
                        onclick="document.getElementById('jsonFile2').click();">
-                <input type="file" id="jsonFile2" name="jsonFile2" style="display:none;"
+                <input type="file" id="jsonFile2" name="jsonFile2" style="display:none;" accept=".json"
                        onchange="updateFilePath(this)">
             </div>
             <br>
@@ -128,6 +126,14 @@
 </div>
 
 <script>
+
+    function updateFilePaths(input) {
+        let filePaths = [];
+        for (let i = 0; i < input.files.length; i++) {
+            filePaths.push(input.files[i].name);
+        }
+        document.getElementById('csvPath').value = filePaths.join(', ');
+    }
 
     function updateFilePath(input) {
         var fullPath = input.value;

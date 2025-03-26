@@ -91,11 +91,11 @@ def upload_file():
     It accepts JSON and CSV files, and also handles data from a PostgreSQL database.
 
     The function works as follows:
-    1. It retrieves the file type, JSON file, and CSV file from the form data.
+    1. It retrieves the file type, JSON file, and CSV files from the form data.
     2. If a JSON file is provided and its file extension is allowed, it uploads and saves the file,
      and stores the file path in the session cache.
-    3. If the file type is 'CSV' and a CSV file is provided and its file extension is allowed,
-    it uploads and saves the file, stores the file path in the session cache, and runs the triplifier.
+    3. If the file type is 'CSV' and CSV files are provided and their file extensions are allowed,
+    it uploads and saves the files, stores the file paths in the session cache, and runs the triplifier.
     4. If the file type is 'Postgres', it handles the PostgreSQL data using the provided username, password, URL,
      database name, and table name, and runs the triplifier.
     5. It returns a response indicating whether the triplifier run was successful.
@@ -107,7 +107,7 @@ def upload_file():
     upload = True
     file_type = request.form.get('fileType')
     json_file = request.files.get('jsonFile') or request.files.get('jsonFile2')
-    csv_file = request.files.get('csvFile')
+    csv_files = request.files.getlist('csvFile')
 
     if json_file:
         if not allowed_file(json_file.filename, {'json'}):
@@ -126,10 +126,16 @@ def upload_file():
             flash(f"Unexpected error attempting to cache the global schema file, error: {e}")
             return render_template('index.html', error=True)
 
-    if file_type == 'CSV' and csv_file:
-        if allowed_file(csv_file.filename, {'csv'}) is False:
+    if file_type == 'CSV' and csv_files:
+        # Check if any CSV file has a filename
+        if not any(csv_file.filename for csv_file in csv_files):
             flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
             return render_template('index.html', error=True)
+
+        for csv_file in csv_files:
+            if allowed_file(csv_file.filename, {'csv'}) is False:
+                flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
+                return render_template('index.html', error=True)
 
         try:
             separator_sign = str(request.form.get('csv_separator_sign'))
@@ -140,18 +146,21 @@ def upload_file():
             if len(decimal_sign) == 0:
                 decimal_sign = '.'
 
-            session_cache.csvData = pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)
+            session_cache.csvData = []
+            for csv_file in csv_files:
+                session_cache.csvData.append(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign))
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
             return render_template('index.html', error=True)
 
-        session_cache.csvPath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename))
+        session_cache.csvPath = [os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename)) for csv_file in csv_files]
         try:
             success, message = run_triplifier('triplifierCSV.properties')
         finally:
-            if os.path.exists(session_cache.csvPath):
-                os.remove(session_cache.csvPath)
+            for path in session_cache.csvPath:
+                if os.path.exists(path):
+                    os.remove(path)
 
     elif file_type == 'Postgres':
         handle_postgres_data(request.form.get('username'), request.form.get('password'),
@@ -159,7 +168,7 @@ def upload_file():
                              request.form.get('table'))
         success, message = run_triplifier('triplifierSQL.properties')
 
-    elif json_file and file_type != 'Postgres' and not csv_file:
+    elif json_file and file_type != 'Postgres' and not any(csv_file.filename for csv_file in csv_files):
         success = True
         upload = False
         message = Markup("You have opted to not submit any new data, "
@@ -167,7 +176,7 @@ def upload_file():
                          "<br>"
                          "<i>In case you do wish to submit data, please return to the welcome page.</i>")
 
-    elif not json_file and file_type != 'Postgres' and not csv_file:
+    elif not json_file and file_type != 'Postgres' and not any(csv_file.filename for csv_file in csv_files):
         success = True
         upload = False
         message = Markup("You have opted to not submit any new data, "
@@ -335,6 +344,8 @@ def retrieve_descriptive_info():
     for database in session_cache.databases:
         session_cache.DescriptiveInfoDetails[database] = []
         session_cache.descriptive_info[database] = {}
+
+        # TODO improve database name handling; e.g. using database_2025_a and database_2025 combined will cause issues
         for local_variable_name in request.form:
             if (not re.search("^ncit_comment_", local_variable_name) and
                     not any(db in local_variable_name for db in session_cache.databases if db != database)):
@@ -1035,7 +1046,9 @@ def run_triplifier(properties_file=None):
             if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
                 return False, "Unable to temporarily save the CSV file: no write access to the application folder."
 
-            session_cache.csvData.to_csv(session_cache.csvPath, index=False, sep=',', decimal='.', encoding='utf-8')
+            for i, csv_data in enumerate(session_cache.csvData):
+                csv_path = session_cache.csvPath[i]
+                csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
 
         process = subprocess.Popen(
             f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
