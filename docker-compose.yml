@@ -1,10 +1,7 @@
-version: '3.8'
-
 services:
   rdf-store:
-    build:
-      context: ./graphdb
-    ports: 
+    image: ontotext/graphdb:10.7.4
+    ports:
       - "7200:7200"
     volumes:
       - ./graphdb/data:/opt/graphdb/home
@@ -21,15 +18,15 @@ services:
       context: ./triplifier
       #dockerfile: Dockerfile
     ports:
-      - 8881:8888
-      - 8050:8050
-      - 5000:5000
-    #environment:
-    #  - JUPYTER_TOKEN=flyover-1
+      - "5000:5000"
+    environment:
+      - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
+      - FLYOVER_REPOSITORY_NAME=userRepo
     hostname: "data.local"
     networks:
       - proxynet
+    container_name: triplifier
 
 networks:
   proxynet:
-    name: custom_network
+    name: flyover_network

@@ -15,20 +15,32 @@ from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
 
-graphdb_url = "http://rdf-store:7200"
-
 app = Flask(__name__)
+
+if os.getenv('FLYOVER_GRAPHDB_URL') and os.getenv('FLYOVER_REPOSITORY_NAME'):
+    # Assume it is running in Docker
+    graphdb_url = os.getenv('FLYOVER_GRAPHDB_URL')
+    repo = os.getenv('FLYOVER_REPOSITORY_NAME')
+    app.config["DEBUG"] = False
+    root_dir = '/app/'
+    child_dir = 'data_descriptor'
+else:
+    # Assume it is not running in Docker
+    graphdb_url = 'http://localhost:7200'
+    repo = 'userRepo'
+    app.config["DEBUG"] = False
+    root_dir = ''
+    child_dir = '.'
+
 app.secret_key = "secret_key"
-# enable debugging mode
-app.config["DEBUG"] = False
-app.config['UPLOAD_FOLDER'] = os.path.join('data_descriptor', 'static', 'files')
+app.config['UPLOAD_FOLDER'] = os.path.join(child_dir, 'static', 'files')
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 
 class Cache:
     def __init__(self):
-        self.repo = 'userRepo'
+        self.repo = repo
         self.file_path = None
         self.table = None
         self.url = None
@@ -154,7 +166,8 @@ def upload_file():
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
             return render_template('index.html', error=True)
 
-        session_cache.csvPath = [os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename)) for csv_file in csv_files]
+        session_cache.csvPath = [os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename)) for
+                                 csv_file in csv_files]
         try:
             success, message = run_triplifier('triplifierCSV.properties')
         finally:
@@ -194,11 +207,13 @@ def upload_file():
         if upload:
             # Upload files to GraphDB
             subprocess.run(
-                ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary", "@/app/ontology.owl",
-                 f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://ontology.local/"])
+                ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary",
+                 f"@{root_dir}ontology.owl",
+                 f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"])
             subprocess.run(
-                ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary", "@/app/output.ttl",
-                 f"{graphdb_url}/repositories/userRepo/rdf-graphs/service?graph=http://data.local/"])
+                ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary",
+                 f"@{root_dir}output.ttl",
+                 f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"])
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for('data_submission'))
@@ -972,14 +987,14 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         return render_template('index.html', error=True)
 
     # Write connection details to properties file
-    with open("/app/data_descriptor/triplifierSQL.properties", "w") as f:
+    with open(f"{root_dir}{child_dir}/triplifierSQL.properties", "w") as f:
         f.write(f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
                 f"jdbc.user = {session_cache.username}\n"
                 f"jdbc.password = {session_cache.password}\n"
                 f"jdbc.driver = org.postgresql.Driver\n\n"
                 f"repo.type = rdf4j\n"
                 f"repo.url = {graphdb_url}\n"
-                f"repo.id = userRepo")
+                f"repo.id = {repo}")
 
 
 def insert_equivalencies(descriptive_info, variable):
@@ -1046,16 +1061,51 @@ def run_triplifier(properties_file=None):
             if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
                 return False, "Unable to temporarily save the CSV file: no write access to the application folder."
 
+            # Allow easier debugging outside Docker
+            if len(root_dir) == 0 and child_dir == '.':
+                # Read the properties file and replace the jdbc.url line
+                with open('triplifierCSV.properties', "r") as f:
+                    lines = f.readlines()
+
+                modified_lines = [
+                    line.replace(
+                        "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv",
+                        "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv"
+                    ) for line in lines
+                ]
+
+                # Write the modified content back to the properties file
+                with open('triplifierCSV.properties', "w") as f:
+                    f.writelines(modified_lines)
+
             for i, csv_data in enumerate(session_cache.csvData):
                 csv_path = session_cache.csvPath[i]
                 csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
 
         process = subprocess.Popen(
-            f"java -jar /app/data_descriptor/javaTool/triplifier.jar -p /app/data_descriptor/{properties_file}",
+            f"java -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}",
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         output, _ = process.communicate()
         print(output.decode())
+
+        if properties_file == 'triplifierCSV.properties':
+            # Allow easier debugging outside Docker
+            if len(root_dir) == 0 and child_dir == '.':
+                # Read the properties file and replace the jdbc.url line
+                with open('triplifierCSV.properties', "r") as f:
+                    lines = f.readlines()
+
+                modified_lines = [
+                    line.replace(
+                        "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv",
+                        "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv"
+                    ) for line in lines
+                ]
+
+                # Write the modified content back to the properties file
+                with open('triplifierCSV.properties', "w") as f:
+                    f.writelines(modified_lines)
 
         if process.returncode == 0:
             return True, Markup("The data you have submitted was triplified successfully and "
