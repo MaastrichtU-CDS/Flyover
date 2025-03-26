@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
-<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.bundle.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<script src="{{ url_for('custom_static', filename='js/jquery-3.5.1.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -53,10 +53,13 @@
             <input type="text" id="csvPath" name="csvPath" placeholder="Enter CSV File Path(s)" readonly>
             <input type="button" class="btn btn-primary" value="..."
                    onclick="document.getElementById('csvFile').click();">
-            <input type="file" id="csvFile" name="csvFile" style="display:none;" multiple accept=".csv" onchange="updateFilePaths(this)">
-            <input type="text" id="csv_separator_sign" name="csv_separator_sign" placeholder="Separator sign (defaults to ',')"
+            <input type="file" id="csvFile" name="csvFile" style="display:none;" multiple accept=".csv"
+                   onchange="updateFilePaths(this)">
+            <input type="text" id="csv_separator_sign" name="csv_separator_sign"
+                   placeholder="Separator sign (defaults to ',')"
                    style="width: 250px; margin-left: 10px;">
-            <input type="text" id="csv_decimal_sign" name="csv_decimal_sign" placeholder="Decimal sign (defaults to '.')"
+            <input type="text" id="csv_decimal_sign" name="csv_decimal_sign"
+                   placeholder="Decimal sign (defaults to '.')"
                    style="width: 250px; margin-left: 10px;">
         </div>
 
@@ -85,7 +88,8 @@
             <input type="text" id="jsonPath" name="jsonPath" placeholder="Enter JSON File Path">
             <input type="button" id="jsonFileButton" class="btn btn-primary" value="..."
                    onclick="document.getElementById('jsonFile').click();">
-            <input type="file" id="jsonFile" name="jsonFile" style="display:none;" accept=".json" onchange="updateFilePath(this)">
+            <input type="file" id="jsonFile" name="jsonFile" style="display:none;" accept=".json"
+                   onchange="updateFilePath(this)">
         </div>
         <input type="submit" id="submitFilesButton" value="Submit Files" class="btn btn-primary">
 

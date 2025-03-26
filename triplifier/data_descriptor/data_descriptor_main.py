@@ -9,7 +9,8 @@ import subprocess
 
 import pandas as pd
 
-from flask import abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for
+from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
+                   send_from_directory)
 from io import StringIO
 from markupsafe import Markup
 from psycopg2 import connect
@@ -678,6 +679,28 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
 
     except Exception as e:
         abort(500, description=f"An error occurred while processing the ontology, error: {str(e)}")
+
+
+@app.route('/data_descriptor/assets/<path:filename>')
+def custom_static(filename):
+    """
+    Serve static files from the custom assets directory.
+
+    This route is used to serve static files such as CSS, JavaScript, and images
+    from a custom directory within the project structure. The files are served
+    from the 'assets' directory located within the 'data_descriptor' directory.
+
+    Args:
+        filename (str): The path to the static file relative to the 'assets' directory.
+
+    Returns:
+        flask.Response: The response containing the static file.
+
+    Example:
+        To serve a CSS file located at 'triplifier/data_descriptor/assets/css/bootstrap.min.css',
+        you would access it via the URL '/data_descriptor/assets/css/bootstrap.min.css'.
+    """
+    return send_from_directory(f'{root_dir}/{child_dir}/assets', filename)
 
 
 def allowed_file(filename, allowed_extensions):
