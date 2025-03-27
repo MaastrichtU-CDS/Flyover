@@ -14,9 +14,10 @@ services:
     container_name: rdf-store
     
   triplifier:
-    build:
-      context: ./triplifier
-      #dockerfile: Dockerfile
+    image: ghcr.io/maastrichtu-cds/flyover:latest
+    # If preferred, the triplifier can be built from the Dockerfile in the triplifier directory
+    #build:
+    #  context: ./triplifier
     ports:
       - "5000:5000"
     environment:
