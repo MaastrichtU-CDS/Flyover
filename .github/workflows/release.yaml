@@ -23,6 +23,14 @@ jobs:
       - name: Convert IMAGE_NAME to lowercase
         run: echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      - name: Set tag to latest if workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "TAG=latest" >> $GITHUB_ENV
+
+      - name: Set tag to github.ref_name if push
+        if: github.event_name == 'push'
+        run: echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+
       - name: Log in to the Container registry
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d
         with:
@@ -35,4 +43,4 @@ jobs:
         with:
           context: ./triplifier
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG }}
