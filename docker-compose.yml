@@ -1,6 +1,6 @@
 services:
   rdf-store:
-    image: ontotext/graphdb:10.7.4
+    image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
     ports:
       - "7200:7200"
     volumes:
@@ -14,7 +14,7 @@ services:
     container_name: rdf-store
     
   triplifier:
-    image: ghcr.io/maastrichtu-cds/flyover:latest
+    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier can be built from the Dockerfile in the triplifier directory
     #build:
     #  context: ./triplifier
