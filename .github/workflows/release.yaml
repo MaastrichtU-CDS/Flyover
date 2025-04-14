@@ -50,7 +50,7 @@ jobs:
       - name: Build and push Triplifier Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
+          context: ./triplifier
           push: true
           tags: ${{ steps.meta-triplifier.outputs.tags }}
           labels: ${{ steps.meta-triplifier.outputs.labels }}
