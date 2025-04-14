@@ -656,9 +656,12 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         an HTTP response with a status code of 500 (Internal Server Error)
                          is returned along with a message describing the error.
     """
-    if session_cache.csvPath is not None or session_cache.existing_graph is False:
-        database_name = session_cache.csvPath[session_cache.csvPath.rfind(os.path.sep) + 1:
-                                              session_cache.csvPath.rfind('.')]
+    if session_cache.csvPath is not None and session_cache.existing_graph is False:
+        if len(session_cache.csvPath) == 1:
+            database_name = session_cache.csvPath[0][session_cache.csvPath[0].rfind(os.path.sep) + 1:
+                                                     session_cache.csvPath[0].rfind('.')]
+        else:
+            database_name = 'for_multiple_databases'
     else:
         database_name = 'for_multiple_databases'
 
