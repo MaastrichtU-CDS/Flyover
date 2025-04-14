@@ -1,26 +1,31 @@
-FROM ubuntu:20.04
+FROM python:3.9-slim
 
 WORKDIR /app
-COPY . /app
 
+# Copy only the requirements file first to leverage Docker cache
+COPY requirements.txt /app/
+
+# Install dependencies in a single layer
 RUN apt-get update -y && \
-    apt-get install -y wget && \
-    apt-get install -y openjdk-11-jdk && \
-	apt-get clean && rm -rf var/lib/apt/lists/* && \
-    apt-get install curl -y && \
-	apt-get install -y python3 python3-pip python3-dev libpq-dev
+    apt-get install -y --no-install-recommends \
+    wget \
+    curl \
+    default-jre-headless \
+    libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r requirements.txt
 
-RUN pip install -U \
-    pip \
-    setuptools \
-    wheel
-
-ENV JAVA_HOME /usr/lib/jvm/java-11-openjdk-amd64 #This can vary
+# Set Java environment variables
+ENV JAVA_HOME /usr/lib/jvm/default-java
 ENV PATH $PATH:$JAVA_HOME/bin
 
+# Download PostgreSQL JDBC driver
 ENV POST_URL https://jdbc.postgresql.org/download/postgresql-42.2.5.jar
-RUN wget ${POST_URL}
+RUN wget ${POST_URL} && \
+    rm -rf /root/.cache /tmp/*
 
-RUN pip3 install -r requirements.txt
+# Now copy the application code
+COPY data_descriptor/ /app/data_descriptor/
 
 CMD ["python3", "/app/data_descriptor/data_descriptor_main.py"]
