@@ -1,6 +1,9 @@
 services:
   rdf-store:
     image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
+    # If preferred, the graphdb image can be built from the Dockerfile in the graphdb directory
+    #build:
+    #  context: ./graphdb
     ports:
       - "7200:7200"
     volumes:
@@ -15,7 +18,7 @@ services:
     
   triplifier:
     image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
-    # If preferred, the triplifier can be built from the Dockerfile in the triplifier directory
+    # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
     #build:
     #  context: ./triplifier
     ports:
