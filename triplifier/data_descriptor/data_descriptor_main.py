@@ -394,6 +394,10 @@ def retrieve_descriptive_info():
                 else:
                     insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
 
+        # Remove databases that do not have any descriptive information
+        if not session_cache.DescriptiveInfoDetails[database]:
+            del session_cache.DescriptiveInfoDetails[database]
+
     # Render the 'units.html' template with the list of variables to further specify
     if session_cache.DescriptiveInfoDetails:
         return redirect(url_for('variable_details'))
@@ -428,11 +432,11 @@ def variable_details():
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
-                    # Get global variable name (removing the local name in parentheses)
-                    global_var = var_name.split(' (or')[0].lower().replace(' ', '_')
-
                     # If this variable exists in the global schema
                     if isinstance(session_cache.global_schema, dict):
+                        # Get global variable name (removing the local name in parentheses)
+                        global_var = var_name.split(' (or')[0].lower().replace(' ', '_')
+
                         var_info = session_cache.global_schema['variable_info'].get(global_var, {})
                         value_mapping = var_info.get('value_mapping', {}).get('terms', {})
 
@@ -455,6 +459,12 @@ def variable_details():
                                 preselected_values[key] = matching_term
 
                             # Add a row to the dataframe
+                            rows.append({'column': var_name, 'value': category})
+                    else:
+                        # Iterate over the categories
+                        for category in categories:
+                            # Add a row to the dataframe for each category with
+                            # the column name as the variable name and the value as the category
                             rows.append({'column': var_name, 'value': category})
 
         # Convert the list of rows to a dataframe
