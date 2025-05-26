@@ -1028,9 +1028,10 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
                 f"jdbc.user = {session_cache.username}\n"
                 f"jdbc.password = {session_cache.password}\n"
                 f"jdbc.driver = org.postgresql.Driver\n\n"
-                f"repo.type = rdf4j\n"
-                f"repo.url = {graphdb_url}\n"
-                f"repo.id = {repo}")
+                # f"repo.type = rdf4j\n"
+                # f"repo.url = {graphdb_url}\n"
+                # f"repo.id = {repo}"
+        )
 
 
 def insert_equivalencies(descriptive_info, variable):
