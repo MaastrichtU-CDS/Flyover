@@ -3,6 +3,8 @@ import json
 import os
 import re
 import zipfile
+import threading
+import time
 
 import requests
 import subprocess
@@ -59,6 +61,8 @@ class Cache:
         self.descriptive_info = None
         self.DescriptiveInfoDetails = None
         self.StatusToDisplay = None
+        self.pk_fk_data = None
+        self.pk_fk_status = None  # "processing", "success", "failed"
 
 
 session_cache = Cache()
@@ -121,6 +125,11 @@ def upload_file():
     file_type = request.form.get('fileType')
     json_file = request.files.get('jsonFile') or request.files.get('jsonFile2')
     csv_files = request.files.getlist('csvFile')
+    pk_fk_data = request.form.get('pkFkData')
+
+    # Store PK/FK data in session cache
+    if pk_fk_data:
+        session_cache.pk_fk_data = json.loads(pk_fk_data)
 
     if json_file:
         if not allowed_file(json_file.filename, {'json'}):
@@ -1079,6 +1088,163 @@ def insert_equivalencies(descriptive_info, variable):
     return execute_query(session_cache.repo, query, "update", "/statements")
 
 
+def generate_fk_predicate(fk_config, base_uri):
+    """Generate FK predicate URI using the same base as column class URIs"""
+    return (
+        f"{base_uri}{fk_config['foreignKeyTable']}_{fk_config['foreignKeyColumn']}_refersTo_"
+        f"{fk_config['primaryKeyTable']}_{fk_config['primaryKeyColumn']}"
+    )
+
+
+def extract_base_uri(column_class_uri):
+    """Extract base URI from column class URI"""
+    # Example: http://data.local/rdf/ontology/patient_data_b.id
+    # Returns: http://data.local/rdf/ontology/
+    if column_class_uri:
+        # Find the last slash and extract everything before it + slash
+        last_slash = column_class_uri.rfind('/')
+        if last_slash != -1:
+            return column_class_uri[:last_slash + 1]
+    return "http://data.local/rdf/ontology/"  # fallback
+
+
+def get_column_class_uri(table_name, column_name):
+    """Retrieve column class URI"""
+    query = f"""
+    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT ?uri WHERE {{
+        ?uri dbo:column '{column_name}' .
+        FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
+    }}
+    LIMIT 1
+    """
+
+    try:
+        query_result = execute_query(session_cache.repo, query)
+
+        if not query_result or query_result.strip() == "":
+            print(f"No results found for column {table_name}.{column_name}")
+            return None
+
+        column_info = pd.read_csv(StringIO(query_result))
+
+        if column_info.empty:
+            print(f"Empty result set for column {table_name}.{column_name}")
+            return None
+
+        if 'uri' not in column_info.columns:
+            print(f"Query result format error: no 'uri' column found")
+            return None
+
+        return column_info['uri'].iloc[0]
+
+    except Exception as e:
+        print(f"Error fetching column URI for {table_name}.{column_name}: {e}")
+        return None
+
+
+def insert_fk_relation(fk_predicate, column_class_uri, target_class_uri):
+    """Insert PK/FK relationship into the data graph"""
+    insert_query = f"""
+    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+    INSERT {{
+        ?sources <{fk_predicate}> ?targets .
+    }} WHERE {{
+        ?sources rdf:type <{column_class_uri}> ;
+                 dbo:has_cell ?sourceCell .
+        ?sourceCell dbo:has_value ?columnValue .
+
+        ?targets rdf:type <{target_class_uri}> ;
+                 dbo:has_cell ?targetCell .
+        ?targetCell dbo:has_value ?columnValue .
+    }}
+    """
+
+    return execute_query(session_cache.repo, insert_query, "update", "/statements")
+
+
+def process_pk_fk_relationships():
+    """Process all PK/FK relationships after successful triplification"""
+    if not session_cache.pk_fk_data:
+        return True
+
+    try:
+        print("Starting PK/FK relationship processing...")
+        session_cache.pk_fk_status = "processing"
+
+        # Create mapping of files with their PK/FK info
+        file_map = {rel['fileName']: rel for rel in session_cache.pk_fk_data}
+
+        # Process each relationship
+        for rel in session_cache.pk_fk_data:
+            if not all([rel.get('foreignKey'), rel.get('foreignKeyTable'),
+                        rel.get('foreignKeyColumn')]):
+                continue
+
+            # Find the target table's PK info
+            target_file = rel['foreignKeyTable']
+            target_rel = file_map.get(target_file)
+
+            if not target_rel or not target_rel.get('primaryKey'):
+                continue
+
+            # Generate FK configuration
+            fk_config = {
+                'foreignKeyTable': rel['fileName'].replace('.csv', ''),
+                'foreignKeyColumn': rel['foreignKey'],
+                'primaryKeyTable': target_file.replace('.csv', ''),
+                'primaryKeyColumn': target_rel['primaryKey']
+            }
+
+            source_uri = get_column_class_uri(
+                fk_config['foreignKeyTable'],
+                fk_config['foreignKeyColumn']
+            )
+
+            target_uri = get_column_class_uri(
+                fk_config['primaryKeyTable'],
+                fk_config['primaryKeyColumn']
+            )
+
+            if not source_uri or not target_uri:
+                print(f"Could not find URIs for FK relationship: {fk_config}")
+                continue
+
+            # Extract base URI from the source column URI and generate predicate
+            base_uri = extract_base_uri(source_uri)
+            fk_predicate = generate_fk_predicate(fk_config, base_uri)
+
+            # Insert the relationship
+            insert_fk_relation(fk_predicate, source_uri, target_uri)
+            print(
+                f"Created FK relationship: {fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> {fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}")
+
+        session_cache.pk_fk_status = "success"
+        print("PK/FK relationship processing completed successfully.")
+        return True
+
+    except Exception as e:
+        print(f"Error processing PK/FK relationships: {e}")
+        session_cache.pk_fk_status = "failed"
+        return False
+
+
+def background_pk_fk_processing():
+    """Background function to process PK/FK relationships"""
+    try:
+        # Small delay to ensure GraphDB has processed the uploaded data
+        time.sleep(3)
+        process_pk_fk_relationships()
+    except Exception as e:
+        print(f"Background PK/FK processing error: {e}")
+        session_cache.pk_fk_status = "failed"
+
+
 def run_triplifier(properties_file=None):
     """
     This function runs the triplifier and checks if it ran successfully.
@@ -1145,9 +1311,14 @@ def run_triplifier(properties_file=None):
                     f.writelines(modified_lines)
 
         if process.returncode == 0:
+            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES
+            if properties_file == 'triplifierCSV.properties' and session_cache.pk_fk_data:
+                print("Triplifier successful. Starting background PK/FK processing...")
+                threading.Thread(target=background_pk_fk_processing, daemon=True).start()
+
             return True, Markup("The data you have submitted was triplified successfully and "
                                 "is now available in GraphDB."
-                                "<br>"
+                                "<br>"                                
                                 "You can now proceed to describe your data, "
                                 "but please note that this requires in-depth knowledge of the data."
                                 "<br><br>"
@@ -1156,7 +1327,7 @@ def run_triplifier(properties_file=None):
                                 "please return to the welcome page.</i>"
                                 "<br>"
                                 "<i>You can always return to Flyover to "
-                                "describe the data that is present in GraphDB.</i>")
+                                    "describe the data that is present in GraphDB.</i>")
         else:
             return False, output
     except OSError as e:

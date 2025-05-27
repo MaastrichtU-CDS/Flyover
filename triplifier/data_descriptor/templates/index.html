@@ -35,7 +35,7 @@
 
     <header>Start by selecting your data source:</header>
 
-    <form method="POST" action="/upload" enctype="multipart/form-data">
+    <form method="POST" action="/upload" enctype="multipart/form-data" id="mainForm">
         <div class="form-group">
             <label for="CSV">CSV:</label>
             <input type="radio" id="CSV" name="fileType" value="CSV">
@@ -61,6 +61,18 @@
             <input type="text" id="csv_decimal_sign" name="csv_decimal_sign"
                    placeholder="Decimal sign (defaults to '.')"
                    style="width: 250px; margin-left: 10px;">
+
+            <!-- PK/FK Configuration Section -->
+            <div id="pkFkSection" style="display: none; margin-top: 20px;">
+                <hr>
+                <div class="alert alert-info">
+                    <strong><i class="fas fa-info-circle"></i> Multiple CSV Files Detected</strong><br>
+                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. This will help create meaningful connections in your knowledge graph.
+                </div>
+                <div id="pkFkContent">
+                    <!-- Dynamic PK/FK fields will be inserted here -->
+                </div>
+            </div>
         </div>
 
         <div id="postgresform" style="display: none;">
@@ -91,6 +103,10 @@
             <input type="file" id="jsonFile" name="jsonFile" style="display:none;" accept=".json"
                    onchange="updateFilePath(this)">
         </div>
+
+        <!-- Hidden field for PK/FK data -->
+        <input type="hidden" id="pkFkData" name="pkFkData" value="">
+
         <input type="submit" id="submitFilesButton" value="Submit Files" class="btn btn-primary">
 
         {% if graph_exists %}
@@ -131,12 +147,247 @@
 
 <script>
 
+    let csvFiles = [];
+    let csvColumns = {};
+
     function updateFilePaths(input) {
+        csvFiles = [];
+        csvColumns = {};
+
         let filePaths = [];
         for (let i = 0; i < input.files.length; i++) {
             filePaths.push(input.files[i].name);
+            csvFiles.push(input.files[i]);
         }
         document.getElementById('csvPath').value = filePaths.join(', ');
+
+        // Show/hide PK/FK section based on number of files
+        if (input.files.length > 1) {
+            analyzeCSVFiles(input.files);
+        } else {
+            $("#pkFkSection").hide();
+        }
+    }
+
+    function analyzeCSVFiles(files) {
+        let promises = [];
+
+        for (let i = 0; i < files.length; i++) {
+            promises.push(readCSVColumns(files[i]));
+        }
+
+        Promise.all(promises).then(results => {
+            results.forEach((columns, index) => {
+                csvColumns[files[index].name] = columns;
+            });
+
+            // Generate PK/FK fields after columns are analyzed
+            generatePkFkFields();
+            $("#pkFkSection").slideDown();
+        }).catch(error => {
+            console.error('Error analyzing CSV files:', error);
+            // Still show the section even if analysis fails
+            generatePkFkFields();
+            $("#pkFkSection").slideDown();
+        });
+    }
+
+    function readCSVColumns(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const csv = e.target.result;
+                    const lines = csv.split('\n');
+                    if (lines.length > 0) {
+                        // Handle different separators and quoted fields
+                        const separator = detectSeparator(lines[0]);
+                        const headers = parseCSVLine(lines[0], separator);
+                        resolve(headers);
+                    } else {
+                        resolve([]);
+                    }
+                } catch (error) {
+                    console.error('Error parsing CSV:', error);
+                    resolve([]);
+                }
+            };
+            reader.onerror = reject;
+            reader.readAsText(file.slice(0, 1024)); // Read only first 1KB for headers
+        });
+    }
+
+    function detectSeparator(line) {
+        // Common CSV separators
+        const separators = [',', ';', '\t', '|'];
+        let bestSeparator = ',';
+        let maxCount = 0;
+
+        for (let sep of separators) {
+            const count = (line.split(sep).length - 1);
+            if (count > maxCount) {
+                maxCount = count;
+                bestSeparator = sep;
+            }
+        }
+
+        return bestSeparator;
+    }
+
+    function parseCSVLine(line, separator) {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === separator && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        result.push(current.trim());
+        return result.map(h => h.replace(/"/g, '').trim()).filter(h => h.length > 0);
+    }
+
+    function generatePkFkFields() {
+        let content = '';
+
+        csvFiles.forEach((file, index) => {
+            const fileName = file.name;
+            const columns = csvColumns[fileName] || [];
+
+            content += `
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="fas fa-table"></i> ${fileName}
+                            <small class="text-muted">(${columns.length} columns detected)</small>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="pk_${index}" class="font-weight-bold">
+                                        <i class="fas fa-key text-warning"></i> Primary Key:
+                                    </label>
+                                    <select class="form-control" id="pk_${index}" name="pk_${index}">
+                                        <option value="">-- No Primary Key --</option>
+                                        ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                    </select>
+                                    <small class="form-text text-muted">
+                                        Column that uniquely identifies each row in this file
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fk_${index}" class="font-weight-bold">
+                                        <i class="fas fa-link text-info"></i> Foreign Key:
+                                    </label>
+                                    <select class="form-control" id="fk_${index}" name="fk_${index}">
+                                        <option value="">-- No Foreign Key --</option>
+                                        ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                    </select>
+                                    <small class="form-text text-muted">
+                                        Column that references another table's primary key
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row" id="fkDetails_${index}" style="display: none;">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fkTable_${index}" class="font-weight-bold">
+                                        <i class="fas fa-arrow-right text-success"></i> References Table:
+                                    </label>
+                                    <select class="form-control" id="fkTable_${index}" name="fkTable_${index}">
+                                        <option value="">-- Select Referenced Table --</option>
+                                        ${csvFiles.map(f => f.name !== fileName ? `<option value="${f.name}">${f.name}</option>` : '').join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fkColumn_${index}" class="font-weight-bold">
+                                        <i class="fas fa-arrow-right text-success"></i> References Column:
+                                    </label>
+                                    <select class="form-control" id="fkColumn_${index}" name="fkColumn_${index}">
+                                        <option value="">-- Select Referenced Column --</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Add helpful information
+        content += `
+            <div class="alert alert-light border">
+                <h6><i class="fas fa-lightbulb text-warning"></i> Tips:</h6>
+                <ul class="mb-0 small">
+                    <li><strong>Primary Key:</strong> A column that uniquely identifies each row (e.g., ID, PatientID)</li>
+                    <li><strong>Foreign Key:</strong> A column that references a primary key in another table (e.g., PatientID in data_table_b referencing ID in data_table_a)</li>
+                    <li>Leave fields empty if no relationships exist</li>
+                    <li>These relationships will be used to create connections in your knowledge graph</li>
+                </ul>
+            </div>
+        `;
+
+        document.getElementById('pkFkContent').innerHTML = content;
+
+        // Add event listeners for FK changes
+        csvFiles.forEach((file, index) => {
+            $(`#fk_${index}`).change(function() {
+                if ($(this).val()) {
+                    $(`#fkDetails_${index}`).slideDown();
+                } else {
+                    $(`#fkDetails_${index}`).slideUp();
+                }
+            });
+
+            $(`#fkTable_${index}`).change(function() {
+                const selectedTable = $(this).val();
+                const targetColumns = csvColumns[selectedTable] || [];
+
+                $(`#fkColumn_${index}`).html(
+                    '<option value="">-- Select Referenced Column --</option>' +
+                    targetColumns.map(col => `<option value="${col}">${col}</option>`).join('')
+                );
+            });
+        });
+    }
+
+    function collectPkFkData() {
+        let pkFkData = [];
+
+        csvFiles.forEach((file, index) => {
+            const pk = $(`#pk_${index}`).val();
+            const fk = $(`#fk_${index}`).val();
+            const fkTable = $(`#fkTable_${index}`).val();
+            const fkColumn = $(`#fkColumn_${index}`).val();
+
+            let fileData = {
+                fileName: file.name,
+                primaryKey: pk || null,
+                foreignKey: fk || null,
+                foreignKeyTable: fkTable || null,
+                foreignKeyColumn: fkColumn || null
+            };
+
+            pkFkData.push(fileData);
+        });
+
+        return pkFkData;
     }
 
     function updateFilePath(input) {
@@ -190,7 +441,45 @@
             $("#data-addition-note1").show();  // Show the data-addition-note
             $("#data-addition-note2").show();  // Show the data-addition-note
         });
+
+        // Handle form submission
+        $("#mainForm").submit(function(e) {
+            // If CSV is selected and PK/FK section is visible, collect the data
+            if ($("#CSV").is(":checked") && $("#pkFkSection").is(":visible")) {
+                const pkFkData = collectPkFkData();
+                $("#pkFkData").val(JSON.stringify(pkFkData));
+            }
+        });
     });
 </script>
+
+<!-- Add some custom CSS for better styling -->
+<style>
+    .card-header {
+        background-color: #f8f9fa !important;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .form-group label {
+        margin-bottom: 5px;
+    }
+
+    .form-text {
+        margin-top: 3px;
+    }
+
+    #pkFkSection .alert-info {
+        border-left: 4px solid #17a2b8;
+    }
+
+    #pkFkSection .alert-light {
+        border-left: 4px solid #6c757d;
+    }
+
+    .fas {
+        margin-right: 5px;
+    }
+</style>
+
 </body>
 </html>
