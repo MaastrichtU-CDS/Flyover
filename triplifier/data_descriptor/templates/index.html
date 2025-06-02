@@ -66,18 +66,81 @@
             <div id="pkFkSection" style="display: none; margin-top: 20px;">
                 <hr>
                 <div class="alert alert-info">
-                    <strong><i class="fas fa-info-circle"></i> Multiple CSV Files Detected</strong><br>
-                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. This will help create meaningful connections in your knowledge graph.
+                    <strong><i class="fas fa-info-circle"></i>Multiple CSV Files Detected</strong><br>
+                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. <br> This will help create meaningful connections in your knowledge graph.
                 </div>
                 <div id="pkFkContent">
                     <!-- Dynamic PK/FK fields will be inserted here -->
                 </div>
             </div>
+
+            <!-- Data Linking Section - Hidden until files are uploaded -->
+            {% if graph_exists %}
+            <div id="dataLinkingSection" style="display: none; margin-top: 20px;">
+                <hr>
+                <div class="alert alert-info">
+                    <strong><i class="fas fa-link"></i>Link New Data to Existing Graph</strong><br>
+                    You can optionally link your new data to the existing data graph by specifying relationships between tables and columns.
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="enableDataLinking" name="enableDataLinking">
+                    <label class="form-check-label" for="enableDataLinking">
+                        <strong>Link new data to existing graph</strong>
+                    </label>
+                </div>
+
+                <div id="linkingConfiguration" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Configure Data Links</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>New Data</h6>
+                                    <div class="form-group">
+                                        <label for="newTableName">Table Name:</label>
+                                        <select class="form-control" id="newTableName" name="newTableName">
+                                            <option value="">-- Select New Table --</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="newColumnName">Column Name:</label>
+                                        <select class="form-control" id="newColumnName" name="newColumnName">
+                                            <option value="">-- Select New Column --</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Existing Graph Data</h6>
+                                    <div class="form-group">
+                                        <label for="existingTableName">Table Name:</label>
+                                        <select class="form-control" id="existingTableName" name="existingTableName">
+                                            <option value="">-- Select Existing Table --</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="existingColumnName">Column Name:</label>
+                                        <select class="form-control" id="existingColumnName" name="existingColumnName">
+                                            <option value="">-- Select Existing Column --</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden field for cross-graph linking data -->
+                <input type="hidden" id="crossGraphLinkData" name="crossGraphLinkData" value="">
+            </div>
+            {% endif %}
         </div>
 
         <div id="postgresform" style="display: none;">
             <hr>
-            <label for="username">Please specify the following details for your postgress database</label>
+            <label for="username">Please specify the following details for your postgres database</label>
             <br>
             <label for="username">PostgreSQL Username:</label>
             <input type="text" id="username" name="username">
@@ -118,26 +181,6 @@
                     for that please use the options below.</i></p>
             <i>The existing data graph can also be removed through the GraphDB workbench.</i></p>
 
-            <div id="jsonform">
-                <hr>
-                <p>
-                    <span for="jsonPath2">If you do wish to proceed (i.e. describe the existing data),
-                        you can provide a path to the global schema JSON file if it is available.</span><br>
-                    <span for="jsonPath2">
-                        <i>Note that this is optional and only serves to guide data annotation.</i></span><br>
-                    <span for="jsonPath2" id="data-addition-note1" style="display: none;">
-                        <br>
-                        <b><i>It is also important to consider that only one global schema can be selected.</i></b></span><br>
-                    <span for="jsonPath2" id="data-addition-note2" style="display: none;">
-                        <b><i>In case you need a different schema for multiple different data sources that you wish to
-                            add to a single data graph then please describe them separately.</i></b></span>
-                </p>
-                <input type="text" id="jsonPath2" name="jsonPath2" placeholder="Enter JSON File Path">
-                <input type="button" id="jsonFile2Button" class="btn btn-primary" value="..."
-                       onclick="document.getElementById('jsonFile2').click();">
-                <input type="file" id="jsonFile2" name="jsonFile2" style="display:none;" accept=".json"
-                       onchange="updateFilePath(this)">
-            </div>
             <br>
             <input type="submit" id="submitWithoutData" value="Proceed without adding data" class="btn btn-primary">
 
@@ -161,12 +204,51 @@
         }
         document.getElementById('csvPath').value = filePaths.join(', ');
 
-        // Show/hide PK/FK section based on number of files
-        if (input.files.length > 1) {
-            analyzeCSVFiles(input.files);
-        } else {
-            $("#pkFkSection").hide();
-        }
+        // Always analyze CSV files to get column information
+        analyzeCSVFiles(input.files).then(() => {
+            // Show/hide PK/FK section based on number of files
+            if (input.files.length > 1) {
+                generatePkFkFields();
+                $("#pkFkSection").slideDown();
+            } else {
+                $("#pkFkSection").hide();
+            }
+
+            // Show data linking section when files are uploaded (if graph exists)
+            {% if graph_exists %}
+            if (input.files.length > 0) {
+                $("#dataLinkingSection").slideDown();
+                updateNewTableOptions();
+            } else {
+                $("#dataLinkingSection").hide();
+            }
+            {% endif %}
+        });
+    }
+
+    // Function to load existing graph tables and columns
+    function loadExistingGraphData() {
+        $.ajax({
+            url: '/get-existing-graph-structure',
+            method: 'GET',
+            success: function(data) {
+                // Populate existing table dropdown
+                const existingTableSelect = $('#existingTableName');
+                existingTableSelect.empty().append('<option value="">-- Select Existing Table --</option>');
+
+                if (data.tables) {
+                    data.tables.forEach(table => {
+                        existingTableSelect.append(`<option value="${table}">${table}</option>`);
+                    });
+                }
+
+                // Store the full structure for later use
+                window.existingGraphStructure = data;
+            },
+            error: function(xhr, status, error) {
+                console.error('Error loading existing graph structure:', error);
+            }
+        });
     }
 
     function analyzeCSVFiles(files) {
@@ -176,19 +258,15 @@
             promises.push(readCSVColumns(files[i]));
         }
 
-        Promise.all(promises).then(results => {
+        return Promise.all(promises).then(results => {
             results.forEach((columns, index) => {
                 csvColumns[files[index].name] = columns;
             });
 
-            // Generate PK/FK fields after columns are analyzed
-            generatePkFkFields();
-            $("#pkFkSection").slideDown();
+            // Don't automatically generate PK/FK fields here anymore
+            // That will be handled in updateFilePaths based on file count
         }).catch(error => {
             console.error('Error analyzing CSV files:', error);
-            // Still show the section even if analysis fails
-            generatePkFkFields();
-            $("#pkFkSection").slideDown();
         });
     }
 
@@ -390,20 +468,24 @@
         return pkFkData;
     }
 
+    function updateNewTableOptions() {
+        const newTableSelect = $('#newTableName');
+        newTableSelect.empty().append('<option value="">-- Select New Table --</option>');
+
+        csvFiles.forEach(file => {
+            const tableName = file.name.replace('.csv', '');
+            newTableSelect.append(`<option value="${tableName}">${tableName}</option>`);
+        });
+    }
+
     function updateFilePath(input) {
         var fullPath = input.value;
         var fileName = fullPath.split('\\').pop();  // Get the filename
         if (input.id === 'jsonFile') {
             $("#jsonPath").val(fileName);  // Set only the filename in the input box
-            $("#jsonPath2").prop("disabled", true);  // Disable the jsonPath2 input box
-            $("#jsonFile2Button").prop("disabled", true);  // Disable the button next to jsonPath2
         } else if (input.id === 'csvFile') {
             $("#csvPath").val(fileName);  // Set only the filename in the input box
             $("#submitWithoutData").prop("disabled", true);  // Disable the button to proceed without data
-        } else if (input.id === 'jsonFile2') {
-            $("#jsonPath2").val(fileName);  // Set only the filename in the input box
-            $("#jsonPath").prop("disabled", true);  // Disable the jsonPath2 input box
-            $("#jsonFileButton").prop("disabled", true);  // Disable the button next to jsonPath
         }
     }
 
@@ -429,18 +511,61 @@
         $("#CSV").click(function () {
             $("#csvform").show();
             $("#postgresform").hide();
-            $("#jsonform").show();  // Show JSON path selection
-            $("#data-addition-note1").show();  // Show the data-addition-note
-            $("#data-addition-note2").show();  // Show the data-addition-note
+            $("#jsonform").show();  // Show JSON path selection for first time data upload
         });
 
         $("#Postgres").click(function () {
             $("#csvform").hide();
             $("#postgresform").show();
-            $("#jsonform").show();  // Show JSON path selection
-            $("#data-addition-note1").show();  // Show the data-addition-note
-            $("#data-addition-note2").show();  // Show the data-addition-note
+            $("#jsonform").show();  // Show JSON path selection for first time data upload
+            // Hide data linking section for PostgreSQL
+            $("#dataLinkingSection").hide();
         });
+
+        // Initialize data linking functionality if graph exists
+        {% if graph_exists %}
+        if ($('#dataLinkingSection').length) {
+            loadExistingGraphData();
+
+            $('#enableDataLinking').change(function() {
+                if ($(this).is(':checked')) {
+                    $('#linkingConfiguration').slideDown();
+                } else {
+                    $('#linkingConfiguration').slideUp();
+                }
+            });
+
+            // Handle new table selection
+            $('#newTableName').change(function() {
+                const selectedTable = $(this).val();
+                const newColumnSelect = $('#newColumnName');
+                newColumnSelect.empty().append('<option value="">-- Select New Column --</option>');
+
+                if (selectedTable) {
+                    const selectedFile = csvFiles.find(f => f.name.replace('.csv', '') === selectedTable);
+                    if (selectedFile && csvColumns[selectedFile.name]) {
+                        csvColumns[selectedFile.name].forEach(column => {
+                            newColumnSelect.append(`<option value="${column}">${column}</option>`);
+                        });
+                    }
+                }
+            });
+
+            // Handle existing table selection
+            $('#existingTableName').change(function() {
+                const selectedTable = $(this).val();
+                const existingColumnSelect = $('#existingColumnName');
+                existingColumnSelect.empty().append('<option value="">-- Select Existing Column --</option>');
+
+                if (selectedTable && window.existingGraphStructure && window.existingGraphStructure.tableColumns) {
+                    const columns = window.existingGraphStructure.tableColumns[selectedTable] || [];
+                    columns.forEach(column => {
+                        existingColumnSelect.append(`<option value="${column}">${column}</option>`);
+                    });
+                }
+            });
+        }
+        {% endif %}
 
         // Handle form submission
         $("#mainForm").submit(function(e) {
@@ -449,8 +574,24 @@
                 const pkFkData = collectPkFkData();
                 $("#pkFkData").val(JSON.stringify(pkFkData));
             }
+
+            // Collect cross-graph linking data
+            if ($("#enableDataLinking").is(':checked')) {
+                const crossGraphLink = {
+                    newTableName: $('#newTableName').val(),
+                    newColumnName: $('#newColumnName').val(),
+                    existingTableName: $('#existingTableName').val(),
+                    existingColumnName: $('#existingColumnName').val()
+                };
+
+                if (crossGraphLink.newTableName && crossGraphLink.newColumnName &&
+                    crossGraphLink.existingTableName && crossGraphLink.existingColumnName) {
+                    $("#crossGraphLinkData").val(JSON.stringify(crossGraphLink));
+                }
+            }
         });
     });
+
 </script>
 
 <!-- Add some custom CSS for better styling -->
@@ -473,6 +614,14 @@
     }
 
     #pkFkSection .alert-light {
+        border-left: 4px solid #6c757d;
+    }
+
+    #dataLinkingSection .alert-info {
+        border-left: 4px solid #17a2b8;
+    }
+
+    #dataLinkingSection .alert-light {
         border-left: 4px solid #6c757d;
     }
 

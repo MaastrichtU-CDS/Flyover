@@ -11,12 +11,14 @@ import subprocess
 
 import pandas as pd
 
-from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
-                   send_from_directory)
 from io import StringIO
 from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
+
+from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
+                   send_from_directory, jsonify)
+
 
 app = Flask(__name__)
 
@@ -63,6 +65,8 @@ class Cache:
         self.StatusToDisplay = None
         self.pk_fk_data = None
         self.pk_fk_status = None  # "processing", "success", "failed"
+        self.cross_graph_link_data = None
+        self.cross_graph_link_status = None
 
 
 session_cache = Cache()
@@ -126,10 +130,15 @@ def upload_file():
     json_file = request.files.get('jsonFile') or request.files.get('jsonFile2')
     csv_files = request.files.getlist('csvFile')
     pk_fk_data = request.form.get('pkFkData')
+    cross_graph_link_data = request.form.get('crossGraphLinkData')
 
     # Store PK/FK data in session cache
     if pk_fk_data:
         session_cache.pk_fk_data = json.loads(pk_fk_data)
+
+    # Store cross-graph linking data in session cache
+    if cross_graph_link_data:
+        session_cache.cross_graph_link_data = json.loads(cross_graph_link_data)
 
     if json_file:
         if not allowed_file(json_file.filename, {'json'}):
@@ -1245,6 +1254,178 @@ def background_pk_fk_processing():
         session_cache.pk_fk_status = "failed"
 
 
+@app.route('/get-existing-graph-structure', methods=['GET'])
+def get_existing_graph_structure():
+    """
+    Get the structure of existing graph data for linking purposes
+    """
+    try:
+        # Query to get existing tables and their columns
+        structure_query = """
+        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+        SELECT ?uri ?column 
+        WHERE {             
+                ?uri dbo:column ?column .
+            }
+        """
+
+        result = execute_query(session_cache.repo, structure_query)
+
+        if not result or result.strip() == "":
+            return {"tables": [], "tableColumns": {}}
+
+        # Parse the result
+        structure_info = pd.read_csv(StringIO(result))
+
+        if structure_info.empty:
+            return {"tables": [], "tableColumns": {}}
+
+        # Extract table names from URIs and organize by table
+        structure_info['table'] = structure_info['uri'].str.extract(r'.*/(.*?)\.', expand=False).fillna('unknown')
+
+        # Get unique tables
+        tables = structure_info['table'].unique().tolist()
+
+        # Create table-column mapping
+        table_columns = {}
+        for table in tables:
+            columns = structure_info[structure_info['table'] == table]['column'].tolist()
+            table_columns[table] = columns
+
+        return jsonify({
+            "tables": tables,
+            "tableColumns": table_columns
+        })
+
+    except Exception as e:
+        print(f"Error getting existing graph structure: {e}")
+        return {"tables": [], "tableColumns": {}}
+
+
+def get_existing_column_class_uri(table_name, column_name):
+    """Retrieve existing column class URI from the existing graph"""
+    query = f"""
+    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT ?uri WHERE {{
+            ?uri dbo:column '{column_name}' .
+            FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
+    }}
+    LIMIT 1
+    """
+
+    try:
+        query_result = execute_query(session_cache.repo, query)
+
+        if not query_result or query_result.strip() == "":
+            print(f"No existing results found for column {table_name}.{column_name}")
+            return None
+
+        column_info = pd.read_csv(StringIO(query_result))
+
+        if column_info.empty or 'uri' not in column_info.columns:
+            return None
+
+        return column_info['uri'].iloc[0]
+
+    except Exception as e:
+        print(f"Error fetching existing column URI for {table_name}.{column_name}: {e}")
+        return None
+
+
+def generate_cross_graph_predicate(new_table, new_column, existing_table, existing_column, base_uri):
+    """Generate cross-graph predicate URI"""
+    return f"{base_uri}{new_table}_{new_column}_refersTo_{existing_table}_{existing_column}"
+
+
+def insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri):
+    """Insert cross-graph relationship into the data graph"""
+    insert_query = f"""
+    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+    INSERT {{
+        ?newSources <{predicate}> ?existingSources .
+    }} WHERE {{
+        ?newSources rdf:type <{new_column_uri}> ;
+                    dbo:has_cell ?newCell .
+        ?newCell dbo:has_value ?columnValue .
+
+        ?existingSources rdf:type <{existing_column_uri}> ;
+                         dbo:has_cell ?existingCell .
+        ?existingCell dbo:has_value ?columnValue .
+    }}
+    """
+
+    return execute_query(session_cache.repo, insert_query, "update", "/statements")
+
+
+def process_cross_graph_relationships():
+    """Process cross-graph relationships after successful triplification"""
+    if not session_cache.cross_graph_link_data:
+        return True
+
+    try:
+        print("Starting cross-graph relationship processing...")
+        session_cache.cross_graph_link_status = "processing"
+
+        link_data = session_cache.cross_graph_link_data
+
+        # Get URIs for new and existing columns
+        new_column_uri = get_column_class_uri(
+            link_data['newTableName'],
+            link_data['newColumnName']
+        )
+
+        existing_column_uri = get_existing_column_class_uri(
+            link_data['existingTableName'],
+            link_data['existingColumnName']
+        )
+
+        if not new_column_uri or not existing_column_uri:
+            print(f"Could not find URIs for cross-graph relationship: {link_data}")
+            session_cache.cross_graph_link_status = "failed"
+            return False
+
+        # Generate predicate
+        base_uri = extract_base_uri(new_column_uri)
+        predicate = generate_cross_graph_predicate(
+            link_data['newTableName'],
+            link_data['newColumnName'],
+            link_data['existingTableName'],
+            link_data['existingColumnName'],
+            base_uri
+        )
+
+        # Insert the relationship
+        insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)
+
+        print(
+            f"Created cross-graph relationship: {link_data['newTableName']}.{link_data['newColumnName']} -> {link_data['existingTableName']}.{link_data['existingColumnName']}")
+
+        session_cache.cross_graph_link_status = "success"
+        print("Cross-graph relationship processing completed successfully.")
+        return True
+
+    except Exception as e:
+        print(f"Error processing cross-graph relationships: {e}")
+        session_cache.cross_graph_link_status = "failed"
+        return False
+
+
+def background_cross_graph_processing():
+    """Background function to process cross-graph relationships"""
+    try:
+        # Small delay to ensure GraphDB has processed the uploaded data
+        time.sleep(5)  # Slightly longer delay than PK/FK to ensure it runs after
+        process_cross_graph_relationships()
+    except Exception as e:
+        print(f"Background cross-graph processing error: {e}")
+        session_cache.cross_graph_link_status = "failed"
+
+
 def run_triplifier(properties_file=None):
     """
     This function runs the triplifier and checks if it ran successfully.
@@ -1315,6 +1496,11 @@ def run_triplifier(properties_file=None):
             if properties_file == 'triplifierCSV.properties' and session_cache.pk_fk_data:
                 print("Triplifier successful. Starting background PK/FK processing...")
                 threading.Thread(target=background_pk_fk_processing, daemon=True).start()
+
+            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Add this block
+            if properties_file == 'triplifierCSV.properties' and session_cache.cross_graph_link_data:
+                print("Triplifier successful. Starting background cross-graph processing...")
+                threading.Thread(target=background_cross_graph_processing, daemon=True).start()
 
             return True, Markup("The data you have submitted was triplified successfully and "
                                 "is now available in GraphDB."
