@@ -26,6 +26,7 @@ services:
     environment:
       - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
+      - FLASK_ENV=production
     hostname: "data.local"
     networks:
       - proxynet

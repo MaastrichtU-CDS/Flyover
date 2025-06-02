@@ -28,4 +28,17 @@ RUN wget ${POST_URL} && \
 # Now copy the application code
 COPY data_descriptor/ /app/data_descriptor/
 
-CMD ["python3", "/app/data_descriptor/data_descriptor_main.py"]
+# Use Gunicorn as the WSGI server
+CMD ["gunicorn", \
+    "--workers", "4", \
+    "--worker-class", "gevent", \
+    "--worker-connections", "1000", \
+    "--timeout", "120", \
+    "--keep-alive", "5", \
+    "--max-requests", "1000", \
+    "--max-requests-jitter", "50", \
+    "--log-level", "info", \
+    "--access-logfile", "-", \
+    "--error-logfile", "-", \
+    "--bind", "0.0.0.0:5000", \
+    "data_descriptor.data_descriptor_main:app"]
