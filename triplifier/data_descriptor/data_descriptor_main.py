@@ -1078,6 +1078,28 @@ def insert_equivalencies(descriptive_info, variable):
        The subject of the triple is the selected URI, and the object is the first value in the
        'values' field of the variable in the descriptive_info dictionary.
     """
+
+    # Skip if variable missing or empty
+    if variable not in descriptive_info or not descriptive_info[variable]:
+        return None
+
+    var_info = descriptive_info[variable]
+
+    # Get the three main fields
+    type_value = var_info.get('type', '')
+    description_value = var_info.get('description', '')
+    comments_value = var_info.get('comments', '')
+
+    # Check if any of these fields has meaningful content
+    has_type = type_value not in ['', 'Variable type: ', 'Variable type: None']
+    has_description = description_value not in ['', 'Variable description: ', 'Variable description: None']
+    has_comments = comments_value not in ['', 'Variable comment: No comment provided']
+
+    # Skip if none of the fields has meaningful content
+    if not (has_type or has_description or has_comments):
+        return None
+
+
     query = f"""
                 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
                 PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
@@ -1087,7 +1109,7 @@ def insert_equivalencies(descriptive_info, variable):
                 INSERT  
                 {{
                     GRAPH <http://ontology.local/>
-                    {{ ?s owl:equivalentClass "{list(descriptive_info[variable].values())}". }}
+                    {{ ?s owl:equivalentClass "{list(var_info.values())}". }}
                 }}
                 WHERE 
                 {{
