@@ -67,7 +67,7 @@
                 <hr>
                 <div class="alert alert-info">
                     <strong><i class="fas fa-info-circle"></i>Multiple CSV Files Detected</strong><br>
-                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. <br> This will help create meaningful connections in your knowledge graph.
+                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. <br> This will help create meaningful connecti[...]
                 </div>
                 <div id="pkFkContent">
                     <!-- Dynamic PK/FK fields will be inserted here -->
@@ -167,6 +167,20 @@
                    onchange="updateFilePath(this)">
         </div>
 
+        {% if graph_exists %}
+        <div id="existingDataJsonForm" style="display:block;">
+            <hr>
+            <label for="jsonPath2">Specify a path to the global schema JSON file for your existing data graph.</label>
+            <label for="jsonPath2"><i>This will help guide the description of your existing data.</i></label>
+            <br>
+            <input type="text" id="jsonPath2" name="jsonPath" placeholder="Enter JSON File Path for existing data">
+            <input type="button" id="jsonFileButton2" class="btn btn-primary" value="..."
+                   onclick="document.getElementById('jsonFile2').click();">
+            <input type="file" id="jsonFile2" name="jsonFile2" style="display:none;" accept=".json"
+                   onchange="updateExistingDataFilePath(this)">
+        </div>
+        {% endif %}
+
         <!-- Hidden field for PK/FK data -->
         <input type="hidden" id="pkFkData" name="pkFkData" value="">
 
@@ -224,6 +238,12 @@
             }
             {% endif %}
         });
+    }
+
+    function updateExistingDataFilePath(input) {
+        var fullPath = input.value;
+        var fileName = fullPath.split('\\').pop();  // Get the filename
+        $("#jsonPath2").val(fileName);  // Set only the filename in the input box
     }
 
     // Function to load existing graph tables and columns
@@ -512,6 +532,18 @@
             $("#csvform").show();
             $("#postgresform").hide();
             $("#jsonform").show();  // Show JSON path selection for first time data upload
+
+            {% if graph_exists %}
+            // If graph exists and CSV is selected, disable the first JSON path textbox
+            $("#existingDataJsonForm").hide();
+
+            // Transfer value from existingDataJsonForm to jsonform if it exists
+            if ($("#jsonPath2").val()) {
+                $("#jsonPath").val($("#jsonPath2").val());
+                $("#jsonPath").prop("disabled", true);
+                $("#jsonFileButton").prop("disabled", true);
+            }
+            {% endif %}
         });
 
         $("#Postgres").click(function () {
@@ -520,6 +552,18 @@
             $("#jsonform").show();  // Show JSON path selection for first time data upload
             // Hide data linking section for PostgreSQL
             $("#dataLinkingSection").hide();
+
+            {% if graph_exists %}
+            // If graph exists and Postgres is selected, disable the first JSON path textbox
+            $("#existingDataJsonForm").hide();
+
+            // Transfer value from existingDataJsonForm to jsonform if it exists
+            if ($("#jsonPath2").val()) {
+                $("#jsonPath").val($("#jsonPath2").val());
+                $("#jsonPath").prop("disabled", true);
+                $("#jsonFileButton").prop("disabled", true);
+            }
+            {% endif %}
         });
 
         // Initialize data linking functionality if graph exists
@@ -562,6 +606,33 @@
                     columns.forEach(column => {
                         existingColumnSelect.append(`<option value="${column}">${column}</option>`);
                     });
+                }
+            });
+
+            // For the "Proceed without adding data" button
+            $("#submitWithoutData").click(function(e) {
+                e.preventDefault();
+
+                // If a JSON file was selected for existing data, use that
+                if ($("#jsonFile2")[0].files.length > 0) {
+                    // Create a FormData object to hold the form data
+                    var formData = new FormData();
+                    formData.append("jsonFile", $("#jsonFile2")[0].files[0]);
+
+                    // Submit the form with AJAX
+                    $.ajax({
+                        url: "/upload",
+                        type: "POST",
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            window.location.href = "/data-submission";
+                        }
+                    });
+                } else {
+                    // Otherwise just submit the form normally
+                    $("#mainForm").submit();
                 }
             });
         }
