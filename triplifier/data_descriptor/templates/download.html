@@ -30,20 +30,20 @@
         <button class="btn btn-primary">Download local ontology</button>
     </a>
     <br>
-    <div {% if not show_schema %} style="display: none;" {% endif %}>
+    <div {% if not show_semantic_map %} style="display: none;" {% endif %}>
         <br>
-        <p style="line-height: 1.5; margin: 0;"> As you have also provided a global schema,
+        <p style="line-height: 1.5; margin: 0;"> As you have also provided a global semantic map,
             you can download the corresponding local version through the 'Download local
-            schema' button below.</p>
-        <p style="line-height: 1.5; margin: 0;">&#x26A0;<i>Please do consider that the local schema is only partially
+            semantic map' button below.</p>
+        <p style="line-height: 1.5; margin: 0;">&#x26A0;<i>Please do consider that the local semantic map is only partially
             completed and
             is based on the inputs provided through this web interface.</i></p>
-        <p style="line-height: 1.5; margin: 0;"><i style="line-height: 1.5; margin: 0;">The local schema file should
+        <p style="line-height: 1.5; margin: 0;"><i style="line-height: 1.5; margin: 0;">The local semantic map file should
             thus always be evaluated prior to
             using it with Flyover's annotation helper.</i></p>
-        <a href="/downloadSchema" download="local_schema.json">
-            <button class="btn btn-primary " {% if not show_schema %} style="display: none;" {% endif %}>Download local
-                schema
+        <a href="/downloadSemanticMap" download="semantic_map.json">
+            <button class="btn btn-primary " {% if not show_semantic_map %} style="display: none;" {% endif %}>Download local
+                semantic map
             </button>
         </a></div>
     <hr>

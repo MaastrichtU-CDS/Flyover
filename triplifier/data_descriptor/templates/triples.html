@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-<script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -17,13 +18,197 @@
     <h1>Data submission finalised</h1>
     <hr>
 
-    <p> {{ message }} </p>
+    <p>{{ message }}</p>
 
-    <form method="POST" action="repo">
-        <p><input class="btn btn-primary" type="submit" value="Click here to describe the data"></p>
+    <!-- Global Semantic Map Upload Section -->
+    <div id="semanticMapSection" class="mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-project-diagram"></i> Optional: Upload Global Semantic Map
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    You can optionally upload a global semantic map JSON file to guide the semantic mapping process.<br>
+                    This will help provide better semantic annotations and standardised mappings for your data
+                    variables.
+                </p>
+
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>What is a Global Semantic Map?</strong><br>
+                    A global semantic map defines standardised variable definitions, data types, and value mappings
+                    that can be consistently applied across different datasets to ensure semantic interoperability.
+                </div>
+
+                <form method="POST" action="/upload-semantic-map" enctype="multipart/form-data" id="semanticMapForm">
+                    <div class="form-group">
+                        <label for="semanticMapPath">Global Semantic Map JSON File:</label>
+                        <div class="input-group">
+                            <input type="text" id="semanticMapPath" name="semanticMapPath" class="form-control"
+                                   placeholder="Select semantic map JSON file..." readonly>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary"
+                                        onclick="document.getElementById('semanticMapFile').click();">
+                                    <i class="fas fa-folder-open"></i> Browse
+                                </button>
+                            </div>
+                        </div>
+                        <input type="file" id="semanticMapFile" name="semanticMapFile" style="display:none;"
+                               accept=".json" onchange="updateSemanticMapPath(this)">
+                        <small class="form-text text-muted">
+                            The JSON file should contain a 'variable_info' field with semantic variable definitions and
+                            mappings.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="submit" id="uploadSemanticMapButton" class="btn btn-success" disabled>
+                            <i class="fas fa-upload"></i> Upload Semantic Map
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="skipSemanticMap()">
+                            <i class="fas fa-forward"></i> Skip
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="statusMessages"></div>
+
+    <!-- Continue Button -->
+    <form method="POST" action="repo" id="continueForm">
+        <p><input class="btn btn-primary" type="submit" value="Click here to describe the data" id="continueButton"
+                  disabled></p>
     </form>
+
     <hr>
     <a href="/">Click here to return to the welcome page.</a>
 </div>
+
+<script>
+    function updateSemanticMapPath(input) {
+        const fullPath = input.value;
+        const fileName = fullPath.split('\\').pop();
+        $("#semanticMapPath").val(fileName);
+
+        // Enable upload button if file is selected
+        $("#uploadSemanticMapButton").prop("disabled", !fileName);
+    }
+
+    function skipSemanticMap() {
+        // Hide the semantic map section and show success message
+        $("#semanticMapSection").hide();
+        showStatusMessage("Semantic map upload skipped. You can proceed to describe your data manually.", "info");
+
+        // Enable the continue button
+        $("#continueButton").prop("disabled", false);
+    }
+
+    function enableContinueButton() {
+        $("#continueButton").prop("disabled", false);
+    }
+
+    function showStatusMessage(message, type = "success") {
+        const alertClass = type === "error" ? "alert-danger" :
+            type === "info" ? "alert-info" : "alert-success";
+
+        const alertHtml = `
+            <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                <i class="fas fa-${type === "error" ? "exclamation-triangle" :
+            type === "info" ? "info-circle" : "check-circle"}"></i>
+                ${message}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        `;
+
+        $("#statusMessages").html(alertHtml);
+    }
+
+    $(document).ready(function () {
+        // Handle semantic map form submission
+        $("#semanticMapForm").submit(function (e) {
+            e.preventDefault();
+
+            if (!$("#semanticMapFile")[0].files.length) {
+                showStatusMessage("Please select a semantic map JSON file to upload.", "error");
+                return;
+            }
+
+            // Create FormData object
+            const formData = new FormData();
+            formData.append("semanticMapFile", $("#semanticMapFile")[0].files[0]);
+
+            // Show loading state
+            $("#uploadSemanticMapButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Uploading...');
+
+            // Submit via AJAX
+            $.ajax({
+                url: "/upload-semantic-map",
+                type: "POST",
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (response) {
+                    $("#semanticMapSection").hide();
+                    showStatusMessage("Global semantic map uploaded successfully! This will guide the semantic mapping process and help standardise your data annotations.", "success");
+
+                    // Enable the continue button after successful upload
+                    enableContinueButton();
+                },
+                error: function (xhr, status, error) {
+                    let errorMessage = "Failed to upload semantic map file.";
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage = xhr.responseJSON.error;
+                    }
+                    showStatusMessage(errorMessage, "error");
+                    $("#uploadSemanticMapButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload Semantic Map');
+                }
+            });
+        });
+    });
+</script>
+
+<!-- Add some custom CSS -->
+<style>
+    .card {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .input-group-text {
+        background-color: #e9ecef;
+        border-color: #ced4da;
+    }
+
+    .fas {
+        margin-right: 5px;
+    }
+
+    .alert {
+        margin-top: 15px;
+    }
+
+    .alert-info {
+        border-left: 4px solid #17a2b8;
+    }
+
+    /* Style for disabled button */
+    #continueButton:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+</style>
+
 </body>
 </html>

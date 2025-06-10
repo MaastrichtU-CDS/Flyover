@@ -63,7 +63,7 @@ file.
 
 ##### Specification of metadata
 
-Specify the metadata in the `data_schema.json` file.
+Specify the metadata in the `data_semantic_map.json` file.
 
 The basic metadata should be in the following format; here with an example of a variable for biological sex:
 
@@ -133,7 +133,7 @@ The previous example is expanded as such
 
 ###### Complete example of metadata for biological sex
 
-Below, we display the complete example of how the schema entry for the class 'biological_sex' could look like:
+Below, we display the complete example of how the semantic map entry for the class 'biological_sex' could look like:
 
     "biological_sex": {
       "predicate": "sio:SIO_000008",
@@ -200,7 +200,7 @@ for those variables that were unsuccessfully annotated.
 
 ### Example data
 
-In the `example_data` folder, you can find an example of a general data schema in `data_schema.json`.  
+In the `example_data` folder, you can find an example of a global semantic map in `data_semantic_map.json`.  
 Additionally there is data (`.csv`) and a mapping file (`.json`) of two fictitious centres
 (centre a, which uses English terminology, and centre b, which uses Dutch terminology).
 These files can be used
