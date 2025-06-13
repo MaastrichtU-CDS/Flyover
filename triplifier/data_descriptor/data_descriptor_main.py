@@ -19,7 +19,6 @@ from werkzeug.utils import secure_filename
 from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
                    send_from_directory, jsonify)
 
-
 app = Flask(__name__)
 
 if os.getenv('FLYOVER_GRAPHDB_URL') and os.getenv('FLYOVER_REPOSITORY_NAME'):
@@ -57,7 +56,7 @@ class Cache:
         self.csvData = None
         self.csvPath = None
         self.uploaded_file = None
-        self.global_schema = None
+        self.global_semantic_map = None
         self.existing_graph = False
         self.databases = None
         self.descriptive_info = None
@@ -105,21 +104,58 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/upload-semantic-map', methods=['POST'])
+def upload_semantic_map():
+    """
+    Handle the upload of a global semantic map JSON file from the triples page.
+    This function processes the JSON file and stores it in the session cache for semantic mapping.
+
+    Returns:
+        flask.Response: JSON response indicating success or error
+    """
+    semantic_map_file = request.files.get('semanticMapFile')
+
+    if not semantic_map_file or not semantic_map_file.filename:
+        return jsonify({'error': 'No semantic map file provided'}), 400
+
+    if not allowed_file(semantic_map_file.filename, {'json'}):
+        return jsonify({'error': 'Please upload a valid .json file for the semantic map'}), 400
+
+    try:
+        # Read and parse the JSON file
+        session_cache.global_semantic_map = json.loads(semantic_map_file.read().decode('utf-8'))
+
+        # Validate that it has the required structure for semantic mapping
+        if not isinstance(session_cache.global_semantic_map.get('variable_info'), dict):
+            return jsonify({
+                'error': 'Invalid semantic map format. Please ensure the JSON file contains a "variable_info" field with semantic variable definitions.'
+            }), 400
+
+        return jsonify({
+            'success': True,
+            'message': 'Global semantic map uploaded successfully and ready for semantic mapping'
+        })
+
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Invalid JSON format in semantic map: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'error': f'Unexpected error processing the semantic map: {str(e)}'}), 400
+
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """
     This function handles the file upload process.
-    It accepts JSON and CSV files, and also handles data from a PostgreSQL database.
+    It accepts CSV files and handles data from a PostgreSQL database.
+    JSON file handling has been moved to a separate route (/upload-semantic-map).
 
     The function works as follows:
-    1. It retrieves the file type, JSON file, and CSV files from the form data.
-    2. If a JSON file is provided and its file extension is allowed, it uploads and saves the file,
-     and stores the file path in the session cache.
-    3. If the file type is 'CSV' and CSV files are provided and their file extensions are allowed,
+    1. It retrieves the file type and CSV files from the form data.
+    2. If the file type is 'CSV' and CSV files are provided and their file extensions are allowed,
     it uploads and saves the files, stores the file paths in the session cache, and runs the triplifier.
-    4. If the file type is 'Postgres', it handles the PostgreSQL data using the provided username, password, URL,
+    3. If the file type is 'Postgres', it handles the PostgreSQL data using the provided username, password, URL,
      database name, and table name, and runs the triplifier.
-    5. It returns a response indicating whether the triplifier run was successful.
+    4. It returns a response indicating whether the triplifier run was successful.
 
     Returns:
         flask.Response: A Flask response object containing the rendered 'triples.html' template
@@ -127,7 +163,6 @@ def upload_file():
     """
     upload = True
     file_type = request.form.get('fileType')
-    json_file = request.files.get('jsonFile') or request.files.get('jsonFile2')
     csv_files = request.files.getlist('csvFile')
     pk_fk_data = request.form.get('pkFkData')
     cross_graph_link_data = request.form.get('crossGraphLinkData')
@@ -139,23 +174,6 @@ def upload_file():
     # Store cross-graph linking data in session cache
     if cross_graph_link_data:
         session_cache.cross_graph_link_data = json.loads(cross_graph_link_data)
-
-    if json_file:
-        if not allowed_file(json_file.filename, {'json'}):
-            flash("If opting to submit a global schema, please upload it as a '.json' file.")
-            return render_template('index.html', error=True)
-
-        try:
-            session_cache.global_schema = json.loads(json_file.read().decode('utf-8'))
-
-            if not isinstance(session_cache.global_schema.get('variable_info'), dict):
-                flash("If opting to submit a global schema, please ensure it has a 'variable_info' field. "
-                      "Please refer to the documentation for more information.")
-                return render_template('index.html', error=True)
-
-        except Exception as e:
-            flash(f"Unexpected error attempting to cache the global schema file, error: {e}")
-            return render_template('index.html', error=True)
 
     if file_type == 'CSV' and csv_files:
         # Check if any CSV file has a filename
@@ -200,15 +218,7 @@ def upload_file():
                              request.form.get('table'))
         success, message = run_triplifier('triplifierSQL.properties')
 
-    elif json_file and file_type != 'Postgres' and not any(csv_file.filename for csv_file in csv_files):
-        success = True
-        upload = False
-        message = Markup("You have opted to not submit any new data, "
-                         "you can now proceed to describe your data using the global schema that you have provided."
-                         "<br>"
-                         "<i>In case you do wish to submit data, please return to the welcome page.</i>")
-
-    elif not json_file and file_type != 'Postgres' and not any(csv_file.filename for csv_file in csv_files):
+    elif file_type != 'Postgres' and not any(csv_file.filename for csv_file in csv_files):
         success = True
         upload = False
         message = Markup("You have opted to not submit any new data, "
@@ -309,13 +319,13 @@ def retrieve_columns():
     # Get the global variable names for the description drop-down menu
     global_names = retrieve_global_names()
 
-    # Create dictionaries to store preselected values
+    # Create dictionaries to store preselected values from semantic map
     preselected_descriptions = {}
     preselected_datatypes = {}
 
-    # If a global schema exists and contains variable_info
-    if isinstance(session_cache.global_schema, dict) and 'variable_info' in session_cache.global_schema:
-        for var_name, var_info in session_cache.global_schema['variable_info'].items():
+    # If a global semantic map exists and contains variable_info
+    if isinstance(session_cache.global_semantic_map, dict) and 'variable_info' in session_cache.global_semantic_map:
+        for var_name, var_info in session_cache.global_semantic_map['variable_info'].items():
             for db in unique_values:  # For each database
                 # Match by local_definition if available
                 local_def = var_info.get('local_definition', var_name)
@@ -450,12 +460,12 @@ def variable_details():
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
-                    # If this variable exists in the global schema
-                    if isinstance(session_cache.global_schema, dict):
+                    # If this variable exists in the global semantic map
+                    if isinstance(session_cache.global_semantic_map, dict):
                         # Get global variable name (removing the local name in parentheses)
                         global_var = var_name.split(' (or')[0].lower().replace(' ', '_')
 
-                        var_info = session_cache.global_schema['variable_info'].get(global_var, {})
+                        var_info = session_cache.global_semantic_map['variable_info'].get(global_var, {})
                         value_mapping = var_info.get('value_mapping', {}).get('terms', {})
 
                         # Iterate over the categories
@@ -491,8 +501,8 @@ def variable_details():
         # Add the dataframe to the result dictionary with the database name as the key
         dataframes[database] = df
 
-    if isinstance(session_cache.global_schema, dict):
-        variable_info = session_cache.global_schema.get('variable_info')
+    if isinstance(session_cache.global_semantic_map, dict):
+        variable_info = session_cache.global_semantic_map.get('variable_info')
     else:
         variable_info = {}
 
@@ -580,58 +590,58 @@ def download_page():
     Returns:
         flask.render_template: A Flask function that renders the 'download.html' template.
     """
-    if isinstance(session_cache.global_schema, dict) and isinstance(session_cache.descriptive_info, dict):
+    if isinstance(session_cache.global_semantic_map, dict) and isinstance(session_cache.descriptive_info, dict):
         return render_template('download.html',
-                               graphdb_location="http://localhost:7200/", show_schema=True)
+                               graphdb_location="http://localhost:7200/", show_semantic_map=True)
     else:
         return render_template('download.html',
-                               graphdb_location="http://localhost:7200/", show_schema=False)
+                               graphdb_location="http://localhost:7200/", show_semantic_map=False)
 
 
-@app.route('/downloadSchema', methods=['GET'])
-def download_schema():
+@app.route('/downloadSemanticMap', methods=['GET'])
+def download_semantic_map():
     """
-    This function generates a modified version of the global schema by adding local definitions to it.
-    The modified schema is then returned as a JSON response which can be downloaded as a file.
+    This function generates a modified version of the global semantic map by adding local definitions to it.
+    The modified semantic map is then returned as a JSON response which can be downloaded as a file.
 
     Parameters:
-    filename (str): The name of the file to be downloaded. Defaults to 'local_schema_{database_name}.json'.
+    filename (str): The name of the file to be downloaded. Defaults to 'local_semantic map_{database_name}.json'.
 
     Returns:
-        flask.Response: A Flask response object containing the modified schema as a JSON string.
-                        If an error occurs during the processing of the schema,
+        flask.Response: A Flask response object containing the modified semantic map as a JSON string.
+                        If an error occurs during the processing of the semantic map,
                         an HTTP response with a status code of 500 (Internal Server Error)
                         is returned along with a message describing the error.
 
     The function performs the following steps:
     1. Checks if there are multiple databases.
-    2. If there are multiple databases, it creates a zip file named 'local_schemas.zip'.
+    2. If there are multiple databases, it creates a zip file named 'local_semantic maps.zip'.
     3. It then loops through each database,
-       generates a modified version of the global schema by adding local definitions to it,
-       and writes the modified schema to the zip file.
+       generates a modified version of the global semantic map by adding local definitions to it,
+       and writes the modified semantic map to the zip file.
     4. After the request has been handled, it removes the zip file.
     5. If there is only one database,
-       it generates a modified version of the global schema by adding local definitions to it,
-       and returns the modified schema as a JSON response.
-    6. If an error occurs during the processing of the schema,
+       it generates a modified version of the global semantic map by adding local definitions to it,
+       and returns the modified semantic map as a JSON response.
+    6. If an error occurs during the processing of the semantic map,
        it returns an HTTP response with a status code of 500 (Internal Server Error)
        along with a message describing the error.
     """
     try:
         # Check if there are multiple databases
         if len(session_cache.databases) > 1:
-            _filename = 'local_schemas.zip'
+            _filename = 'local_semantic maps.zip'
             # Loop through each database
             for database in session_cache.databases:
-                filename = f'local_schema_{database}.json'
+                filename = f'local_semantic map_{database}.json'
 
                 # Open the zip file in append mode
                 with zipfile.ZipFile(_filename, 'a') as zipf:
-                    # Generate a modified version of the global schema by adding local definitions to it
-                    modified_schema = formulate_local_schema(database)
+                    # Generate a modified version of the global semantic map by adding local definitions to it
+                    modified_semantic_map = formulate_local_semantic_map(database)
 
-                    # Write the modified schema to the zip file
-                    zipf.writestr(filename, json.dumps(modified_schema, indent=4))
+                    # Write the modified semantic map to the zip file
+                    zipf.writestr(filename, json.dumps(modified_semantic_map, indent=4))
 
             # Define a function to remove the zip file after the request has been handled
             @after_this_request
@@ -649,21 +659,21 @@ def download_schema():
         else:
             # If there is only one database
             database = session_cache.databases[0]
-            filename = f'local_schema_{database}.json'
+            filename = f'local_semantic map_{database}.json'
 
             try:
-                # Generate a modified version of the global schema by adding local definitions to it
-                modified_schema = formulate_local_schema(database)
+                # Generate a modified version of the global semantic map by adding local definitions to it
+                modified_semantic_map = formulate_local_semantic_map(database)
 
-                # Return the modified schema as a JSON response
-                return Response(json.dumps(modified_schema, indent=4),
+                # Return the modified semantic map as a JSON response
+                return Response(json.dumps(modified_semantic_map, indent=4),
                                 mimetype='application/json',
                                 headers={'Content-Disposition': f'attachment;filename={filename}'})
             except Exception as e:
-                abort(500, description=f"An error occurred while processing the schema, error: {str(e)}")
+                abort(500, description=f"An error occurred while processing the semantic map, error: {str(e)}")
 
     except Exception as e:
-        abort(500, description=f"An error occurred while processing the schema, error: {str(e)}")
+        abort(500, description=f"An error occurred while processing the semantic map, error: {str(e)}")
 
 
 @app.route('/downloadOntology', methods=['GET'])
@@ -871,9 +881,9 @@ def retrieve_global_names():
     """
     This function retrieves the names of global variables from the session cache.
 
-    The function first checks if the global schema in the session cache is a dictionary.
+    The function first checks if the global semantic map in the session cache is a dictionary.
     If it is not, it returns a list of default global variable names.
-    If it is a dictionary, it attempts to retrieve the keys from the 'variable_info' field of the global schema,
+    If it is a dictionary, it attempts to retrieve the keys from the 'variable_info' field of the global semantic map,
     capitalise them, replace underscores with spaces, and return them as a list.
     If an error occurs during this process,
     it flashes an error message to the user and renders the 'index.html' template.
@@ -883,73 +893,74 @@ def retrieve_global_names():
         flask.render_template: A Flask function that renders a template.
         In this case, it renders the 'index.html' template if an error occurs.
     """
-    if not isinstance(session_cache.global_schema, dict):
+    if not isinstance(session_cache.global_semantic_map, dict):
         return ['Research subject identifier', 'Biological sex', 'Age at inclusion', 'Other']
     else:
         try:
             return [name.capitalize().replace('_', ' ') for name in
-                    session_cache.global_schema['variable_info'].keys()] + ['Other']
+                    session_cache.global_semantic_map['variable_info'].keys()] + ['Other']
         except Exception as e:
-            flash(f"Failed to read the global schema. Error: {e}")
+            flash(f"Failed to read the global semantic map. Error: {e}")
             return render_template('index.html', error=True)
 
 
-def formulate_local_schema(database):
+def formulate_local_semantic_map(database):
     """
-    This function modifies the global schema by adding local definitions to it.
-    The modified schema is then returned.
+    This function modifies the global semantic map by adding local definitions to it.
+    The modified semantic map is then returned.
 
     Parameters:
-    database (str): The name of the database for which the local schema is to be formulated.
+    database (str): The name of the database for which the local semantic map is to be formulated.
 
     Returns:
-    dict: A dictionary representing the modified schema.
+    dict: A dictionary representing the modified semantic map.
 
     The function performs the following steps:
-    1. Creates a deep copy of the global schema stored in the session cache.
-    2. Updates the 'database_name' field in the schema with the provided database name.
-    3. Updates the 'variable_info' field in the schema. If a variable does not have a 'local_definition' field,
+    1. Creates a deep copy of the global semantic map stored in the session cache.
+    2. Updates the 'database_name' field in the semantic map with the provided database name.
+    3. Updates the 'variable_info' field in the semantic map. If a variable does not have a 'local_definition' field,
        it adds one with an empty string as its value.
-    4. Adds local definitions to the schema. For each local variable in the session cache,
+    4. Adds local definitions to the semantic map. For each local variable in the session cache,
        it retrieves the corresponding global variable name, converts it to lowercase, replaces spaces with underscores,
-       and adds the local variable name as the 'local_definition' for the global variable in the schema.
-    5. Adds local terms to the schema. For each local variable in the session cache,
+       and adds the local variable name as the 'local_definition' for the global variable in the semantic map.
+    5. Adds local terms to the semantic map. For each local variable in the session cache,
        it retrieves the corresponding value mapping terms, converts it to lowercase, replaces spaces with underscores,
-       and adds the local term name as the 'local_term' for the global term in the schema.
-    6. Returns the modified schema.
+       and adds the local term name as the 'local_term' for the global term in the semantic map.
+    6. Returns the modified semantic map.
     """
-    # Create a deep copy of the global schema
-    modified_schema = copy.deepcopy(session_cache.global_schema)
+    # Create a deep copy of the global semantic map
+    modified_semantic_map = copy.deepcopy(session_cache.global_semantic_map)
 
-    # Update the 'database_name' field in the schema
-    if isinstance(modified_schema.get('database_name'), str):
-        modified_schema['database_name'] = database
+    # Update the 'database_name' field in the semantic map
+    if isinstance(modified_semantic_map.get('database_name'), str):
+        modified_semantic_map['database_name'] = database
     else:
-        modified_schema.update({'database_name': database})
+        modified_semantic_map.update({'database_name': database})
 
-    # Update the 'variable_info' field in the schema
-    modified_schema['variable_info'] = \
+    # Update the 'variable_info' field in the semantic map
+    modified_semantic_map['variable_info'] = \
         {variable_name: variable_info if isinstance(variable_info.get('local_definition'), str) else {
             'local_definition': ""}
-         for variable_name, variable_info in modified_schema['variable_info'].items()}
+         for variable_name, variable_info in modified_semantic_map['variable_info'].items()}
 
-    modified_schema['variable_info'] = {}
+    modified_semantic_map['variable_info'] = {}
 
-    # Add local definitions to the schema
+    # Add local definitions to the semantic map
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         global_variable = local_value['description'].split('Variable description: ')[1].lower().replace(' ', '_')
         if global_variable:
-            # Add the global variable to a temporary schema if it is selected as a local variable
-            _schema_info = {global_variable:
-                                copy.deepcopy(session_cache.global_schema['variable_info'].get(global_variable, {}))}
+            # Add the global variable to a temporary semantic map if it is selected as a local variable
+            _semantic_map_info = {global_variable:
+                                copy.deepcopy(
+                                    session_cache.global_semantic_map['variable_info'].get(global_variable, {}))}
 
             # Specify the local definition for the global variable
-            _schema_info[global_variable]['local_definition'] = local_variable
+            _semantic_map_info[global_variable]['local_definition'] = local_variable
 
             # Create a clean value_mapping section
             _value_map = {}
 
-            # Update the 'value_mapping' field in the schema
+            # Update the 'value_mapping' field in the semantic map
             # For each category of the local variable,
             # find the corresponding term in the global variable and set its 'local_term' to the category
             for category, value in local_value.items():
@@ -957,9 +968,10 @@ def formulate_local_schema(database):
                     global_term = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
 
                     if global_term:
-                        # Add the global variable's value mapping to the schema if it is selected as a local value
+                        # Add the global variable's value mapping to the semantic map if it is selected as a local value
                         __value_map = {global_term: copy.deepcopy(
-                            session_cache.global_schema['variable_info'][global_variable]['value_mapping']['terms'].get(
+                            session_cache.global_semantic_map['variable_info'][global_variable]['value_mapping'][
+                                'terms'].get(
                                 global_term,
                                 {
                                     "local_term": "",
@@ -986,25 +998,25 @@ def formulate_local_schema(database):
                         _value_map.update(copy.deepcopy(__value_map))
                         __value_map.clear()
 
-            # Place the value mapping section in the schema
+            # Place the value mapping section in the semantic map
             if _value_map:
-                _schema_info[global_variable]['value_mapping'] = copy.deepcopy(_value_map)
+                _semantic_map_info[global_variable]['value_mapping'] = copy.deepcopy(_value_map)
 
             # Handling duplicate global variables by appending a suffix
-            if global_variable in modified_schema['variable_info']:
+            if global_variable in modified_semantic_map['variable_info']:
                 suffix = 1
                 new_global_variable = f"{global_variable}_{suffix}"
-                while new_global_variable in modified_schema['variable_info']:
+                while new_global_variable in modified_semantic_map['variable_info']:
                     suffix += 1
                     new_global_variable = f"{global_variable}_{suffix}"
 
             else:
                 new_global_variable = global_variable
 
-            # Append the new global variable to the actual schema
-            modified_schema['variable_info'][new_global_variable] = copy.deepcopy(_schema_info[global_variable])
+            # Append the new global variable to the actual semantic map
+            modified_semantic_map['variable_info'][new_global_variable] = copy.deepcopy(_semantic_map_info[global_variable])
 
-    return modified_schema
+    return modified_semantic_map
 
 
 def handle_postgres_data(username, password, postgres_url, postgres_db, table):
@@ -1049,7 +1061,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
                 # f"repo.type = rdf4j\n"
                 # f"repo.url = {graphdb_url}\n"
                 # f"repo.id = {repo}"
-        )
+                )
 
 
 def insert_equivalencies(descriptive_info, variable):
@@ -1098,7 +1110,6 @@ def insert_equivalencies(descriptive_info, variable):
     # Skip if none of the fields has meaningful content
     if not (has_type or has_description or has_comments):
         return None
-
 
     query = f"""
                 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
@@ -1526,7 +1537,7 @@ def run_triplifier(properties_file=None):
 
             return True, Markup("The data you have submitted was triplified successfully and "
                                 "is now available in GraphDB."
-                                "<br>"                                
+                                "<br>"
                                 "You can now proceed to describe your data, "
                                 "but please note that this requires in-depth knowledge of the data."
                                 "<br><br>"
@@ -1535,7 +1546,7 @@ def run_triplifier(properties_file=None):
                                 "please return to the welcome page.</i>"
                                 "<br>"
                                 "<i>You can always return to Flyover to "
-                                    "describe the data that is present in GraphDB.</i>")
+                                "describe the data that is present in GraphDB.</i>")
         else:
             return False, output
     except OSError as e:
