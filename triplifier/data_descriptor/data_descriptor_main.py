@@ -1499,8 +1499,11 @@ def run_triplifier(properties_file=None):
                 csv_path = session_cache.csvPath[i]
                 csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
 
+        # Get JAVA_OPTS from environment or use default
+        java_opts = os.getenv('JAVA_OPTS', '-Xms2g -Xmx8g')
+
         process = subprocess.Popen(
-            f"java -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}",
+            f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}",
             shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
         output, _ = process.communicate()

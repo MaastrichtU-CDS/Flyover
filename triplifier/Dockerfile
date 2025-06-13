@@ -20,6 +20,9 @@ RUN apt-get update -y && \
 ENV JAVA_HOME /usr/lib/jvm/default-java
 ENV PATH $PATH:$JAVA_HOME/bin
 
+# Set default JAVA_OPTS (can be overridden via environment)
+ENV JAVA_OPTS="-Xms2g -Xmx8g"
+
 # Download PostgreSQL JDBC driver
 ENV POST_URL https://jdbc.postgresql.org/download/postgresql-42.2.5.jar
 RUN wget ${POST_URL} && \
