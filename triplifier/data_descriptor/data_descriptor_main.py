@@ -1136,8 +1136,7 @@ def insert_equivalencies(descriptive_info, variable):
 def generate_fk_predicate(fk_config, base_uri):
     """Generate FK predicate URI using the same base as column class URIs"""
     return (
-        f"{base_uri}{fk_config['foreignKeyTable']}_{fk_config['foreignKeyColumn']}_refersTo_"
-        f"{fk_config['primaryKeyTable']}_{fk_config['primaryKeyColumn']}"
+        f"{base_uri}cell_refers_to"
     )
 
 
