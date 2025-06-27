@@ -19,6 +19,9 @@ from werkzeug.utils import secure_filename
 from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
                    send_from_directory, jsonify)
 
+from utils.data_preprocessing import preprocess_dataframe
+
+
 app = Flask(__name__)
 
 if os.getenv('FLYOVER_GRAPHDB_URL') and os.getenv('FLYOVER_REPOSITORY_NAME'):
@@ -197,7 +200,7 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                session_cache.csvData.append(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign))
+                session_cache.csvData.append(preprocess_dataframe(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)))
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
