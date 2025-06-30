@@ -374,7 +374,7 @@ def retrieve_descriptive_info():
        does not contain the name of any other database, it processes the local variable.
     4. It retrieves the data type, global variable name, and comment for the local variable from the form data.
     5. It stores this information in the session cache.
-    6. If the data type of the local variable is 'Categorical Nominal' or 'Categorical Ordinal',
+    6. If the data type of the local variable is 'Categorical',
        it retrieves the categories for the local variable and stores them in the session cache.
     7. If the data type of the local variable is 'Continuous',
     it adds the local variable to a list of variables to further specify.
@@ -410,9 +410,9 @@ def retrieve_descriptive_info():
                     'comments': f'Variable comment: {comment if comment else "No comment provided"}'
                 }
 
-                # If the data type of the local variable is 'Categorical Nominal' or 'Categorical Ordinal',
+                # If the data type of the local variable is 'Categorical',
                 # retrieve the categories for the local variable and store them in the session cache
-                if data_type in ['Categorical Nominal', 'Categorical Ordinal']:
+                if data_type == 'Categorical':
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
                     df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
                     session_cache.DescriptiveInfoDetails[database].append(

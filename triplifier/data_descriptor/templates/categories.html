@@ -2,6 +2,7 @@
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
 <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+<link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
 <script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
 <script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
@@ -89,6 +90,10 @@
             background-color: #0056b3;
             border-color: #004085;
         }
+
+        .ref-guide-icon {
+            margin-right: 5px !important;
+        }
     </style>
 </head>
 
@@ -100,11 +105,8 @@
     <p>Please inspect the variables (i.e. columns) of your database(s).<br>
         For every database that you would like to describe,
         please select the type and description of your columns from the drop-down menu.<br>
-        <br>
-        &#x1F914;<i>Does none of the available descriptions accurately represent a given variable?</i><br>
-        <i>Please select 'Other' and specify what the variable represents in the text box.</i><br>
-        <i>Find the list of available descriptions to be too brief? Please consider providing a global
-            semantic map, as the descriptions change accordingly.</i></p>
+    </p>
+
     <form class="form-horizontal" method="POST" action="units">
         <hr>
         {% for database, df in dataframes.items() %}
@@ -129,7 +131,7 @@
                                 <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
                                         class="selectpicker" data-live-search="true">
                                     <option value="">Data type</option>
-                                    {% set datatype_options = ['Categorical Ordinal', 'Categorical Nominal', 'Continuous', 'Identifier'] %}
+                                    {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
                                     {% for option in datatype_options %}
                                         <option value="{{ option }}"
                                                 {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
@@ -218,88 +220,153 @@
         <p><input type="submit" id="submitBtn" value="Submit" class="btn btn-primary" disabled></p>
     </form>
 
-    <script>
-        $(document).ready(function () {
-            $('.toggle-button').click(function () {
-                var textElement = $(this).find('.toggle-text');
-                var svgElement = $(this).find('.angle-icon path');
-                if (textElement.text() === 'Show more') {
-                    textElement.text('Show less');
-                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
-                } else {
-                    textElement.text('Show more');
-                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
-                }
-                $(this).toggleClass('open');
-                $(this).next('.content').toggleClass('active');
-            });
+    <!-- Reference Guide Section -->
+    <div class="mt-4">
+        <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+            <i class="fas fa-info-circle"></i>
+            <strong>Reference Guide</strong><br>
+            <div class="mt-1 ms-4">
+                <!-- Data Types Section -->
+                <strong style="font-size: 0.9em;">Data Types:</strong>
+                <div class="row g-1 mt-1">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-tags me-2 ref-guide-icon"></i>
+                            <span>
+                                <strong style="font-size: 0.9em;">Categorical</strong>
+                                <span class="mb-1" style="font-size: 0.85em;"> - Variables that represent distinct categories or groups (e.g., gender, tumor stage)</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-chart-line me-2 ref-guide-icon"></i>
+                            <span>
+                                <strong style="font-size: 0.9em;">Continuous</strong>
+                                <span class="mb-1" style="font-size: 0.85em;"> - Numerical variables that can take any value within a range (e.g., age, weight)</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-fingerprint me-2 ref-guide-icon"></i>
+                            <span>
+                                <strong style="font-size: 0.9em;">Identifier</strong>
+                                <span class="mb-1" style="font-size: 0.85em;"> - Unique values used to identify or link records (e.g., patient ID, study ID)</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-clipboard-check me-2 ref-guide-icon"></i>
+                            <span>
+                                <strong style="font-size: 0.9em;"> Standardised</strong>
+                                <span class="mb-1" style="font-size: 0.85em;"> - Large-scale standardized variables across multiple studies (e.g., ICD codes)</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
 
-            $(".selectpicker").on('show.bs.select', function (e) {
-                var dropdownMenu = $(this).parent().find('.dropdown-menu');
-                var toggleContent = $(this).closest('.content');
-                var newHeight = Math.max(toggleContent.height(), dropdownMenu.height());
-                toggleContent.height(newHeight + 53);
-                toggleContent.css('overflow-y', 'hidden');
-            });
+                <!-- Additional Instructions Section -->
+                <div class="mt-3">
+                    <hr>
+                    <strong style="font-size: 0.9em;">Additional Information:</strong>
+                    <div class="mt-1">
+                        <p class="mb-1">
+                             &#x1F914; <i>Does none of the available descriptions accurately represent a given variable?</i><br>
+                            <span class="ms-3">Please select 'Other' and specify what the variable represents in the text box.</span>
+                        </p>
+                        <p class="mb-0">
+                            <i>Find the list of available descriptions to be too brief?</i><br>
+                            <span class="ms-3">Please consider providing a global semantic map, as the descriptions change accordingly.</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-            $(".selectpicker").on('hide.bs.select', function (e) {
-                var toggleContent = $(this).closest('.content');
-                toggleContent.height('auto');
-                toggleContent.css('overflow-y', 'auto');
-            });
-
-            // Initialize bootstrap-select
-            $('.selectpicker').each(function () {
-                $(this).selectpicker('refresh');
-            });
-        });
-
-        function changePage(database, direction) {
-            const groups = document.querySelectorAll(`[id^="group-${database}-"]`);
-            const currentPage = parseInt(document.getElementById(`current-page-${database}`).textContent);
-            const totalPages = groups.length;
-            const newPage = currentPage + direction;
-
-            if (newPage >= 1 && newPage <= totalPages) {
-                // Hide current group
-                document.getElementById(`group-${database}-${currentPage - 1}`).classList.remove('active');
-                // Show new group
-                document.getElementById(`group-${database}-${newPage - 1}`).classList.add('active');
-                // Update page number
-                document.getElementById(`current-page-${database}`).textContent = newPage;
-
-                // Update button states
-                const prevBtn = document.querySelector(`#group-${database}-${newPage - 1}`).parentElement.querySelector('.prev-btn');
-                const nextBtn = document.querySelector(`#group-${database}-${newPage - 1}`).parentElement.querySelector('.next-btn');
-                prevBtn.disabled = newPage === 1;
-                nextBtn.disabled = newPage === totalPages;
+<script>
+    $(document).ready(function () {
+        $('.toggle-button').click(function () {
+            var textElement = $(this).find('.toggle-text');
+            var svgElement = $(this).find('.angle-icon path');
+            if (textElement.text() === 'Show more') {
+                textElement.text('Show less');
+                svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
+            } else {
+                textElement.text('Show more');
+                svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
             }
-        }
-
-        // Function to check if any description is selected
-        function checkDescriptions() {
-            let hasSelection = false;
-
-            // Check preselected descriptions
-            $('.selectpicker[id^="ncit_comment_"]').each(function () {
-                if ($(this).val() && $(this).val() !== '') {
-                    hasSelection = true;
-                    return false; // break the loop
-                }
-            });
-
-            // Enable/disable submit button based on selection
-            $('#submitBtn').prop('disabled', !hasSelection);
-        }
-
-        // Check on page load (for preselected values)
-        checkDescriptions();
-
-        // Check whenever a description is selected
-        $('.selectpicker[id^="ncit_comment_"]').on('changed.bs.select', function () {
-            checkDescriptions();
+            $(this).toggleClass('open');
+            $(this).next('.content').toggleClass('active');
         });
-    </script>
-</div>
+
+        $(".selectpicker").on('show.bs.select', function (e) {
+            var dropdownMenu = $(this).parent().find('.dropdown-menu');
+            var toggleContent = $(this).closest('.content');
+            var newHeight = Math.max(toggleContent.height(), dropdownMenu.height());
+            toggleContent.height(newHeight + 53);
+            toggleContent.css('overflow-y', 'hidden');
+        });
+
+        $(".selectpicker").on('hide.bs.select', function (e) {
+            var toggleContent = $(this).closest('.content');
+            toggleContent.height('auto');
+            toggleContent.css('overflow-y', 'auto');
+        });
+
+        // Initialize bootstrap-select
+        $('.selectpicker').each(function () {
+            $(this).selectpicker('refresh');
+        });
+    });
+
+    function changePage(database, direction) {
+        const groups = document.querySelectorAll(`[id^="group-${database}-"]`);
+        const currentPage = parseInt(document.getElementById(`current-page-${database}`).textContent);
+        const totalPages = groups.length;
+        const newPage = currentPage + direction;
+
+        if (newPage >= 1 && newPage <= totalPages) {
+            // Hide current group
+            document.getElementById(`group-${database}-${currentPage - 1}`).classList.remove('active');
+            // Show new group
+            document.getElementById(`group-${database}-${newPage - 1}`).classList.add('active');
+            // Update page number
+            document.getElementById(`current-page-${database}`).textContent = newPage;
+
+            // Update button states
+            const prevBtn = document.querySelector(`#group-${database}-${newPage - 1}`).parentElement.querySelector('.prev-btn');
+            const nextBtn = document.querySelector(`#group-${database}-${newPage - 1}`).parentElement.querySelector('.next-btn');
+            prevBtn.disabled = newPage === 1;
+            nextBtn.disabled = newPage === totalPages;
+        }
+    }
+
+    // Function to check if any description is selected
+    function checkDescriptions() {
+        let hasSelection = false;
+
+        // Check preselected descriptions
+        $('.selectpicker[id^="ncit_comment_"]').each(function () {
+            if ($(this).val() && $(this).val() !== '') {
+                hasSelection = true;
+                return false; // break the loop
+            }
+        });
+
+        // Enable/disable submit button based on selection
+        $('#submitBtn').prop('disabled', !hasSelection);
+    }
+
+    // Check on page load (for preselected values)
+    checkDescriptions();
+
+    // Check whenever a description is selected
+    $('.selectpicker[id^="ncit_comment_"]').on('changed.bs.select', function () {
+        checkDescriptions();
+    });
+</script>
 </body>
 </html>
