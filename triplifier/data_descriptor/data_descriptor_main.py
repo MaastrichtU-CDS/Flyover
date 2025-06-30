@@ -1,9 +1,13 @@
+# Apply gevent monkey patching as early as possible
+import gevent
+
+gevent.monkey.patch_all()
+
 import copy
 import json
 import os
 import re
 import zipfile
-import threading
 import time
 
 import requests
@@ -1462,16 +1466,7 @@ def background_cross_graph_processing():
 def run_triplifier(properties_file=None):
     """
     This function runs the triplifier and checks if it ran successfully.
-
-    Parameters:
-    properties_file (str): The name of the properties file to be used by the triplifier.
-                           It can be either 'triplifierCSV.properties' for CSV files or
-                           'triplifierSQL.properties' for SQL files.
-                           Defaults to None.
-
-    Returns:
-        tuple: A tuple containing a boolean indicating if the triplifier ran successfully,
-        and a string containing the error message if it did not.
+    Uses gevent subprocess for better integration with gevent worker.
     """
     try:
         if properties_file == 'triplifierCSV.properties':
@@ -1502,12 +1497,24 @@ def run_triplifier(properties_file=None):
         # Get JAVA_OPTS from environment or use default
         java_opts = os.getenv('JAVA_OPTS', '-Xms2g -Xmx8g')
 
-        process = subprocess.Popen(
-            f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}",
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-        output, _ = process.communicate()
-        print(output.decode())
+        # Use gevent subprocess for better integration with gevent worker
+        command = f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}"
+        
+        # Use gevent.subprocess.check_output instead of Popen to avoid threading issues
+        try:
+        # Create process with gevent subprocess
+            output = gevent.subprocess.check_output(
+                command,
+                shell=True,
+                stderr=gevent.subprocess.STDOUT,
+                text=True
+            )
+            print(output)
+            return_code = 0
+        except gevent.subprocess.CalledProcessError as e:
+            output = e.output
+            return_code = e.returncode
+            print(f"Process failed with return code {return_code}: {output}")
 
         if properties_file == 'triplifierCSV.properties':
             # Allow easier debugging outside Docker
@@ -1527,16 +1534,16 @@ def run_triplifier(properties_file=None):
                 with open('triplifierCSV.properties', "w") as f:
                     f.writelines(modified_lines)
 
-        if process.returncode == 0:
-            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES
+        if return_code == 0:
+            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
             if properties_file == 'triplifierCSV.properties' and session_cache.pk_fk_data:
                 print("Triplifier successful. Starting background PK/FK processing...")
-                threading.Thread(target=background_pk_fk_processing, daemon=True).start()
+                gevent.spawn(background_pk_fk_processing)
 
-            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Add this block
+            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Use gevent spawn
             if properties_file == 'triplifierCSV.properties' and session_cache.cross_graph_link_data:
                 print("Triplifier successful. Starting background cross-graph processing...")
-                threading.Thread(target=background_cross_graph_processing, daemon=True).start()
+                gevent.spawn(background_cross_graph_processing)
 
             return True, Markup("The data you have submitted was triplified successfully and "
                                 "is now available in GraphDB."
@@ -1552,6 +1559,7 @@ def run_triplifier(properties_file=None):
                                 "describe the data that is present in GraphDB.</i>")
         else:
             return False, output
+
     except OSError as e:
         return False, f'Unexpected error attempting to create the upload folder, error: {e}'
     except Exception as e:

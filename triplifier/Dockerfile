@@ -33,10 +33,10 @@ COPY data_descriptor/ /app/data_descriptor/
 
 # Use Gunicorn as the WSGI server
 CMD ["gunicorn", \
-    "--workers", "4", \
+    "--workers", "1", \
     "--worker-class", "gevent", \
     "--worker-connections", "1000", \
-    "--timeout", "120", \
+    "--timeout", "300", \
     "--keep-alive", "5", \
     "--max-requests", "1000", \
     "--max-requests-jitter", "50", \
@@ -44,4 +44,6 @@ CMD ["gunicorn", \
     "--access-logfile", "-", \
     "--error-logfile", "-", \
     "--bind", "0.0.0.0:5000", \
+    "--preload", \
+    "--env", "GEVENT_SUPPORT=True", \
     "data_descriptor.data_descriptor_main:app"]
