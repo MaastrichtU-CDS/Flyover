@@ -94,6 +94,21 @@
         .ref-guide-icon {
             margin-right: 5px !important;
         }
+
+        .datatype-container {
+            position: relative;
+        }
+
+        .datatype-feedback {
+            display: block;
+            margin-top: 4px;
+            font-size: 0.85em;
+            font-style: italic;
+        }
+
+        .datatype-feedback i {
+            margin-right: 4px;
+        }
     </style>
 </head>
 
@@ -127,22 +142,13 @@
                         {% for i in range(group_index * 10, [group_index * 10 + 10, columns|length]|min) %}
                             {% set item = columns[i] %}
                             <div id="div1" class="form-group">
-                                <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
-                                <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
-                                        class="selectpicker" data-live-search="true">
-                                    <option value="">Data type</option>
-                                    {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
-                                    {% for option in datatype_options %}
-                                        <option value="{{ option }}"
-                                                {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
-                                            {{ option }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                                <label for="ncit_comment_{{ database }}_{{ item }}"></label>
+                                <label for="ncit_comment_{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
+                                
+                                <!-- Description dropdown - moved to first position -->
                                 <select id="ncit_comment_{{ database }}_{{ item }}"
                                         name="ncit_comment_{{ database }}_{{ item }}"
-                                        class="selectpicker" data-live-search="true">
+                                        class="selectpicker description-select" data-live-search="true"
+                                        data-database="{{ database }}" data-item="{{ item }}">
                                     {% if global_variable_names %}
                                         <option value="">Description</option>
                                         {% for value in global_variable_names %}
@@ -182,21 +188,32 @@
                                         <option value="Other">Other</option>
                                     {% endif %}
                                 </select>
+                                
+                                <!-- Comment box - moved to second position -->
                                 <label for="comment_{{ database }}_{{ item }}"></label>
                                 <input class="form-group" type="text" id="comment_{{ database }}_{{ item }}"
                                        name="comment_{{ database }}_{{ item }}"
-                                       placeholder="If other, please specify" disabled='disabled'/><br>
-                                <script>
-                                    $(document).ready(function () {
-                                        $("#ncit_comment_{{ database }}_{{ item }}").change(function () {
-                                            if ($(this).find("option:selected").val() == "Other") {
-                                                $("#comment_{{ database }}_{{ item }}").removeAttr("disabled");
-                                            } else {
-                                                $("#comment_{{ database }}_{{ item }}").attr("disabled", "disabled");
-                                            }
-                                        });
-                                    });
-                                </script>
+                                       placeholder="If other, please specify" disabled='disabled'/>
+                                
+                                <!-- Data type dropdown - moved to third position -->
+                                <label for="{{ database }}_{{ item }}"></label>
+                                <div class="datatype-container">
+                                    <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
+                                            class="selectpicker datatype-select" data-live-search="true"
+                                            data-database="{{ database }}" data-item="{{ item }}">
+                                        <option value="">Data type</option>
+                                        {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
+                                        {% for option in datatype_options %}
+                                            <option value="{{ option }}"
+                                                    {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
+                                                {{ option }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="datatype-feedback" id="feedback_{{ database }}_{{ item }}" style="display: none; color: #28a745;">
+                                        <i class="fas fa-magic"></i> Auto-filled based on description
+                                    </small>
+                                </div><br>
                             </div>
                         {% endfor %}
                     </div>
@@ -287,6 +304,13 @@
     </div>
 
 <script>
+    // Global datatype mapping passed from backend
+    var descriptionToDatatype = {{ description_to_datatype|tojson }};
+    
+    // Track which fields were auto-filled vs manually overridden
+    var autoFilledFields = new Set();
+    var manualOverrides = new Set();
+
     $(document).ready(function () {
         $('.toggle-button').click(function () {
             var textElement = $(this).find('.toggle-text');
@@ -320,7 +344,86 @@
         $('.selectpicker').each(function () {
             $(this).selectpicker('refresh');
         });
+
+        // Handle comment box enabling/disabling when "Other" is selected
+        $('.description-select').on('changed.bs.select', function () {
+            var database = $(this).data('database');
+            var item = $(this).data('item');
+            var commentBox = $('#comment_' + database + '_' + item);
+            
+            if ($(this).val() === "Other") {
+                commentBox.removeAttr("disabled");
+            } else {
+                commentBox.attr("disabled", "disabled");
+            }
+            
+            // Auto-populate datatype when description is selected
+            autoPopulateDatatype(database, item);
+            
+            // Update submit button state
+            checkDescriptions();
+        });
+
+        // Handle manual datatype selection (override detection)
+        $('.datatype-select').on('changed.bs.select', function () {
+            var database = $(this).data('database');
+            var item = $(this).data('item');
+            var fieldKey = database + '_' + item;
+            
+            // If this field was auto-filled and user is now manually changing it
+            if (autoFilledFields.has(fieldKey)) {
+                manualOverrides.add(fieldKey);
+                // Show override confirmation
+                showOverrideConfirmation(database, item);
+            }
+        });
+
+        // Check for pre-selected values on page load
+        checkDescriptions();
     });
+
+    function autoPopulateDatatype(database, item) {
+        var descriptionSelect = $('#ncit_comment_' + database + '_' + item);
+        var datatypeSelect = $('#' + database + '_' + item);
+        var feedback = $('#feedback_' + database + '_' + item);
+        var fieldKey = database + '_' + item;
+        
+        var selectedDescription = descriptionSelect.val();
+        
+        if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
+            // Check if we have a datatype mapping for this description
+            if (descriptionToDatatype[selectedDescription]) {
+                var suggestedDatatype = descriptionToDatatype[selectedDescription];
+                
+                // Only auto-fill if datatype is not already selected or if it's not a manual override
+                if (datatypeSelect.val() === '' || !manualOverrides.has(fieldKey)) {
+                    datatypeSelect.selectpicker('val', suggestedDatatype);
+                    autoFilledFields.add(fieldKey);
+                    
+                    // Show feedback that this was auto-filled
+                    feedback.show();
+                    setTimeout(function() {
+                        feedback.fadeOut();
+                    }, 3000);
+                }
+            }
+        } else {
+            // Clear datatype if description is cleared (only if it was auto-filled)
+            if (autoFilledFields.has(fieldKey) && !manualOverrides.has(fieldKey)) {
+                datatypeSelect.selectpicker('val', '');
+                autoFilledFields.delete(fieldKey);
+                feedback.hide();
+            }
+        }
+    }
+
+    function showOverrideConfirmation(database, item) {
+        var feedback = $('#feedback_' + database + '_' + item);
+        feedback.html('<i class="fas fa-user-edit"></i> Manually overridden').css('color', '#ffc107').show();
+        setTimeout(function() {
+            feedback.fadeOut();
+        }, 2000);
+    }
 
     function changePage(database, direction) {
         const groups = document.querySelectorAll(`[id^="group-${database}-"]`);
@@ -359,9 +462,6 @@
         // Enable/disable submit button based on selection
         $('#submitBtn').prop('disabled', !hasSelection);
     }
-
-    // Check on page load (for preselected values)
-    checkDescriptions();
 
     // Check whenever a description is selected
     $('.selectpicker[id^="ncit_comment_"]').on('changed.bs.select', function () {

@@ -325,15 +325,26 @@ def retrieve_columns():
     # Create dictionaries to store preselected values from semantic map
     preselected_descriptions = {}
     preselected_datatypes = {}
+    
+    # Create mapping from description names to datatypes for auto-population
+    description_to_datatype = {}
 
     # If a global semantic map exists and contains variable_info
     if isinstance(session_cache.global_semantic_map, dict) and 'variable_info' in session_cache.global_semantic_map:
         for var_name, var_info in session_cache.global_semantic_map['variable_info'].items():
+            # Create mapping for auto-population (description -> datatype)
+            description_display = var_name.capitalize().replace('_', ' ')
+            if 'data_type' in var_info:
+                datatype = var_info['data_type'].lower()
+                words = datatype.split()
+                datatype_display = ' '.join(word.capitalize() for word in words)
+                description_to_datatype[description_display] = datatype_display
+            
             for db in unique_values:  # For each database
                 # Match by local_definition if available
                 local_def = var_info.get('local_definition', var_name)
                 key = f"{db}_{local_def}"
-                preselected_descriptions[key] = var_name.capitalize().replace('_', ' ')
+                preselected_descriptions[key] = description_display
                 if 'data_type' in var_info:
                     datatype = var_info['data_type'].lower()
                     words = datatype.split()
@@ -358,7 +369,8 @@ def retrieve_columns():
                            dataframes=dataframes,
                            global_variable_names=global_names,
                            preselected_descriptions=preselected_descriptions,
-                           preselected_datatypes=preselected_datatypes)
+                           preselected_datatypes=preselected_datatypes,
+                           description_to_datatype=description_to_datatype)
 
 
 @app.route("/units", methods=['POST'])
