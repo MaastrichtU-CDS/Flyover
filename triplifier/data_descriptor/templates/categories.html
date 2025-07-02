@@ -128,21 +128,12 @@
                             {% set item = columns[i] %}
                             <div id="div1" class="form-group">
                                 <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
-                                <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
-                                        class="selectpicker" data-live-search="true">
-                                    <option value="">Data type</option>
-                                    {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
-                                    {% for option in datatype_options %}
-                                        <option value="{{ option }}"
-                                                {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
-                                            {{ option }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
+                                <!-- Description dropdown first -->
                                 <label for="ncit_comment_{{ database }}_{{ item }}"></label>
                                 <select id="ncit_comment_{{ database }}_{{ item }}"
                                         name="ncit_comment_{{ database }}_{{ item }}"
-                                        class="selectpicker" data-live-search="true">
+                                        class="selectpicker" data-live-search="true"
+                                        onchange="onDescriptionChange('{{ database }}', '{{ item }}')">
                                     {% if global_variable_names %}
                                         <option value="">Description</option>
                                         {% for value in global_variable_names %}
@@ -182,10 +173,23 @@
                                         <option value="Other">Other</option>
                                     {% endif %}
                                 </select>
+                                <!-- Comment section second -->
                                 <label for="comment_{{ database }}_{{ item }}"></label>
                                 <input class="form-group" type="text" id="comment_{{ database }}_{{ item }}"
                                        name="comment_{{ database }}_{{ item }}"
                                        placeholder="If other, please specify" disabled='disabled'/><br>
+                                <!-- Datatype dropdown third -->
+                                <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
+                                        class="selectpicker" data-live-search="true">
+                                    <option value="">Data type</option>
+                                    {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
+                                    {% for option in datatype_options %}
+                                        <option value="{{ option }}"
+                                                {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
+                                            {{ option }}
+                                        </option>
+                                    {% endfor %}
+                                </select><br>
                                 <script>
                                     $(document).ready(function () {
                                         $("#ncit_comment_{{ database }}_{{ item }}").change(function () {
@@ -366,6 +370,74 @@
     // Check whenever a description is selected
     $('.selectpicker[id^="ncit_comment_"]').on('changed.bs.select', function () {
         checkDescriptions();
+    });
+
+    // Global variable to store the semantic map
+    let globalSemanticMap = {{ global_semantic_map|tojson|safe if global_semantic_map else '{}' }};
+
+    // Function to handle description change
+    function onDescriptionChange(database, columnName) {
+        const descriptionSelect = document.getElementById(`ncit_comment_${database}_${columnName}`);
+        const datatypeSelect = document.getElementById(`${database}_${columnName}`);
+        const selectedDescription = descriptionSelect.value;
+
+        console.log('Description changed:', selectedDescription, 'for column:', columnName);
+
+        if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
+            // Convert description to lowercase and replace spaces with underscores to match JSON keys
+            const descriptionKey = selectedDescription.toLowerCase().replace(/\s+/g, '_');
+            
+            // Check if this description exists in the JSON mapping
+            if (globalSemanticMap && globalSemanticMap.variable_info && globalSemanticMap.variable_info[descriptionKey]) {
+                const variableInfo = globalSemanticMap.variable_info[descriptionKey];
+                
+                // Auto-populate datatype if available
+                if (variableInfo.data_type) {
+                    let datatype = variableInfo.data_type;
+                    // Convert datatype to match dropdown options (capitalize first letter)
+                    datatype = datatype.charAt(0).toUpperCase() + datatype.slice(1).toLowerCase();
+                    
+                    // Set the datatype dropdown value
+                    $(datatypeSelect).selectpicker('val', datatype);
+                    console.log('Auto-populated datatype:', datatype);
+                }
+
+                // Update local_definition in the JSON structure
+                updateLocalDefinition(descriptionKey, columnName);
+            }
+        }
+
+        // Update bootstrap-select display
+        $(datatypeSelect).selectpicker('refresh');
+    }
+
+    // Function to update local definition in JSON structure
+    function updateLocalDefinition(descriptionKey, columnName) {
+        if (globalSemanticMap && globalSemanticMap.variable_info && globalSemanticMap.variable_info[descriptionKey]) {
+            globalSemanticMap.variable_info[descriptionKey].local_definition = columnName;
+            console.log('Updated local_definition for', descriptionKey, 'to:', columnName);
+            
+            // Store the updated semantic map back to session cache (will be handled in backend)
+            // For now, just log that we've updated it locally
+            console.log('Updated global semantic map:', globalSemanticMap);
+        }
+    }
+
+    // Function to get updated semantic map data for form submission
+    function getUpdatedSemanticMap() {
+        return globalSemanticMap;
+    }
+
+    // Add hidden field to form to pass updated semantic map to backend
+    $(document).ready(function() {
+        $('form').on('submit', function() {
+            // Add hidden input with updated semantic map
+            const hiddenInput = $('<input>')
+                .attr('type', 'hidden')
+                .attr('name', 'updated_semantic_map')
+                .val(JSON.stringify(globalSemanticMap));
+            $(this).append(hiddenInput);
+        });
     });
 </script>
 </body>

@@ -358,7 +358,8 @@ def retrieve_columns():
                            dataframes=dataframes,
                            global_variable_names=global_names,
                            preselected_descriptions=preselected_descriptions,
-                           preselected_datatypes=preselected_datatypes)
+                           preselected_datatypes=preselected_datatypes,
+                           global_semantic_map=session_cache.global_semantic_map)
 
 
 @app.route("/units", methods=['POST'])
@@ -387,6 +388,15 @@ def retrieve_descriptive_info():
     """
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
+
+    # Handle updated semantic map from frontend
+    updated_semantic_map = request.form.get('updated_semantic_map')
+    if updated_semantic_map:
+        try:
+            session_cache.global_semantic_map = json.loads(updated_semantic_map)
+            print("Updated semantic map received from frontend")
+        except json.JSONDecodeError as e:
+            print(f"Error parsing updated semantic map: {e}")
 
     for database in session_cache.databases:
         session_cache.DescriptiveInfoDetails[database] = []
