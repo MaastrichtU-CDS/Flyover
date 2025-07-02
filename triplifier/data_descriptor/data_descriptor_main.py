@@ -1359,11 +1359,6 @@ def get_existing_column_class_uri(table_name, column_name):
         return None
 
 
-def generate_cross_graph_predicate(new_table, new_column, existing_table, existing_column, base_uri):
-    """Generate cross-graph predicate URI"""
-    return f"{base_uri}{new_table}_{new_column}_refersTo_{existing_table}_{existing_column}"
-
-
 def insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri):
     """Insert cross-graph relationship into the data graph"""
     insert_query = f"""
@@ -1416,13 +1411,13 @@ def process_cross_graph_relationships():
 
         # Generate predicate
         base_uri = extract_base_uri(new_column_uri)
-        predicate = generate_cross_graph_predicate(
-            link_data['newTableName'],
-            link_data['newColumnName'],
-            link_data['existingTableName'],
-            link_data['existingColumnName'],
-            base_uri
-        )
+        fk_config = {
+            'foreignKeyTable': link_data['newTableName'],
+            'foreignKeyColumn': link_data['newColumnName'],
+            'primaryKeyTable': link_data['existingTableName'],
+            'primaryKeyColumn': link_data['existingColumnName']
+        }
+        predicate = generate_fk_predicate(fk_config, base_uri)
 
         # Insert the relationship
         insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)

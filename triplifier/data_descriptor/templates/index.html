@@ -79,15 +79,17 @@
             <div id="dataLinkingSection" style="display: none; margin-top: 20px;">
                 <hr>
                 <div class="alert alert-info">
-                    <strong><i class="fas fa-link"></i>Link New Data to Existing Graph</strong><br>
-                    You can optionally link your new data to the existing data graph by specifying relationships between tables and columns.
+                    <strong><i class="fas fa-link"></i> Link Your New Data to Existing Graph Data</strong><br>
+                    <p>This feature allows you to connect your new data with data that already exists in the graph database. </p>
+                    <p class="mb-0"><small>Note: Make sure your linking columns contain compatible values (e.g., identical ID formats)</small></p>
                 </div>
 
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="enableDataLinking" name="enableDataLinking">
                     <label class="form-check-label" for="enableDataLinking">
-                        <strong>Link new data to existing graph</strong>
+                        <strong>Enable Data Linking</strong>
                     </label>
+                    <small class="form-text text-muted">Check this box to establish connections between your new data and existing data</small>
                 </div>
 
                 <div id="linkingConfiguration" style="display: none;">
@@ -98,33 +100,37 @@
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-6">
-                                    <h6>New Data</h6>
+                                    <h6>New Data (Data you're uploading now)</h6>
                                     <div class="form-group">
-                                        <label for="newTableName">Table Name:</label>
+                                        <label for="newTableName">Select Data File:</label>
                                         <select class="form-control" id="newTableName" name="newTableName">
-                                            <option value="">-- Select New Table --</option>
+                                            <option value="">-- Select the CSV file you want to link --</option>
                                         </select>
+                                        <small class="form-text text-muted">Choose which of your uploaded CSV files contains the linking information</small>
                                     </div>
                                     <div class="form-group">
-                                        <label for="newColumnName">Column Name:</label>
+                                        <label for="newColumnName">Select Linking Column:</label>
                                         <select class="form-control" id="newColumnName" name="newColumnName">
-                                            <option value="">-- Select New Column --</option>
+                                            <option value="">-- Select the column containing identifiers --</option>
                                         </select>
+                                        <small class="form-text text-muted">Choose the column that contains values matching the existing data (e.g., Patient ID, Study Number)</small>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <h6>Existing Graph Data</h6>
+                                    <h6>Existing Graph Data (Data already in the graph database)</h6>
                                     <div class="form-group">
-                                        <label for="existingTableName">Table Name:</label>
+                                        <label for="existingTableName">Select Existing Table:</label>
                                         <select class="form-control" id="existingTableName" name="existingTableName">
-                                            <option value="">-- Select Existing Table --</option>
+                                            <option value="">-- Select the existing data table to link to --</option>
                                         </select>
+                                        <small class="form-text text-muted">Choose which existing data table you want to link with</small>
                                     </div>
                                     <div class="form-group">
-                                        <label for="existingColumnName">Column Name:</label>
+                                        <label for="existingColumnName">Select Matching Column:</label>
                                         <select class="form-control" id="existingColumnName" name="existingColumnName">
-                                            <option value="">-- Select Existing Column --</option>
+                                            <option value="">-- Select the column to match against --</option>
                                         </select>
+                                        <small class="form-text text-muted">Choose the column from existing data that matches your new data's identifiers</small>
                                     </div>
                                 </div>
                             </div>
