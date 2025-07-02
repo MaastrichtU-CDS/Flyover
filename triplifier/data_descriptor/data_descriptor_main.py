@@ -393,10 +393,17 @@ def retrieve_descriptive_info():
     updated_semantic_map = request.form.get('updated_semantic_map')
     if updated_semantic_map:
         try:
-            session_cache.global_semantic_map = json.loads(updated_semantic_map)
-            print("Updated semantic map received from frontend")
+            updated_map = json.loads(updated_semantic_map)
+            # Validate the structure before updating
+            if isinstance(updated_map, dict) and 'variable_info' in updated_map:
+                session_cache.global_semantic_map = updated_map
+                print("Updated semantic map received from frontend")
+            else:
+                print("Invalid semantic map structure received from frontend")
         except json.JSONDecodeError as e:
             print(f"Error parsing updated semantic map: {e}")
+        except Exception as e:
+            print(f"Unexpected error handling semantic map: {e}")
 
     for database in session_cache.databases:
         session_cache.DescriptiveInfoDetails[database] = []

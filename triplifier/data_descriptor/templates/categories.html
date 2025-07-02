@@ -373,53 +373,71 @@
     });
 
     // Global variable to store the semantic map
-    let globalSemanticMap = {{ global_semantic_map|tojson|safe if global_semantic_map else '{}' }};
+    let globalSemanticMap = {{ global_semantic_map|tojson|safe if global_semantic_map else '{"variable_info": {}}' }};
 
     // Function to handle description change
     function onDescriptionChange(database, columnName) {
-        const descriptionSelect = document.getElementById(`ncit_comment_${database}_${columnName}`);
-        const datatypeSelect = document.getElementById(`${database}_${columnName}`);
-        const selectedDescription = descriptionSelect.value;
-
-        console.log('Description changed:', selectedDescription, 'for column:', columnName);
-
-        if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
-            // Convert description to lowercase and replace spaces with underscores to match JSON keys
-            const descriptionKey = selectedDescription.toLowerCase().replace(/\s+/g, '_');
+        try {
+            const descriptionSelect = document.getElementById(`ncit_comment_${database}_${columnName}`);
+            const datatypeSelect = document.getElementById(`${database}_${columnName}`);
             
-            // Check if this description exists in the JSON mapping
-            if (globalSemanticMap && globalSemanticMap.variable_info && globalSemanticMap.variable_info[descriptionKey]) {
-                const variableInfo = globalSemanticMap.variable_info[descriptionKey];
-                
-                // Auto-populate datatype if available
-                if (variableInfo.data_type) {
-                    let datatype = variableInfo.data_type;
-                    // Convert datatype to match dropdown options (capitalize first letter)
-                    datatype = datatype.charAt(0).toUpperCase() + datatype.slice(1).toLowerCase();
-                    
-                    // Set the datatype dropdown value
-                    $(datatypeSelect).selectpicker('val', datatype);
-                    console.log('Auto-populated datatype:', datatype);
-                }
-
-                // Update local_definition in the JSON structure
-                updateLocalDefinition(descriptionKey, columnName);
+            if (!descriptionSelect || !datatypeSelect) {
+                console.error('Required elements not found for', database, columnName);
+                return;
             }
-        }
+            
+            const selectedDescription = descriptionSelect.value;
+            console.log('Description changed:', selectedDescription, 'for column:', columnName);
 
-        // Update bootstrap-select display
-        $(datatypeSelect).selectpicker('refresh');
+            if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
+                // Convert description to lowercase and replace spaces with underscores to match JSON keys
+                const descriptionKey = selectedDescription.toLowerCase().replace(/\s+/g, '_');
+                
+                // Check if this description exists in the JSON mapping
+                if (globalSemanticMap && globalSemanticMap.variable_info && globalSemanticMap.variable_info[descriptionKey]) {
+                    const variableInfo = globalSemanticMap.variable_info[descriptionKey];
+                    
+                    // Auto-populate datatype if available
+                    if (variableInfo.data_type) {
+                        let datatype = variableInfo.data_type;
+                        // Convert datatype to match dropdown options (capitalize first letter)
+                        datatype = datatype.charAt(0).toUpperCase() + datatype.slice(1).toLowerCase();
+                        
+                        // Set the datatype dropdown value
+                        $(datatypeSelect).selectpicker('val', datatype);
+                        console.log('Auto-populated datatype:', datatype);
+                    }
+
+                    // Update local_definition in the JSON structure
+                    updateLocalDefinition(descriptionKey, columnName);
+                } else {
+                    console.log('No mapping found for description:', descriptionKey);
+                }
+            }
+
+            // Update bootstrap-select display
+            $(datatypeSelect).selectpicker('refresh');
+            
+        } catch (error) {
+            console.error('Error in onDescriptionChange:', error);
+        }
     }
 
     // Function to update local definition in JSON structure
     function updateLocalDefinition(descriptionKey, columnName) {
-        if (globalSemanticMap && globalSemanticMap.variable_info && globalSemanticMap.variable_info[descriptionKey]) {
-            globalSemanticMap.variable_info[descriptionKey].local_definition = columnName;
-            console.log('Updated local_definition for', descriptionKey, 'to:', columnName);
-            
-            // Store the updated semantic map back to session cache (will be handled in backend)
-            // For now, just log that we've updated it locally
-            console.log('Updated global semantic map:', globalSemanticMap);
+        try {
+            if (globalSemanticMap && globalSemanticMap.variable_info && globalSemanticMap.variable_info[descriptionKey]) {
+                globalSemanticMap.variable_info[descriptionKey].local_definition = columnName;
+                console.log('Updated local_definition for', descriptionKey, 'to:', columnName);
+                
+                // Store the updated semantic map back to session cache (will be handled in backend)
+                // For now, just log that we've updated it locally
+                console.log('Updated global semantic map:', globalSemanticMap);
+            } else {
+                console.warn('Cannot update local_definition: variable not found in semantic map:', descriptionKey);
+            }
+        } catch (error) {
+            console.error('Error in updateLocalDefinition:', error);
         }
     }
 
