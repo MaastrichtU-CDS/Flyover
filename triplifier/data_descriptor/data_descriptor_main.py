@@ -12,7 +12,6 @@ import time
 import sys
 import logging
 import requests
-import subprocess
 
 import pandas as pd
 
@@ -44,7 +43,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
-
+from utils.data_digest import upload_ontology_then_data
 
 app = Flask(__name__)
 
@@ -262,15 +261,14 @@ def upload_file():
         session_cache.StatusToDisplay = message
 
         if upload:
-            # Upload files to GraphDB
-            subprocess.run(
-                ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary",
-                 f"@{root_dir}ontology.owl",
-                 f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"])
-            subprocess.run(
-                ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary",
-                 f"@{root_dir}output.ttl",
-                 f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"])
+            logger.info("🚀 Initiating sequential upload to GraphDB")
+            upload_success, upload_messages = upload_ontology_then_data(
+                root_dir, graphdb_url, repo,
+                data_background=False
+            )
+
+            for msg in upload_messages:
+                logger.info(f"📝 {msg}")
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for('data_submission'))

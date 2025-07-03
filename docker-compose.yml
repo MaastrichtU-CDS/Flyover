@@ -17,10 +17,10 @@ services:
     container_name: rdf-store
     
   triplifier:
-    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    #image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    #build:
-    #  context: ./triplifier
+    build:
+      context: ./triplifier
     ports:
       - "5000:5000"
     environment:
@@ -28,9 +28,6 @@ services:
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
       - JAVA_OPTS=-Xms4g -Xmx12g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
-    mem_limit: 12g
-    mem_reservation: 4g
-    memswap_limit: 16g
     hostname: "data.local"
     networks:
       - proxynet
