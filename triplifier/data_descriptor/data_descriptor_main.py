@@ -9,7 +9,8 @@ import os
 import re
 import zipfile
 import time
-
+import sys
+import logging
 import requests
 import subprocess
 
@@ -22,6 +23,25 @@ from werkzeug.utils import secure_filename
 
 from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
                    send_from_directory, jsonify)
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+
+def setup_logging():
+    """Setup centralized logging with timestamp format"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(asctime)s] [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S %z',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+
+
+# Initialize logging immediately
+setup_logging()
+logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 
@@ -204,7 +224,8 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                session_cache.csvData.append(preprocess_dataframe(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)))
+                session_cache.csvData.append(
+                    preprocess_dataframe(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)))
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
@@ -935,21 +956,22 @@ def formulate_local_semantic_map(database):
     # This ensures that unmapped fields are properly cleared
     for variable_name, variable_info in modified_semantic_map['variable_info'].items():
         modified_semantic_map['variable_info'][variable_name]['local_definition'] = None
-        
+
         # Reset all local_terms in value_mapping to null as well
         if 'value_mapping' in variable_info and 'terms' in variable_info['value_mapping']:
             for term_key in variable_info['value_mapping']['terms']:
-                modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key]['local_term'] = None
+                modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key][
+                    'local_term'] = None
 
     # Process only the variables that are filled in the UI
     # Process local definitions and update the existing semantic map
     used_global_variables = {}  # Track usage for duplicate handling
-    
+
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         # Skip if no description is provided (empty field in UI)
         if 'description' not in local_value or not local_value['description']:
             continue
-            
+
         global_variable = local_value['description'].split('Variable description: ')[1].lower().replace(' ', '_')
 
         if global_variable and global_variable in session_cache.global_semantic_map['variable_info']:
@@ -958,7 +980,7 @@ def formulate_local_semantic_map(database):
                 suffix = used_global_variables[global_variable] + 1
                 new_global_variable = f"{global_variable}_{suffix}"
                 used_global_variables[global_variable] = suffix
-                
+
                 # Create new entry based on original
                 modified_semantic_map['variable_info'][new_global_variable] = copy.deepcopy(
                     session_cache.global_semantic_map['variable_info'][global_variable]
@@ -973,21 +995,21 @@ def formulate_local_semantic_map(database):
 
             # Update local definition (only if field was filled in UI)
             modified_semantic_map['variable_info'][new_global_variable]['local_definition'] = local_variable
-            
+
             # Extract and add datatype information from UI
             datatype_value = local_value['type'].split('Variable type: ')[1].lower().replace(' ', '_')
             # Only set datatype if it's not empty
             if datatype_value and datatype_value.strip():
                 modified_semantic_map['variable_info'][new_global_variable]['data_type'] = datatype_value
             else:
-            # Try to extract from request data or set default
+                # Try to extract from request data or set default
                 modified_semantic_map['variable_info'][new_global_variable]['data_type'] = None
 
             # Process value mapping if it exists
             if 'value_mapping' in modified_semantic_map['variable_info'][new_global_variable]:
                 original_terms = modified_semantic_map['variable_info'][new_global_variable]['value_mapping']['terms']
                 used_global_terms = {}  # Track usage for duplicate term handling
-                
+
                 # Reset all local_terms to null first (already done above, but being explicit here)
                 # Reset local_term for all terms first
                 for term_key in original_terms:
@@ -998,14 +1020,14 @@ def formulate_local_semantic_map(database):
                     if category.startswith('Category: ') and value and value.strip():
                         global_term = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
                         local_term_value = category.split(': ')[1]
-                        
+
                         if global_term in original_terms:
                             # Handle duplicate terms
                             if global_term in used_global_terms:
                                 suffix = used_global_terms[global_term] + 1
                                 new_global_term = f"{global_term}_{suffix}"
                                 used_global_terms[global_term] = suffix
-                                
+
                                 # Create new term entry
                                 original_terms[new_global_term] = copy.deepcopy(original_terms[global_term])
                                 original_terms[new_global_term]['local_term'] = local_term_value
@@ -1491,10 +1513,10 @@ def run_triplifier(properties_file=None):
 
         # Use gevent subprocess for better integration with gevent worker
         command = f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}"
-        
+
         # Use gevent.subprocess.check_output instead of Popen to avoid threading issues
         try:
-        # Create process with gevent subprocess
+            # Create process with gevent subprocess
             output = gevent.subprocess.check_output(
                 command,
                 shell=True,

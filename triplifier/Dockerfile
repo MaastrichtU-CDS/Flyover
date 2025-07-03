@@ -42,6 +42,7 @@ CMD ["gunicorn", \
     "--max-requests-jitter", "50", \
     "--log-level", "info", \
     "--access-logfile", "-", \
+    "--access-logformat", "%(t)s [ACCESS] %(m)s %(U)s %(s)s request by %(h)s", \
     "--error-logfile", "-", \
     "--bind", "0.0.0.0:5000", \
     "--preload", \
