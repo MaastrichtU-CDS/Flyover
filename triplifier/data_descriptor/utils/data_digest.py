@@ -58,7 +58,7 @@ def upload_ontology_then_data(root_dir: str, graphdb_url: str, repo: str,
                               upload_data: bool = True,
                               data_background: bool = True,
                               ontology_timeout: int = 300,
-                              data_timeout: int = 600) -> Tuple[bool, List[str]]:
+                              data_timeout: int = 43200) -> Tuple[bool, List[str]]:
     """
     Upload ontology first, then data (configurable background/foreground).
     Uses gevent for async operations.

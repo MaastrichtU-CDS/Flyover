@@ -1,7 +1,7 @@
 # Apply gevent monkey patching as early as possible
 import gevent
-
-gevent.monkey.patch_all()
+from gevent import monkey
+monkey.patch_all()
 
 import copy
 import json
