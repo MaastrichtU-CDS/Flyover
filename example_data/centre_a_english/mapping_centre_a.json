@@ -10,7 +10,7 @@
       "local_definition": "id"
     },
     "biological_sex": {
-      "data_type": "categorical nominal",
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C28421",
       "local_definition": "biological_sex",
