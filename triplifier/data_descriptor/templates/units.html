@@ -10,6 +10,10 @@
     <meta charset="UTF-8">
     <title>Flyover | Variable details</title>
     <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
         .toggle-button {
             cursor: pointer;
             display: inline-block;
@@ -74,6 +78,76 @@
             outline: none;
         }
 
+        /* Variable row styling to match categories.html */
+        .variable-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .variable-label {
+            flex: 0 0 200px;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+
+        .variable-controls {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .variable-controls select,
+        .variable-controls input {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        /* Missing description styling */
+        .missing-description {
+            color: #dc3545;
+            font-style: italic;
+        }
+
+        .missing-description::before {
+            content: "⚠️ ";
+            margin-right: 5px;
+        }
+
+        /* Categorical variable styling */
+        .categorical-section {
+            margin-top: 10px;
+            padding-left: 20px;
+            border-left: 3px solid #007bff;
+        }
+
+        .category-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-radius: 3px;
+        }
+
+        .category-label {
+            flex: 0 0 180px;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+
+        .category-controls {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
     </style>
 </head>
 
@@ -107,73 +181,89 @@
                 {% for item in df['column'].unique().tolist() %}
                     {% set local_variable_name = item.split('"')[1].split('"')[0].strip() %}
                     {% set global_variable_name = item.split("(")[0].strip().lower().replace(' ', '_') %}
-                    <div id="div1" class="form-group">
-                        <label for="{{ database }}_{{ local_variable_name }}"
-                               class="col-lg-4 control-label">{{ item }}</label>
-                        {% if df[df['column'] == item]['value'].values[0] is none %}
-                            &nbsp;&nbsp;
-                            <input id="{{ database }}_{{ local_variable_name }}" type="text"
-                                   name="{{ database }}_{{ local_variable_name }}"
-                                   placeholder="Type unit here"></input>
-                            <input id="{{ database }}_{{ local_variable_name }}" type="text"
-                                   name="{{ database }}_{{ local_variable_name }}_notation_missing_or_unspecified"
-                                   placeholder="Type missing value notation here" style="width: 300px;"><br></input>
-                        {% else %}
-                            <button class="item-toggle-button" type="button"></button>
-                            <div class="toggle-content hidden">
-                                <hr>
+                    
+                    <div class="variable-row">
+                        <div class="variable-label">
+                            {% if item.startswith('Missing Description') %}
+                                <span class="missing-description">{{ item }}</span>
+                            {% else %}
+                                {{ item }}
+                            {% endif %}
+                        </div>
+                        
+                        <div class="variable-controls">
+                            {% if df[df['column'] == item]['value'].values[0] is none %}
+                                <!-- Continuous variable -->
+                                <input id="{{ database }}_{{ local_variable_name }}" type="text"
+                                       name="{{ database }}_{{ local_variable_name }}"
+                                       placeholder="Type unit here" class="form-control"></input>
+                                <input id="{{ database }}_{{ local_variable_name }}_notation" type="text"
+                                       name="{{ database }}_{{ local_variable_name }}_notation_missing_or_unspecified"
+                                       placeholder="Type missing value notation here" class="form-control"></input>
+                            {% else %}
+                                <!-- Categorical variable -->
+                                <button class="item-toggle-button" type="button"></button>
+                            {% endif %}
+                        </div>
+                    </div>
 
-                                {% for value_dict in df[df['column'] == item]['value'].tolist() %}
-                                    {% set value = value_dict.get('value') if value_dict is mapping else value_dict %}
-                                    {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
+                    {% if df[df['column'] == item]['value'].values[0] is not none %}
+                        <div class="toggle-content hidden categorical-section">
+                            <hr>
+                            {% for value_dict in df[df['column'] == item]['value'].tolist() %}
+                                {% set value = value_dict.get('value') if value_dict is mapping else value_dict %}
+                                {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
 
-                                    <label for="{{ database }}_{{ item }}_{{ value_dict['value'] }}"
-                                           class="col-lg-4 control-label">&nbsp;&nbsp;
+                                <div class="category-item">
+                                    <div class="category-label">
                                         {% if value_dict['value'] is not none and value_dict['value'] != '' %}
                                             {{ value_dict['value'] }} (counted: {{ value_dict['count'] }})
                                         {% else %}
                                             Empty cells (counted: {{ value_dict['count'] }})
-                                        {% endif %}</label>
-                                    <label for="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
-                                    <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
-                                            name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                            class="selectpicker" , data-live-search="true">
-                                        {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
-                                        {% if item_info and 'value_mapping' in item_info %}
-                                            <option value="">Description</option>
-                                            {% for value in item_info.get('value_mapping').get('terms').keys() %}
-                                                <option {% if preselected == value.title().replace('_', ' ') %}selected{% endif %}>
-                                                    {{ value.title().replace('_', ' ') }}
-                                                </option>
-                                            {% endfor %}
-                                            <option value="Other">Other</option>
-                                        {% else %}
-                                            <option value="">Description</option>
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                            <option value="Male">Male sex</option>
-                                            <option value="Female">Female sex</option>
-                                            <option value="Primary Education">Primary education</option>
-                                            <option value="Secondary Education">Secondary education</option>
-                                            <option value="Tertiary Education">Tertiary education</option>
-                                            <option value="Missing">Missing value</option>
-                                            <option value="Other">Other</option>
                                         {% endif %}
-                                    </select>
-                                    <label for="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
-                                    <input class="form-group" type="text"
-                                           id="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
-                                           name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                           placeholder="If other, please specify"/><br>
-                                    <input type="hidden"
-                                           id="count_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
-                                           name='count_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                           value="{{ value_dict['count'] }}"/>
-                                {% endfor %}
-                            </div>
-
-                        {% endif %}
-                    </div>
+                                    </div>
+                                    
+                                    <div class="category-controls">
+                                        <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                                name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                                class="selectpicker form-control" data-live-search="true">
+                                            {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
+                                            {% if item_info and 'value_mapping' in item_info %}
+                                                <option value="">Description</option>
+                                                {% for value in item_info.get('value_mapping').get('terms').keys() %}
+                                                    <option {% if preselected == value.title().replace('_', ' ') %}selected{% endif %}>
+                                                        {{ value.title().replace('_', ' ') }}
+                                                    </option>
+                                                {% endfor %}
+                                                <option value="Other">Other</option>
+                                            {% else %}
+                                                <option value="">Description</option>
+                                                <option value="Yes">Yes</option>
+                                                <option value="No">No</option>
+                                                <option value="Male">Male sex</option>
+                                                <option value="Female">Female sex</option>
+                                                <option value="Primary Education">Primary education</option>
+                                                <option value="Secondary Education">Secondary education</option>
+                                                <option value="Tertiary Education">Tertiary education</option>
+                                                <option value="Missing">Missing value</option>
+                                                <option value="Other">Other</option>
+                                            {% endif %}
+                                        </select>
+                                        
+                                        <input class="form-control" type="text"
+                                               id="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                               name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                               placeholder="If other, please specify"/>
+                                    </div>
+                                </div>
+                                
+                                <input type="hidden"
+                                       id="count_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                       name='count_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                       value="{{ value_dict['count'] }}"/>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
                 {% endfor %}
             </div>
             <hr>
