@@ -289,7 +289,8 @@
 
             $('.item-toggle-button').click(function () {
                 $(this).toggleClass('open');
-                $(this).next('.toggle-content').toggleClass('active');
+                // Find the next .toggle-content after the current variable-row
+                $(this).closest('.variable-row').next('.toggle-content').toggleClass('active');
             });
 
             $(".selectpicker").on('show.bs.select', function (e) {
