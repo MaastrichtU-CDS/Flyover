@@ -1,13 +1,17 @@
+# Apply gevent monkey patching as early as possible
+import gevent
+from gevent import monkey
+monkey.patch_all()
+
 import copy
 import json
 import os
 import re
 import zipfile
-import threading
 import time
-
+import sys
+import logging
 import requests
-import subprocess
 
 import pandas as pd
 
@@ -19,8 +23,27 @@ from werkzeug.utils import secure_filename
 from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
                    send_from_directory, jsonify)
 
-from utils.data_preprocessing import preprocess_dataframe
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
+def setup_logging():
+    """Setup centralized logging with timestamp format"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(asctime)s] [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S %z',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+
+
+# Initialize logging immediately
+setup_logging()
+logger = logging.getLogger(__name__)
+
+from utils.data_preprocessing import preprocess_dataframe
+from utils.data_digest import upload_ontology_then_data
 
 app = Flask(__name__)
 
@@ -200,7 +223,8 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                session_cache.csvData.append(preprocess_dataframe(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)))
+                session_cache.csvData.append(
+                    preprocess_dataframe(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)))
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
@@ -237,15 +261,14 @@ def upload_file():
         session_cache.StatusToDisplay = message
 
         if upload:
-            # Upload files to GraphDB
-            subprocess.run(
-                ["curl", "-X", "POST", "-H", "Content-Type: application/rdf+xml", "--data-binary",
-                 f"@{root_dir}ontology.owl",
-                 f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"])
-            subprocess.run(
-                ["curl", "-X", "POST", "-H", "Content-Type: application/x-turtle", "--data-binary",
-                 f"@{root_dir}output.ttl",
-                 f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"])
+            logger.info("🚀 Initiating sequential upload to GraphDB")
+            upload_success, upload_messages = upload_ontology_then_data(
+                root_dir, graphdb_url, repo,
+                data_background=False
+            )
+
+            for msg in upload_messages:
+                logger.info(f"📝 {msg}")
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for('data_submission'))
@@ -931,21 +954,22 @@ def formulate_local_semantic_map(database):
     # This ensures that unmapped fields are properly cleared
     for variable_name, variable_info in modified_semantic_map['variable_info'].items():
         modified_semantic_map['variable_info'][variable_name]['local_definition'] = None
-        
+
         # Reset all local_terms in value_mapping to null as well
         if 'value_mapping' in variable_info and 'terms' in variable_info['value_mapping']:
             for term_key in variable_info['value_mapping']['terms']:
-                modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key]['local_term'] = None
+                modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key][
+                    'local_term'] = None
 
     # Process only the variables that are filled in the UI
     # Process local definitions and update the existing semantic map
     used_global_variables = {}  # Track usage for duplicate handling
-    
+
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         # Skip if no description is provided (empty field in UI)
         if 'description' not in local_value or not local_value['description']:
             continue
-            
+
         global_variable = local_value['description'].split('Variable description: ')[1].lower().replace(' ', '_')
 
         if global_variable and global_variable in session_cache.global_semantic_map['variable_info']:
@@ -954,7 +978,7 @@ def formulate_local_semantic_map(database):
                 suffix = used_global_variables[global_variable] + 1
                 new_global_variable = f"{global_variable}_{suffix}"
                 used_global_variables[global_variable] = suffix
-                
+
                 # Create new entry based on original
                 modified_semantic_map['variable_info'][new_global_variable] = copy.deepcopy(
                     session_cache.global_semantic_map['variable_info'][global_variable]
@@ -969,21 +993,21 @@ def formulate_local_semantic_map(database):
 
             # Update local definition (only if field was filled in UI)
             modified_semantic_map['variable_info'][new_global_variable]['local_definition'] = local_variable
-            
+
             # Extract and add datatype information from UI
             datatype_value = local_value['type'].split('Variable type: ')[1].lower().replace(' ', '_')
             # Only set datatype if it's not empty
             if datatype_value and datatype_value.strip():
                 modified_semantic_map['variable_info'][new_global_variable]['data_type'] = datatype_value
             else:
-            # Try to extract from request data or set default
+                # Try to extract from request data or set default
                 modified_semantic_map['variable_info'][new_global_variable]['data_type'] = None
 
             # Process value mapping if it exists
             if 'value_mapping' in modified_semantic_map['variable_info'][new_global_variable]:
                 original_terms = modified_semantic_map['variable_info'][new_global_variable]['value_mapping']['terms']
                 used_global_terms = {}  # Track usage for duplicate term handling
-                
+
                 # Reset all local_terms to null first (already done above, but being explicit here)
                 # Reset local_term for all terms first
                 for term_key in original_terms:
@@ -994,14 +1018,14 @@ def formulate_local_semantic_map(database):
                     if category.startswith('Category: ') and value and value.strip():
                         global_term = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
                         local_term_value = category.split(': ')[1]
-                        
+
                         if global_term in original_terms:
                             # Handle duplicate terms
                             if global_term in used_global_terms:
                                 suffix = used_global_terms[global_term] + 1
                                 new_global_term = f"{global_term}_{suffix}"
                                 used_global_terms[global_term] = suffix
-                                
+
                                 # Create new term entry
                                 original_terms[new_global_term] = copy.deepcopy(original_terms[global_term])
                                 original_terms[new_global_term]['local_term'] = local_term_value
@@ -1449,16 +1473,7 @@ def background_cross_graph_processing():
 def run_triplifier(properties_file=None):
     """
     This function runs the triplifier and checks if it ran successfully.
-
-    Parameters:
-    properties_file (str): The name of the properties file to be used by the triplifier.
-                           It can be either 'triplifierCSV.properties' for CSV files or
-                           'triplifierSQL.properties' for SQL files.
-                           Defaults to None.
-
-    Returns:
-        tuple: A tuple containing a boolean indicating if the triplifier ran successfully,
-        and a string containing the error message if it did not.
+    Uses gevent subprocess for better integration with gevent worker.
     """
     try:
         if properties_file == 'triplifierCSV.properties':
@@ -1486,12 +1501,27 @@ def run_triplifier(properties_file=None):
                 csv_path = session_cache.csvPath[i]
                 csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
 
-        process = subprocess.Popen(
-            f"java -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}",
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        # Get JAVA_OPTS from environment or use default
+        java_opts = os.getenv('JAVA_OPTS', '-Xms2g -Xmx8g')
 
-        output, _ = process.communicate()
-        print(output.decode())
+        # Use gevent subprocess for better integration with gevent worker
+        command = f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}"
+
+        # Use gevent.subprocess.check_output instead of Popen to avoid threading issues
+        try:
+            # Create process with gevent subprocess
+            output = gevent.subprocess.check_output(
+                command,
+                shell=True,
+                stderr=gevent.subprocess.STDOUT,
+                text=True
+            )
+            print(output)
+            return_code = 0
+        except gevent.subprocess.CalledProcessError as e:
+            output = e.output
+            return_code = e.returncode
+            print(f"Process failed with return code {return_code}: {output}")
 
         if properties_file == 'triplifierCSV.properties':
             # Allow easier debugging outside Docker
@@ -1511,16 +1541,16 @@ def run_triplifier(properties_file=None):
                 with open('triplifierCSV.properties', "w") as f:
                     f.writelines(modified_lines)
 
-        if process.returncode == 0:
-            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES
+        if return_code == 0:
+            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
             if properties_file == 'triplifierCSV.properties' and session_cache.pk_fk_data:
                 print("Triplifier successful. Starting background PK/FK processing...")
-                threading.Thread(target=background_pk_fk_processing, daemon=True).start()
+                gevent.spawn(background_pk_fk_processing)
 
-            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Add this block
+            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Use gevent spawn
             if properties_file == 'triplifierCSV.properties' and session_cache.cross_graph_link_data:
                 print("Triplifier successful. Starting background cross-graph processing...")
-                threading.Thread(target=background_cross_graph_processing, daemon=True).start()
+                gevent.spawn(background_cross_graph_processing)
 
             return True, Markup("The data you have submitted was triplified successfully and "
                                 "is now available in GraphDB."
@@ -1536,6 +1566,7 @@ def run_triplifier(properties_file=None):
                                 "describe the data that is present in GraphDB.</i>")
         else:
             return False, output
+
     except OSError as e:
         return False, f'Unexpected error attempting to create the upload folder, error: {e}'
     except Exception as e:
@@ -1543,5 +1574,4 @@ def run_triplifier(properties_file=None):
 
 
 if __name__ == "__main__":
-    # app.run(port = 5001)
-    app.run(host='0.0.0.0')
+    app.run(host='0.0.0.0', port=5000)

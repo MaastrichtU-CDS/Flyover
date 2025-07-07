@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -20,6 +20,9 @@ RUN apt-get update -y && \
 ENV JAVA_HOME /usr/lib/jvm/default-java
 ENV PATH $PATH:$JAVA_HOME/bin
 
+# Set default JAVA_OPTS (can be overridden via environment)
+ENV JAVA_OPTS="-Xms2g -Xmx8g"
+
 # Download PostgreSQL JDBC driver
 ENV POST_URL https://jdbc.postgresql.org/download/postgresql-42.2.5.jar
 RUN wget ${POST_URL} && \
@@ -28,4 +31,20 @@ RUN wget ${POST_URL} && \
 # Now copy the application code
 COPY data_descriptor/ /app/data_descriptor/
 
-CMD ["python3", "/app/data_descriptor/data_descriptor_main.py"]
+# Use Gunicorn as the WSGI server
+CMD ["gunicorn", \
+    "--workers", "1", \
+    "--worker-class", "gevent", \
+    "--worker-connections", "1000", \
+    "--timeout", "300", \
+    "--keep-alive", "5", \
+    "--max-requests", "1000", \
+    "--max-requests-jitter", "50", \
+    "--log-level", "info", \
+    "--access-logfile", "-", \
+    "--access-logformat", "%(t)s [ACCESS] %(m)s %(U)s %(s)s request by %(h)s", \
+    "--error-logfile", "-", \
+    "--bind", "0.0.0.0:5000", \
+    "--preload", \
+    "--env", "GEVENT_SUPPORT=True", \
+    "data_descriptor.data_descriptor_main:app"]

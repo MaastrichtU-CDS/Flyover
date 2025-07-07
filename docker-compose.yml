@@ -9,23 +9,25 @@ services:
     volumes:
       - ./graphdb/data:/opt/graphdb/home
     environment:
-      - GDB_HEAP_SIZE=2g
-      - GDB_MIN_MEM=1g
-      - GDB_MAX_MEM=2g
+      - GDB_HEAP_SIZE=8g
+      - GDB_MIN_MEM=4g
+      - GDB_MAX_MEM=12g
     networks:
       - proxynet
     container_name: rdf-store
     
   triplifier:
-    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    #image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    #build:
-    #  context: ./triplifier
+    build:
+      context: ./triplifier
     ports:
       - "5000:5000"
     environment:
       - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
+      - FLASK_ENV=production
+      - JAVA_OPTS=-Xms4g -Xmx12g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
     hostname: "data.local"
     networks:
       - proxynet
