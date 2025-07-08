@@ -45,6 +45,12 @@
             <button class="btn btn-primary " {% if not show_semantic_map %} style="display: none;" {% endif %}>Download local
                 semantic map
             </button>
+        </a>
+        <br><br>
+        <a href="/annotation-review" {% if not show_semantic_map %} style="display: none;" {% endif %}>
+            <button class="btn btn-success" {% if not show_semantic_map %} style="display: none;" {% endif %}>
+                Review and Annotate Data
+            </button>
         </a></div>
     <hr>
     <a href="/">Click here to return to the welcome page.</a>
