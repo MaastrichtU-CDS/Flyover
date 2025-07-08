@@ -58,7 +58,7 @@ else:
     # Assume it is not running in Docker
     graphdb_url = 'http://localhost:7200'
     repo = 'userRepo'
-    app.config["DEBUG"] = True
+    app.config["DEBUG"] = False
     root_dir = ''
     child_dir = '.'
 
@@ -348,15 +348,26 @@ def retrieve_columns():
     # Create dictionaries to store preselected values from semantic map
     preselected_descriptions = {}
     preselected_datatypes = {}
+    
+    # Create mapping from description names to datatypes for auto-population
+    description_to_datatype = {}
 
     # If a global semantic map exists and contains variable_info
     if isinstance(session_cache.global_semantic_map, dict) and 'variable_info' in session_cache.global_semantic_map:
         for var_name, var_info in session_cache.global_semantic_map['variable_info'].items():
+            # Create mapping for auto-population (description -> datatype)
+            description_display = var_name.capitalize().replace('_', ' ')
+            if 'data_type' in var_info:
+                datatype = var_info['data_type'].lower()
+                words = datatype.split()
+                datatype_display = ' '.join(word.capitalize() for word in words)
+                description_to_datatype[description_display] = datatype_display
+            
             for db in unique_values:  # For each database
                 # Match by local_definition if available
                 local_def = var_info.get('local_definition', var_name)
                 key = f"{db}_{local_def}"
-                preselected_descriptions[key] = var_name.capitalize().replace('_', ' ')
+                preselected_descriptions[key] = description_display
                 if 'data_type' in var_info:
                     datatype = var_info['data_type'].lower()
                     words = datatype.split()
@@ -381,7 +392,8 @@ def retrieve_columns():
                            dataframes=dataframes,
                            global_variable_names=global_names,
                            preselected_descriptions=preselected_descriptions,
-                           preselected_datatypes=preselected_datatypes)
+                           preselected_datatypes=preselected_datatypes,
+                           description_to_datatype=description_to_datatype)
 
 
 @app.route("/units", methods=['POST'])
@@ -438,13 +450,22 @@ def retrieve_descriptive_info():
                 if data_type == 'Categorical':
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
                     df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
+                    # Check if description is missing and format display name accordingly
+                    if not global_variable_name or global_variable_name.strip() == '':
+                        display_name = f'Missing Description (or "{local_variable_name}")'
+                    else:
+                        display_name = f'{global_variable_name} (or "{local_variable_name}")'
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {f'{global_variable_name} (or "{local_variable_name}")': df.to_dict('records')})
+                        {display_name: df.to_dict('records')})
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
                 elif data_type == 'Continuous':
-                    session_cache.DescriptiveInfoDetails[database].append(
-                        f'{global_variable_name} (or "{local_variable_name}")')
+                    # Check if description is missing and format display name accordingly
+                    if not global_variable_name or global_variable_name.strip() == '':
+                        display_name = f'Missing Description (or "{local_variable_name}")'
+                    else:
+                        display_name = f'{global_variable_name} (or "{local_variable_name}")'
+                    session_cache.DescriptiveInfoDetails[database].append(display_name)
                 else:
                     insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
 

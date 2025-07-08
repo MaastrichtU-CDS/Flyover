@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
-<script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
-
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Variable description</title>
+    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
+    <script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -39,6 +38,36 @@
 
         .toggle-button:focus {
             outline: none;
+        }
+
+        /* Simplified layout styles */
+        .variable-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .variable-label {
+            flex: 0 0 200px;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+
+        .variable-controls {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .variable-controls select,
+        .variable-controls input {
+            flex: 1;
+            min-width: 150px;
         }
 
         /* Pagination styles */
@@ -94,6 +123,22 @@
         .ref-guide-icon {
             margin-right: 5px !important;
         }
+
+        .datatype-container {
+            position: relative;
+            flex: 1;
+        }
+
+        .datatype-feedback {
+            display: block;
+            margin-top: 4px;
+            font-size: 0.85em;
+            font-style: italic;
+        }
+
+        .datatype-feedback i {
+            margin-right: 4px;
+        }
     </style>
 </head>
 
@@ -114,7 +159,7 @@
             <button class="toggle-button" type="button">
                 <span class="toggle-text">Show more</span>
                 <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
-                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5-12.5-32.8-12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
                 </svg>
             </button>
             <div class="content hidden">
@@ -126,77 +171,78 @@
                          id="group-{{ database }}-{{ group_index }}">
                         {% for i in range(group_index * 10, [group_index * 10 + 10, columns|length]|min) %}
                             {% set item = columns[i] %}
-                            <div id="div1" class="form-group">
-                                <label for="{{ database }}_{{ item }}" class="col-lg-4 control-label">{{ item }}</label>
-                                <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
-                                        class="selectpicker" data-live-search="true">
-                                    <option value="">Data type</option>
-                                    {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
-                                    {% for option in datatype_options %}
-                                        <option value="{{ option }}"
-                                                {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
-                                            {{ option }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                                <label for="ncit_comment_{{ database }}_{{ item }}"></label>
-                                <select id="ncit_comment_{{ database }}_{{ item }}"
-                                        name="ncit_comment_{{ database }}_{{ item }}"
-                                        class="selectpicker" data-live-search="true">
-                                    {% if global_variable_names %}
-                                        <option value="">Description</option>
-                                        {% for value in global_variable_names %}
-                                            <option {% if preselected_descriptions and preselected_descriptions.get(database ~ '_' ~ item) == value %}selected{% endif %}>
-                                                {{ value }}
-                                            </option>
-                                        {% endfor %}
-                                    {% else %}
-                                        <option value="">Description</option>
-                                        <option value="Patient Identifier">Patient Identifier</option>
-                                        <option value="Age">Age</option>
-                                        <option value="Gender">Gender</option>
-                                        <option value="T Stage">T Stage</option>
-                                        <option value="N Stage">N Stage</option>
-                                        <option value="M Stage">M Stage</option>
-                                        <option value="HPV Status">HPV Status</option>
-                                        <option value="ASA Score">ASA Score</option>
-                                        <option value="WHO/ECOG Status">WHO/ECOG Status</option>
-                                        <option value="AJCC Stage">AJCC Stage</option>
-                                        <option value="Tumour Site">Tumour Site</option>
-                                        <option value="Metastasis">Metastasis</option>
-                                        <option value="Metastasis Days">Metastasis Days</option>
-                                        <option value="Event Recurrence">Event Recurrence</option>
-                                        <option value="Event Recurrence Days">Event Recurrence Days</option>
-                                        <option value="Local Recurrence">Local Recurrence</option>
-                                        <option value="Local Recurrence Days">Local Recurrence Days</option>
-                                        <option value="Regional Recurrence">Regional Recurrence</option>
-                                        <option value="Regional Recurrence Days">Regional Recurrence Days</option>
-                                        <option value="Event Survival">Event Survival</option>
-                                        <option value="Overall Survival Days">Overall Survival Days</option>
-                                        <option value="Surgery">Surgery</option>
-                                        <option value="Chemotherapy">Chemotherapy</option>
-                                        <option value="Radiotherapy time">Radiotherapy treatment time</option>
-                                        <option value="RT Total Dose">RT Total Dose</option>
-                                        <option value="RT Dose per fraction">RT Dose per fraction</option>
-                                        <option value="RT Fractions">RT Fractions</option>
-                                        <option value="Other">Other</option>
-                                    {% endif %}
-                                </select>
-                                <label for="comment_{{ database }}_{{ item }}"></label>
-                                <input class="form-group" type="text" id="comment_{{ database }}_{{ item }}"
-                                       name="comment_{{ database }}_{{ item }}"
-                                       placeholder="If other, please specify" disabled='disabled'/><br>
-                                <script>
-                                    $(document).ready(function () {
-                                        $("#ncit_comment_{{ database }}_{{ item }}").change(function () {
-                                            if ($(this).find("option:selected").val() == "Other") {
-                                                $("#comment_{{ database }}_{{ item }}").removeAttr("disabled");
-                                            } else {
-                                                $("#comment_{{ database }}_{{ item }}").attr("disabled", "disabled");
-                                            }
-                                        });
-                                    });
-                                </script>
+                            <div class="variable-row">
+                                <div class="variable-label">{{ item }}</div>
+                                <div class="variable-controls">
+                                    <!-- Description dropdown (first) -->
+                                    <select id="ncit_comment_{{ database }}_{{ item }}"
+                                            name="ncit_comment_{{ database }}_{{ item }}"
+                                            class="selectpicker description-select" data-live-search="true"
+                                            data-database="{{ database }}" data-item="{{ item }}">
+                                        {% if global_variable_names %}
+                                            <option value="">Description</option>
+                                            {% for value in global_variable_names %}
+                                                <option {% if preselected_descriptions and preselected_descriptions.get(database ~ '_' ~ item) == value %}selected{% endif %}>
+                                                    {{ value }}
+                                                </option>
+                                            {% endfor %}
+                                        {% else %}
+                                            <option value="">Description</option>
+                                            <option value="Patient Identifier">Patient Identifier</option>
+                                            <option value="Age">Age</option>
+                                            <option value="Gender">Gender</option>
+                                            <option value="T Stage">T Stage</option>
+                                            <option value="N Stage">N Stage</option>
+                                            <option value="M Stage">M Stage</option>
+                                            <option value="HPV Status">HPV Status</option>
+                                            <option value="ASA Score">ASA Score</option>
+                                            <option value="WHO/ECOG Status">WHO/ECOG Status</option>
+                                            <option value="AJCC Stage">AJCC Stage</option>
+                                            <option value="Tumour Site">Tumour Site</option>
+                                            <option value="Metastasis">Metastasis</option>
+                                            <option value="Metastasis Days">Metastasis Days</option>
+                                            <option value="Event Recurrence">Event Recurrence</option>
+                                            <option value="Event Recurrence Days">Event Recurrence Days</option>
+                                            <option value="Local Recurrence">Local Recurrence</option>
+                                            <option value="Local Recurrence Days">Local Recurrence Days</option>
+                                            <option value="Regional Recurrence">Regional Recurrence</option>
+                                            <option value="Regional Recurrence Days">Regional Recurrence Days</option>
+                                            <option value="Event Survival">Event Survival</option>
+                                            <option value="Overall Survival Days">Overall Survival Days</option>
+                                            <option value="Surgery">Surgery</option>
+                                            <option value="Chemotherapy">Chemotherapy</option>
+                                            <option value="Radiotherapy time">Radiotherapy treatment time</option>
+                                            <option value="RT Total Dose">RT Total Dose</option>
+                                            <option value="RT Dose per fraction">RT Dose per fraction</option>
+                                            <option value="RT Fractions">RT Fractions</option>
+                                            <option value="Other">Other</option>
+                                        {% endif %}
+                                    </select>
+
+                                    <!-- Comment box (second) -->
+                                    <input class="form-control" type="text" id="comment_{{ database }}_{{ item }}"
+                                           name="comment_{{ database }}_{{ item }}"
+                                           placeholder="If other, please specify" disabled='disabled'/>
+
+                                    <!-- Data type dropdown (third) -->
+                                    <div class="datatype-container">
+                                        <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
+                                                class="selectpicker datatype-select" data-live-search="true"
+                                                data-database="{{ database }}" data-item="{{ item }}">
+                                            <option value="">Data type</option>
+                                            {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
+                                            {% for option in datatype_options %}
+                                                <option value="{{ option }}"
+                                                        {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
+                                                    {{ option }}
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                        <small class="datatype-feedback" id="feedback_{{ database }}_{{ item }}" style="display: none; color: #28a745;">
+                                            <i class="fas fa-magic"></i> Auto-filled based on description
+                                        </small>
+                                    </div>
+                                </div>
                             </div>
                         {% endfor %}
                     </div>
@@ -285,8 +331,16 @@
             </div>
         </div>
     </div>
+</div>
 
 <script>
+    // Global datatype mapping passed from backend
+    var descriptionToDatatype = {{ description_to_datatype|tojson }};
+
+    // Track which fields were auto-filled vs manually overridden
+    var autoFilledFields = new Set();
+    var manualOverrides = new Set();
+
     $(document).ready(function () {
         $('.toggle-button').click(function () {
             var textElement = $(this).find('.toggle-text');
@@ -320,7 +374,86 @@
         $('.selectpicker').each(function () {
             $(this).selectpicker('refresh');
         });
+
+        // Handle comment box enabling/disabling when "Other" is selected
+        $('.description-select').on('changed.bs.select', function () {
+            var database = $(this).data('database');
+            var item = $(this).data('item');
+            var commentBox = $('#comment_' + database + '_' + item);
+
+            if ($(this).val() === "Other") {
+                commentBox.removeAttr("disabled");
+            } else {
+                commentBox.attr("disabled", "disabled");
+            }
+
+            // Auto-populate datatype when description is selected
+            autoPopulateDatatype(database, item);
+
+            // Update submit button state
+            checkDescriptions();
+        });
+
+        // Handle manual datatype selection (override detection)
+        $('.datatype-select').on('changed.bs.select', function () {
+            var database = $(this).data('database');
+            var item = $(this).data('item');
+            var fieldKey = database + '_' + item;
+
+            // If this field was auto-filled and user is now manually changing it
+            if (autoFilledFields.has(fieldKey)) {
+                manualOverrides.add(fieldKey);
+                // Show override confirmation
+                showOverrideConfirmation(database, item);
+            }
+        });
+
+        // Check for pre-selected values on page load
+        checkDescriptions();
     });
+
+    function autoPopulateDatatype(database, item) {
+        var descriptionSelect = $('#ncit_comment_' + database + '_' + item);
+        var datatypeSelect = $('#' + database + '_' + item);
+        var feedback = $('#feedback_' + database + '_' + item);
+        var fieldKey = database + '_' + item;
+
+        var selectedDescription = descriptionSelect.val();
+
+        if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
+            // Check if we have a datatype mapping for this description
+            if (descriptionToDatatype[selectedDescription]) {
+                var suggestedDatatype = descriptionToDatatype[selectedDescription];
+
+                // Only auto-fill if datatype is not already selected or if it's not a manual override
+                if (datatypeSelect.val() === '' || !manualOverrides.has(fieldKey)) {
+                    datatypeSelect.selectpicker('val', suggestedDatatype);
+                    autoFilledFields.add(fieldKey);
+
+                    // Show feedback that this was auto-filled
+                    feedback.show();
+                    setTimeout(function() {
+                        feedback.fadeOut();
+                    }, 3000);
+                }
+            }
+        } else {
+            // Clear datatype if description is cleared (only if it was auto-filled)
+            if (autoFilledFields.has(fieldKey) && !manualOverrides.has(fieldKey)) {
+                datatypeSelect.selectpicker('val', '');
+                autoFilledFields.delete(fieldKey);
+                feedback.hide();
+            }
+        }
+    }
+
+    function showOverrideConfirmation(database, item) {
+        var feedback = $('#feedback_' + database + '_' + item);
+        feedback.html('<i class="fas fa-user-edit"></i> Manually overridden').css('color', '#ffc107').show();
+        setTimeout(function() {
+            feedback.fadeOut();
+        }, 2000);
+    }
 
     function changePage(database, direction) {
         const groups = document.querySelectorAll(`[id^="group-${database}-"]`);
@@ -359,9 +492,6 @@
         // Enable/disable submit button based on selection
         $('#submitBtn').prop('disabled', !hasSelection);
     }
-
-    // Check on page load (for preselected values)
-    checkDescriptions();
 
     // Check whenever a description is selected
     $('.selectpicker[id^="ncit_comment_"]').on('changed.bs.select', function () {

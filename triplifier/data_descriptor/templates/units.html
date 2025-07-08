@@ -1,15 +1,20 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-<script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Variable details</title>
     <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
         .toggle-button {
             cursor: pointer;
             display: inline-block;
@@ -74,6 +79,82 @@
             outline: none;
         }
 
+        /* Variable row styling to match categories.html */
+        .variable-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .variable-label {
+            flex: 0 0 200px;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+
+        .variable-controls {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .variable-controls select,
+        .variable-controls input {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        /* Missing description styling */
+        .missing-description {
+            color: #dc3545;
+            font-style: italic;
+        }
+
+        .missing-description::before {
+            content: "⚠️ ";
+            margin-right: 5px;
+        }
+
+        /* Categorical variable styling */
+        .categorical-section {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            margin-left: 20px;
+            padding-left: 20px;
+            border-left: 3px solid rgba(0, 123, 255, 0.7);
+        }
+
+        .category-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-radius: 3px;
+        }
+
+        .category-label {
+            flex: 0 0 180px;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+
+        .category-controls {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .category-controls .bootstrap-select {
+            width: 300px !important;
+        }
+
     </style>
 </head>
 
@@ -82,17 +163,8 @@
     <br>
     <h1>Describe categories and units</h1>
     <hr>
-    <p>Please provide more information for the categorical and continuous variables.<br><br>
-        For each categorical variable, please select the categories that best describe the data it contains.<br>
-        If none of the available categories accurately represent a given category,
-        please select 'Other' and specify what the column represents in the text box.<br><br>
-
-        For each continuous variable, please specify the unit in the text field.<br><br>
-
-        &#x26A0;<i><b>Please do note that categorical variables that are by definition standardised
-            <u>do not have to be described</u>.</b><br>
-            Examples thereof are variables like CIM/CIE/ICD-10 disease classifications,
-            or EORTC-QLQ-C30 and EuroQoL EQ5D responses.</i></p>
+    <p>Please provide more information for the categorical and continuous variables that were defined in the variable
+        description page.<br>
     <form class="form-horizontal" method="POST" action="end">
         <hr>
         {% for database, df in dataframes.items() %}
@@ -107,79 +179,161 @@
                 {% for item in df['column'].unique().tolist() %}
                     {% set local_variable_name = item.split('"')[1].split('"')[0].strip() %}
                     {% set global_variable_name = item.split("(")[0].strip().lower().replace(' ', '_') %}
-                    <div id="div1" class="form-group">
-                        <label for="{{ database }}_{{ local_variable_name }}"
-                               class="col-lg-4 control-label">{{ item }}</label>
-                        {% if df[df['column'] == item]['value'].values[0] is none %}
-                            &nbsp;&nbsp;
-                            <input id="{{ database }}_{{ local_variable_name }}" type="text"
-                                   name="{{ database }}_{{ local_variable_name }}"
-                                   placeholder="Type unit here"></input>
-                            <input id="{{ database }}_{{ local_variable_name }}" type="text"
-                                   name="{{ database }}_{{ local_variable_name }}_notation_missing_or_unspecified"
-                                   placeholder="Type missing value notation here" style="width: 300px;"><br></input>
-                        {% else %}
-                            <button class="item-toggle-button" type="button"></button>
-                            <div class="toggle-content hidden">
-                                <hr>
 
-                                {% for value_dict in df[df['column'] == item]['value'].tolist() %}
-                                    {% set value = value_dict.get('value') if value_dict is mapping else value_dict %}
-                                    {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
+                    <div class="variable-row">
+                        <div class="variable-label">
+                            {% if item.startswith('Missing Description') %}
+                                <span class="missing-description">{{ item.replace(' (or "', '<br>(or "') | safe }}</span>
+                            {% else %}
+                                {{ item.replace(' (or "', '<br>(or "') | safe }}
+                            {% endif %}
+                        </div>
 
-                                    <label for="{{ database }}_{{ item }}_{{ value_dict['value'] }}"
-                                           class="col-lg-4 control-label">&nbsp;&nbsp;
+                        <div class="variable-controls">
+                            {% if df[df['column'] == item]['value'].values[0] is none %}
+                                <!-- Continuous variable -->
+                                <input id="{{ database }}_{{ local_variable_name }}" type="text"
+                                       name="{{ database }}_{{ local_variable_name }}"
+                                       placeholder="Type unit here" class="form-control"></input>
+                                <input id="{{ database }}_{{ local_variable_name }}_notation" type="text"
+                                       name="{{ database }}_{{ local_variable_name }}_notation_missing_or_unspecified"
+                                       placeholder="Type missing value notation here" class="form-control"></input>
+                            {% else %}
+                                <!-- Categorical variable -->
+                                <button class="item-toggle-button" type="button"></button>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if df[df['column'] == item]['value'].values[0] is not none %}
+                        <div class="toggle-content hidden categorical-section">
+                            {% for value_dict in df[df['column'] == item]['value'].tolist() %}
+                                {% set value = value_dict.get('value') if value_dict is mapping else value_dict %}
+                                {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
+
+                                <div class="category-item">
+                                    <div class="category-label">
                                         {% if value_dict['value'] is not none and value_dict['value'] != '' %}
                                             {{ value_dict['value'] }} (counted: {{ value_dict['count'] }})
                                         {% else %}
                                             Empty cells (counted: {{ value_dict['count'] }})
-                                        {% endif %}</label>
-                                    <label for="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
-                                    <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
-                                            name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                            class="selectpicker" , data-live-search="true">
-                                        {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
-                                        {% if item_info and 'value_mapping' in item_info %}
-                                            <option value="">Description</option>
-                                            {% for value in item_info.get('value_mapping').get('terms').keys() %}
-                                                <option {% if preselected == value.title().replace('_', ' ') %}selected{% endif %}>
-                                                    {{ value.title().replace('_', ' ') }}
-                                                </option>
-                                            {% endfor %}
-                                            <option value="Other">Other</option>
-                                        {% else %}
-                                            <option value="">Description</option>
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                            <option value="Male">Male sex</option>
-                                            <option value="Female">Female sex</option>
-                                            <option value="Primary Education">Primary education</option>
-                                            <option value="Secondary Education">Secondary education</option>
-                                            <option value="Tertiary Education">Tertiary education</option>
-                                            <option value="Missing">Missing value</option>
-                                            <option value="Other">Other</option>
                                         {% endif %}
-                                    </select>
-                                    <label for="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"></label>
-                                    <input class="form-group" type="text"
-                                           id="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
-                                           name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                           placeholder="If other, please specify"/><br>
-                                    <input type="hidden"
-                                           id="count_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
-                                           name='count_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                           value="{{ value_dict['count'] }}"/>
-                                {% endfor %}
-                            </div>
+                                    </div>
 
-                        {% endif %}
-                    </div>
+                                    <div class="category-controls">
+                                        <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                                name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                                class="selectpicker form-control" data-live-search="true">
+                                            {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
+                                            {% if item_info and 'value_mapping' in item_info %}
+                                                <option value="">Description</option>
+                                                {% for value in item_info.get('value_mapping').get('terms').keys() %}
+                                                    <option {% if preselected == value.title().replace('_', ' ') %}selected{% endif %}>
+                                                        {{ value.title().replace('_', ' ') }}
+                                                    </option>
+                                                {% endfor %}
+                                                <option value="Other">Other</option>
+                                            {% else %}
+                                                <option value="">Description</option>
+                                                <option value="Yes">Yes</option>
+                                                <option value="No">No</option>
+                                                <option value="Male">Male sex</option>
+                                                <option value="Female">Female sex</option>
+                                                <option value="Primary Education">Primary education</option>
+                                                <option value="Secondary Education">Secondary education</option>
+                                                <option value="Tertiary Education">Tertiary education</option>
+                                                <option value="Missing">Missing value</option>
+                                                <option value="Other">Other</option>
+                                            {% endif %}
+                                        </select>
+
+                                        <input class="form-control" type="text"
+                                               id="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                               name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                               placeholder="If other, please specify"
+                                               disabled='disabled'
+                                               style="width: 200px;"/>
+                                    </div>
+                                </div>
+
+                                <input type="hidden"
+                                       id="count_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                       name='count_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
+                                       value="{{ value_dict['count'] }}"/>
+                            {% endfor %}
+                            <script>
+                                $(document).ready(function () {
+                                    {% for value_dict in df[df['column'] == item]['value'].tolist() %}
+                                        $("#{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}").change(function () {
+                                            if ($(this).find("option:selected").val() == "Other") {
+                                                $("#comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}").removeAttr("disabled");
+                                            } else {
+                                                $("#comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}").attr("disabled", "disabled");
+                                            }
+                                        });
+                                    {% endfor %}
+                                });
+                            </script>
+                        </div>
+                    {% endif %}
                 {% endfor %}
             </div>
             <hr>
         {% endfor %}
 
         <p><input type="submit" value="Submit" class="btn btn-primary"></p>
+
+        <!-- Reference Guide Section -->
+        <div class="mt-4">
+            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+                <i class="fas fa-info-circle"></i>
+                <strong>Reference Guide</strong><br>
+                <div class="mt-1 ms-4">
+                    <!-- Data Types Section -->
+                    <strong style="font-size: 0.9em;">Data Types:</strong>
+                    <div class="row g-1 mt-1">
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-tags me-2 ref-guide-icon"
+                                   style="margin-right: 5px; margin-top: 5px; align-self: flex-start;"></i>
+                                <span>
+                                <strong style="font-size: 0.9em;">Categorical</strong>
+                                <span class="mb-1" style="font-size: 0.85em;"> - Please select the categories that best describe the listed values. <br>
+        If none of the available categories accurately represent a given value,
+        please select 'Other' and specify what the value represents in the text box.
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-chart-line me-2 ref-guide-icon"
+                                   style="margin-right: 5px; margin-top: 5px; align-self: flex-start;"></i>
+                                <span>
+                                <strong style="font-size: 0.9em;">Continuous</strong>
+                                <span class="mb-1" style="font-size: 0.85em;"> - For each continuous variable, please specify the unit and missing value notation in the text fields.</span>
+                            </span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Additional Instructions Section -->
+                    <div class="mt-3">
+                        <hr>
+                        <strong style="font-size: 0.9em;">Additional Information:</strong>
+                        <div class="mt-1">
+                            <p class="mb-1">
+                                <i class="fas fa-exclamation-triangle"
+                                   style="margin-right: 5px; align-self: flex-start;"></i><i><b>Please do note that
+                                variables that
+                                are by definition standardised
+                                <u>do not have to be described</u>.</b><br>
+                                Examples thereof are variables like CIM/CIE/ICD-10 disease classifications,
+                                or EORTC-QLQ-C30 and EuroQoL EQ5D responses.</i></p>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </form>
     <script>
         $(document).ready(function () {
@@ -199,7 +353,8 @@
 
             $('.item-toggle-button').click(function () {
                 $(this).toggleClass('open');
-                $(this).next('.toggle-content').toggleClass('active');
+                // Find the next .toggle-content after the current variable-row
+                $(this).closest('.variable-row').next('.toggle-content').toggleClass('active');
             });
 
             $(".selectpicker").on('show.bs.select', function (e) {
@@ -214,19 +369,6 @@
                 var toggleContent = $(this).closest('.toggle-content');
                 toggleContent.height('auto');
                 toggleContent.css('overflow-y', 'auto');
-            });
-
-            $(".selectpicker").change(function () {
-                // TODO Decide whether to only enable the comment field if the selected value is "Other" or allow comments to always be entered
-                // var commentId = 'comment_' + $(this).attr('id');
-                // console.log("commentId: ", commentId); // print out the id
-                // if ($(this).find("option:selected").val() == "Other") {
-                //     console.log($("#" + commentId).length > 0 ? "Element exists" : "Element does not exist"); // check if the element exists
-                //     $("#" + commentId).removeAttr("disabled");
-                // } else {
-                //     $("#" + commentId).attr("disabled", "disabled");
-                // }
-                $(this).selectpicker('render');
             });
         });
     </script>
