@@ -35,7 +35,7 @@ else:
     # Assume it is not running in Docker
     graphdb_url = 'http://localhost:7200'
     repo = 'userRepo'
-    app.config["DEBUG"] = True
+    app.config["DEBUG"] = False
     root_dir = ''
     child_dir = '.'
 
