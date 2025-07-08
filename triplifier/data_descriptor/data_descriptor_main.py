@@ -813,6 +813,15 @@ def annotation_review():
                 # Create a copy of the variable data
                 var_copy = dict(var_data)
                 
+                # Validate required fields
+                if not var_copy.get('predicate'):
+                    logger.warning(f"Variable {var_name} missing predicate")
+                    continue
+                    
+                if not var_copy.get('class'):
+                    logger.warning(f"Variable {var_name} missing class")
+                    continue
+                
                 # Check if this variable has been mapped to this database
                 if var_copy.get('local_definition'):
                     annotation_data[database][var_name] = var_copy
@@ -833,12 +842,29 @@ def annotation_review():
     else:
         # Single database case
         database = session_cache.global_semantic_map.get('database_name', 'default')
-        annotation_data[database] = variable_info
+        annotation_data[database] = {}
         
-        # Check for unannotated variables
+        # Check for unannotated variables and validate required fields
         for var_name, var_data in variable_info.items():
-            if not var_data.get('local_definition'):
+            var_copy = dict(var_data)
+            
+            # Validate required fields
+            if not var_copy.get('predicate') or not var_copy.get('class'):
+                logger.warning(f"Variable {var_name} missing required fields (predicate/class)")
                 unannotated_variables.append(var_name)
+                continue
+                
+            if var_copy.get('local_definition'):
+                annotation_data[database][var_name] = var_copy
+            else:
+                unannotated_variables.append(var_name)
+    
+    # Check if we have any variables to annotate
+    total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
+    
+    if total_annotated == 0:
+        flash("No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.")
+        return redirect(url_for('download_page'))
     
     return render_template('annotation_review.html', 
                          annotation_data=annotation_data,
@@ -879,37 +905,55 @@ def start_annotation():
         temp_dir = '/tmp/annotation_temp'
         os.makedirs(temp_dir, exist_ok=True)
         
-        # Run annotation process
-        logger.info(f"Starting annotation process for {len(annotated_variables)} variables")
-        
-        # Use add_annotation function from the annotation helper
-        annotation_result = add_annotation(
-            endpoint=endpoint,
-            database=database,
-            prefixes=prefixes,
-            annotation_data=annotated_variables,
-            path=temp_dir,
-            remove_has_column=False,
-            save_query=True
-        )
-        
-        # Store annotation status in session cache
+        # Initialize annotation status
         session_cache.annotation_status = {}
         
-        # For now, we'll assume success for variables with local definitions
-        # In a real implementation, you'd check the actual results
-        for var_name, var_data in annotated_variables.items():
-            session_cache.annotation_status[var_name] = {
-                'success': True,
-                'message': 'Annotation completed successfully'
-            }
+        logger.info(f"Starting annotation process for {len(annotated_variables)} variables")
         
-        logger.info("Annotation process completed successfully")
-        
-        return jsonify({'success': True, 'message': 'Annotation process completed'})
+        try:
+            # Use add_annotation function from the annotation helper
+            annotation_result = add_annotation(
+                endpoint=endpoint,
+                database=database,
+                prefixes=prefixes,
+                annotation_data=annotated_variables,
+                path=temp_dir,
+                remove_has_column=False,
+                save_query=True
+            )
+            
+            # For now, we'll assume success for variables with local definitions
+            # In a real implementation, the add_annotation function should return status
+            for var_name, var_data in annotated_variables.items():
+                session_cache.annotation_status[var_name] = {
+                    'success': True,
+                    'message': 'Annotation completed successfully'
+                }
+            
+            logger.info("Annotation process completed successfully")
+            
+            return jsonify({
+                'success': True, 
+                'message': f'Annotation process completed for {len(annotated_variables)} variables'
+            })
+            
+        except Exception as annotation_error:
+            logger.error(f"Error during annotation execution: {str(annotation_error)}")
+            
+            # Mark all variables as failed
+            for var_name in annotated_variables.keys():
+                session_cache.annotation_status[var_name] = {
+                    'success': False,
+                    'error': str(annotation_error)
+                }
+            
+            return jsonify({
+                'success': False, 
+                'error': f'Annotation process failed: {str(annotation_error)}'
+            })
         
     except Exception as e:
-        logger.error(f"Error during annotation process: {str(e)}")
+        logger.error(f"Error during annotation setup: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 
@@ -980,7 +1024,7 @@ def query_variable():
             return jsonify({'success': False, 'error': 'Variable has no local definition'})
         
         # Create SPARQL query to test the annotation
-        # This is based on the single_column.rq template referenced in the comments
+        # This query checks if the annotation was successful by looking for annotated data
         query = f"""
         PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
         PREFIX db: <http://data.local/>
@@ -988,11 +1032,14 @@ def query_variable():
         PREFIX roo: <http://www.cancerdata.org/roo/>
         PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
         
-        SELECT ?subject ?predicate ?object
+        SELECT ?patient ?annotation_value
         WHERE {{
-            ?subject {predicate} ?object .
-            ?subject rdf:type ?class .
-            ?class dbo:column '{local_definition}' .
+            GRAPH <http://annotation.local/> {{
+                ?patient {predicate} ?annotation_component .
+            }}
+            ?annotation_component rdf:type db:{database}.{local_definition} .
+            ?annotation_component dbo:has_cell ?cell .
+            ?cell dbo:has_value ?annotation_value .
         }}
         LIMIT 5
         """
@@ -1001,7 +1048,25 @@ def query_variable():
         result = execute_query(session_cache.repo, query)
         
         if not result or result.strip() == "":
-            return jsonify({'success': True, 'results': []})
+            # Try a simpler query to check if the data exists at all
+            simple_query = f"""
+            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            PREFIX db: <http://data.local/>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            
+            SELECT ?subject ?value
+            WHERE {{
+                ?subject rdf:type db:{database}.{local_definition} .
+                ?subject dbo:has_cell ?cell .
+                ?cell dbo:has_value ?value .
+            }}
+            LIMIT 5
+            """
+            
+            result = execute_query(session_cache.repo, simple_query)
+            
+            if not result or result.strip() == "":
+                return jsonify({'success': True, 'results': [], 'message': 'No data found for this variable'})
         
         # Parse results
         try:
@@ -1016,6 +1081,14 @@ def query_variable():
     except Exception as e:
         logger.error(f"Error querying variable: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/annotation-ui-demo')
+def annotation_ui_demo():
+    """Demo page showing the annotation UI functionality"""
+    with open('/home/runner/work/Flyover/Flyover/annotation_ui_demo.html', 'r') as f:
+        content = f.read()
+    return content
 
 
 @app.route('/data_descriptor/assets/<path:filename>')
