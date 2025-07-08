@@ -106,7 +106,8 @@ which specifies the location of the new class to be added.
 Placement defaults to 'before'.   
 'Before' refers to a class that is placed between an individual's class (e.g. a patient or participant), and the
 variable class.  
-'After' refers to a class that is placed between the variable class and the class the reconstruction itself is referring to.
+'After' refers to a class that is placed between the variable class and the class the reconstruction itself is referring
+to.
 
 An example of multiple schema reconstructions for a single variable is provided in the
 example data.
@@ -206,9 +207,9 @@ Additionally there is data (`.csv`) and a mapping file (`.json`) of two fictitio
 These files can be used
 to test the Data Descriptor Module and the Annotation Helper.
 Additionally, this JSON metadata contains all supported
-scenarios of  `schema_reconstruction`. The example data is a subset of the HEAD-NECK-RADIOMICS-HN1 dataset
-(Wee, L., & Dekker, A. (2019). Data from HEAD-NECK-RADIOMICS-HN1 [Data set].
-The Cancer Imaging Archive. https://doi.org/10.7937/tcia.2019.8kap372n)
+scenarios of  `schema_reconstruction`.
+The example data is a synthetic dataset generated with the MOSTLY AI Data Intelligence Platform using the data semantic
+maps as guide for data generation.
 
 ## Developers
 
