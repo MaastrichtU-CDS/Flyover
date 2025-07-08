@@ -652,7 +652,7 @@ def download_semantic_map():
     The modified semantic map is then returned as a JSON response which can be downloaded as a file.
 
     Parameters:
-    filename (str): The name of the file to be downloaded. Defaults to 'local_semantic map_{database_name}.json'.
+    filename (str): The name of the file to be downloaded. Defaults to 'local_semantic_map_{database_name}.json'.
 
     Returns:
         flask.Response: A Flask response object containing the modified semantic map as a JSON string.
@@ -680,7 +680,7 @@ def download_semantic_map():
             _filename = 'local_semantic maps.zip'
             # Loop through each database
             for database in session_cache.databases:
-                filename = f'local_semantic map_{database}.json'
+                filename = f'local_semantic_map_{database}.json'
 
                 # Open the zip file in append mode
                 with zipfile.ZipFile(_filename, 'a') as zipf:
@@ -706,7 +706,7 @@ def download_semantic_map():
         else:
             # If there is only one database
             database = session_cache.databases[0]
-            filename = f'local_semantic map_{database}.json'
+            filename = f'local_semantic_map_{database}.json'
 
             try:
                 # Generate a modified version of the global semantic map by adding local definitions to it
