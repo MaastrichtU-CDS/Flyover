@@ -23,3 +23,12 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+
+# Test and demo files
+test_annotation_ui.py
+setup_test_data.py
+annotation_ui_demo.html
+
+# Temporary files
+/tmp/
+*.tmp
