@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Annotation Verification</title>
+    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
+    <script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .verification-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .variable-select {
+            margin-bottom: 20px;
+        }
+        .query-results {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .results-table {
+            width: 100%;
+            margin-top: 10px;
+        }
+        .results-table th, .results-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .results-table th {
+            background-color: #e9ecef;
+            font-weight: bold;
+        }
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .actions {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .annotation-status {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .status-success {
+            border-left: 4px solid #28a745;
+        }
+        .status-error {
+            border-left: 4px solid #dc3545;
+        }
+        .status-warning {
+            border-left: 4px solid #ffc107;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <br>
+    <h1><i class="fas fa-check-circle"></i> Annotation Verification</h1>
+    <hr>
+    
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <strong>Verify annotation results</strong><br>
+        Select a variable below to query and verify that the annotation was successful. 
+        The top 5 rows will be displayed to confirm data accessibility.
+    </div>
+
+    {% if annotation_status %}
+    <div class="annotation-status">
+        <h3><i class="fas fa-list-check"></i> Annotation Status</h3>
+        {% for variable, status in annotation_status.items() %}
+            <div class="status-item {% if status.success %}status-success{% elif status.error %}status-error{% else %}status-warning{% endif %}">
+                <div>
+                    <strong>{{ variable }}</strong>
+                    {% if status.success %}
+                        <span class="text-success"><i class="fas fa-check-circle"></i> Successfully annotated</span>
+                    {% elif status.error %}
+                        <span class="text-danger"><i class="fas fa-exclamation-circle"></i> Error: {{ status.error }}</span>
+                    {% else %}
+                        <span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Warning: {{ status.warning }}</span>
+                    {% endif %}
+                </div>
+                {% if status.success %}
+                    <span class="badge bg-success">✓</span>
+                {% elif status.error %}
+                    <span class="badge bg-danger">✗</span>
+                {% else %}
+                    <span class="badge bg-warning">!</span>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    {% if annotated_variables %}
+    <div class="verification-card">
+        <h3><i class="fas fa-search"></i> Test Variable Accessibility</h3>
+        <div class="variable-select">
+            <label for="variableSelect" class="form-label">Select a variable to test:</label>
+            <select id="variableSelect" class="form-select" onchange="loadVariableInfo()">
+                <option value="">Choose a variable...</option>
+                {% for var in annotated_variables %}
+                    <option value="{{ var }}">{{ var }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div id="variableInfo" style="display: none;">
+            <h4>Variable Information</h4>
+            <div id="variableDetails"></div>
+            <button id="queryButton" class="btn btn-primary" onclick="queryVariable()">
+                <i class="fas fa-play"></i> Query Top 5 Rows
+            </button>
+        </div>
+        
+        <div class="loading-spinner" id="loadingSpinner">
+            <i class="fas fa-spinner fa-spin fa-2x"></i>
+            <p>Executing query...</p>
+        </div>
+        
+        <div id="queryResults"></div>
+    </div>
+    {% endif %}
+    
+    {% if success_message %}
+    <div class="success-message">
+        <i class="fas fa-check-circle"></i>
+        <strong>Success!</strong> {{ success_message }}
+    </div>
+    {% endif %}
+    
+    {% if error_message %}
+    <div class="error-message">
+        <i class="fas fa-exclamation-circle"></i>
+        <strong>Error:</strong> {{ error_message }}
+    </div>
+    {% endif %}
+    
+    <div class="actions">
+        <a href="/annotation-review" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Review
+        </a>
+        <a href="/" class="btn btn-primary">
+            <i class="fas fa-home"></i> Return to Home
+        </a>
+    </div>
+</div>
+
+<script>
+const variableData = {{ variable_data | tojson }};
+
+function loadVariableInfo() {
+    const selectElement = document.getElementById('variableSelect');
+    const selectedVar = selectElement.value;
+    const variableInfo = document.getElementById('variableInfo');
+    const variableDetails = document.getElementById('variableDetails');
+    
+    if (selectedVar && variableData[selectedVar]) {
+        const varInfo = variableData[selectedVar];
+        
+        let detailsHTML = '<div class="row">';
+        detailsHTML += '<div class="col-md-6">';
+        detailsHTML += '<p><strong>Local Definition:</strong> ' + (varInfo.local_definition || 'Not specified') + '</p>';
+        detailsHTML += '<p><strong>Predicate:</strong> <code>' + varInfo.predicate + '</code></p>';
+        detailsHTML += '</div>';
+        detailsHTML += '<div class="col-md-6">';
+        detailsHTML += '<p><strong>Class:</strong> <code>' + varInfo.class + '</code></p>';
+        if (varInfo.data_type) {
+            detailsHTML += '<p><strong>Data Type:</strong> ' + varInfo.data_type + '</p>';
+        }
+        detailsHTML += '</div>';
+        detailsHTML += '</div>';
+        
+        variableDetails.innerHTML = detailsHTML;
+        variableInfo.style.display = 'block';
+    } else {
+        variableInfo.style.display = 'none';
+    }
+}
+
+function queryVariable() {
+    const selectElement = document.getElementById('variableSelect');
+    const selectedVar = selectElement.value;
+    
+    if (!selectedVar) {
+        alert('Please select a variable to query.');
+        return;
+    }
+    
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const queryResults = document.getElementById('queryResults');
+    const queryButton = document.getElementById('queryButton');
+    
+    // Show loading spinner
+    loadingSpinner.style.display = 'block';
+    queryResults.innerHTML = '';
+    queryButton.disabled = true;
+    
+    fetch('/query-variable', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            variable: selectedVar
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingSpinner.style.display = 'none';
+        queryButton.disabled = false;
+        
+        if (data.success) {
+            let resultsHTML = '<div class="query-results">';
+            resultsHTML += '<h5><i class="fas fa-table"></i> Query Results (Top 5 rows)</h5>';
+            
+            if (data.results && data.results.length > 0) {
+                resultsHTML += '<table class="results-table table table-striped">';
+                resultsHTML += '<thead><tr>';
+                
+                // Get headers from first row
+                const headers = Object.keys(data.results[0]);
+                headers.forEach(header => {
+                    resultsHTML += '<th>' + header + '</th>';
+                });
+                resultsHTML += '</tr></thead><tbody>';
+                
+                // Add data rows
+                data.results.forEach(row => {
+                    resultsHTML += '<tr>';
+                    headers.forEach(header => {
+                        resultsHTML += '<td>' + (row[header] || '') + '</td>';
+                    });
+                    resultsHTML += '</tr>';
+                });
+                
+                resultsHTML += '</tbody></table>';
+                resultsHTML += '<div class="alert alert-success mt-3">';
+                resultsHTML += '<i class="fas fa-check-circle"></i> <strong>Success!</strong> ';
+                resultsHTML += 'The variable "' + selectedVar + '" is accessible and returning data. ';
+                resultsHTML += 'Semantic interoperability has been achieved for this variable.';
+                resultsHTML += '</div>';
+            } else {
+                resultsHTML += '<div class="alert alert-warning">';
+                resultsHTML += '<i class="fas fa-exclamation-triangle"></i> <strong>No data found</strong><br>';
+                resultsHTML += 'The query executed successfully but returned no results. ';
+                resultsHTML += 'This could mean the variable has no data or the annotation needs to be reviewed.';
+                resultsHTML += '</div>';
+            }
+            
+            resultsHTML += '</div>';
+            queryResults.innerHTML = resultsHTML;
+        } else {
+            queryResults.innerHTML = '<div class="alert alert-danger">';
+            queryResults.innerHTML += '<i class="fas fa-exclamation-circle"></i> <strong>Query failed:</strong> ' + data.error;
+            queryResults.innerHTML += '</div>';
+        }
+    })
+    .catch(error => {
+        loadingSpinner.style.display = 'none';
+        queryButton.disabled = false;
+        
+        queryResults.innerHTML = '<div class="alert alert-danger">';
+        queryResults.innerHTML += '<i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> ' + error.message;
+        queryResults.innerHTML += '</div>';
+    });
+}
+</script>
+
+</body>
+</html>
