@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
     <script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -17,6 +18,7 @@
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 250px;
         }
         .variable-header {
             display: flex;
@@ -29,20 +31,25 @@
             color: #007bff;
             font-size: 1.1em;
         }
-        .variable-details {
-            margin-left: 20px;
+        .knowledge-graph-container {
+            width: 100%;
+            height: 200px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background-color: #fafafa;
         }
-        .detail-row {
+        .graph-controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filter-group {
             display: flex;
-            margin-bottom: 8px;
-        }
-        .detail-label {
-            font-weight: bold;
-            width: 150px;
-            color: #6c757d;
-        }
-        .detail-value {
-            color: #495057;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
         }
         .unannotated-section {
             background-color: #fff3cd;
@@ -65,21 +72,6 @@
             background-color: #f8d7da;
             color: #721c24;
         }
-        .value-mapping-section {
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 10px;
-            margin-top: 10px;
-        }
-        .value-mapping-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            padding: 5px;
-            background-color: white;
-            border-radius: 3px;
-            border: 1px solid #dee2e6;
-        }
         .annotation-actions {
             position: fixed;
             bottom: 20px;
@@ -96,6 +88,66 @@
             padding-bottom: 10px;
             margin-bottom: 20px;
         }
+        
+        /* Knowledge graph styles */
+        .kg-node {
+            cursor: pointer;
+        }
+        .kg-node.complete {
+            fill: #28a745;
+            stroke: #1e7e34;
+        }
+        .kg-node.incomplete {
+            fill: #dc3545;
+            stroke: #c82333;
+        }
+        .kg-node.intermediate {
+            fill: #6c757d;
+            stroke: #495057;
+        }
+        .kg-node.value-mapping {
+            fill: #17a2b8;
+            stroke: #138496;
+        }
+        .kg-link {
+            stroke: #6c757d;
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+        .kg-text {
+            font-family: 'Arial', sans-serif;
+            font-size: 10px;
+            text-anchor: middle;
+            fill: white;
+            font-weight: bold;
+        }
+        .kg-predicate-text {
+            font-family: 'Arial', sans-serif;
+            font-size: 8px;
+            text-anchor: middle;
+            fill: #6c757d;
+        }
+        .legend {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .legend-item {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 5px;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 
@@ -107,9 +159,49 @@
     
     <div class="alert alert-info">
         <i class="fas fa-info-circle"></i>
-        <strong>Review your semantic annotations</strong><br>
-        Please review the variable mappings below before proceeding with the annotation process. 
-        Variables marked as "Annotated" will be processed, while "Unannotated" variables will be skipped.
+        <strong>Visual Knowledge Graph Review</strong><br>
+        Each variable is displayed as a mini knowledge graph showing its semantic structure and relationships. 
+        Variables with complete annotations (local definition and data type) are shown in green, while incomplete variables are shown in red.
+    </div>
+
+    <!-- Graph Controls -->
+    <div class="graph-controls">
+        <h5><i class="fas fa-filter"></i> Graph Filters</h5>
+        <div class="filter-group">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showComplete" checked>
+                <label class="form-check-label" for="showComplete">Show Complete Variables</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showIncomplete" checked>
+                <label class="form-check-label" for="showIncomplete">Show Incomplete Variables</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showValueMappings" checked>
+                <label class="form-check-label" for="showValueMappings">Show Value Mappings</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showIntermediateClasses" checked>
+                <label class="form-check-label" for="showIntermediateClasses">Show Intermediate Classes</label>
+            </div>
+        </div>
+        
+        <!-- Legend -->
+        <div class="legend">
+            <strong>Legend:</strong>
+            <div class="legend-item">
+                <span class="legend-color" style="background-color: #28a745;"></span>Complete Variable
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background-color: #dc3545;"></span>Incomplete Variable
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background-color: #6c757d;"></span>Intermediate Class
+            </div>
+            <div class="legend-item">
+                <span class="legend-color" style="background-color: #17a2b8;"></span>Value Mapping
+            </div>
+        </div>
     </div>
 
     {% if annotation_data %}
@@ -120,7 +212,7 @@
                 </h2>
                 
                 {% for var_name, var_info in variables.items() %}
-                    <div class="variable-card">
+                    <div class="variable-card" data-complete="{% if var_info.local_definition and var_info.data_type %}true{% else %}false{% endif %}">
                         <div class="variable-header">
                             <div class="variable-name">{{ var_name }}</div>
                             <div class="status-badge {% if var_info.local_definition %}status-annotated{% else %}status-unannotated{% endif %}">
@@ -132,48 +224,21 @@
                             </div>
                         </div>
                         
-                        <div class="variable-details">
-                            <div class="detail-row">
-                                <div class="detail-label">Local Definition:</div>
-                                <div class="detail-value">
-                                    {{ var_info.local_definition if var_info.local_definition else 'Not specified' }}
-                                </div>
-                            </div>
-                            
-                            <div class="detail-row">
-                                <div class="detail-label">Predicate:</div>
-                                <div class="detail-value">{{ var_info.predicate }}</div>
-                            </div>
-                            
-                            <div class="detail-row">
-                                <div class="detail-label">Class:</div>
-                                <div class="detail-value">{{ var_info.class }}</div>
-                            </div>
-                            
-                            {% if var_info.data_type %}
-                            <div class="detail-row">
-                                <div class="detail-label">Data Type:</div>
-                                <div class="detail-value">{{ var_info.data_type }}</div>
-                            </div>
-                            {% endif %}
-                            
-                            {% if var_info.value_mapping and var_info.value_mapping.terms %}
-                            <div class="detail-row">
-                                <div class="detail-label">Value Mapping:</div>
-                                <div class="detail-value">
-                                    <div class="value-mapping-section">
-                                        {% for term, term_info in var_info.value_mapping.terms.items() %}
-                                            <div class="value-mapping-item">
-                                                <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
-                                                <span>{{ term_info.local_term if term_info.local_term else 'Not mapped' }}</span>
-                                                <span><code>{{ term_info.target_class }}</code></span>
-                                            </div>
-                                        {% endfor %}
-                                    </div>
-                                </div>
-                            </div>
-                            {% endif %}
-                        </div>
+                        <!-- Knowledge Graph Container -->
+                        <div class="knowledge-graph-container" id="graph-{{ var_name.replace(' ', '_').replace('.', '_') }}"></div>
+                        
+                        <!-- Hidden data for JavaScript -->
+                        <script type="application/json" class="variable-data">
+                        {
+                            "name": "{{ var_name }}",
+                            "predicate": "{{ var_info.predicate }}",
+                            "class": "{{ var_info.class }}",
+                            "local_definition": {{ var_info.local_definition|tojson }},
+                            "data_type": {{ var_info.data_type|tojson }},
+                            "schema_reconstruction": {{ var_info.schema_reconstruction|tojson }},
+                            "value_mapping": {{ var_info.value_mapping|tojson }}
+                        }
+                        </script>
                     </div>
                 {% endfor %}
             </div>
@@ -212,6 +277,304 @@
 </div>
 
 <script>
+// Knowledge Graph Generation
+function createKnowledgeGraph(containerSelector, data) {
+    const container = d3.select(containerSelector);
+    const containerNode = container.node();
+    const width = containerNode.clientWidth;
+    const height = containerNode.clientHeight;
+    
+    // Clear any existing content
+    container.selectAll("*").remove();
+    
+    // Create SVG
+    const svg = container.append("svg")
+        .attr("width", width)
+        .attr("height", height);
+    
+    // Add arrowhead marker
+    svg.append("defs").append("marker")
+        .attr("id", "arrowhead")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 15)
+        .attr("refY", 0)
+        .attr("markerWidth", 6)
+        .attr("markerHeight", 6)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-5L10,0L0,5")
+        .attr("fill", "#6c757d");
+    
+    // Build graph data
+    const nodes = [];
+    const links = [];
+    
+    // Variable completeness check
+    const isComplete = data.local_definition && data.data_type;
+    
+    // Create central variable node
+    const centralNode = {
+        id: data.name,
+        label: data.name,
+        type: isComplete ? 'complete' : 'incomplete',
+        x: width / 2,
+        y: height / 2,
+        fx: width / 2,
+        fy: height / 2
+    };
+    nodes.push(centralNode);
+    
+    let nodeIndex = 1;
+    let currentX = width * 0.15;
+    const nodeSpacing = width * 0.15;
+    
+    // Add schema reconstruction nodes (before central node)
+    if (data.schema_reconstruction) {
+        const beforeNodes = data.schema_reconstruction.filter(item => item.placement !== 'after');
+        const afterNodes = data.schema_reconstruction.filter(item => item.placement === 'after');
+        
+        // Nodes before central variable
+        beforeNodes.forEach((item, index) => {
+            const node = {
+                id: `before_${nodeIndex}`,
+                label: item.aesthetic_label || item.class_label || item.node_label || 'Class',
+                type: 'intermediate',
+                x: currentX,
+                y: height / 2,
+                fx: currentX,
+                fy: height / 2,
+                predicate: item.predicate
+            };
+            nodes.push(node);
+            
+            // Link to next node (or central if last)
+            const targetId = index === beforeNodes.length - 1 ? data.name : `before_${nodeIndex + 1}`;
+            links.push({
+                source: node.id,
+                target: targetId,
+                predicate: item.predicate
+            });
+            
+            currentX += nodeSpacing;
+            nodeIndex++;
+        });
+        
+        // Nodes after central variable
+        currentX = width * 0.7;
+        afterNodes.forEach((item, index) => {
+            const node = {
+                id: `after_${nodeIndex}`,
+                label: item.aesthetic_label || item.class_label || item.node_label || 'Class',
+                type: 'intermediate',
+                x: currentX,
+                y: height / 2,
+                fx: currentX,
+                fy: height / 2,
+                predicate: item.predicate
+            };
+            nodes.push(node);
+            
+            // Link from central to this node (or from previous after node)
+            const sourceId = index === 0 ? data.name : `after_${nodeIndex - 1}`;
+            links.push({
+                source: sourceId,
+                target: node.id,
+                predicate: item.predicate
+            });
+            
+            currentX += nodeSpacing;
+            nodeIndex++;
+        });
+    }
+    
+    // Add value mapping nodes (only if local_term is filled)
+    if (data.value_mapping && data.value_mapping.terms) {
+        const valueMappings = Object.entries(data.value_mapping.terms)
+            .filter(([term, termInfo]) => termInfo.local_term)
+            .slice(0, 4); // Limit to avoid crowding
+        
+        if (valueMappings.length > 0) {
+            const valueY = height * 0.8;
+            const valueStartX = width * 0.3;
+            const valueSpacing = width * 0.1;
+            
+            valueMappings.forEach(([term, termInfo], index) => {
+                const node = {
+                    id: `value_${term}`,
+                    label: term.replace('_', ' '),
+                    type: 'value-mapping',
+                    x: valueStartX + (index * valueSpacing),
+                    y: valueY,
+                    fx: valueStartX + (index * valueSpacing),
+                    fy: valueY
+                };
+                nodes.push(node);
+                
+                // Link from central variable to value mapping
+                links.push({
+                    source: data.name,
+                    target: node.id,
+                    predicate: 'has_value'
+                });
+            });
+        }
+    }
+    
+    // Create links
+    const link = svg.selectAll(".kg-link")
+        .data(links)
+        .enter().append("path")
+        .attr("class", "kg-link");
+    
+    // Create nodes
+    const node = svg.selectAll(".kg-node")
+        .data(nodes)
+        .enter().append("g")
+        .attr("class", "kg-node");
+    
+    // Add circles to nodes
+    node.append("circle")
+        .attr("r", d => d.type === 'complete' || d.type === 'incomplete' ? 25 : 20)
+        .attr("class", d => `kg-node ${d.type}`);
+    
+    // Add text to nodes
+    node.append("text")
+        .attr("class", "kg-text")
+        .attr("dy", "0.35em")
+        .text(d => {
+            // Truncate long labels
+            const maxLength = d.type === 'complete' || d.type === 'incomplete' ? 12 : 10;
+            return d.label.length > maxLength ? d.label.substring(0, maxLength) + '...' : d.label;
+        });
+    
+    // Position nodes and links
+    node.attr("transform", d => `translate(${d.x},${d.y})`);
+    
+    // Update links to use curved paths
+    link.attr("d", d => {
+        const source = nodes.find(n => n.id === d.source);
+        const target = nodes.find(n => n.id === d.target);
+        
+        if (!source || !target) return "";
+        
+        // Create curved path
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const dr = Math.sqrt(dx * dx + dy * dy) * 0.3;
+        
+        return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
+    });
+    
+    // Add predicate labels on links
+    if (links.length > 0) {
+        svg.selectAll(".kg-predicate-text")
+            .data(links)
+            .enter().append("text")
+            .attr("class", "kg-predicate-text")
+            .attr("x", d => {
+                const source = nodes.find(n => n.id === d.source);
+                const target = nodes.find(n => n.id === d.target);
+                return (source.x + target.x) / 2;
+            })
+            .attr("y", d => {
+                const source = nodes.find(n => n.id === d.source);
+                const target = nodes.find(n => n.id === d.target);
+                return (source.y + target.y) / 2 - 10;
+            })
+            .text(d => {
+                // Simplify predicate display
+                const predicate = d.predicate || '';
+                return predicate.split(':')[1] || predicate.split('/').pop() || '';
+            });
+    }
+}
+
+// Initialize all knowledge graphs
+function initializeKnowledgeGraphs() {
+    document.querySelectorAll('.variable-card').forEach(card => {
+        const dataScript = card.querySelector('.variable-data');
+        if (dataScript) {
+            try {
+                const data = JSON.parse(dataScript.textContent);
+                const graphContainer = card.querySelector('.knowledge-graph-container');
+                if (graphContainer) {
+                    createKnowledgeGraph(`#${graphContainer.id}`, data);
+                }
+            } catch (e) {
+                console.error('Error parsing variable data:', e);
+            }
+        }
+    });
+}
+
+// Filter functionality
+function applyFilters() {
+    const showComplete = document.getElementById('showComplete').checked;
+    const showIncomplete = document.getElementById('showIncomplete').checked;
+    const showValueMappings = document.getElementById('showValueMappings').checked;
+    const showIntermediateClasses = document.getElementById('showIntermediateClasses').checked;
+    
+    document.querySelectorAll('.variable-card').forEach(card => {
+        const isComplete = card.dataset.complete === 'true';
+        
+        // Show/hide based on completion status
+        if ((isComplete && !showComplete) || (!isComplete && !showIncomplete)) {
+            card.style.display = 'none';
+            return;
+        } else {
+            card.style.display = 'block';
+        }
+        
+        // Show/hide specific node types within graphs
+        const svg = card.querySelector('svg');
+        if (svg) {
+            // Value mapping nodes
+            d3.select(svg).selectAll('.kg-node')
+                .filter(d => d.type === 'value-mapping')
+                .style('display', showValueMappings ? 'block' : 'none');
+            
+            // Intermediate class nodes
+            d3.select(svg).selectAll('.kg-node')
+                .filter(d => d.type === 'intermediate')
+                .style('display', showIntermediateClasses ? 'block' : 'none');
+            
+            // Update links accordingly
+            d3.select(svg).selectAll('.kg-link')
+                .style('display', function(d) {
+                    const sourceNode = d3.select(svg).selectAll('.kg-node').data().find(n => n.id === d.source);
+                    const targetNode = d3.select(svg).selectAll('.kg-node').data().find(n => n.id === d.target);
+                    
+                    if (!sourceNode || !targetNode) return 'none';
+                    
+                    if (sourceNode.type === 'value-mapping' || targetNode.type === 'value-mapping') {
+                        return showValueMappings ? 'block' : 'none';
+                    }
+                    
+                    if (sourceNode.type === 'intermediate' || targetNode.type === 'intermediate') {
+                        return showIntermediateClasses ? 'block' : 'none';
+                    }
+                    
+                    return 'block';
+                });
+        }
+    });
+}
+
+// Event listeners for filters
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize graphs after page load
+    setTimeout(initializeKnowledgeGraphs, 100);
+    
+    // Add filter event listeners
+    ['showComplete', 'showIncomplete', 'showValueMappings', 'showIntermediateClasses'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', applyFilters);
+        }
+    });
+});
+
+// Existing annotation process function
 function startAnnotationProcess() {
     const button = document.getElementById('startAnnotation');
     button.disabled = true;
