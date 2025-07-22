@@ -264,13 +264,15 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         # retrieve standard information
         predicate = variable_data.get('predicate')
         class_object = variable_data.get('class')
-        local_definition = variable_data.get('local_definition')
+        local_definition = variable_data.get('local_definition', None)
+        if local_definition is None:
+            continue
 
         # break the loop if annotation data is not properly defined
         if not all(isinstance(var, str) for var in (predicate, class_object, local_definition)):
             logging.warning(f'Annotation data for variable {generic_category} is incorrectly formatted, '
                             f'please see function docstring for an example.')
-            break
+            continue
 
         classes_insertion_before = ''
         classes_insertion_after = ''
@@ -485,13 +487,15 @@ def add_mapping(endpoint, prefixes, variable, super_class, value_map):
     if isinstance(value_map.get('terms'), dict):
         for term, term_data in value_map['terms'].items():
             target_class = term_data.get('target_class')
-            local_term = term_data.get('local_term')
+            local_term = term_data.get('local_term', None)
+            if local_term is None:
+                continue
 
             if not all(isinstance(var, str) for var in (target_class, local_term)):
                 logging.warning(
                     f'Value mapping for term {term} of variable {variable} is incorrectly formatted, '
                     'please see function docstring for an example.')
-                break
+                continue
 
             # call your add_mapping function with the appropriate arguments
             response, query = _add_mapping(endpoint=endpoint, prefixes=prefixes,
