@@ -268,24 +268,20 @@
 </div>
 
 <script>
-// Toggle functionality for database sections
-document.querySelectorAll('.toggle-button').forEach(button => {
-    button.addEventListener('click', function() {
-        const content = this.nextElementSibling;
-        const toggleText = this.querySelector('.toggle-text');
-        const angleIcon = this.querySelector('.angle-icon');
-        
-        if (content.classList.contains('hidden')) {
-            content.classList.remove('hidden');
-            content.classList.add('active');
-            toggleText.textContent = 'Show less';
-            angleIcon.style.transform = 'rotate(180deg)';
+// Toggle functionality for database sections (matching categories.html pattern)
+$(document).ready(function() {
+    $('.toggle-button').click(function () {
+        var textElement = $(this).find('.toggle-text');
+        var svgElement = $(this).find('.angle-icon path');
+        if (textElement.text() === 'Show more') {
+            textElement.text('Show less');
+            svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
         } else {
-            content.classList.add('hidden');
-            content.classList.remove('active');
-            toggleText.textContent = 'Show more';
-            angleIcon.style.transform = 'rotate(0deg)';
+            textElement.text('Show more');
+            svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
         }
+        $(this).toggleClass('open');
+        $(this).next('.content').toggleClass('active');
     });
 });
 
