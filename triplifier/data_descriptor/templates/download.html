@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-<script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -12,7 +13,7 @@
 <body>
 <div class="container">
     <br>
-    <h1>Download your local metadata</h1>
+    <h1>Save your local metadata</h1>
     <hr>
 
     <p style="line-height: 1.5; margin: 0;">You have now successfully described the data that you have provided!&#x1F389;
@@ -27,31 +28,48 @@
             href="{{ graphdb_location }}" target="_blank">GraphDB user interface</a>.</p>
 
     <a href="/downloadOntology" download="local_ontology.owl">
-        <button class="btn btn-primary">Download local ontology</button>
+        <button class="btn btn-outline-secondary"><i class="fas fa-download"></i> Download local ontology</button>
     </a>
     <br>
     <div {% if not show_semantic_map %} style="display: none;" {% endif %}>
-        <br>
-        <p style="line-height: 1.5; margin: 0;"> As you have also provided a global semantic map,
-            you can download the corresponding local version through the 'Download local
+        <hr style="border: none; border-top: 2px dotted rgba(0,0,0,0.56)"/>
+        <p style="line-height: 1.5; margin: 0;"> Using the provided global semantic map, we have now added your data's
+            descriptions to a local semantic map. <br>
+            You can download the local semantic map version through the 'Download local
             semantic map' button below.</p>
-        <p style="line-height: 1.5; margin: 0;">&#x26A0;<i>Please do consider that the local semantic map is only partially
-            completed and
-            is based on the inputs provided through this web interface.</i></p>
-        <p style="line-height: 1.5; margin: 0;"><i style="line-height: 1.5; margin: 0;">The local semantic map file should
-            thus always be evaluated prior to
-            using it with Flyover's annotation helper.</i></p>
         <a href="/downloadSemanticMap" download="semantic_map.json">
-            <button class="btn btn-primary " {% if not show_semantic_map %} style="display: none;" {% endif %}>Download local
-                semantic map
+            <button class="btn btn-outline-secondary " {% if not show_semantic_map %}
+                    style="display: none;" {% endif %}>
+                <i class="fas fa-download"></i> Download local semantic map
             </button>
         </a>
         <br><br>
+        <p style="line-height: 1.5; margin: 0;"> With this local semantic map, you can now also annotate your data to
+            actually make it semantically interoperable.</p>
         <a href="/annotation-review" {% if not show_semantic_map %} style="display: none;" {% endif %}>
-            <button class="btn btn-success" {% if not show_semantic_map %} style="display: none;" {% endif %}>
-                Review and Annotate Data
+            <button class="btn btn-primary" {% if not show_semantic_map %} style="display: none;" {% endif %}>
+                <i class="fas fa-pencil-alt"></i> Review and Annotate Data
             </button>
-        </a></div>
+        </a>
+        <div class="mt-4">
+            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Semantic mapping and data annotation</strong><br>
+                <div class="mt-1 ms-4">
+                    <div class="mt-1">
+                        <p class="mb-1">
+                            Please do consider that
+                            the local semantic map might only be partially completed and is based on the inputs
+                            provided
+                            through this web interface.<br>
+                            The local semantic map file should thus always be evaluated prior to
+                            using it for data annotation.</p>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <hr>
     <a href="/">Click here to return to the welcome page.</a>
 </div>

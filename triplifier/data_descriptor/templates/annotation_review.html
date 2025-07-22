@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Annotation Review</title>
-    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
-    <script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-    <script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -43,67 +43,67 @@
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         .variable-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
         }
-        
+
         .variable-name {
             font-weight: bold;
             color: #007bff;
             font-size: 1.1em;
         }
-        
+
         .variable-details {
             margin-left: 15px;
         }
-        
+
         .detail-row {
             display: flex;
             margin-bottom: 6px;
         }
-        
+
         .detail-label {
             font-weight: bold;
             width: 140px;
             color: #6c757d;
             font-size: 0.9em;
         }
-        
+
         .detail-value {
             color: #495057;
             font-size: 0.9em;
         }
-        
+
         .status-badge {
             padding: 4px 8px;
             border-radius: 12px;
             font-size: 0.75em;
             font-weight: bold;
         }
-        
+
         .status-annotated {
             background-color: #d4edda;
             color: #155724;
         }
-        
+
         .status-unannotated {
             background-color: #f8d7da;
             color: #721c24;
         }
-        
+
         .value-mapping-section {
             background-color: #f8f9fa;
             border-radius: 4px;
             padding: 8px;
             margin-top: 8px;
         }
-        
+
         .value-mapping-item {
             display: flex;
             justify-content: space-between;
@@ -114,7 +114,7 @@
             border: 1px solid #dee2e6;
             font-size: 0.85em;
         }
-        
+
         .annotation-actions {
             position: fixed;
             bottom: 20px;
@@ -122,7 +122,7 @@
             display: flex;
             gap: 10px;
         }
-        
+
         .database-summary {
             background-color: #e9ecef;
             padding: 10px;
@@ -130,7 +130,7 @@
             margin-bottom: 10px;
             font-size: 0.9em;
         }
-        
+
         .unannotated-section {
             background-color: #fff3cd;
             border: 1px solid #ffeaa7;
@@ -146,11 +146,11 @@
     <br>
     <h1><i class="fas fa-search"></i> Review Annotation Data</h1>
     <hr>
-    
+
     <div class="alert alert-info">
         <i class="fas fa-info-circle"></i>
         <strong>Review your semantic annotations</strong><br>
-        Please review the variable mappings below before proceeding with the annotation process. 
+        Please review the variable mappings below before proceeding with the annotation process.
         Variables marked as "Annotated" will be processed, while "Unannotated" variables will be skipped.
     </div>
 
@@ -161,16 +161,17 @@
                 <h2 style="display: inline-block;">{{ database }}</h2>
                 <button class="toggle-button" type="button">
                     <span class="toggle-text">Show more</span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20"
+                         height="20">
                         <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
                     </svg>
                 </button>
                 <div class="content hidden">
                     <div class="database-summary">
-                        <strong>Database Summary:</strong> 
+                        <strong>Database Summary:</strong>
                         {{ variables|length }} variable(s) ready for annotation
                     </div>
-                    
+
                     {% for var_name, var_info in variables.items() %}
                         <div class="variable-card">
                             <div class="variable-header">
@@ -183,7 +184,7 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            
+
                             <div class="variable-details">
                                 <div class="detail-row">
                                     <div class="detail-label">Local Definition:</div>
@@ -191,41 +192,41 @@
                                         {{ var_info.local_definition if var_info.local_definition else 'Not specified' }}
                                     </div>
                                 </div>
-                                
+
                                 <div class="detail-row">
                                     <div class="detail-label">Predicate:</div>
                                     <div class="detail-value"><code>{{ var_info.predicate }}</code></div>
                                 </div>
-                                
+
                                 <div class="detail-row">
                                     <div class="detail-label">Class:</div>
                                     <div class="detail-value"><code>{{ var_info.class }}</code></div>
                                 </div>
-                                
+
                                 {% if var_info.data_type %}
-                                <div class="detail-row">
-                                    <div class="detail-label">Data Type:</div>
-                                    <div class="detail-value">{{ var_info.data_type }}</div>
-                                </div>
+                                    <div class="detail-row">
+                                        <div class="detail-label">Data Type:</div>
+                                        <div class="detail-value">{{ var_info.data_type }}</div>
+                                    </div>
                                 {% endif %}
-                                
+
                                 {% if var_info.value_mapping and var_info.value_mapping.terms %}
-                                <div class="detail-row">
-                                    <div class="detail-label">Value Mapping:</div>
-                                    <div class="detail-value">
-                                        <div class="value-mapping-section">
-                                            {% for term, term_info in var_info.value_mapping.terms.items() %}
-                                                {% if term_info.local_term %}
-                                                <div class="value-mapping-item">
-                                                    <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
-                                                    <span>{{ term_info.local_term }}</span>
-                                                    <span><code>{{ term_info.target_class }}</code></span>
-                                                </div>
-                                                {% endif %}
-                                            {% endfor %}
+                                    <div class="detail-row">
+                                        <div class="detail-label">Value Mapping:</div>
+                                        <div class="detail-value">
+                                            <div class="value-mapping-section">
+                                                {% for term, term_info in var_info.value_mapping.terms.items() %}
+                                                    {% if term_info.local_term %}
+                                                        <div class="value-mapping-item">
+                                                            <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
+                                                            <span>{{ term_info.local_term }}</span>
+                                                            <span><code>{{ term_info.target_class }}</code></span>
+                                                        </div>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
                                 {% endif %}
                             </div>
                         </div>
@@ -234,85 +235,86 @@
                 <hr>
             {% endfor %}
         </form>
-        
+
         {% if unannotated_variables %}
-        <div class="unannotated-section">
-            <h4><i class="fas fa-exclamation-triangle"></i> Unannotated Variables</h4>
-            <p>The following variables were not annotated and will be skipped:</p>
-            <ul>
-                {% for var in unannotated_variables %}
-                    <li>{{ var }}</li>
-                {% endfor %}
-            </ul>
-        </div>
+            <div class="unannotated-section">
+                <h4><i class="fas fa-exclamation-triangle"></i> Unannotated Variables</h4>
+                <p>The following variables were not annotated and will be skipped:</p>
+                <ul>
+                    {% for var in unannotated_variables %}
+                        <li>{{ var }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
         {% endif %}
-        
-        <div class="annotation-actions">
-            <a href="/download" class="btn btn-secondary">
-                <i class="fas fa-arrow-left"></i> Back to Download
-            </a>
-            <button id="startAnnotation" class="btn btn-success btn-lg" onclick="startAnnotationProcess()">
-                <i class="fas fa-play"></i> Start Annotation Process
-            </button>
-        </div>
-        
+        <br>
+
+        <button id="startAnnotation" class="btn btn-success" onclick="startAnnotationProcess()">
+            <i class="fas fa-play"></i> Start Annotation Process
+        </button>
+        <hr>
+        <a href="/download" class="btn btn-light">
+            <i class="fas fa-arrow-left"></i> Back to Downloads
+        </a>
+        <br>
+
     {% else %}
         <div class="alert alert-warning">
             <i class="fas fa-exclamation-triangle"></i>
             <strong>No annotation data found</strong><br>
             Please ensure you have uploaded a semantic map and described your data before proceeding.
             <br><br>
-            <a href="/" class="btn btn-primary">Return to Home</a>
+            <a href="/" class="btn btn-light">Return to Home</a>
         </div>
     {% endif %}
 </div>
 
 <script>
-// Toggle functionality for database sections (matching categories.html pattern)
-$(document).ready(function() {
-    $('.toggle-button').click(function () {
-        var textElement = $(this).find('.toggle-text');
-        var svgElement = $(this).find('.angle-icon path');
-        if (textElement.text() === 'Show more') {
-            textElement.text('Show less');
-            svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
-        } else {
-            textElement.text('Show more');
-            svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
-        }
-        $(this).toggleClass('open');
-        $(this).next('.content').toggleClass('active');
+    // Toggle functionality for database sections (matching categories.html pattern)
+    $(document).ready(function () {
+        $('.toggle-button').click(function () {
+            var textElement = $(this).find('.toggle-text');
+            var svgElement = $(this).find('.angle-icon path');
+            if (textElement.text() === 'Show more') {
+                textElement.text('Show less');
+                svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
+            } else {
+                textElement.text('Show more');
+                svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
+            }
+            $(this).toggleClass('open');
+            $(this).next('.content').toggleClass('active');
+        });
     });
-});
 
-function startAnnotationProcess() {
-    const button = document.getElementById('startAnnotation');
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Annotations...';
-    
-    fetch('/start-annotation', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            window.location.href = '/annotation-verify';
-        } else {
-            alert('Error: ' + data.error);
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while starting the annotation process.');
-        button.disabled = false;
-        button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
-    });
-}
+    function startAnnotationProcess() {
+        const button = document.getElementById('startAnnotation');
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Annotations...';
+
+        fetch('/start-annotation', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/annotation-verify';
+                } else {
+                    alert('Error: ' + data.error);
+                    button.disabled = false;
+                    button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while starting the annotation process.');
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
+            });
+    }
 </script>
 
 </body>
