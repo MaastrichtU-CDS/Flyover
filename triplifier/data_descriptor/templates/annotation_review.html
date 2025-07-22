@@ -11,75 +11,110 @@
         body {
             background-color: #f8f9fa;
         }
+
+        .toggle-button {
+            cursor: pointer;
+            display: inline-block;
+            border: none;
+            background: none;
+            font-size: 1.56rem;
+            line-height: 1;
+            color: #007bff;
+            float: right;
+        }
+
+        .content {
+            width: 100%;
+            transition: max-height 0.5s ease-out;
+            max-height: 0;
+            overflow-y: auto;
+        }
+
+        .content.active {
+            max-height: 1000px;
+        }
+
+        .toggle-button:focus {
+            outline: none;
+        }
+
         .variable-card {
             background-color: white;
             border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
+        
         .variable-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
+        
         .variable-name {
             font-weight: bold;
             color: #007bff;
             font-size: 1.1em;
         }
+        
         .variable-details {
-            margin-left: 20px;
+            margin-left: 15px;
         }
+        
         .detail-row {
             display: flex;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
+        
         .detail-label {
             font-weight: bold;
-            width: 150px;
+            width: 140px;
             color: #6c757d;
+            font-size: 0.9em;
         }
+        
         .detail-value {
             color: #495057;
+            font-size: 0.9em;
         }
-        .unannotated-section {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-        }
+        
         .status-badge {
             padding: 4px 8px;
             border-radius: 12px;
-            font-size: 0.8em;
+            font-size: 0.75em;
             font-weight: bold;
         }
+        
         .status-annotated {
             background-color: #d4edda;
             color: #155724;
         }
+        
         .status-unannotated {
             background-color: #f8d7da;
             color: #721c24;
         }
+        
         .value-mapping-section {
             background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 10px;
-            margin-top: 10px;
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 8px;
         }
+        
         .value-mapping-item {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
-            padding: 5px;
+            margin-bottom: 4px;
+            padding: 4px 8px;
             background-color: white;
             border-radius: 3px;
             border: 1px solid #dee2e6;
+            font-size: 0.85em;
         }
+        
         .annotation-actions {
             position: fixed;
             bottom: 20px;
@@ -87,14 +122,21 @@
             display: flex;
             gap: 10px;
         }
-        .database-section {
-            margin-bottom: 40px;
+        
+        .database-summary {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
         }
-        .database-title {
-            color: #495057;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
+        
+        .unannotated-section {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -113,71 +155,85 @@
     </div>
 
     {% if annotation_data %}
-        {% for database, variables in annotation_data.items() %}
-            <div class="database-section">
-                <h2 class="database-title">
-                    <i class="fas fa-database"></i> Database: {{ database }}
-                </h2>
-                
-                {% for var_name, var_info in variables.items() %}
-                    <div class="variable-card">
-                        <div class="variable-header">
-                            <div class="variable-name">{{ var_name }}</div>
-                            <div class="status-badge {% if var_info.local_definition %}status-annotated{% else %}status-unannotated{% endif %}">
-                                {% if var_info.local_definition %}
-                                    <i class="fas fa-check-circle"></i> Annotated
-                                {% else %}
-                                    <i class="fas fa-exclamation-triangle"></i> Unannotated
+        <form class="form-horizontal">
+            <hr>
+            {% for database, variables in annotation_data.items() %}
+                <h2 style="display: inline-block;">{{ database }}</h2>
+                <button class="toggle-button" type="button">
+                    <span class="toggle-text">Show more</span>
+                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                        <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                    </svg>
+                </button>
+                <div class="content hidden">
+                    <div class="database-summary">
+                        <strong>Database Summary:</strong> 
+                        {{ variables|length }} variable(s) ready for annotation
+                    </div>
+                    
+                    {% for var_name, var_info in variables.items() %}
+                        <div class="variable-card">
+                            <div class="variable-header">
+                                <div class="variable-name">{{ var_name }}</div>
+                                <div class="status-badge {% if var_info.local_definition %}status-annotated{% else %}status-unannotated{% endif %}">
+                                    {% if var_info.local_definition %}
+                                        <i class="fas fa-check-circle"></i> Annotated
+                                    {% else %}
+                                        <i class="fas fa-exclamation-triangle"></i> Unannotated
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="variable-details">
+                                <div class="detail-row">
+                                    <div class="detail-label">Local Definition:</div>
+                                    <div class="detail-value">
+                                        {{ var_info.local_definition if var_info.local_definition else 'Not specified' }}
+                                    </div>
+                                </div>
+                                
+                                <div class="detail-row">
+                                    <div class="detail-label">Predicate:</div>
+                                    <div class="detail-value"><code>{{ var_info.predicate }}</code></div>
+                                </div>
+                                
+                                <div class="detail-row">
+                                    <div class="detail-label">Class:</div>
+                                    <div class="detail-value"><code>{{ var_info.class }}</code></div>
+                                </div>
+                                
+                                {% if var_info.data_type %}
+                                <div class="detail-row">
+                                    <div class="detail-label">Data Type:</div>
+                                    <div class="detail-value">{{ var_info.data_type }}</div>
+                                </div>
+                                {% endif %}
+                                
+                                {% if var_info.value_mapping and var_info.value_mapping.terms %}
+                                <div class="detail-row">
+                                    <div class="detail-label">Value Mapping:</div>
+                                    <div class="detail-value">
+                                        <div class="value-mapping-section">
+                                            {% for term, term_info in var_info.value_mapping.terms.items() %}
+                                                {% if term_info.local_term %}
+                                                <div class="value-mapping-item">
+                                                    <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
+                                                    <span>{{ term_info.local_term }}</span>
+                                                    <span><code>{{ term_info.target_class }}</code></span>
+                                                </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
                                 {% endif %}
                             </div>
                         </div>
-                        
-                        <div class="variable-details">
-                            <div class="detail-row">
-                                <div class="detail-label">Local Definition:</div>
-                                <div class="detail-value">
-                                    {{ var_info.local_definition if var_info.local_definition else 'Not specified' }}
-                                </div>
-                            </div>
-                            
-                            <div class="detail-row">
-                                <div class="detail-label">Predicate:</div>
-                                <div class="detail-value">{{ var_info.predicate }}</div>
-                            </div>
-                            
-                            <div class="detail-row">
-                                <div class="detail-label">Class:</div>
-                                <div class="detail-value">{{ var_info.class }}</div>
-                            </div>
-                            
-                            {% if var_info.data_type %}
-                            <div class="detail-row">
-                                <div class="detail-label">Data Type:</div>
-                                <div class="detail-value">{{ var_info.data_type }}</div>
-                            </div>
-                            {% endif %}
-                            
-                            {% if var_info.value_mapping and var_info.value_mapping.terms %}
-                            <div class="detail-row">
-                                <div class="detail-label">Value Mapping:</div>
-                                <div class="detail-value">
-                                    <div class="value-mapping-section">
-                                        {% for term, term_info in var_info.value_mapping.terms.items() %}
-                                            <div class="value-mapping-item">
-                                                <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
-                                                <span>{{ term_info.local_term if term_info.local_term else 'Not mapped' }}</span>
-                                                <span><code>{{ term_info.target_class }}</code></span>
-                                            </div>
-                                        {% endfor %}
-                                    </div>
-                                </div>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                {% endfor %}
-            </div>
-        {% endfor %}
+                    {% endfor %}
+                </div>
+                <hr>
+            {% endfor %}
+        </form>
         
         {% if unannotated_variables %}
         <div class="unannotated-section">
@@ -212,6 +268,27 @@
 </div>
 
 <script>
+// Toggle functionality for database sections
+document.querySelectorAll('.toggle-button').forEach(button => {
+    button.addEventListener('click', function() {
+        const content = this.nextElementSibling;
+        const toggleText = this.querySelector('.toggle-text');
+        const angleIcon = this.querySelector('.angle-icon');
+        
+        if (content.classList.contains('hidden')) {
+            content.classList.remove('hidden');
+            content.classList.add('active');
+            toggleText.textContent = 'Show less';
+            angleIcon.style.transform = 'rotate(180deg)';
+        } else {
+            content.classList.add('hidden');
+            content.classList.remove('active');
+            toggleText.textContent = 'Show more';
+            angleIcon.style.transform = 'rotate(0deg)';
+        }
+    });
+});
+
 function startAnnotationProcess() {
     const button = document.getElementById('startAnnotation');
     button.disabled = true;

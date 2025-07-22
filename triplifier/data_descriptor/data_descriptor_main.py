@@ -776,78 +776,49 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
 def annotation_review():
     """
     Display the annotation review page where users can inspect their semantic map
-    before running the annotation process.
+    before running the annotation process. Uses local semantic maps per database.
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available for annotation. Please upload a semantic map first.")
         return redirect(url_for('download_page'))
 
-    # Get the variable_info from the semantic map
-    variable_info = session_cache.global_semantic_map.get('variable_info', {})
-
-    if not variable_info:
-        flash("No variable information found in semantic map.")
+    if not session_cache.databases:
+        flash("No databases available for annotation.")
         return redirect(url_for('download_page'))
 
-    # Organize variables by database
+    # Organize annotation data by database using local semantic maps
     annotation_data = {}
     unannotated_variables = []
 
-    # Check if we have multiple databases or single database
-    if session_cache.databases:
-        for database in session_cache.databases:
-            annotation_data[database] = {}
-
-            # Get variables for this database from the semantic map
-            for var_name, var_data in variable_info.items():
-                # Create a copy of the variable data
-                var_copy = dict(var_data)
-
-                # Validate required fields
-                if not var_copy.get('predicate'):
-                    logger.warning(f"Variable {var_name} missing predicate")
-                    continue
-
-                if not var_copy.get('class'):
-                    logger.warning(f"Variable {var_name} missing class")
-                    continue
-
-                # Check if this variable has been mapped to this database
-                if var_copy.get('local_definition'):
-                    annotation_data[database][var_name] = var_copy
-                elif not var_copy.get('local_definition'):
-                    # Check if this variable name matches any in our descriptive info
-                    if database in session_cache.descriptive_info:
-                        for local_var in session_cache.descriptive_info[database]:
-                            # Match by variable name (case-insensitive)
-                            if (local_var.lower() == var_name.lower() or
-                                    local_var.lower().replace('_', '') == var_name.lower().replace('_', '')):
-                                var_copy['local_definition'] = local_var
-                                annotation_data[database][var_name] = var_copy
-                                break
-
-                    # If still no local definition, add to unannotated
-                    if not var_copy.get('local_definition'):
-                        unannotated_variables.append(f"{database}.{var_name}")
-    else:
-        # Single database case
-        database = session_cache.global_semantic_map.get('database_name', 'default')
+    for database in session_cache.databases:
+        # Get the local semantic map for this specific database
+        local_semantic_map = formulate_local_semantic_map(database)
+        variable_info = local_semantic_map.get('variable_info', {})
+        
+        if not variable_info:
+            continue
+            
         annotation_data[database] = {}
 
-        # Check for unannotated variables and validate required fields
+        # Process variables from the local semantic map
         for var_name, var_data in variable_info.items():
+            # Create a copy of the variable data
             var_copy = dict(var_data)
 
             # Validate required fields
-            if not var_copy.get('predicate') or not var_copy.get('class'):
-                logger.warning(f"Variable {var_name} missing required fields (predicate/class)")
-                unannotated_variables.append(var_name)
+            if not var_copy.get('predicate'):
+                logger.warning(f"Variable {var_name} in {database} missing predicate")
                 continue
 
+            if not var_copy.get('class'):
+                logger.warning(f"Variable {var_name} in {database} missing class")
+                continue
+
+            # Check if this variable has a local definition (from local semantic map)
             if var_copy.get('local_definition'):
                 annotation_data[database][var_name] = var_copy
             else:
-                unannotated_variables.append(var_name)
+                unannotated_variables.append(f"{database}.{var_name}")
 
     # Check if we have any variables to annotate
     total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
@@ -865,32 +836,17 @@ def annotation_review():
 @app.route('/start-annotation', methods=['POST'])
 def start_annotation():
     """
-    Start the annotation process using the current semantic map.
+    Start the annotation process using local semantic maps per database.
     """
     try:
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({'success': False, 'error': 'No semantic map available'})
 
-        # Get endpoint and database information
+        if not session_cache.databases:
+            return jsonify({'success': False, 'error': 'No databases available for annotation'})
+
+        # Get endpoint information
         endpoint = f"{graphdb_url}/repositories/{session_cache.repo}/statements"
-        database = session_cache.global_semantic_map.get('database_name', 'default')
-
-        # Get prefixes from the semantic map
-        prefixes = session_cache.global_semantic_map.get('prefixes',
-                                                         'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
-
-        # Get variable info
-        variable_info = session_cache.global_semantic_map.get('variable_info', {})
-
-        # Filter only variables that have local definitions
-        annotated_variables = {
-            var_name: var_data
-            for var_name, var_data in variable_info.items()
-            if var_data.get('local_definition')
-        }
-
-        if not annotated_variables:
-            return jsonify({'success': False, 'error': 'No variables with local definitions found'})
 
         # Create temporary directory for annotation process
         temp_dir = '/tmp/annotation_temp'
@@ -899,49 +855,75 @@ def start_annotation():
         # Initialize annotation status
         session_cache.annotation_status = {}
 
-        logger.info(f"Starting annotation process for {len(annotated_variables)} variables")
+        total_annotated_vars = 0
 
-        try:
-            # Use add_annotation function from the annotation helper
-            annotation_result = add_annotation(
-                endpoint=endpoint,
-                database=database,
-                prefixes=prefixes,
-                annotation_data=annotated_variables,
-                path=temp_dir,
-                remove_has_column=False,
-                save_query=True
-            )
+        # Process each database separately using its local semantic map
+        for database in session_cache.databases:
+            logger.info(f"Processing annotation for database: {database}")
+            
+            # Get the local semantic map for this specific database
+            local_semantic_map = formulate_local_semantic_map(database)
+            variable_info = local_semantic_map.get('variable_info', {})
+            
+            # Get prefixes from the local semantic map
+            prefixes = local_semantic_map.get('prefixes',
+                                            'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
 
-            # For now, we'll assume success for variables with local definitions
-            # In a real implementation, the add_annotation function should return status
-            for var_name, var_data in annotated_variables.items():
-                session_cache.annotation_status[var_name] = {
-                    'success': True,
-                    'message': 'Annotation completed successfully'
-                }
+            # Filter only variables that have local definitions
+            annotated_variables = {
+                var_name: var_data
+                for var_name, var_data in variable_info.items()
+                if var_data.get('local_definition')
+            }
 
-            logger.info("Annotation process completed successfully")
+            if not annotated_variables:
+                logger.info(f"No variables with local definitions found for database {database}")
+                continue
 
-            return jsonify({
-                'success': True,
-                'message': f'Annotation process completed for {len(annotated_variables)} variables'
-            })
+            logger.info(f"Starting annotation process for {len(annotated_variables)} variables in {database}")
 
-        except Exception as annotation_error:
-            logger.error(f"Error during annotation execution: {str(annotation_error)}")
+            try:
+                # Use add_annotation function from the annotation helper for this database
+                annotation_result = add_annotation(
+                    endpoint=endpoint,
+                    database=database,
+                    prefixes=prefixes,
+                    annotation_data=annotated_variables,
+                    path=temp_dir,
+                    remove_has_column=False,
+                    save_query=True
+                )
 
-            # Mark all variables as failed
-            for var_name in annotated_variables.keys():
-                session_cache.annotation_status[var_name] = {
-                    'success': False,
-                    'error': str(annotation_error)
-                }
+                # For now, we'll assume success for variables with local definitions
+                # In a real implementation, the add_annotation function should return status
+                for var_name, var_data in annotated_variables.items():
+                    session_cache.annotation_status[f"{database}.{var_name}"] = {
+                        'success': True,
+                        'message': 'Annotation completed successfully',
+                        'database': database
+                    }
 
-            return jsonify({
-                'success': False,
-                'error': f'Annotation process failed: {str(annotation_error)}'
-            })
+                total_annotated_vars += len(annotated_variables)
+                logger.info(f"Annotation process completed successfully for database {database}")
+
+            except Exception as annotation_error:
+                logger.error(f"Error during annotation execution for database {database}: {str(annotation_error)}")
+
+                # Mark all variables as failed for this database
+                for var_name in annotated_variables.keys():
+                    session_cache.annotation_status[f"{database}.{var_name}"] = {
+                        'success': False,
+                        'error': str(annotation_error),
+                        'database': database
+                    }
+
+        if total_annotated_vars == 0:
+            return jsonify({'success': False, 'error': 'No variables with local definitions found across all databases'})
+
+        return jsonify({
+            'success': True,
+            'message': f'Annotation process completed for {total_annotated_vars} variables across {len(session_cache.databases)} databases'
+        })
 
     except Exception as e:
         logger.error(f"Error during annotation setup: {str(e)}")
@@ -952,27 +934,37 @@ def start_annotation():
 def annotation_verify():
     """
     Display the annotation verification page where users can test their annotations.
+    Uses local semantic maps per database.
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available.")
         return redirect(url_for('download_page'))
 
-    # Get annotated variables (those with local definitions)
-    variable_info = session_cache.global_semantic_map.get('variable_info', {})
-    annotated_variables = [
-        var_name for var_name, var_data in variable_info.items()
-        if var_data.get('local_definition')
-    ]
+    if not session_cache.databases:
+        flash("No databases available.")
+        return redirect(url_for('download_page'))
+
+    # Get annotated variables from all databases using local semantic maps
+    annotated_variables = []
+    variable_data = {}
+
+    for database in session_cache.databases:
+        # Get the local semantic map for this specific database
+        local_semantic_map = formulate_local_semantic_map(database)
+        variable_info = local_semantic_map.get('variable_info', {})
+        
+        for var_name, var_data in variable_info.items():
+            if var_data.get('local_definition'):
+                full_var_name = f"{database}.{var_name}"
+                annotated_variables.append(full_var_name)
+                variable_data[full_var_name] = {
+                    **var_data,
+                    'database': database,
+                    'prefixes': local_semantic_map.get('prefixes', '')
+                }
 
     # Get annotation status
     annotation_status = session_cache.annotation_status or {}
-
-    # Prepare variable data for JavaScript
-    variable_data = {
-        var_name: var_data
-        for var_name, var_data in variable_info.items()
-        if var_data.get('local_definition')
-    }
 
     # Set success message if annotation was successful
     success_message = None
@@ -990,6 +982,7 @@ def annotation_verify():
 def query_variable():
     """
     Query a specific variable to verify annotation success.
+    Uses proper SPARQL validation instead of simple try-catch.
     """
     try:
         data = request.get_json()
@@ -998,15 +991,21 @@ def query_variable():
         if not variable_name:
             return jsonify({'success': False, 'error': 'No variable specified'})
 
-        # Get variable information
-        variable_info = session_cache.global_semantic_map.get('variable_info', {})
-        var_data = variable_info.get(variable_name)
+        # Parse database and variable from the full variable name (database.variable)
+        if '.' in variable_name:
+            database, var_name = variable_name.split('.', 1)
+        else:
+            return jsonify({'success': False, 'error': 'Invalid variable format. Expected: database.variable'})
+
+        # Get the local semantic map for this specific database
+        local_semantic_map = formulate_local_semantic_map(database)
+        variable_info = local_semantic_map.get('variable_info', {})
+        var_data = variable_info.get(var_name)
 
         if not var_data:
             return jsonify({'success': False, 'error': 'Variable not found'})
 
-        # Get database information
-        database = session_cache.global_semantic_map.get('database_name', 'default')
+        # Get variable information
         local_definition = var_data.get('local_definition')
         predicate = var_data.get('predicate')
         var_class = var_data.get('class')
@@ -1014,14 +1013,55 @@ def query_variable():
         if not local_definition:
             return jsonify({'success': False, 'error': 'Variable has no local definition'})
 
-        # Create SPARQL query to test the annotation
-        # This query checks if the annotation was successful by looking for annotated data
-        query = f"""
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://data.local/rdf/ontology/>
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+        # Get prefixes from the local semantic map
+        prefixes = local_semantic_map.get('prefixes', '')
+        if not prefixes:
+            # Fallback to default prefixes
+            prefixes = """
+            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            PREFIX db: <http://data.local/rdf/ontology/>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX roo: <http://www.cancerdata.org/roo/>
+            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+            """
+
+        # First, check if the annotation was successful by verifying the existence of annotated classes
+        validation_query = f"""
+        {prefixes}
+        
+        SELECT (COUNT(?annotation_instance) as ?count)
+        WHERE {{
+            GRAPH <http://annotation.local/> {{
+                ?annotation_instance rdf:type db:{database}.{local_definition} .
+            }}
+        }}
+        """
+
+        logger.info(f"Executing validation query for {variable_name}: {validation_query}")
+        validation_result = execute_query(session_cache.repo, validation_query)
+
+        if not validation_result or validation_result.strip() == "":
+            return jsonify({'success': False, 'error': 'Failed to execute validation query'})
+
+        # Parse validation result
+        try:
+            validation_df = pd.read_csv(StringIO(validation_result))
+            count = int(validation_df.iloc[0]['count']) if len(validation_df) > 0 else 0
+        except Exception as e:
+            logger.error(f"Error parsing validation results: {str(e)}")
+            return jsonify({'success': False, 'error': 'Error parsing validation results'})
+
+        if count == 0:
+            return jsonify({
+                'success': True, 
+                'results': [], 
+                'message': 'Annotation exists but no data instances found for this variable',
+                'validation_status': 'no_data'
+            })
+
+        # If validation passed, get sample data
+        sample_query = f"""
+        {prefixes}
         
         SELECT ?patient ?annotation_value
         WHERE {{
@@ -1035,15 +1075,13 @@ def query_variable():
         LIMIT 5
         """
 
-        # Execute the query
-        result = execute_query(session_cache.repo, query)
+        logger.info(f"Executing sample query for {variable_name}: {sample_query}")
+        sample_result = execute_query(session_cache.repo, sample_query)
 
-        if not result or result.strip() == "":
-            # Try a simpler query to check if the data exists at all
+        if not sample_result or sample_result.strip() == "":
+            # Try a simpler query to get any data
             simple_query = f"""
-            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            PREFIX db: <http://data.local/rdf/ontology/>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            {prefixes}
             
             SELECT ?subject ?value
             WHERE {{
@@ -1054,20 +1092,30 @@ def query_variable():
             LIMIT 5
             """
 
-            result = execute_query(session_cache.repo, simple_query)
+            sample_result = execute_query(session_cache.repo, simple_query)
 
-            if not result or result.strip() == "":
-                return jsonify({'success': True, 'results': [], 'message': 'No data found for this variable'})
+            if not sample_result or sample_result.strip() == "":
+                return jsonify({
+                    'success': True, 
+                    'results': [], 
+                    'message': f'Annotation successful (found {count} instances) but no sample data retrieved',
+                    'validation_status': 'annotated_no_sample'
+                })
 
-        # Parse results
+        # Parse sample results
         try:
-            results_df = pd.read_csv(StringIO(result))
+            results_df = pd.read_csv(StringIO(sample_result))
             results = results_df.to_dict('records')
         except Exception as e:
-            logger.error(f"Error parsing query results: {str(e)}")
-            return jsonify({'success': False, 'error': 'Error parsing query results'})
+            logger.error(f"Error parsing sample query results: {str(e)}")
+            return jsonify({'success': False, 'error': 'Error parsing sample query results'})
 
-        return jsonify({'success': True, 'results': results})
+        return jsonify({
+            'success': True, 
+            'results': results,
+            'validation_status': 'success',
+            'annotation_count': count
+        })
 
     except Exception as e:
         logger.error(f"Error querying variable: {str(e)}")
