@@ -185,7 +185,7 @@ After specifying the metadata in JSON, you can fill in local terminology and run
 from the repository folder:
 
 ```
-python ./annotation_helper/main.py 
+python triplifier/data_descriptor/annotation_helper/main.py 
 ```
 
 #### Evaluate the annotation process
