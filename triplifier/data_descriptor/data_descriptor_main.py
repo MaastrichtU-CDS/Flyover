@@ -814,13 +814,6 @@ def annotation_review():
 
                 # Check if this variable has been mapped to this database
                 if var_copy.get('local_definition'):
-                    # Add data type from descriptive info if available
-                    if database in session_cache.descriptive_info:
-                        local_def = var_copy.get('local_definition')
-                        if local_def in session_cache.descriptive_info[database]:
-                            type_info = session_cache.descriptive_info[database][local_def].get('type', '')
-                            if 'Variable type: ' in type_info:
-                                var_copy['data_type'] = type_info.split('Variable type: ')[1]
                     annotation_data[database][var_name] = var_copy
                 elif not var_copy.get('local_definition'):
                     # Check if this variable name matches any in our descriptive info
@@ -830,10 +823,6 @@ def annotation_review():
                             if (local_var.lower() == var_name.lower() or
                                     local_var.lower().replace('_', '') == var_name.lower().replace('_', '')):
                                 var_copy['local_definition'] = local_var
-                                # Add data type from descriptive info
-                                type_info = session_cache.descriptive_info[database][local_var].get('type', '')
-                                if 'Variable type: ' in type_info:
-                                    var_copy['data_type'] = type_info.split('Variable type: ')[1]
                                 annotation_data[database][var_name] = var_copy
                                 break
 
