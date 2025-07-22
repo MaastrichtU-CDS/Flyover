@@ -1,6 +1,7 @@
 # Apply gevent monkey patching as early as possible
 import gevent
 from gevent import monkey
+
 monkey.patch_all()
 
 import copy
@@ -24,12 +25,10 @@ from flask import (abort, after_this_request, Flask, redirect, render_template, 
                    send_from_directory, jsonify)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# Add annotation helper to path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'annotation_helper'))
 
 
 def setup_logging():
-    """Setup centralized logging with timestamp format"""
+    """Setup centralised logging with timestamp format"""
     logging.basicConfig(
         level=logging.INFO,
         format='[%(asctime)s] [%(levelname)s] %(message)s',
@@ -46,16 +45,7 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_digest import upload_ontology_then_data
-
-# Import annotation helper functionality
-try:
-    from src.miscellaneous import add_annotation, read_file
-except ImportError:
-    # Fallback for direct import
-    import sys
-    annotation_helper_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'annotation_helper')
-    sys.path.insert(0, annotation_helper_path)
-    from src.miscellaneous import add_annotation, read_file
+from annotation_helper.src.miscellaneous import add_annotation
 
 app = Flask(__name__)
 
@@ -361,7 +351,7 @@ def retrieve_columns():
     # Create dictionaries to store preselected values from semantic map
     preselected_descriptions = {}
     preselected_datatypes = {}
-    
+
     # Create mapping from description names to datatypes for auto-population
     description_to_datatype = {}
 
@@ -375,7 +365,7 @@ def retrieve_columns():
                 words = datatype.split()
                 datatype_display = ' '.join(word.capitalize() for word in words)
                 description_to_datatype[description_display] = datatype_display
-            
+
             for db in unique_values:  # For each database
                 # Match by local_definition if available
                 local_def = var_info.get('local_definition', var_name)
@@ -791,37 +781,37 @@ def annotation_review():
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available for annotation. Please upload a semantic map first.")
         return redirect(url_for('download_page'))
-    
+
     # Get the variable_info from the semantic map
     variable_info = session_cache.global_semantic_map.get('variable_info', {})
-    
+
     if not variable_info:
         flash("No variable information found in semantic map.")
         return redirect(url_for('download_page'))
-    
+
     # Organize variables by database
     annotation_data = {}
     unannotated_variables = []
-    
+
     # Check if we have multiple databases or single database
     if session_cache.databases:
         for database in session_cache.databases:
             annotation_data[database] = {}
-            
+
             # Get variables for this database from the semantic map
             for var_name, var_data in variable_info.items():
                 # Create a copy of the variable data
                 var_copy = dict(var_data)
-                
+
                 # Validate required fields
                 if not var_copy.get('predicate'):
                     logger.warning(f"Variable {var_name} missing predicate")
                     continue
-                    
+
                 if not var_copy.get('class'):
                     logger.warning(f"Variable {var_name} missing class")
                     continue
-                
+
                 # Check if this variable has been mapped to this database
                 if var_copy.get('local_definition'):
                     # Add data type from descriptive info if available
@@ -838,7 +828,7 @@ def annotation_review():
                         for local_var in session_cache.descriptive_info[database]:
                             # Match by variable name (case-insensitive)
                             if (local_var.lower() == var_name.lower() or
-                                local_var.lower().replace('_', '') == var_name.lower().replace('_', '')):
+                                    local_var.lower().replace('_', '') == var_name.lower().replace('_', '')):
                                 var_copy['local_definition'] = local_var
                                 # Add data type from descriptive info
                                 type_info = session_cache.descriptive_info[database][local_var].get('type', '')
@@ -846,7 +836,7 @@ def annotation_review():
                                     var_copy['data_type'] = type_info.split('Variable type: ')[1]
                                 annotation_data[database][var_name] = var_copy
                                 break
-                    
+
                     # If still no local definition, add to unannotated
                     if not var_copy.get('local_definition'):
                         unannotated_variables.append(f"{database}.{var_name}")
@@ -854,32 +844,33 @@ def annotation_review():
         # Single database case
         database = session_cache.global_semantic_map.get('database_name', 'default')
         annotation_data[database] = {}
-        
+
         # Check for unannotated variables and validate required fields
         for var_name, var_data in variable_info.items():
             var_copy = dict(var_data)
-            
+
             # Validate required fields
             if not var_copy.get('predicate') or not var_copy.get('class'):
                 logger.warning(f"Variable {var_name} missing required fields (predicate/class)")
                 unannotated_variables.append(var_name)
                 continue
-                
+
             if var_copy.get('local_definition'):
                 annotation_data[database][var_name] = var_copy
             else:
                 unannotated_variables.append(var_name)
-    
+
     # Check if we have any variables to annotate
     total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
-    
+
     if total_annotated == 0:
-        flash("No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.")
+        flash(
+            "No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.")
         return redirect(url_for('download_page'))
-    
-    return render_template('annotation_review.html', 
-                         annotation_data=annotation_data,
-                         unannotated_variables=unannotated_variables)
+
+    return render_template('annotation_review.html',
+                           annotation_data=annotation_data,
+                           unannotated_variables=unannotated_variables)
 
 
 @app.route('/start-annotation', methods=['POST'])
@@ -890,37 +881,37 @@ def start_annotation():
     try:
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({'success': False, 'error': 'No semantic map available'})
-        
+
         # Get endpoint and database information
         endpoint = f"{graphdb_url}/repositories/{session_cache.repo}/statements"
         database = session_cache.global_semantic_map.get('database_name', 'default')
-        
+
         # Get prefixes from the semantic map
-        prefixes = session_cache.global_semantic_map.get('prefixes', 
-                   'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
-        
+        prefixes = session_cache.global_semantic_map.get('prefixes',
+                                                         'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
+
         # Get variable info
         variable_info = session_cache.global_semantic_map.get('variable_info', {})
-        
+
         # Filter only variables that have local definitions
         annotated_variables = {
-            var_name: var_data 
-            for var_name, var_data in variable_info.items() 
+            var_name: var_data
+            for var_name, var_data in variable_info.items()
             if var_data.get('local_definition')
         }
-        
+
         if not annotated_variables:
             return jsonify({'success': False, 'error': 'No variables with local definitions found'})
-        
+
         # Create temporary directory for annotation process
         temp_dir = '/tmp/annotation_temp'
         os.makedirs(temp_dir, exist_ok=True)
-        
+
         # Initialize annotation status
         session_cache.annotation_status = {}
-        
+
         logger.info(f"Starting annotation process for {len(annotated_variables)} variables")
-        
+
         try:
             # Use add_annotation function from the annotation helper
             annotation_result = add_annotation(
@@ -932,7 +923,7 @@ def start_annotation():
                 remove_has_column=False,
                 save_query=True
             )
-            
+
             # For now, we'll assume success for variables with local definitions
             # In a real implementation, the add_annotation function should return status
             for var_name, var_data in annotated_variables.items():
@@ -940,29 +931,29 @@ def start_annotation():
                     'success': True,
                     'message': 'Annotation completed successfully'
                 }
-            
+
             logger.info("Annotation process completed successfully")
-            
+
             return jsonify({
-                'success': True, 
+                'success': True,
                 'message': f'Annotation process completed for {len(annotated_variables)} variables'
             })
-            
+
         except Exception as annotation_error:
             logger.error(f"Error during annotation execution: {str(annotation_error)}")
-            
+
             # Mark all variables as failed
             for var_name in annotated_variables.keys():
                 session_cache.annotation_status[var_name] = {
                     'success': False,
                     'error': str(annotation_error)
                 }
-            
+
             return jsonify({
-                'success': False, 
+                'success': False,
                 'error': f'Annotation process failed: {str(annotation_error)}'
             })
-        
+
     except Exception as e:
         logger.error(f"Error during annotation setup: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -976,34 +967,34 @@ def annotation_verify():
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available.")
         return redirect(url_for('download_page'))
-    
+
     # Get annotated variables (those with local definitions)
     variable_info = session_cache.global_semantic_map.get('variable_info', {})
     annotated_variables = [
-        var_name for var_name, var_data in variable_info.items() 
+        var_name for var_name, var_data in variable_info.items()
         if var_data.get('local_definition')
     ]
-    
+
     # Get annotation status
     annotation_status = session_cache.annotation_status or {}
-    
+
     # Prepare variable data for JavaScript
     variable_data = {
-        var_name: var_data 
-        for var_name, var_data in variable_info.items() 
+        var_name: var_data
+        for var_name, var_data in variable_info.items()
         if var_data.get('local_definition')
     }
-    
+
     # Set success message if annotation was successful
     success_message = None
     if annotation_status and all(status.get('success') for status in annotation_status.values()):
         success_message = "Annotation process completed successfully! Semantic interoperability has been achieved for the annotated variables."
-    
+
     return render_template('annotation_verify.html',
-                         annotated_variables=annotated_variables,
-                         annotation_status=annotation_status,
-                         variable_data=variable_data,
-                         success_message=success_message)
+                           annotated_variables=annotated_variables,
+                           annotation_status=annotation_status,
+                           variable_data=variable_data,
+                           success_message=success_message)
 
 
 @app.route('/query-variable', methods=['POST'])
@@ -1014,26 +1005,26 @@ def query_variable():
     try:
         data = request.get_json()
         variable_name = data.get('variable')
-        
+
         if not variable_name:
             return jsonify({'success': False, 'error': 'No variable specified'})
-        
+
         # Get variable information
         variable_info = session_cache.global_semantic_map.get('variable_info', {})
         var_data = variable_info.get(variable_name)
-        
+
         if not var_data:
             return jsonify({'success': False, 'error': 'Variable not found'})
-        
+
         # Get database information
         database = session_cache.global_semantic_map.get('database_name', 'default')
         local_definition = var_data.get('local_definition')
         predicate = var_data.get('predicate')
         var_class = var_data.get('class')
-        
+
         if not local_definition:
             return jsonify({'success': False, 'error': 'Variable has no local definition'})
-        
+
         # Create SPARQL query to test the annotation
         # This query checks if the annotation was successful by looking for annotated data
         query = f"""
@@ -1054,10 +1045,10 @@ def query_variable():
         }}
         LIMIT 5
         """
-        
+
         # Execute the query
         result = execute_query(session_cache.repo, query)
-        
+
         if not result or result.strip() == "":
             # Try a simpler query to check if the data exists at all
             simple_query = f"""
@@ -1073,12 +1064,12 @@ def query_variable():
             }}
             LIMIT 5
             """
-            
+
             result = execute_query(session_cache.repo, simple_query)
-            
+
             if not result or result.strip() == "":
                 return jsonify({'success': True, 'results': [], 'message': 'No data found for this variable'})
-        
+
         # Parse results
         try:
             results_df = pd.read_csv(StringIO(result))
@@ -1086,9 +1077,9 @@ def query_variable():
         except Exception as e:
             logger.error(f"Error parsing query results: {str(e)}")
             return jsonify({'success': False, 'error': 'Error parsing query results'})
-        
+
         return jsonify({'success': True, 'results': results})
-        
+
     except Exception as e:
         logger.error(f"Error querying variable: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
