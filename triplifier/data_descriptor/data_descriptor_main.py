@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_digest import upload_ontology_then_data
-from annotation_helper.src.miscellaneous import add_annotation
+from annotation_helper.src.miscellaneous import add_annotation, read_file
 
 app = Flask(__name__)
 

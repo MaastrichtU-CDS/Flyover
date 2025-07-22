@@ -1,6 +1,6 @@
 {
   "endpoint": "http://localhost:7200/repositories/userRepo/statements",
-  "database_name": "HEAD-NECK-RADIOMICS-HN1_Clinical_data_updated_July_2020",
+  "database_name": "synthetic_english_150",
   "prefixes": "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>\nPREFIX sio: <http://semanticscience.org/resource/>\n",
   "variable_info": {
     "identifier": {
@@ -87,6 +87,7 @@
       }
     },
     "performance_status": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C105721",
       "local_definition": "performance_status_ecog",
@@ -141,6 +142,7 @@
       }
     },
     "hpv_status": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C185050",
       "local_definition": "overall_hpv_p16_status",
@@ -179,6 +181,7 @@
       }
     },
     "tumour_location": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C3263",
       "local_definition": "index_tumour_location",
@@ -224,6 +227,7 @@
       }
     },
     "t_stage": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C25728",
       "local_definition": "clin_t",
@@ -285,6 +289,7 @@
       }
     },
     "n_stage": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C25580",
       "local_definition": "clin_n",
@@ -342,6 +347,7 @@
       }
     },
     "m_stage": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C25727",
       "local_definition": "clin_m",
@@ -387,6 +393,7 @@
       }
     },
     "survival_status": {
+      "data_type": "categorical",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C25717",
       "local_definition": "event_overall_survival",
@@ -432,6 +439,7 @@
       }
     },
     "survival_days": {
+      "data_type": "continuous",
       "predicate": "sio:SIO_000008",
       "class": "ncit:C168844",
       "local_definition": "overall_survival_in_days",
