@@ -1009,6 +1009,7 @@ def query_variable():
         local_definition = var_data.get('local_definition')
         predicate = var_data.get('predicate')
         var_class = var_data.get('class')
+        var_ontology = var_class[:var_class.rfind(':') + 1] if ':' in var_class else var_class
 
         if not local_definition:
             return jsonify({'success': False, 'error': 'Variable has no local definition'})
@@ -1024,17 +1025,35 @@ def query_variable():
             PREFIX roo: <http://www.cancerdata.org/roo/>
             PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
             """
-
+        else:
+            prefixes = f"""PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            PREFIX db: <http://data.local/rdf/ontology/>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX roo: <http://www.cancerdata.org/roo/>
+            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+            {prefixes} """
         # First, check if the annotation was successful by verifying the existence of annotated classes
         validation_query = f"""
         {prefixes}
         
-        SELECT (COUNT(?annotation_instance) as ?count)
+        SELECT DISTINCT ?index ?annotated_value (SAMPLE(?all_value) AS ?non_annotated_value)
         WHERE {{
-            GRAPH <http://annotation.local/> {{
-                ?annotation_instance rdf:type db:{database}.{local_definition} .
+            ?index {predicate} ?sub_class_type .
+            ?sub_class_type rdf:type ?main_class .
+            ?sub_class_type rdf:type {var_class} .
+            ?sub_class_type dbo:has_cell ?sub_cell .
+            ?sub_cell dbo:has_value ?all_value .
+            FILTER strStarts(str(?main_class), str({var_ontology}))
+            BIND(strafter(str(?main_class), str({var_ontology})) AS ?main_class_code)
+            OPTIONAL {{
+                ?sub_cell rdf:type ?annotated_value .
+                FILTER (strStarts(str(?annotated_value), str({var_ontology}))||strStarts(str(?annotated_value), str({var_ontology}))) .
+                ?annotated_value rdfs:subClassOf ?main_class .
+                FILTER (!regex(str(?main_class), str(?annotated_value))) .
             }}
         }}
+        GROUP BY ?index ?annotated_value
+        LIMIT 5
         """
 
         logger.info(f"Executing validation query for {variable_name}: {validation_query}")
@@ -1046,7 +1065,8 @@ def query_variable():
         # Parse validation result
         try:
             validation_df = pd.read_csv(StringIO(validation_result))
-            count = int(validation_df.iloc[0]['count']) if len(validation_df) > 0 else 0
+            validation_df = validation_df.fillna('Not available')
+            count = str(validation_df.iloc[0]['non_annotated_value']) if len(validation_df) > 0 else 0
         except Exception as e:
             logger.error(f"Error parsing validation results: {str(e)}")
             return jsonify({'success': False, 'error': 'Error parsing validation results'})
@@ -1059,63 +1079,13 @@ def query_variable():
                 'validation_status': 'no_data'
             })
 
-        # If validation passed, get sample data
-        sample_query = f"""
-        {prefixes}
-        
-        SELECT ?patient ?annotation_value
-        WHERE {{
-            GRAPH <http://annotation.local/> {{
-                ?patient {predicate} ?annotation_component .
-            }}
-            ?annotation_component rdf:type db:{database}.{local_definition} .
-            ?annotation_component dbo:has_cell ?cell .
-            ?cell dbo:has_value ?annotation_value .
-        }}
-        LIMIT 5
-        """
-
-        logger.info(f"Executing sample query for {variable_name}: {sample_query}")
-        sample_result = execute_query(session_cache.repo, sample_query)
-
-        if not sample_result or sample_result.strip() == "":
-            # Try a simpler query to get any data
-            simple_query = f"""
-            {prefixes}
-            
-            SELECT ?subject ?value
-            WHERE {{
-                ?subject rdf:type db:{database}.{local_definition} .
-                ?subject dbo:has_cell ?cell .
-                ?cell dbo:has_value ?value .
-            }}
-            LIMIT 5
-            """
-
-            sample_result = execute_query(session_cache.repo, simple_query)
-
-            if not sample_result or sample_result.strip() == "":
-                return jsonify({
-                    'success': True, 
-                    'results': [], 
-                    'message': f'Annotation successful (found {count} instances) but no sample data retrieved',
-                    'validation_status': 'annotated_no_sample'
-                })
-
-        # Parse sample results
-        try:
-            results_df = pd.read_csv(StringIO(sample_result))
-            results = results_df.to_dict('records')
-        except Exception as e:
-            logger.error(f"Error parsing sample query results: {str(e)}")
-            return jsonify({'success': False, 'error': 'Error parsing sample query results'})
-
-        return jsonify({
-            'success': True, 
-            'results': results,
-            'validation_status': 'success',
-            'annotation_count': count
-        })
+        else:
+            return jsonify({
+                'success': True,
+                'results': validation_df.to_dict(orient='records'),
+                'message': 'Annotation and data instances found for this variable',
+                'validation_status': 'data_found'
+            })
 
     except Exception as e:
         logger.error(f"Error querying variable: {str(e)}")

@@ -286,7 +286,8 @@ function queryVariable() {
                 resultsHTML += '<thead><tr>';
                 
                 // Get headers from first row
-                const headers = Object.keys(data.results[0]);
+                // const headers = Object.keys(data.results[0]);
+                const headers = ['index', 'annotated_value', 'non_annotated_value'];
                 headers.forEach(header => {
                     resultsHTML += '<th>' + header + '</th>';
                 });
