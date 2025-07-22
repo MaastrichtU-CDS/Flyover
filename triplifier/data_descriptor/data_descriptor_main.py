@@ -1092,6 +1092,106 @@ def query_variable():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/verify-annotation-ask', methods=['POST'])
+def verify_annotation_ask():
+    """
+    Verify annotation using ASK query for a specific variable.
+    This endpoint is used for live validation on the annotation verify page.
+    """
+    try:
+        data = request.get_json()
+        variable_name = data.get('variable')
+
+        if not variable_name:
+            return jsonify({'success': False, 'error': 'No variable specified'})
+
+        # Parse database and variable from the full variable name (database.variable)
+        if '.' in variable_name:
+            database, var_name = variable_name.split('.', 1)
+        else:
+            return jsonify({'success': False, 'error': 'Invalid variable format. Expected: database.variable'})
+
+        # Get the local semantic map for this specific database
+        local_semantic_map = formulate_local_semantic_map(database)
+        variable_info = local_semantic_map.get('variable_info', {})
+        var_data = variable_info.get(var_name)
+
+        if not var_data:
+            return jsonify({'success': False, 'error': 'Variable not found'})
+
+        # Get variable information
+        local_definition = var_data.get('local_definition')
+        var_class = var_data.get('class')
+
+        if not local_definition:
+            return jsonify({'success': False, 'error': 'Variable has no local definition'})
+
+        # Get prefixes from the local semantic map - construct proper prefix string
+        prefixes_dict = local_semantic_map.get('prefixes', {})
+        
+        # Build prefixes string with required prefixes
+        prefixes = """PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+PREFIX db: <http://data.local/rdf/ontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+PREFIX sio: <http://semanticscience.org/resource/>"""
+
+        # Add any additional prefixes from the semantic map
+        if isinstance(prefixes_dict, dict):
+            for prefix_key, prefix_uri in prefixes_dict.items():
+                prefixes += f"\nPREFIX {prefix_key}: <{prefix_uri}>"
+
+        # Build the ASK query according to the specification
+        ask_query_parts = []
+        
+        # Add the main equivalentClass statement
+        ask_query_parts.append(f"db:{database}.{local_definition} owl:equivalentClass {var_class} .")
+        
+        # Check for value mappings and add target_class subClassOf statements
+        value_mapping = var_data.get('value_mapping', {})
+        if value_mapping and value_mapping.get('terms'):
+            for term, term_info in value_mapping['terms'].items():
+                if term_info.get('local_term') and term_info.get('target_class'):
+                    ask_query_parts.append(f"{term_info['target_class']} rdfs:subClassOf {var_class} .")
+
+        ask_query = f"""
+{prefixes}
+
+ASK {{
+  {' '.join(ask_query_parts)}
+}}
+"""
+
+        logger.info(f"Executing ASK query for {variable_name}: {ask_query}")
+        
+        # Execute the ASK query
+        response = requests.get(
+            f"{graphdb_url}/repositories/{session_cache.repo}",
+            params={"query": ask_query},
+            headers={"Accept": "application/sparql-results+json"}
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            is_valid = result.get('boolean', False)
+            
+            return jsonify({
+                'success': True,
+                'valid': is_valid,
+                'query': ask_query  # For debugging purposes
+            })
+        else:
+            logger.error(f"ASK query failed with status {response.status_code}: {response.text}")
+            return jsonify({'success': False, 'error': f'Query failed with status {response.status_code}'})
+
+    except Exception as e:
+        logger.error(f"Error verifying annotation with ASK query: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/annotation-ui-demo')
 def annotation_ui_demo():
     """Demo page showing the annotation UI functionality"""

@@ -109,6 +109,23 @@
         .status-warning {
             border-left: 4px solid #ffc107;
         }
+
+        .validation-indicator {
+            font-size: 1.2em;
+            margin-left: 10px;
+            min-width: 20px;
+            display: inline-block;
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+            color: #007bff;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 
@@ -129,12 +146,15 @@
         <div class="annotation-status">
             <h3><i class="fas fa-list-check"></i> Annotation Status</h3>
             {% for variable, status in annotation_status.items() %}
-                <div class="status-item {% if status.success %}status-success{% elif status.error %}status-error{% else %}status-warning{% endif %}">
+                <div class="status-item {% if status.success %}status-success{% elif status.error %}status-error{% else %}status-warning{% endif %}" data-variable="{{ variable }}">
                     <div>
                         <strong>{{ variable }}</strong>
                         {% if status.database %}
                             <span class="text-muted">({{ status.database }})</span>
                         {% endif %}
+                        <span class="validation-indicator" id="validation-{{ variable.replace('.', '-') }}">
+                            <i class="fas fa-spinner spinner"></i>
+                        </span>
                         <br>
                         {% if status.success %}
                             <span class="text-success"><i class="fas fa-check-circle"></i> Successfully annotated</span>
@@ -214,6 +234,64 @@
 
 <script>
     const variableData = {{ variable_data | tojson }};
+    const annotationStatus = {{ annotation_status | tojson }};
+
+    // Perform live validation for all annotated variables when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        if (annotationStatus) {
+            Object.keys(annotationStatus).forEach(variable => {
+                if (annotationStatus[variable].success) {
+                    validateVariableAnnotation(variable);
+                } else {
+                    // For failed annotations, show error indicator immediately
+                    const indicator = document.getElementById(`validation-${variable.replace('.', '-')}`);
+                    if (indicator) {
+                        indicator.innerHTML = '❌';
+                    }
+                }
+            });
+        }
+    });
+
+    function validateVariableAnnotation(variable) {
+        const indicatorId = `validation-${variable.replace('.', '-')}`;
+        const indicator = document.getElementById(indicatorId);
+        
+        if (!indicator) return;
+
+        // Show spinner while processing
+        indicator.innerHTML = '<i class="fas fa-spinner spinner"></i>';
+
+        fetch('/verify-annotation-ask', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                variable: variable
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.valid) {
+                    indicator.innerHTML = '✅';
+                    indicator.title = 'Annotation structure validated successfully';
+                } else {
+                    indicator.innerHTML = '❌';
+                    indicator.title = 'Annotation structure validation failed';
+                }
+            } else {
+                indicator.innerHTML = '❌';
+                indicator.title = `Validation error: ${data.error}`;
+            }
+        })
+        .catch(error => {
+            console.error(`Error validating ${variable}:`, error);
+            indicator.innerHTML = '❌';
+            indicator.title = 'Validation failed due to network error';
+        });
+    }
 
     function loadVariableInfo() {
         const selectElement = document.getElementById('variableSelect');
