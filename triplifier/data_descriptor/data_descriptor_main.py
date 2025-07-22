@@ -782,7 +782,7 @@ def annotation_review():
         flash("No semantic map available for annotation. Please upload a semantic map first.")
         return redirect(url_for('download_page'))
 
-    if not session_cache.databases:
+    if not session_cache.databases.any():
         flash("No databases available for annotation.")
         return redirect(url_for('download_page'))
 
@@ -842,7 +842,7 @@ def start_annotation():
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({'success': False, 'error': 'No semantic map available'})
 
-        if not session_cache.databases:
+        if not session_cache.databases.any():
             return jsonify({'success': False, 'error': 'No databases available for annotation'})
 
         # Get endpoint information
@@ -940,7 +940,7 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for('download_page'))
 
-    if not session_cache.databases:
+    if not session_cache.databases.any():
         flash("No databases available.")
         return redirect(url_for('download_page'))
 
