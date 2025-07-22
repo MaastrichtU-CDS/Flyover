@@ -2,6 +2,11 @@ import json
 import logging
 import os
 import requests
+from pathlib import Path
+
+# Get the directory where this script is located
+script_dir = Path(__file__).parent
+template_dir = os.path.join(script_dir, 'sparql_templates')
 
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
 dry_run = False
@@ -657,11 +662,8 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
     """
     logging.debug(f'Adding standard annotation for {variable} to endpoint {endpoint}, database {database_name}')
 
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates', 'template_annotation.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'template_annotation.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -718,11 +720,8 @@ def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, temp
     """
     logging.debug(f'Adding mapping for {super_class} to endpoint {endpoint}')
 
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates', 'template_mapping.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'template_mapping.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -791,12 +790,8 @@ def _check_for_data_class(endpoint, database_name, prefixes, class_label, templa
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates',
-                                     'quality_control', 'template_to_check_class.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'quality_control', 'template_to_check_class.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -829,12 +824,8 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates',
-                                     'quality_control', 'template_to_check_predicate.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'quality_control', 'template_to_check_predicate.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -878,12 +869,8 @@ def _construct_extra_class(endpoint, database_name, prefixes, class_label, class
     """
     logging.debug(f'Constructing extra {class_label} to endpoint {endpoint}, database {database_name}')
 
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates',
-                                     'schema_reconstruction', 'template_for_extra_class.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'schema_reconstruction', 'template_for_extra_class.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -928,12 +915,8 @@ def _construct_extra_node(endpoint, database_name, prefixes, node_label, node_cl
     """
     logging.debug(f'Adding extra node for {node_label} to endpoint {endpoint}, database {database_name}')
 
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates',
-                                     'schema_reconstruction', 'template_for_extra_node.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'schema_reconstruction', 'template_for_extra_node.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -975,12 +958,8 @@ def _remove_component(endpoint, database_name, prefixes, local_variable, compone
     """
     logging.debug(f'Remove has_column for {local_variable} on endpoint {endpoint}, database {database_name}')
 
-    if isinstance(template_file, str) is False:
-        path = os.getcwd()
-        if 'annotation_helper' not in path:
-            path = os.path.join(path, 'annotation_helper')
-        template_file = os.path.join(path, 'src', 'sparql_templates',
-                                     'schema_reconstruction', 'template_to_remove_component.rq')
+    if not isinstance(template_file, str):
+        template_file = os.path.join(template_dir, 'schema_reconstruction', 'template_to_remove_component.rq')
 
     # retrieve the mapping template
     query = read_file(template_file)
