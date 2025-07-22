@@ -1018,7 +1018,7 @@ def query_variable():
         # This query checks if the annotation was successful by looking for annotated data
         query = f"""
         PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://data.local/>
+        PREFIX db: <http://data.local/rdf/ontology/>
         PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
         PREFIX roo: <http://www.cancerdata.org/roo/>
         PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
@@ -1042,7 +1042,7 @@ def query_variable():
             # Try a simpler query to check if the data exists at all
             simple_query = f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            PREFIX db: <http://data.local/>
+            PREFIX db: <http://data.local/rdf/ontology/>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
             
             SELECT ?subject ?value
