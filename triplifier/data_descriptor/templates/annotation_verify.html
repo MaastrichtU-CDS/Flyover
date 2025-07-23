@@ -123,8 +123,12 @@
         }
 
         @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
@@ -146,7 +150,8 @@
         <div class="annotation-status">
             <h3><i class="fas fa-list-check"></i> Annotation Status</h3>
             {% for variable, status in annotation_status.items() %}
-                <div class="status-item {% if status.success %}status-success{% elif status.error %}status-error{% else %}status-warning{% endif %}" data-variable="{{ variable }}">
+                <div class="status-item {% if status.success %}status-success{% elif status.error %}status-error{% else %}status-warning{% endif %}"
+                     data-variable="{{ variable }}">
                     <div>
                         <strong>{{ variable }}</strong>
                         {% if status.database %}
@@ -175,36 +180,6 @@
                     {% endif %}
                 </div>
             {% endfor %}
-        </div>
-    {% endif %}
-
-    {% if annotated_variables %}
-        <div class="verification-card">
-            <h3><i class="fas fa-search"></i> Test Variable Accessibility</h3>
-            <div class="variable-select">
-                <label for="variableSelect" class="form-label">Select a variable to test:</label>
-                <select id="variableSelect" class="form-select" onchange="loadVariableInfo()">
-                    <option value="">Choose a variable...</option>
-                    {% for var in annotated_variables %}
-                        <option value="{{ var }}">{{ var }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div id="variableInfo" style="display: none;">
-                <h4>Variable Information</h4>
-                <div id="variableDetails"></div>
-                <button id="queryButton" class="btn btn-primary" onclick="queryVariable()">
-                    <i class="fas fa-play"></i> Query Top 5 Rows
-                </button>
-            </div>
-
-            <div class="loading-spinner" id="loadingSpinner">
-                <i class="fas fa-spinner fa-spin fa-2x"></i>
-                <p>Executing query...</p>
-            </div>
-
-            <div id="queryResults"></div>
         </div>
     {% endif %}
 
@@ -237,7 +212,7 @@
     const annotationStatus = {{ annotation_status | tojson }};
 
     // Perform live validation for all annotated variables when page loads
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         if (annotationStatus) {
             Object.keys(annotationStatus).forEach(variable => {
                 if (annotationStatus[variable].success) {
@@ -256,7 +231,7 @@
     function validateVariableAnnotation(variable) {
         const indicatorId = `validation-${variable.replace('.', '-')}`;
         const indicator = document.getElementById(indicatorId);
-        
+
         if (!indicator) return;
 
         // Show spinner while processing
@@ -271,167 +246,28 @@
                 variable: variable
             })
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                if (data.valid) {
-                    indicator.innerHTML = '✅';
-                    indicator.title = 'Annotation structure validated successfully';
-                } else {
-                    indicator.innerHTML = '❌';
-                    indicator.title = 'Annotation structure validation failed';
-                }
-            } else {
-                indicator.innerHTML = '❌';
-                indicator.title = `Validation error: ${data.error}`;
-            }
-        })
-        .catch(error => {
-            console.error(`Error validating ${variable}:`, error);
-            indicator.innerHTML = '❌';
-            indicator.title = 'Validation failed due to network error';
-        });
-    }
-
-    function loadVariableInfo() {
-        const selectElement = document.getElementById('variableSelect');
-        const selectedVar = selectElement.value;
-        const variableInfo = document.getElementById('variableInfo');
-        const variableDetails = document.getElementById('variableDetails');
-
-        if (selectedVar && variableData[selectedVar]) {
-            const varInfo = variableData[selectedVar];
-
-            let detailsHTML = '<div class="row">';
-            detailsHTML += '<div class="col-md-6">';
-            detailsHTML += '<p><strong>Local Definition:</strong> ' + (varInfo.local_definition || 'Not specified') + '</p>';
-            detailsHTML += '<p><strong>Predicate:</strong> <code>' + varInfo.predicate + '</code></p>';
-            detailsHTML += '</div>';
-            detailsHTML += '<div class="col-md-6">';
-            detailsHTML += '<p><strong>Class:</strong> <code>' + varInfo.class + '</code></p>';
-            if (varInfo.data_type) {
-                detailsHTML += '<p><strong>Data Type:</strong> ' + varInfo.data_type + '</p>';
-            }
-            detailsHTML += '</div>';
-            detailsHTML += '</div>';
-
-            variableDetails.innerHTML = detailsHTML;
-            variableInfo.style.display = 'block';
-        } else {
-            variableInfo.style.display = 'none';
-        }
-    }
-
-    function queryVariable() {
-        const selectElement = document.getElementById('variableSelect');
-        const selectedVar = selectElement.value;
-
-        if (!selectedVar) {
-            alert('Please select a variable to query.');
-            return;
-        }
-
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        const queryResults = document.getElementById('queryResults');
-        const queryButton = document.getElementById('queryButton');
-
-        // Show loading spinner
-        loadingSpinner.style.display = 'block';
-        queryResults.innerHTML = '';
-        queryButton.disabled = true;
-
-        fetch('/query-variable', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                variable: selectedVar
-            })
-        })
             .then(response => response.json())
             .then(data => {
-                loadingSpinner.style.display = 'none';
-                queryButton.disabled = false;
-
                 if (data.success) {
-                    let resultsHTML = '<div class="query-results">';
-                    resultsHTML += '<h5><i class="fas fa-table"></i> Query Results</h5>';
-
-                    // Show validation status
-                    if (data.validation_status === 'success') {
-                        resultsHTML += '<div class="alert alert-success">';
-                        resultsHTML += '<i class="fas fa-check-circle"></i> <strong>Validation Success!</strong> ';
-                        resultsHTML += `Found ${data.annotation_count || 'multiple'} annotated instances for "${selectedVar}".`;
-                        resultsHTML += '</div>';
-                    } else if (data.validation_status === 'no_data') {
-                        resultsHTML += '<div class="alert alert-warning">';
-                        resultsHTML += '<i class="fas fa-exclamation-triangle"></i> <strong>Annotation exists but no data found</strong><br>';
-                        resultsHTML += 'The annotation structure is present but contains no data instances.';
-                        resultsHTML += '</div>';
-                    } else if (data.validation_status === 'annotated_no_sample') {
-                        resultsHTML += '<div class="alert alert-info">';
-                        resultsHTML += '<i class="fas fa-info-circle"></i> <strong>Annotation successful</strong><br>';
-                        resultsHTML += `Found ${data.annotation_count} annotated instances but could not retrieve sample data.`;
-                        resultsHTML += '</div>';
-                    }
-
-                    if (data.results && data.results.length > 0) {
-                        resultsHTML += '<table class="results-table table table-striped">';
-                        resultsHTML += '<thead><tr>';
-
-                        // Get headers from first row
-                        // const headers = Object.keys(data.results[0]);
-                        const headers = ['index', 'annotated_value', 'non_annotated_value'];
-                        headers.forEach(header => {
-                            resultsHTML += '<th>' + header + '</th>';
-                        });
-                        resultsHTML += '</tr></thead><tbody>';
-
-                        // Add data rows
-                        data.results.forEach(row => {
-                            resultsHTML += '<tr>';
-                            headers.forEach(header => {
-                                resultsHTML += '<td>' + (row[header] || '') + '</td>';
-                            });
-                            resultsHTML += '</tr>';
-                        });
-
-                        resultsHTML += '</tbody></table>';
-
-                        if (data.validation_status === 'success') {
-                            resultsHTML += '<div class="alert alert-success mt-3">';
-                            resultsHTML += '<i class="fas fa-check-circle"></i> <strong>Complete Success!</strong> ';
-                            resultsHTML += 'The variable "' + selectedVar + '" is fully annotated and accessible with sample data. ';
-                            resultsHTML += 'Semantic interoperability has been achieved for this variable.';
-                            resultsHTML += '</div>';
-                        }
+                    if (data.valid) {
+                        indicator.innerHTML = '✅';
+                        indicator.title = 'Annotation structure validated successfully';
                     } else {
-                        if (data.validation_status !== 'success') {
-                            resultsHTML += '<div class="alert alert-warning">';
-                            resultsHTML += '<i class="fas fa-exclamation-triangle"></i> <strong>No sample data available</strong><br>';
-                            resultsHTML += data.message || 'The annotation may be incomplete or the data structure differs from expected format.';
-                            resultsHTML += '</div>';
-                        }
+                        indicator.innerHTML = '❌';
+                        indicator.title = 'Annotation structure validation failed';
                     }
-
-                    resultsHTML += '</div>';
-                    queryResults.innerHTML = resultsHTML;
                 } else {
-                    queryResults.innerHTML = '<div class="alert alert-danger">';
-                    queryResults.innerHTML += '<i class="fas fa-exclamation-circle"></i> <strong>Query failed:</strong> ' + data.error;
-                    queryResults.innerHTML += '</div>';
+                    indicator.innerHTML = '❌';
+                    indicator.title = `Validation error: ${data.error}`;
                 }
             })
             .catch(error => {
-                loadingSpinner.style.display = 'none';
-                queryButton.disabled = false;
-
-                queryResults.innerHTML = '<div class="alert alert-danger">';
-                queryResults.innerHTML += '<i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> ' + error.message;
-                queryResults.innerHTML += '</div>';
+                console.error(`Error validating ${variable}:`, error);
+                indicator.innerHTML = '❌';
+                indicator.title = 'Validation failed due to network error';
             });
     }
+
 </script>
 
 </body>

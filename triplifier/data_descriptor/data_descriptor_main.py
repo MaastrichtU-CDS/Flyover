@@ -794,10 +794,10 @@ def annotation_review():
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get('variable_info', {})
-        
+
         if not variable_info:
             continue
-            
+
         annotation_data[database] = {}
 
         # Process variables from the local semantic map
@@ -860,14 +860,14 @@ def start_annotation():
         # Process each database separately using its local semantic map
         for database in session_cache.databases:
             logger.info(f"Processing annotation for database: {database}")
-            
+
             # Get the local semantic map for this specific database
             local_semantic_map = formulate_local_semantic_map(database)
             variable_info = local_semantic_map.get('variable_info', {})
-            
+
             # Get prefixes from the local semantic map
             prefixes = local_semantic_map.get('prefixes',
-                                            'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
+                                              'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
 
             # Filter only variables that have local definitions
             annotated_variables = {
@@ -918,7 +918,8 @@ def start_annotation():
                     }
 
         if total_annotated_vars == 0:
-            return jsonify({'success': False, 'error': 'No variables with local definitions found across all databases'})
+            return jsonify(
+                {'success': False, 'error': 'No variables with local definitions found across all databases'})
 
         return jsonify({
             'success': True,
@@ -952,7 +953,7 @@ def annotation_verify():
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get('variable_info', {})
-        
+
         for var_name, var_data in variable_info.items():
             if var_data.get('local_definition'):
                 full_var_name = f"{database}.{var_name}"
@@ -976,120 +977,6 @@ def annotation_verify():
                            annotation_status=annotation_status,
                            variable_data=variable_data,
                            success_message=success_message)
-
-
-@app.route('/query-variable', methods=['POST'])
-def query_variable():
-    """
-    Query a specific variable to verify annotation success.
-    Uses proper SPARQL validation instead of simple try-catch.
-    """
-    try:
-        data = request.get_json()
-        variable_name = data.get('variable')
-
-        if not variable_name:
-            return jsonify({'success': False, 'error': 'No variable specified'})
-
-        # Parse database and variable from the full variable name (database.variable)
-        if '.' in variable_name:
-            database, var_name = variable_name.split('.', 1)
-        else:
-            return jsonify({'success': False, 'error': 'Invalid variable format. Expected: database.variable'})
-
-        # Get the local semantic map for this specific database
-        local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get('variable_info', {})
-        var_data = variable_info.get(var_name)
-
-        if not var_data:
-            return jsonify({'success': False, 'error': 'Variable not found'})
-
-        # Get variable information
-        local_definition = var_data.get('local_definition')
-        predicate = var_data.get('predicate')
-        var_class = var_data.get('class')
-        var_ontology = var_class[:var_class.rfind(':') + 1] if ':' in var_class else var_class
-
-        if not local_definition:
-            return jsonify({'success': False, 'error': 'Variable has no local definition'})
-
-        # Get prefixes from the local semantic map
-        prefixes = local_semantic_map.get('prefixes', '')
-        if not prefixes:
-            # Fallback to default prefixes
-            prefixes = """
-            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            PREFIX db: <http://data.local/rdf/ontology/>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX roo: <http://www.cancerdata.org/roo/>
-            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
-            """
-        else:
-            prefixes = f"""PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            PREFIX db: <http://data.local/rdf/ontology/>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            PREFIX roo: <http://www.cancerdata.org/roo/>
-            PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
-            {prefixes} """
-        # First, check if the annotation was successful by verifying the existence of annotated classes
-        validation_query = f"""
-        {prefixes}
-        
-        SELECT DISTINCT ?index ?annotated_value (SAMPLE(?all_value) AS ?non_annotated_value)
-        WHERE {{
-            ?index {predicate} ?sub_class_type .
-            ?sub_class_type rdf:type ?main_class .
-            ?sub_class_type rdf:type {var_class} .
-            ?sub_class_type dbo:has_cell ?sub_cell .
-            ?sub_cell dbo:has_value ?all_value .
-            FILTER strStarts(str(?main_class), str({var_ontology}))
-            BIND(strafter(str(?main_class), str({var_ontology})) AS ?main_class_code)
-            OPTIONAL {{
-                ?sub_cell rdf:type ?annotated_value .
-                FILTER (strStarts(str(?annotated_value), str({var_ontology}))||strStarts(str(?annotated_value), str({var_ontology}))) .
-                ?annotated_value rdfs:subClassOf ?main_class .
-                FILTER (!regex(str(?main_class), str(?annotated_value))) .
-            }}
-        }}
-        GROUP BY ?index ?annotated_value
-        LIMIT 5
-        """
-
-        logger.info(f"Executing validation query for {variable_name}: {validation_query}")
-        validation_result = execute_query(session_cache.repo, validation_query)
-
-        if not validation_result or validation_result.strip() == "":
-            return jsonify({'success': False, 'error': 'Failed to execute validation query'})
-
-        # Parse validation result
-        try:
-            validation_df = pd.read_csv(StringIO(validation_result))
-            validation_df = validation_df.fillna('Not available')
-            count = str(validation_df.iloc[0]['non_annotated_value']) if len(validation_df) > 0 else 0
-        except Exception as e:
-            logger.error(f"Error parsing validation results: {str(e)}")
-            return jsonify({'success': False, 'error': 'Error parsing validation results'})
-
-        if count == 0:
-            return jsonify({
-                'success': True, 
-                'results': [], 
-                'message': 'Annotation exists but no data instances found for this variable',
-                'validation_status': 'no_data'
-            })
-
-        else:
-            return jsonify({
-                'success': True,
-                'results': validation_df.to_dict(orient='records'),
-                'message': 'Annotation and data instances found for this variable',
-                'validation_status': 'data_found'
-            })
-
-    except Exception as e:
-        logger.error(f"Error querying variable: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/verify-annotation-ask', methods=['POST'])
@@ -1128,7 +1015,7 @@ def verify_annotation_ask():
 
         # Get prefixes from the local semantic map - construct proper prefix string
         prefixes_dict = local_semantic_map.get('prefixes', {})
-        
+
         # Build prefixes string with required prefixes
         prefixes = """PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -1146,10 +1033,10 @@ PREFIX sio: <http://semanticscience.org/resource/>"""
 
         # Build the ASK query according to the specification
         ask_query_parts = []
-        
+
         # Add the main equivalentClass statement
         ask_query_parts.append(f"db:{database}.{local_definition} owl:equivalentClass {var_class} .")
-        
+
         # Check for value mappings and add target_class subClassOf statements
         value_mapping = var_data.get('value_mapping', {})
         if value_mapping and value_mapping.get('terms'):
@@ -1166,7 +1053,7 @@ ASK {{
 """
 
         logger.info(f"Executing ASK query for {variable_name}: {ask_query}")
-        
+
         # Execute the ASK query
         response = requests.get(
             f"{graphdb_url}/repositories/{session_cache.repo}",
@@ -1177,7 +1064,7 @@ ASK {{
         if response.status_code == 200:
             result = response.json()
             is_valid = result.get('boolean', False)
-            
+
             return jsonify({
                 'success': True,
                 'valid': is_valid,
