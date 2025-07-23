@@ -970,7 +970,8 @@ def annotation_verify():
     # Set success message if annotation was successful
     success_message = None
     if annotation_status and all(status.get('success') for status in annotation_status.values()):
-        success_message = "Annotation process completed successfully! Semantic interoperability has been achieved for the annotated variables."
+        success_message = ("The data processing is now complete and semantic interoperability has been achieved for the variables outlined above."
+                           "You can now close this page and proceed to the next steps in your workflow.")
 
     return render_template('annotation_verify.html',
                            annotated_variables=annotated_variables,

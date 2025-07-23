@@ -137,13 +137,13 @@
             border-radius: 8px;
             padding: 15px;
             margin-top: 20px;
-            max-height: 300px;
-            overflow-y: auto;
         }
 
         .unannotated-section ul {
             margin-bottom: 0;
             padding-left: 20px;
+            max-height: 200px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -154,18 +154,16 @@
     <h1><i class="fas fa-search"></i> Review Annotation Data</h1>
     <hr>
 
-    <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i>
-        <strong>Review your semantic annotations</strong><br>
-        Please review the variable mappings below before proceeding with the annotation process.
-        Variables marked as "Annotated" will be processed, while "Unannotated" variables will be skipped.
-    </div>
+    <p style="line-height: 1.5; margin: 0;">Please review the variable mappings below before proceeding with the
+        annotation process.<br>
+        If information is missing or incorrect, you can adjust the local definitions through the describe data pages.
+    </p>
 
     {% if annotation_data %}
         <form class="form-horizontal">
             <hr>
             {% for database, variables in annotation_data.items() %}
-                <h2 style="display: inline-block;">{{ database }}</h2>
+                <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
                 <button class="toggle-button" type="button">
                     <span class="toggle-text">Show more</span>
                     <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20"
@@ -253,17 +251,32 @@
                     {% endfor %}
                 </ul>
             </div>
+            <br>
         {% endif %}
-        <br>
 
-        <button id="startAnnotation" class="btn btn-success" onclick="startAnnotationProcess()">
+        <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process
         </button>
-        <hr>
         <a href="/download" class="btn btn-light">
             <i class="fas fa-arrow-left"></i> Back to Downloads
         </a>
         <br>
+        <div class="mt-4">
+            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+                <i class="fas fa-info-circle"></i>
+                <strong>Annotating your data</strong><br>
+                <div class="mt-1 ms-4">
+                    <div class="mt-1">
+                        <p class="mb-1">
+                            Please consider that annotation data can always be adapted without having to re-upload your
+                            data.<br>
+                            You can do this by removing the annotation graph in the GraphDB user interface and simply
+                            redoing the annotation process.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     {% else %}
         <div class="alert alert-warning">
