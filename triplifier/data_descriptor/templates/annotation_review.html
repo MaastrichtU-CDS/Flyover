@@ -183,9 +183,9 @@
                                 <div class="variable-name">{{ var_name }}</div>
                                 <div class="status-badge {% if var_info.local_definition %}status-annotated{% else %}status-unannotated{% endif %}">
                                     {% if var_info.local_definition %}
-                                        <i class="fas fa-check-circle"></i> Annotated
+                                        <i class="fas fa-check-circle"></i> Described
                                     {% else %}
-                                        <i class="fas fa-exclamation-triangle"></i> Unannotated
+                                        <i class="fas fa-exclamation-triangle"></i> Undescribed
                                     {% endif %}
                                 </div>
                             </div>
@@ -241,18 +241,18 @@
             {% endfor %}
         </form>
 
-        {% if unannotated_variables %}
-            <div class="unannotated-section">
-                <h4><i class="fas fa-exclamation-triangle"></i> Unannotated Variables</h4>
-                <p>The following variables were not annotated and will be skipped:</p>
-                <ul>
-                    {% for var in unannotated_variables %}
-                        <li>{{ var }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            <br>
-        {% endif %}
+{#        {% if unannotated_variables %}#}
+{#            <div class="unannotated-section">#}
+{#                <h4><i class="fas fa-exclamation-triangle"></i> Undescribed Variables</h4>#}
+{#                <p>The following variables were not described and will be skipped:</p>#}
+{#                <ul>#}
+{#                    {% for var in unannotated_variables %}#}
+{#                        <li>{{ var }}</li>#}
+{#                    {% endfor %}#}
+{#                </ul>#}
+{#            </div>#}
+{#            <br>#}
+{#        {% endif %}#}
 
         <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process

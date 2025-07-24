@@ -947,6 +947,7 @@ def annotation_verify():
 
     # Get annotated variables from all databases using local semantic maps
     annotated_variables = []
+    unannotated_variables = []
     variable_data = {}
 
     for database in session_cache.databases:
@@ -955,14 +956,18 @@ def annotation_verify():
         variable_info = local_semantic_map.get('variable_info', {})
 
         for var_name, var_data in variable_info.items():
+            full_var_name = f"{database}.{var_name}"
+
+            # Check if this variable has a local definition (from local semantic map)
             if var_data.get('local_definition'):
-                full_var_name = f"{database}.{var_name}"
                 annotated_variables.append(full_var_name)
                 variable_data[full_var_name] = {
                     **var_data,
                     'database': database,
                     'prefixes': local_semantic_map.get('prefixes', '')
                 }
+            else:
+                unannotated_variables.append(full_var_name)
 
     # Get annotation status
     annotation_status = session_cache.annotation_status or {}
@@ -975,6 +980,7 @@ def annotation_verify():
 
     return render_template('annotation_verify.html',
                            annotated_variables=annotated_variables,
+                           unannotated_variables=unannotated_variables,
                            annotation_status=annotation_status,
                            variable_data=variable_data,
                            success_message=success_message)
@@ -1019,13 +1025,13 @@ def verify_annotation_ask():
 
         # Build prefixes string with required prefixes
         prefixes = """PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-PREFIX db: <http://data.local/rdf/ontology/>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX roo: <http://www.cancerdata.org/roo/>
-PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
-PREFIX sio: <http://semanticscience.org/resource/>"""
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+        PREFIX db: <http://data.local/rdf/ontology/>
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX roo: <http://www.cancerdata.org/roo/>
+        PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+        PREFIX sio: <http://semanticscience.org/resource/>"""
 
         # Add any additional prefixes from the semantic map
         if isinstance(prefixes_dict, dict):
@@ -1046,12 +1052,12 @@ PREFIX sio: <http://semanticscience.org/resource/>"""
                     ask_query_parts.append(f"{term_info['target_class']} rdfs:subClassOf {var_class} .")
 
         ask_query = f"""
-{prefixes}
-
-ASK {{
-  {' '.join(ask_query_parts)}
-}}
-"""
+            {prefixes}
+            
+            ASK {{
+              {' '.join(ask_query_parts)}
+            }}
+            """
 
         logger.info(f"Executing ASK query for {variable_name}: {ask_query}")
 

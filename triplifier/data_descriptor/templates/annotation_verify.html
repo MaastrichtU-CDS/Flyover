@@ -1,273 +1,271 @@
 <!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/html">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Annotation Verification</title>
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}">
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
-
-        .verification-card {
-            background-color: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .variable-select {
-            margin-bottom: 20px;
-        }
-
-        .query-results {
-            background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 15px;
-        }
-
-        .results-table {
-            width: 100%;
-            margin-top: 10px;
-        }
-
-        .results-table th, .results-table td {
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .results-table th {
-            background-color: #e9ecef;
-            font-weight: bold;
-        }
-
-        .success-message {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-
-        .error-message {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .actions {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
+        .variable-item {
             display: flex;
-            gap: 10px;
-        }
-
-        .annotation-status {
-            background-color: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .status-item {
-            display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
+            margin-bottom: 12px;
+            padding: 10px 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
-
-        .status-success {
-            border-left: 4px solid #28a745;
+        .variable-name {
+            font-weight: bold;
+            flex-grow: 1;
+            min-width: 200px;
         }
-
-        .status-error {
-            border-left: 4px solid #dc3545;
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-width: 200px;
+            margin-left: auto;
         }
-
-        .status-warning {
-            border-left: 4px solid #ffc107;
-        }
-
-        .validation-indicator {
+        .status-icon {
             font-size: 1.2em;
             margin-left: 10px;
-            min-width: 20px;
-            display: inline-block;
         }
-
+        .status-message {
+            font-size: 1em;
+            text-align: right;
+        }
         .spinner {
             animation: spin 1s linear infinite;
             color: #007bff;
         }
-
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        .filter-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .pagination {
+            margin-top: 20px;
+            justify-content: center;
+        }
+        .hidden {
+            display: none;
+        }
+        .unannotated {
+            background: #f8f9fa;
+        }
         @keyframes spin {
-            from {
-                transform: rotate(0deg);
-            }
-            to {
-                transform: rotate(360deg);
-            }
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
-
 <body>
 <div class="container">
-    <br>
     <h1><i class="fas fa-check-circle"></i> Annotation Verification</h1>
     <hr>
+    <p>Checking annotation status for all variables below.</p>
 
-    <p style="line-height: 1.5; margin: 0;">
-        You can now assess the annotation status of every variable you set out to annotate.<br>
-        In case variables were not annotated appropriately, it is advised to review the data descriptions, GraphDB
-        repository settings, and the overall local semantic map.<br>
-    </p>
-
-    {% if annotation_status %}
-        <div class="annotation-status">
-            <h3><i class="fas fa-list-check"></i> Annotation Status</h3>
-            {% for variable, status in annotation_status.items() %}
-                <div class="status-item {% if status.success %}status-success{% elif status.error %}status-error{% else %}status-warning{% endif %}"
-                     data-variable="{{ variable }}">
-                    <div>
-                        <strong>{{ variable }}</strong>
-                        {% if status.database %}
-                            <span class="text-muted">({{ status.database }})</span>
-                        {% endif %}
-                        <span class="validation-indicator" id="validation-{{ variable.replace('.', '-') }}">
-                            <i class="fas fa-spinner spinner"></i>
-                        </span>
-                        <br>
-                        {% if status.success %}
-                            <span class="text-success"><i class="fas fa-check-circle"></i> Successfully annotated</span>
-                        {% elif status.error %}
-                            <span class="text-danger"><i
-                                    class="fas fa-exclamation-circle"></i> Error: {{ status.error }}</span>
-                        {% else %}
-                            <span class="text-warning"><i
-                                    class="fas fa-exclamation-triangle"></i> Warning: {{ status.warning }}</span>
-                        {% endif %}
-                    </div>
-                    {% if status.success %}
-                        <span class="badge bg-success">✓</span>
-                    {% elif status.error %}
-                        <span class="badge bg-danger">✗</span>
-                    {% else %}
-                        <span class="badge bg-warning">!</span>
-                    {% endif %}
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search variables...">
                 </div>
-            {% endfor %}
+            </div>
+            <div class="col-md-6">
+                <select id="statusFilter" class="form-select">
+                    <option value="all">All Variables</option>
+                    <option value="success">Successfully Annotated</option>
+                    <option value="error">Failed</option>
+                    <option value="pending">Pending</option>
+                    <option value="undescribed">Not Described</option>
+                </select>
+            </div>
         </div>
-    {% endif %}
+    </div>
 
-    {% if success_message %}
-        <div class="success-message">
-            <i class="fas fa-check-circle"></i>
-            <strong>Success!</strong> {{ success_message }}
+    <!-- All Variables List -->
+    <div id="all-variables-list">
+        <!-- Described Variables -->
+        {% for variable_name, variable_data in variable_data.items() %}
+        <div class="variable-item" data-status="pending">
+            <span class="variable-name">{{ variable_name }}</span>
+            <div class="status-indicator">
+                <span class="status-message" id="message-{{ variable_name|replace('.', '-') }}">
+                    Checking annotation...
+                </span>
+                <span class="status-icon" id="icon-{{ variable_name|replace('.', '-') }}">
+                    <i class="fas fa-spinner spinner"></i>
+                </span>
+            </div>
         </div>
-    {% endif %}
+        {% endfor %}
 
-    {% if error_message %}
-        <div class="error-message">
-            <i class="fas fa-exclamation-circle"></i>
-            <strong>Error:</strong> {{ error_message }}
+        <!-- Undescribed Variables -->
+        {% for variable_name in unannotated_variables %}
+        <div class="variable-item unannotated" data-status="undescribed">
+            <span class="variable-name">{{ variable_name }}</span>
+            <div class="status-indicator">
+                <span class="status-message">Not described</span>
+                <span class="status-icon">
+                    <i class="fas fa-times-circle error"></i>
+                </span>
+            </div>
         </div>
-    {% endif %}
-    <br>
-    <a href="/" class="btn btn-primary">
-        <i class="fas fa-home"></i> Return to Home
-    </a>
-    <a href="/annotation-review" class="btn btn-light">
-        <i class="fas fa-arrow-left"></i> Back to Review
-    </a>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    <nav aria-label="Variable pagination">
+        <ul class="pagination" id="pagination">
+            <!-- Pagination will be populated by JavaScript -->
+        </ul>
+    </nav>
+
     <hr>
-
+    <a href="/" class="btn btn-primary"><i class="fas fa-home"></i> Return to Home</a>
 </div>
 
 <script>
-    const variableData = {{ variable_data | tojson }};
-    const annotationStatus = {{ annotation_status | tojson }};
-
-    // Perform live validation for all annotated variables when page loads
     document.addEventListener('DOMContentLoaded', function () {
-        if (annotationStatus) {
-            Object.keys(annotationStatus).forEach(variable => {
-                if (annotationStatus[variable].success) {
-                    validateVariableAnnotation(variable);
-                } else {
-                    // For failed annotations, show error indicator immediately
-                    const indicator = document.getElementById(`validation-${variable.replace('.', '-')}`);
-                    if (indicator) {
-                        indicator.innerHTML = '❌';
-                    }
-                }
+        const itemsPerPage = 20;
+        let currentPage = 1;
+        const variables = Object.keys({{ variable_data | tojson }});
+        const variableItems = document.querySelectorAll('.variable-item');
+
+        // Initialize pagination
+        function initPagination() {
+            const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = '';
+
+            if (totalPages <= 1) {
+                pagination.style.display = 'none';
+                return;
+            }
+
+            pagination.style.display = 'flex';
+
+            // Previous button
+            const prevLi = document.createElement('li');
+            prevLi.className = 'page-item' + (currentPage === 1 ? ' disabled' : '');
+            prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
+            pagination.appendChild(prevLi);
+
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                const li = document.createElement('li');
+                li.className = 'page-item' + (currentPage === i ? ' active' : '');
+                li.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
+                pagination.appendChild(li);
+            }
+
+            // Next button
+            const nextLi = document.createElement('li');
+            nextLi.className = 'page-item' + (currentPage === totalPages ? ' disabled' : '');
+            nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
+            pagination.appendChild(nextLi);
+        }
+
+        // Get visible items based on current filters
+        function getVisibleItems() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+            return Array.from(variableItems).filter(item => {
+                const name = item.querySelector('.variable-name').textContent.toLowerCase();
+                const status = item.dataset.status;
+                const matchesSearch = name.includes(searchTerm);
+                const matchesStatus = statusFilter === 'all' || status === statusFilter;
+                return matchesSearch && matchesStatus;
             });
         }
-    });
 
-    function validateVariableAnnotation(variable) {
-        const indicatorId = `validation-${variable.replace('.', '-')}`;
-        const indicator = document.getElementById(indicatorId);
+        // Update display based on current page and filters
+        function updateDisplay() {
+            const visibleItems = getVisibleItems();
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
 
-        if (!indicator) return;
+            variableItems.forEach(item => item.classList.add('hidden'));
+            visibleItems.slice(start, end).forEach(item => item.classList.remove('hidden'));
 
-        // Show spinner while processing
-        indicator.innerHTML = '<i class="fas fa-spinner spinner"></i>';
+            initPagination();
+        }
 
-        fetch('/verify-annotation-ask', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                variable: variable
+        // Change page
+        window.changePage = function(page) {
+            currentPage = page;
+            updateDisplay();
+        };
+
+        // Add event listeners for filters
+        document.getElementById('searchInput').addEventListener('input', function() {
+            currentPage = 1;
+            updateDisplay();
+        });
+
+        document.getElementById('statusFilter').addEventListener('change', function() {
+            currentPage = 1;
+            updateDisplay();
+        });
+
+        // Initial setup
+        updateDisplay();
+
+        // Process annotations for described variables
+        variables.forEach(function(variableName) {
+            const iconId = 'icon-' + variableName.replace('.', '-');
+            const messageId = 'message-' + variableName.replace('.', '-');
+            const item = document.querySelector(`[id="message-${variableName.replace('.', '-')}"]`).closest('.variable-item');
+
+            fetch('/verify-annotation-ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ variable: variableName })
             })
-        })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                const icon = document.getElementById(iconId);
+                const message = document.getElementById(messageId);
+                if (data.success && typeof(data.valid) !== 'undefined') {
                     if (data.valid) {
-                        indicator.innerHTML = '✅';
-                        indicator.title = 'Annotation structure validated successfully';
+                        icon.innerHTML = '<i class="fas fa-check-circle success"></i>';
+                        message.textContent = 'Successfully annotated';
+                        item.dataset.status = 'success';
                     } else {
-                        indicator.innerHTML = '❌';
-                        indicator.title = 'Annotation structure validation failed';
+                        icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
+                        message.textContent = 'Annotation failed';
+                        item.dataset.status = 'error';
                     }
                 } else {
-                    indicator.innerHTML = '❌';
-                    indicator.title = `Validation error: ${data.error}`;
+                    icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
+                    message.textContent = 'Error: ' + (data.error || 'Unknown error');
+                    item.dataset.status = 'error';
                 }
+                updateDisplay();
             })
             .catch(error => {
-                console.error(`Error validating ${variable}:`, error);
-                indicator.innerHTML = '❌';
-                indicator.title = 'Validation failed due to network error';
+                const icon = document.getElementById(iconId);
+                const message = document.getElementById(messageId);
+                icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
+                message.textContent = 'Network error';
+                item.dataset.status = 'error';
+                updateDisplay();
             });
-    }
-
+        });
+    });
 </script>
-
 </body>
 </html>
