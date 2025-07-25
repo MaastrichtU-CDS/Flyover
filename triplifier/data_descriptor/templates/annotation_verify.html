@@ -101,7 +101,7 @@
         <!-- Described Variables -->
         {% for variable_name, variable_data in variable_data.items() %}
         <div class="variable-item" data-status="pending">
-            <span class="variable-name">{{ variable_name }}</span>
+            <span class="variable-name">{{ variable_name.split('.')[-1] }} ({{ variable_name.split('.')[0] }})</span>
             <div class="status-indicator">
                 <span class="status-message" id="message-{{ variable_name|replace('.', '-') }}">
                     Checking annotation...
@@ -114,9 +114,12 @@
         {% endfor %}
 
         <!-- Undescribed Variables -->
+        {% set printed_variables = [] %}
         {% for variable_name in unannotated_variables %}
+        {% set variable_short_name = variable_name.split('.')[-1] %}
+        {% if variable_short_name not in printed_variables %}
         <div class="variable-item unannotated" data-status="undescribed">
-            <span class="variable-name">{{ variable_name }}</span>
+            <span class="variable-name">{{ variable_short_name }}</span>
             <div class="status-indicator">
                 <span class="status-message">Not described</span>
                 <span class="status-icon">
@@ -124,6 +127,8 @@
                 </span>
             </div>
         </div>
+        {% set printed_variables = printed_variables.append(variable_short_name) %}
+        {% endif %}
         {% endfor %}
     </div>
 
