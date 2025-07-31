@@ -2,11 +2,11 @@
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <head>
     <meta charset="UTF-8">
-    <title>Flyover | Annotation Review</title>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <title>Flyover | Annotation Review - Enhanced Demo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
@@ -98,53 +98,12 @@
             color: #721c24;
         }
 
-        .value-mapping-section {
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            padding: 8px;
-            margin-top: 8px;
-        }
-
-        .value-mapping-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
-            padding: 4px 8px;
-            background-color: white;
-            border-radius: 3px;
-            border: 1px solid #dee2e6;
-            font-size: 0.85em;
-        }
-
-        .annotation-actions {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            display: flex;
-            gap: 10px;
-        }
-
         .database-summary {
             background-color: #e9ecef;
             padding: 10px;
             border-radius: 5px;
             margin-bottom: 10px;
             font-size: 0.9em;
-        }
-
-        .unannotated-section {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-
-        .unannotated-section ul {
-            margin-bottom: 0;
-            padding-left: 20px;
-            max-height: 200px;
-            overflow-y: auto;
         }
 
         /* Knowledge Graph Styles */
@@ -348,7 +307,7 @@
     </style>
 </head>
 
-<body>
+<body class="graph-view">
 <!-- View Toggle Controls -->
 <div class="view-toggle">
     <button id="graphViewBtn" class="active" onclick="switchView('graph')">
@@ -359,10 +318,9 @@
     </button>
 </div>
 
-<!-- Global Filter Controls -->
 <div class="container">
     <br>
-    <h1><i class="fas fa-search"></i> Review Annotation Data</h1>
+    <h1><i class="fas fa-search"></i> Review Annotation Data - Enhanced Demo</h1>
     <hr>
 
     <p style="line-height: 1.5; margin: 0;">Please review the variable mappings below before proceeding with the
@@ -388,152 +346,305 @@
         </button>
     </div>
 
-    {% if annotation_data %}
-        <form class="form-horizontal">
-            <hr>
-            {% for database, variables in annotation_data.items() %}
-                <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
-                <button class="toggle-button" type="button">
-                    <span class="toggle-text">Show more</span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20"
-                         height="20">
-                        <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
-                    </svg>
-                </button>
-                <div class="content hidden">
-                    <div class="database-summary">
-                        <strong>Database Summary:</strong>
-                        {{ variables|length }} variable(s) ready for annotation
-                    </div>
-
-                    {% for var_name, var_info in variables.items() %}
-                        {% set var_complete = var_info.local_definition and var_info.data_type %}
-                        {% set var_partial = var_info.local_definition or var_info.data_type %}
-                        <div class="variable-card {% if var_complete %}variable-complete{% elif var_partial %}variable-partial{% else %}variable-incomplete{% endif %}" 
-                             data-variable="{{ var_name }}" data-database="{{ database }}">
-                            <div class="variable-header">
-                                <div class="variable-name">{{ var_name }}</div>
-                                <div class="status-badge {% if var_info.local_definition %}status-annotated{% else %}status-unannotated{% endif %}">
-                                    {% if var_info.local_definition %}
-                                        <i class="fas fa-check-circle"></i> Described
-                                    {% else %}
-                                        <i class="fas fa-exclamation-triangle"></i> Undescribed
-                                    {% endif %}
-                                </div>
-                            </div>
-
-                            <!-- Knowledge Graph Container -->
-                            <div class="knowledge-graph-container">
-                                <h6><i class="fas fa-project-diagram"></i> Knowledge Graph Representation</h6>
-                                <svg class="knowledge-graph-svg" id="graph-{{ database }}-{{ var_name }}"></svg>
-                            </div>
-
-                            <!-- Traditional Variable Details -->
-                            <div class="variable-details">
-                                <div class="detail-row">
-                                    <div class="detail-label">Local Definition:</div>
-                                    <div class="detail-value">
-                                        {{ var_info.local_definition if var_info.local_definition else 'Not specified' }}
-                                    </div>
-                                </div>
-
-                                <div class="detail-row">
-                                    <div class="detail-label">Predicate:</div>
-                                    <div class="detail-value"><code>{{ var_info.predicate }}</code></div>
-                                </div>
-
-                                <div class="detail-row">
-                                    <div class="detail-label">Class:</div>
-                                    <div class="detail-value"><code>{{ var_info.class }}</code></div>
-                                </div>
-
-                                {% if var_info.data_type %}
-                                    <div class="detail-row">
-                                        <div class="detail-label">Data Type:</div>
-                                        <div class="detail-value">{{ var_info.data_type }}</div>
-                                    </div>
-                                {% endif %}
-
-                                {% if var_info.value_mapping and var_info.value_mapping.terms %}
-                                    <div class="detail-row">
-                                        <div class="detail-label">Value Mapping:</div>
-                                        <div class="detail-value">
-                                            <div class="value-mapping-section">
-                                                {% for term, term_info in var_info.value_mapping.terms.items() %}
-                                                    {% if term_info.local_term %}
-                                                        <div class="value-mapping-item">
-                                                            <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
-                                                            <span>{{ term_info.local_term }}</span>
-                                                            <span><code>{{ term_info.target_class }}</code></span>
-                                                        </div>
-                                                    {% endif %}
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            <!-- Store variable data for JavaScript -->
-                            <script type="application/json" class="variable-data">
-                                {{ var_info | tojson }}
-                            </script>
-                        </div>
-                    {% endfor %}
-                </div>
-                <hr>
-            {% endfor %}
-        </form>
-
-{#        {% if unannotated_variables %}#}
-{#            <div class="unannotated-section">#}
-{#                <h4><i class="fas fa-exclamation-triangle"></i> Undescribed Variables</h4>#}
-{#                <p>The following variables were not described and will be skipped:</p>#}
-{#                <ul>#}
-{#                    {% for var in unannotated_variables %}#}
-{#                        <li>{{ var }}</li>#}
-{#                    {% endfor %}#}
-{#                </ul>#}
-{#            </div>#}
-{#            <br>#}
-{#        {% endif %}#}
-
-        <button id="startAnnotation" class="btn btn-primary progress-button" onclick="startAnnotationProcess()">
-            <div class="progress-bar"></div>
-            <span class="button-text">
-                <i class="fas fa-play"></i> Start Annotation Process
-            </span>
+    <form class="form-horizontal">
+        <hr>
+        <!-- Demo Database -->
+        <h2 style="display: inline-block;"><i class="fas fa-database"></i> head_neck_radiomics</h2>
+        <button class="toggle-button" type="button">
+            <span class="toggle-text">Show less</span>
+            <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                <path d="M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z"/>
+            </svg>
         </button>
-        <a href="/download" class="btn btn-light">
-            <i class="fas fa-arrow-left"></i> Back to Downloads
-        </a>
-        <br>
-        <div class="mt-4">
-            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
-                <i class="fas fa-info-circle"></i>
-                <strong>Annotating your data</strong><br>
-                <div class="mt-1 ms-4">
-                    <div class="mt-1">
-                        <p class="mb-1">
-                            Please consider that annotation data can always be adapted without having to re-upload your
-                            data.<br>
-                            You can do this by removing the annotation graph in the GraphDB user interface and simply
-                            redoing the annotation process.
-                        </p>
+        <div class="content active">
+            <div class="database-summary">
+                <strong>Database Summary:</strong>
+                3 variable(s) ready for annotation
+            </div>
+
+            <!-- Complete Variable Example -->
+            <div class="variable-card variable-complete" data-variable="biological_sex" data-database="head_neck_radiomics">
+                <div class="variable-header">
+                    <div class="variable-name">biological_sex</div>
+                    <div class="status-badge status-annotated">
+                        <i class="fas fa-check-circle"></i> Described
                     </div>
+                </div>
+
+                <!-- Knowledge Graph Container -->
+                <div class="knowledge-graph-container">
+                    <h6><i class="fas fa-project-diagram"></i> Knowledge Graph Representation</h6>
+                    <svg class="knowledge-graph-svg" id="graph-head_neck_radiomics-biological_sex"></svg>
+                </div>
+
+                <!-- Traditional Variable Details -->
+                <div class="variable-details">
+                    <div class="detail-row">
+                        <div class="detail-label">Local Definition:</div>
+                        <div class="detail-value">sex</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Predicate:</div>
+                        <div class="detail-value"><code>sio:SIO_000008</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Class:</div>
+                        <div class="detail-value"><code>ncit:C28421</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Data Type:</div>
+                        <div class="detail-value">categorical</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Value Mapping:</div>
+                        <div class="detail-value">
+                            <div class="value-mapping-section">
+                                <div class="value-mapping-item">
+                                    <span><strong>Male</strong></span>
+                                    <span>M</span>
+                                    <span><code>ncit:C20197</code></span>
+                                </div>
+                                <div class="value-mapping-item">
+                                    <span><strong>Female</strong></span>
+                                    <span>F</span>
+                                    <span><code>ncit:C16576</code></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Store variable data for JavaScript -->
+                <script type="application/json" class="variable-data">
+                    {
+                        "data_type": "categorical",
+                        "predicate": "sio:SIO_000008",
+                        "class": "ncit:C28421",
+                        "local_definition": "sex",
+                        "schema_reconstruction": [
+                            {
+                                "type": "class",
+                                "predicate": "sio:SIO_000235",
+                                "class": "mesh:D000091569",
+                                "class_label": "demographicClass",
+                                "aesthetic_label": "Demographic"
+                            },
+                            {
+                                "type": "class",
+                                "placement": "after",
+                                "predicate": "sio:SIO_000253",
+                                "class": "ncit:C142529",
+                                "class_label": "ehrClass",
+                                "aesthetic_label": "EHR"
+                            }
+                        ],
+                        "value_mapping": {
+                            "terms": {
+                                "male": {
+                                    "local_term": "M",
+                                    "target_class": "ncit:C20197"
+                                },
+                                "female": {
+                                    "local_term": "F",
+                                    "target_class": "ncit:C16576"
+                                }
+                            }
+                        }
+                    }
+                </script>
+            </div>
+
+            <!-- Incomplete Variable Example -->
+            <div class="variable-card variable-incomplete" data-variable="age_at_diagnosis" data-database="head_neck_radiomics">
+                <div class="variable-header">
+                    <div class="variable-name">age_at_diagnosis</div>
+                    <div class="status-badge status-unannotated">
+                        <i class="fas fa-exclamation-triangle"></i> Undescribed
+                    </div>
+                </div>
+
+                <!-- Knowledge Graph Container -->
+                <div class="knowledge-graph-container">
+                    <h6><i class="fas fa-project-diagram"></i> Knowledge Graph Representation</h6>
+                    <svg class="knowledge-graph-svg" id="graph-head_neck_radiomics-age_at_diagnosis"></svg>
+                </div>
+
+                <!-- Traditional Variable Details -->
+                <div class="variable-details">
+                    <div class="detail-row">
+                        <div class="detail-label">Local Definition:</div>
+                        <div class="detail-value">Not specified</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Predicate:</div>
+                        <div class="detail-value"><code>sio:SIO_000008</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Class:</div>
+                        <div class="detail-value"><code>ncit:C156420</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Data Type:</div>
+                        <div class="detail-value">continuous</div>
+                    </div>
+                </div>
+
+                <!-- Store variable data for JavaScript -->
+                <script type="application/json" class="variable-data">
+                    {
+                        "data_type": "continuous",
+                        "predicate": "sio:SIO_000008",
+                        "class": "ncit:C156420",
+                        "local_definition": null,
+                        "schema_reconstruction": [
+                            {
+                                "type": "class",
+                                "predicate": "sio:SIO_000235",
+                                "class": "mesh:D000091569",
+                                "class_label": "demographicClass",
+                                "aesthetic_label": "Demographic"
+                            },
+                            {
+                                "type": "class",
+                                "placement": "after",
+                                "predicate": "sio:SIO_000253",
+                                "class": "ncit:C142529",
+                                "class_label": "ehrClass",
+                                "aesthetic_label": "EHR"
+                            },
+                            {
+                                "type": "node",
+                                "predicate": "sio:SIO_000221",
+                                "class": "ncit:C29848",
+                                "node_label": "years",
+                                "aesthetic_label": "Years"
+                            }
+                        ]
+                    }
+                </script>
+            </div>
+
+            <!-- Partial Variable Example -->
+            <div class="variable-card variable-partial" data-variable="tumour_location" data-database="head_neck_radiomics">
+                <div class="variable-header">
+                    <div class="variable-name">tumour_location</div>
+                    <div class="status-badge status-annotated">
+                        <i class="fas fa-check-circle"></i> Described
+                    </div>
+                </div>
+
+                <!-- Knowledge Graph Container -->
+                <div class="knowledge-graph-container">
+                    <h6><i class="fas fa-project-diagram"></i> Knowledge Graph Representation</h6>
+                    <svg class="knowledge-graph-svg" id="graph-head_neck_radiomics-tumour_location"></svg>
+                </div>
+
+                <!-- Traditional Variable Details -->
+                <div class="variable-details">
+                    <div class="detail-row">
+                        <div class="detail-label">Local Definition:</div>
+                        <div class="detail-value">anatomical_location</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Predicate:</div>
+                        <div class="detail-value"><code>sio:SIO_000008</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Class:</div>
+                        <div class="detail-value"><code>ncit:C3263</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Value Mapping:</div>
+                        <div class="detail-value">
+                            <div class="value-mapping-section">
+                                <div class="value-mapping-item">
+                                    <span><strong>Oropharynx</strong></span>
+                                    <span>OPX</span>
+                                    <span><code>ncit:C12762</code></span>
+                                </div>
+                                <div class="value-mapping-item">
+                                    <span><strong>Larynx</strong></span>
+                                    <span>LAR</span>
+                                    <span><code>ncit:C12420</code></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Store variable data for JavaScript -->
+                <script type="application/json" class="variable-data">
+                    {
+                        "data_type": null,
+                        "predicate": "sio:SIO_000008",
+                        "class": "ncit:C3263",
+                        "local_definition": "anatomical_location",
+                        "schema_reconstruction": [
+                            {
+                                "type": "class",
+                                "predicate": "sio:SIO_000235",
+                                "class": "mesh:C18772",
+                                "class_label": "clinicalClass",
+                                "aesthetic_label": "Clinical"
+                            },
+                            {
+                                "type": "class",
+                                "predicate": "roo:P100029",
+                                "class": "ncit:C3262",
+                                "class_label": "neoplasmClass",
+                                "aesthetic_label": "Neoplasm"
+                            },
+                            {
+                                "type": "class",
+                                "placement": "after",
+                                "predicate": "sio:SIO_000253",
+                                "class": "ncit:C142529",
+                                "class_label": "ehrClass",
+                                "aesthetic_label": "EHR"
+                            }
+                        ],
+                        "value_mapping": {
+                            "terms": {
+                                "oropharynx": {
+                                    "local_term": "OPX",
+                                    "target_class": "ncit:C12762"
+                                },
+                                "larynx": {
+                                    "local_term": "LAR",
+                                    "target_class": "ncit:C12420"
+                                }
+                            }
+                        }
+                    }
+                </script>
+            </div>
+        </div>
+        <hr>
+    </form>
+
+    <button id="startAnnotation" class="btn btn-primary progress-button" onclick="startAnnotationProcessDemo()">
+        <div class="progress-bar"></div>
+        <span class="button-text">
+            <i class="fas fa-play"></i> Start Annotation Process (Demo)
+        </span>
+    </button>
+    <a href="#" class="btn btn-light">
+        <i class="fas fa-arrow-left"></i> Back to Downloads
+    </a>
+    <br>
+    <div class="mt-4">
+        <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+            <i class="fas fa-info-circle"></i>
+            <strong>Annotating your data</strong><br>
+            <div class="mt-1 ms-4">
+                <div class="mt-1">
+                    <p class="mb-1">
+                        This is a demonstration of the enhanced annotation review page with knowledge graph visualization and progressive annotation features.
+                    </p>
                 </div>
             </div>
         </div>
-
-    {% else %}
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>No annotation data found</strong><br>
-            Please ensure you have uploaded a semantic map and described your data before proceeding.
-            <br><br>
-            <a href="/" class="btn btn-light">Return to Home</a>
-        </div>
-    {% endif %}
+    </div>
 </div>
 
 <script>
@@ -546,7 +657,7 @@
         values: true
     };
 
-    // Toggle functionality for database sections (matching categories.html pattern)
+    // Initialize on page load
     $(document).ready(function () {
         $('.toggle-button').click(function () {
             var textElement = $(this).find('.toggle-text');
@@ -556,20 +667,13 @@
                 svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
             } else {
                 textElement.text('Show more');
-                svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
+                svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8-12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
             }
             $(this).toggleClass('open');
             $(this).next('.content').toggleClass('active');
-            
-            // Render graphs when content becomes visible
-            if ($(this).next('.content').hasClass('active')) {
-                setTimeout(() => {
-                    renderAllGraphsInSection($(this).next('.content'));
-                }, 100);
-            }
         });
         
-        // Initialize graphs for initially visible sections
+        // Initialize graphs
         setTimeout(() => {
             renderAllGraphs();
         }, 100);
@@ -617,20 +721,11 @@
         renderAllGraphs();
     }
 
-    // Render all graphs in visible sections
+    // Render all graphs
     function renderAllGraphs() {
-        document.querySelectorAll('.content.active .variable-card').forEach(card => {
+        document.querySelectorAll('.variable-card').forEach(card => {
             const database = card.dataset.database;
             const variable = card.dataset.variable;
-            renderKnowledgeGraph(database, variable);
-        });
-    }
-
-    // Render graphs in a specific section
-    function renderAllGraphsInSection(section) {
-        section.find('.variable-card').each(function() {
-            const database = $(this).data('database');
-            const variable = $(this).data('variable');
             renderKnowledgeGraph(database, variable);
         });
     }
@@ -689,14 +784,6 @@
         // Create tooltip
         const tooltip = createTooltip();
 
-        // Draw links
-        const link = svg.append("g")
-            .selectAll("path")
-            .data(filteredData.links)
-            .join("path")
-            .attr("class", "graph-link")
-            .attr("marker-end", "url(#arrowhead)");
-
         // Add arrowhead marker
         svg.append("defs").append("marker")
             .attr("id", "arrowhead")
@@ -709,6 +796,14 @@
             .append("path")
             .attr("d", "M0,-5L10,0L0,5")
             .attr("class", "graph-link");
+
+        // Draw links
+        const link = svg.append("g")
+            .selectAll("path")
+            .data(filteredData.links)
+            .join("path")
+            .attr("class", "graph-link")
+            .attr("marker-end", "url(#arrowhead)");
 
         // Draw nodes
         const node = svg.append("g")
@@ -941,8 +1036,8 @@
         return predicateMap[predicate] || predicate.split(':')[1] || predicate;
     }
 
-    // Enhanced annotation process with progress indication
-    function startAnnotationProcess() {
+    // Demo annotation process with progress indication
+    function startAnnotationProcessDemo() {
         const button = document.getElementById('startAnnotation');
         const progressBar = button.querySelector('.progress-bar');
         const buttonText = button.querySelector('.button-text');
@@ -957,7 +1052,8 @@
             { progress: 25, text: 'Processing variables...' },
             { progress: 50, text: 'Building annotations...' },
             { progress: 75, text: 'Uploading to GraphDB...' },
-            { progress: 90, text: 'Finalizing...' }
+            { progress: 90, text: 'Finalizing...' },
+            { progress: 100, text: 'Complete!' }
         ];
         
         let currentStage = 0;
@@ -966,47 +1062,21 @@
             if (currentStage < stages.length) {
                 const stage = stages[currentStage];
                 progressBar.style.width = stage.progress + '%';
-                buttonText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${stage.text}`;
+                if (currentStage === stages.length - 1) {
+                    buttonText.innerHTML = `<i class="fas fa-check"></i> ${stage.text}`;
+                    setTimeout(() => {
+                        alert('Demo annotation process completed! In the real application, you would be redirected to the verification page.');
+                        resetButton();
+                    }, 1500);
+                } else {
+                    buttonText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${stage.text}`;
+                    setTimeout(updateProgress, 1000);
+                }
                 currentStage++;
-                setTimeout(updateProgress, 1000); // Update every second
-            } else {
-                // Start actual annotation process
-                performAnnotation();
             }
         };
         
         setTimeout(updateProgress, 500);
-    }
-
-    function performAnnotation() {
-        const button = document.getElementById('startAnnotation');
-        const progressBar = button.querySelector('.progress-bar');
-        const buttonText = button.querySelector('.button-text');
-        
-        fetch('/start-annotation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            progressBar.style.width = '100%';
-            if (data.success) {
-                buttonText.innerHTML = '<i class="fas fa-check"></i> Annotation Complete!';
-                setTimeout(() => {
-                    window.location.href = '/annotation-verify';
-                }, 1500);
-            } else {
-                alert('Error: ' + data.error);
-                resetButton();
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('An error occurred while starting the annotation process.');
-            resetButton();
-        });
     }
 
     function resetButton() {
@@ -1017,7 +1087,7 @@
         button.disabled = false;
         button.classList.remove('processing');
         progressBar.style.width = '0%';
-        buttonText.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
+        buttonText.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process (Demo)';
     }
 </script>
 

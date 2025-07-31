@@ -1089,9 +1089,7 @@ def verify_annotation_ask():
 @app.route('/annotation-ui-demo')
 def annotation_ui_demo():
     """Demo page showing the annotation UI functionality"""
-    with open('/home/runner/work/Flyover/Flyover/annotation_ui_demo.html', 'r') as f:
-        content = f.read()
-    return content
+    return render_template('annotation_review_demo.html')
 
 
 @app.route('/data_descriptor/assets/<path:filename>')
