@@ -4,7 +4,7 @@
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 20px 0;
         margin-bottom: 20px;
-        border-radius: 8px;
+        border-radius: 0 0 8px 8px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
 
@@ -70,7 +70,7 @@
     }
 
     .nav-step.completed .step-number {
-        background-color: #28a745;
+        background-color: #99a1dc;
         color: white;
     }
 
@@ -89,12 +89,12 @@
             flex-direction: column;
             gap: 10px;
         }
-        
+
         .step-arrow {
             transform: rotate(90deg);
             margin: 5px 0;
         }
-        
+
         .nav-step {
             min-width: 200px;
         }
@@ -104,26 +104,36 @@
 <div class="flyover-navigation">
     <div class="container">
         <div class="nav-steps">
+            <!-- Home -->
+            <a href="/" class="nav-step" id="home-step">
+                <span class="step-number">
+                    <i class="fas fa-home step-icon"></i>
+                </span>
+                <span>Home</span>
+            </a>
+
+            <i class="fas fa-ellipsis-v step-arrow"></i>
+
             <!-- Step 1: Digest -->
             <a href="/digest" class="nav-step" id="digest-step">
                 <span class="step-number">
-                    <i class="fas fa-upload step-icon"></i>
+                    <i class="fas fa-cookie-bite step-icon"></i>
                 </span>
                 <span>Digest</span>
             </a>
-            
+
             <i class="fas fa-chevron-right step-arrow"></i>
-            
+
             <!-- Step 2: Describe -->
-            <a href="/repo" class="nav-step" id="describe-step">
+            <a href="/describe_landing" class="nav-step" id="describe-step">
                 <span class="step-number">
                     <i class="fas fa-edit step-icon"></i>
                 </span>
                 <span>Describe</span>
             </a>
-            
+
             <i class="fas fa-chevron-right step-arrow"></i>
-            
+
             <!-- Step 3: Annotate -->
             <a href="/annotation-review" class="nav-step" id="annotate-step">
                 <span class="step-number">
@@ -137,9 +147,9 @@
 
 <script>
     // Navigation header functionality
-    (function() {
+    (function () {
         'use strict';
-        
+
         // Step configuration
         const steps = {
             'digest': {
@@ -148,7 +158,7 @@
                 alwaysAccessible: true
             },
             'describe': {
-                pages: ['/repo', '/units', '/variable-details', '/end', '/download'],
+                pages: ['/describe_variables', '/describe_variable_details', '/variable-details', '/end', '/download'],
                 element: document.getElementById('describe-step'),
                 requiresData: true
             },
@@ -158,10 +168,10 @@
                 requiresData: true
             }
         };
-        
+
         // Get current page path
         const currentPath = window.location.pathname;
-        
+
         // Determine current step
         let currentStep = null;
         for (const [stepName, stepConfig] of Object.entries(steps)) {
@@ -170,34 +180,49 @@
                 break;
             }
         }
-        
+
         // Check if data exists (basic check - you can enhance this)
         function hasData() {
-            // This is a basic check - in a real implementation, you might want to 
-            // make an AJAX call to check if data exists in the database
-            // For now, we'll assume data exists if we're not on the home page
-            // or if there's a graph_exists variable (passed from Flask template)
+            // TODO ensure this function is called only once per page load and that it works correctly.
+            // If graph_exists is already defined from server-side template, use it
             if (typeof graph_exists !== 'undefined') {
                 return graph_exists;
             }
-            // Fallback: assume data exists if we're past the digest step
-            return currentPath !== '/' && currentPath !== '/upload';
+
+            // Make AJAX call to check if data exists in the database
+            let dataExists = false;
+
+            // Use synchronous AJAX for immediate result (note: this blocks the UI momentarily)
+            $.ajax({
+                url: '/api/check-graph-exists',
+                type: 'GET',
+                async: true,
+                success: function (response) {
+                    dataExists = response.exists || false;
+                },
+                error: function () {
+                    // Fallback: assume data exists if we're past the digest step
+                    dataExists = currentPath !== '/' && currentPath !== '/upload';
+                }
+            });
+
+            return dataExists;
         }
-        
+
         // Update step states
         function updateStepStates() {
             const dataExists = hasData();
-            
+
             // Reset all steps
             Object.values(steps).forEach(step => {
                 step.element.classList.remove('active', 'completed', 'disabled');
             });
-            
+
             // Set current step as active
             if (currentStep && steps[currentStep]) {
                 steps[currentStep].element.classList.add('active');
             }
-            
+
             // Set completed steps
             if (dataExists) {
                 if (currentStep === 'describe' || currentStep === 'annotate') {
@@ -207,7 +232,7 @@
                     steps.describe.element.classList.add('completed');
                 }
             }
-            
+
             // Disable steps that require data when no data exists
             Object.entries(steps).forEach(([stepName, stepConfig]) => {
                 if (stepConfig.requiresData && !dataExists && stepName !== currentStep) {
@@ -215,25 +240,25 @@
                 }
             });
         }
-        
+
         // Add click handlers for validation
         Object.entries(steps).forEach(([stepName, stepConfig]) => {
-            stepConfig.element.addEventListener('click', function(e) {
+            stepConfig.element.addEventListener('click', function (e) {
                 if (this.classList.contains('disabled')) {
                     e.preventDefault();
-                    
+
                     // Show user-friendly message
                     if (stepConfig.requiresData && !hasData()) {
-                        alert('Please complete the Digest step first by uploading your data.');
+                        alert('Please complete the Digest step first by submitting your data.');
                     }
                     return false;
                 }
             });
         });
-        
+
         // Initialize the navigation
         updateStepStates();
-        
+
         // Make functions available globally for templates to use
         window.flyoverNavigation = {
             updateStepStates: updateStepStates,

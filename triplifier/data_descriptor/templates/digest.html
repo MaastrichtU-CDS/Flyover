@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<script src="{{ url_for('custom_static', filename='js/jquery-3.5.1.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Data submission</title>
+</head>
+
+<body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
+<div class="container">
+    <br>
+    <div {% if not error %} style="display: none;" {% endif %}>
+
+        {% block content %}
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-warning alert-dismissible">
+                            <button type="button" class="close align-middle" data-dismiss="alert">&times;</button>
+                            {{ message }}
+                        </div>
+
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+        {% endblock %}
+    </div>
+
+    <h1>Welcome to Flyover &#x1F426;</h1>
+    <hr>
+
+    <header>Start by selecting your data source:</header>
+
+    <form method="POST" action="/upload" enctype="multipart/form-data" id="mainForm">
+        <div class="form-group">
+            <label for="CSV">CSV:</label>
+            <input type="radio" id="CSV" name="fileType" value="CSV">
+        </div>
+
+        <div class="form-group">
+            <label for="Postgres">PostgreSQL:</label>
+            <input type="radio" id="Postgres" name="fileType" value="Postgres">
+        </div>
+
+        <div id="csvform" style="display: none;">
+            <hr>
+            <label for="csvPath">Please specify the path of the CSV file(s) you would like to process</label>
+            <br>
+            <input type="text" id="csvPath" name="csvPath" placeholder="Enter CSV File Path(s)" readonly>
+            <input type="button" class="btn btn-primary" value="..."
+                   onclick="document.getElementById('csvFile').click();">
+            <input type="file" id="csvFile" name="csvFile" style="display:none;" multiple accept=".csv"
+                   onchange="updateFilePaths(this)">
+            <input type="text" id="csv_separator_sign" name="csv_separator_sign"
+                   placeholder="Separator sign (defaults to ',')"
+                   style="width: 250px; margin-left: 10px;">
+            <input type="text" id="csv_decimal_sign" name="csv_decimal_sign"
+                   placeholder="Decimal sign (defaults to '.')"
+                   style="width: 250px; margin-left: 10px;">
+
+            <!-- PK/FK Configuration Section -->
+            <div id="pkFkSection" style="display: none; margin-top: 20px;">
+                <hr>
+                <div class="alert alert-info">
+                    <strong><i class="fas fa-info-circle"></i>Multiple CSV Files Detected</strong><br>
+                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. <br> This will help create meaningful connections in your knowledge graph.
+                </div>
+                <div id="pkFkContent">
+                    <!-- Dynamic PK/FK fields will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Data Linking Section - Hidden until files are uploaded -->
+            {% if graph_exists %}
+            <div id="dataLinkingSection" style="display: none; margin-top: 20px;">
+                <hr>
+                <div class="alert alert-info">
+                    <strong><i class="fas fa-link"></i> Link Your New Data to Existing Graph Data</strong><br>
+                    <p>This feature allows you to connect your new data with data that already exists in the graph database. </p>
+                    <p class="mb-0"><small>Note: Make sure your linking columns contain compatible values (e.g., identical ID formats)</small></p>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="enableDataLinking" name="enableDataLinking">
+                    <label class="form-check-label" for="enableDataLinking">
+                        <strong>Enable Data Linking</strong>
+                    </label>
+                    <small class="form-text text-muted">Check this box to establish connections between your new data and existing data</small>
+                </div>
+
+                <div id="linkingConfiguration" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Configure Data Links</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>New Data (Data you're uploading now)</h6>
+                                    <div class="form-group">
+                                        <label for="newTableName">Select Data File:</label>
+                                        <select class="form-control" id="newTableName" name="newTableName">
+                                            <option value="">-- Select the CSV file you want to link --</option>
+                                        </select>
+                                        <small class="form-text text-muted">Choose which of your uploaded CSV files contains the linking information</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="newColumnName">Select Linking Column:</label>
+                                        <select class="form-control" id="newColumnName" name="newColumnName">
+                                            <option value="">-- Select the column containing identifiers --</option>
+                                        </select>
+                                        <small class="form-text text-muted">Choose the column that contains values matching the existing data (e.g., Patient ID, Study Number)</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Existing Graph Data (Data already in the graph database)</h6>
+                                    <div class="form-group">
+                                        <label for="existingTableName">Select Existing Table:</label>
+                                        <select class="form-control" id="existingTableName" name="existingTableName">
+                                            <option value="">-- Select the existing data table to link to --</option>
+                                        </select>
+                                        <small class="form-text text-muted">Choose which existing data table you want to link with</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="existingColumnName">Select Matching Column:</label>
+                                        <select class="form-control" id="existingColumnName" name="existingColumnName">
+                                            <option value="">-- Select the column to match against --</option>
+                                        </select>
+                                        <small class="form-text text-muted">Choose the column from existing data that matches your new data's identifiers</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden field for cross-graph linking data -->
+                <input type="hidden" id="crossGraphLinkData" name="crossGraphLinkData" value="">
+            </div>
+            {% endif %}
+        </div>
+
+        <div id="postgresform" style="display: none;">
+            <hr>
+            <label for="username">Please specify the following details for your postgres database</label>
+            <br>
+            <label for="username">PostgreSQL Username:</label>
+            <input type="text" id="username" name="username">
+            <br>
+            <label for="password">PostgreSQL Password:</label>
+            <input type="password" id="password" name="password">
+            <br>
+            <label for="POSTGRES_URL">PostgreSQL URL:</label>
+            <input type="text" id="POSTGRES_URL" name="POSTGRES_URL">
+            <br>
+            <label for="POSTGRES_DB">PostgreSQL Database:</label>
+            <input type="text" id="POSTGRES_DB" name="POSTGRES_DB">
+        </div>
+
+        <!-- Hidden field for PK/FK data -->
+        <input type="hidden" id="pkFkData" name="pkFkData" value="">
+
+        <input type="submit" id="submitFilesButton" value="Submit Files" class="btn btn-primary">
+
+        {% if graph_exists %}
+            <hr>
+            <p>&#x26A0;<i><b>The associated GraphDB instance already contains a data graph.</b></i><br>
+                <i>It is possible to add more data to this graph, for that you can use the data upload available
+                    above.</i><br>
+                <i>It is, however, possible to describe the existing data without having to add new,
+                    for that please use the options below.</i></p>
+            <i>The existing data graph can also be removed through the GraphDB workbench.</i></p>
+
+            <br>
+            <input type="submit" id="submitWithoutData" value="Proceed without adding data" class="btn btn-primary">
+
+        {% endif %}
+    </form>
+</div>
+
+<script>
+
+    let csvFiles = [];
+    let csvColumns = {};
+
+    function updateFilePaths(input) {
+        csvFiles = [];
+        csvColumns = {};
+
+        let filePaths = [];
+        for (let i = 0; i < input.files.length; i++) {
+            filePaths.push(input.files[i].name);
+            csvFiles.push(input.files[i]);
+        }
+        document.getElementById('csvPath').value = filePaths.join(', ');
+
+        // Always analyze CSV files to get column information
+        analyzeCSVFiles(input.files).then(() => {
+            // Show/hide PK/FK section based on number of files
+            if (input.files.length > 1) {
+                generatePkFkFields();
+                $("#pkFkSection").slideDown();
+            } else {
+                $("#pkFkSection").hide();
+            }
+
+            // Show data linking section when files are uploaded (if graph exists)
+            {% if graph_exists %}
+            if (input.files.length > 0) {
+                $("#dataLinkingSection").slideDown();
+                updateNewTableOptions();
+            } else {
+                $("#dataLinkingSection").hide();
+            }
+            {% endif %}
+        });
+    }
+
+    // Function to load existing graph tables and columns
+    function loadExistingGraphData() {
+        $.ajax({
+            url: '/get-existing-graph-structure',
+            method: 'GET',
+            success: function(data) {
+                // Populate existing table dropdown
+                const existingTableSelect = $('#existingTableName');
+                existingTableSelect.empty().append('<option value="">-- Select Existing Table --</option>');
+
+                if (data.tables) {
+                    data.tables.forEach(table => {
+                        existingTableSelect.append(`<option value="${table}">${table}</option>`);
+                    });
+                }
+
+                // Store the full structure for later use
+                window.existingGraphStructure = data;
+            },
+            error: function(xhr, status, error) {
+                console.error('Error loading existing graph structure:', error);
+            }
+        });
+    }
+
+    function analyzeCSVFiles(files) {
+        let promises = [];
+
+        for (let i = 0; i < files.length; i++) {
+            promises.push(readCSVColumns(files[i]));
+        }
+
+        return Promise.all(promises).then(results => {
+            results.forEach((columns, index) => {
+                csvColumns[files[index].name] = columns;
+            });
+
+            // Don't automatically generate PK/FK fields here anymore
+            // That will be handled in updateFilePaths based on file count
+        }).catch(error => {
+            console.error('Error analyzing CSV files:', error);
+        });
+    }
+
+    function readCSVColumns(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const csv = e.target.result;
+                    const lines = csv.split('\n');
+                    if (lines.length > 0) {
+                        // Handle different separators and quoted fields
+                        const separator = detectSeparator(lines[0]);
+                        const headers = parseCSVLine(lines[0], separator);
+                        resolve(headers);
+                    } else {
+                        resolve([]);
+                    }
+                } catch (error) {
+                    console.error('Error parsing CSV:', error);
+                    resolve([]);
+                }
+            };
+            reader.onerror = reject;
+            reader.readAsText(file.slice(0, 1024)); // Read only first 1KB for headers
+        });
+    }
+
+    function detectSeparator(line) {
+        // Common CSV separators
+        const separators = [',', ';', '\t', '|'];
+        let bestSeparator = ',';
+        let maxCount = 0;
+
+        for (let sep of separators) {
+            const count = (line.split(sep).length - 1);
+            if (count > maxCount) {
+                maxCount = count;
+                bestSeparator = sep;
+            }
+        }
+
+        return bestSeparator;
+    }
+
+    function parseCSVLine(line, separator) {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === separator && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        result.push(current.trim());
+        return result.map(h => h.replace(/"/g, '').trim()).filter(h => h.length > 0);
+    }
+
+    function generatePkFkFields() {
+        let content = '';
+
+        csvFiles.forEach((file, index) => {
+            const fileName = file.name;
+            const columns = csvColumns[fileName] || [];
+
+            content += `
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="fas fa-table"></i> ${fileName}
+                            <small class="text-muted">(${columns.length} columns detected)</small>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="pk_${index}" class="font-weight-bold">
+                                        <i class="fas fa-key text-warning"></i> Primary Key:
+                                    </label>
+                                    <select class="form-control" id="pk_${index}" name="pk_${index}">
+                                        <option value="">-- No Primary Key --</option>
+                                        ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                    </select>
+                                    <small class="form-text text-muted">
+                                        Column that uniquely identifies each row in this file
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fk_${index}" class="font-weight-bold">
+                                        <i class="fas fa-link text-info"></i> Foreign Key:
+                                    </label>
+                                    <select class="form-control" id="fk_${index}" name="fk_${index}">
+                                        <option value="">-- No Foreign Key --</option>
+                                        ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
+                                    </select>
+                                    <small class="form-text text-muted">
+                                        Column that references another table's primary key
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row" id="fkDetails_${index}" style="display: none;">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fkTable_${index}" class="font-weight-bold">
+                                        <i class="fas fa-arrow-right text-success"></i> References Table:
+                                    </label>
+                                    <select class="form-control" id="fkTable_${index}" name="fkTable_${index}">
+                                        <option value="">-- Select Referenced Table --</option>
+                                        ${csvFiles.map(f => f.name !== fileName ? `<option value="${f.name}">${f.name}</option>` : '').join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="fkColumn_${index}" class="font-weight-bold">
+                                        <i class="fas fa-arrow-right text-success"></i> References Column:
+                                    </label>
+                                    <select class="form-control" id="fkColumn_${index}" name="fkColumn_${index}">
+                                        <option value="">-- Select Referenced Column --</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Add helpful information
+        content += `
+            <div class="alert alert-light border">
+                <h6><i class="fas fa-lightbulb text-warning"></i> Tips:</h6>
+                <ul class="mb-0 small">
+                    <li><strong>Primary Key:</strong> A column that uniquely identifies each row (e.g., ID, PatientID)</li>
+                    <li><strong>Foreign Key:</strong> A column that references a primary key in another table (e.g., PatientID in data_table_b referencing ID in data_table_a)</li>
+                    <li>Leave fields empty if no relationships exist</li>
+                    <li>These relationships will be used to create connections in your knowledge graph</li>
+                </ul>
+            </div>
+        `;
+
+        document.getElementById('pkFkContent').innerHTML = content;
+
+        // Add event listeners for FK changes
+        csvFiles.forEach((file, index) => {
+            $(`#fk_${index}`).change(function() {
+                if ($(this).val()) {
+                    $(`#fkDetails_${index}`).slideDown();
+                } else {
+                    $(`#fkDetails_${index}`).slideUp();
+                }
+            });
+
+            $(`#fkTable_${index}`).change(function() {
+                const selectedTable = $(this).val();
+                const targetColumns = csvColumns[selectedTable] || [];
+
+                $(`#fkColumn_${index}`).html(
+                    '<option value="">-- Select Referenced Column --</option>' +
+                    targetColumns.map(col => `<option value="${col}">${col}</option>`).join('')
+                );
+            });
+        });
+    }
+
+    function collectPkFkData() {
+        let pkFkData = [];
+
+        csvFiles.forEach((file, index) => {
+            const pk = $(`#pk_${index}`).val();
+            const fk = $(`#fk_${index}`).val();
+            const fkTable = $(`#fkTable_${index}`).val();
+            const fkColumn = $(`#fkColumn_${index}`).val();
+
+            let fileData = {
+                fileName: file.name,
+                primaryKey: pk || null,
+                foreignKey: fk || null,
+                foreignKeyTable: fkTable || null,
+                foreignKeyColumn: fkColumn || null
+            };
+
+            pkFkData.push(fileData);
+        });
+
+        return pkFkData;
+    }
+
+    function updateNewTableOptions() {
+        const newTableSelect = $('#newTableName');
+        newTableSelect.empty().append('<option value="">-- Select New Table --</option>');
+
+        csvFiles.forEach(file => {
+            const tableName = file.name.replace('.csv', '');
+            newTableSelect.append(`<option value="${tableName}">${tableName}</option>`);
+        });
+    }
+
+    $(document).ready(function () {
+        // Initially disable the other submit button
+        $("#submitFilesButton").prop("disabled", true);
+
+        // Enable the other submit button when the necessary fields are filled
+        $("input[type=text], input[type=file], input[type=password]").on("change keyup", function () {
+            var csvFile = $("#csvFile").val();
+            var username = $("#username").val();
+            var password = $("#password").val();
+            var postgresUrl = $("#POSTGRES_URL").val();
+            var postgresDb = $("#POSTGRES_DB").val();
+
+            if (($("#CSV").is(":checked") && csvFile) || ($("#Postgres").is(":checked") && username && password && postgresUrl && postgresDb)) {
+                $("#submitFilesButton").prop("disabled", false);
+            } else {
+                $("#submitFilesButton").prop("disabled", true);
+            }
+        });
+
+        $("#CSV").click(function () {
+            $("#csvform").show();
+            $("#postgresform").hide();
+        });
+
+        $("#Postgres").click(function () {
+            $("#csvform").hide();
+            $("#postgresform").show();
+            // Hide data linking section for PostgreSQL
+            $("#dataLinkingSection").hide();
+        });
+
+        // Initialize data linking functionality if graph exists
+        {% if graph_exists %}
+        if ($('#dataLinkingSection').length) {
+            loadExistingGraphData();
+
+            $('#enableDataLinking').change(function() {
+                if ($(this).is(':checked')) {
+                    $('#linkingConfiguration').slideDown();
+                } else {
+                    $('#linkingConfiguration').slideUp();
+                }
+            });
+
+            // Handle new table selection
+            $('#newTableName').change(function() {
+                const selectedTable = $(this).val();
+                const newColumnSelect = $('#newColumnName');
+                newColumnSelect.empty().append('<option value="">-- Select New Column --</option>');
+
+                if (selectedTable) {
+                    const selectedFile = csvFiles.find(f => f.name.replace('.csv', '') === selectedTable);
+                    if (selectedFile && csvColumns[selectedFile.name]) {
+                        csvColumns[selectedFile.name].forEach(column => {
+                            newColumnSelect.append(`<option value="${column}">${column}</option>`);
+                        });
+                    }
+                }
+            });
+
+            // Handle existing table selection
+            $('#existingTableName').change(function() {
+                const selectedTable = $(this).val();
+                const existingColumnSelect = $('#existingColumnName');
+                existingColumnSelect.empty().append('<option value="">-- Select Existing Column --</option>');
+
+                if (selectedTable && window.existingGraphStructure && window.existingGraphStructure.tableColumns) {
+                    const columns = window.existingGraphStructure.tableColumns[selectedTable] || [];
+                    columns.forEach(column => {
+                        existingColumnSelect.append(`<option value="${column}">${column}</option>`);
+                    });
+                }
+            });
+
+            // For the "Proceed without adding data" button
+            $("#submitWithoutData").click(function(e) {
+                e.preventDefault();
+                // Just submit the form normally without any data
+                $("#mainForm").submit();
+            });
+        }
+        {% endif %}
+
+        // Handle form submission
+        $("#mainForm").submit(function(e) {
+            // If CSV is selected and PK/FK section is visible, collect the data
+            if ($("#CSV").is(":checked") && $("#pkFkSection").is(":visible")) {
+                const pkFkData = collectPkFkData();
+                $("#pkFkData").val(JSON.stringify(pkFkData));
+            }
+
+            // Collect cross-graph linking data
+            if ($("#enableDataLinking").is(':checked')) {
+                const crossGraphLink = {
+                    newTableName: $('#newTableName').val(),
+                    newColumnName: $('#newColumnName').val(),
+                    existingTableName: $('#existingTableName').val(),
+                    existingColumnName: $('#existingColumnName').val()
+                };
+
+                if (crossGraphLink.newTableName && crossGraphLink.newColumnName &&
+                    crossGraphLink.existingTableName && crossGraphLink.existingColumnName) {
+                    $("#crossGraphLinkData").val(JSON.stringify(crossGraphLink));
+                }
+            }
+        });
+    });
+
+</script>
+
+<!-- Add some custom CSS for better styling -->
+<style>
+    .card-header {
+        background-color: #f8f9fa !important;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .form-group label {
+        margin-bottom: 5px;
+    }
+
+    .form-text {
+        margin-top: 3px;
+    }
+
+    #pkFkSection .alert-info {
+        border-left: 4px solid #17a2b8;
+    }
+
+    #pkFkSection .alert-light {
+        border-left: 4px solid #6c757d;
+    }
+
+    #dataLinkingSection .alert-info {
+        border-left: 4px solid #17a2b8;
+    }
+
+    #dataLinkingSection .alert-light {
+        border-left: 4px solid #6c757d;
+    }
+
+    .fas {
+        margin-right: 5px;
+    }
+</style>
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = {% if graph_exists %}true{% else %}false{% endif %};
+</script>
+
+</body>
+</html>
