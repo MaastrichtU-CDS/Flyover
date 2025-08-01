@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
 <script src="{{ url_for('custom_static', filename='js/jquery-3.5.1.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
 
@@ -33,19 +34,22 @@
         {% endblock %}
     </div>
 
-    <h1>Welcome to Flyover &#x1F426;</h1>
+    <h1>Digest your data</h1>
     <hr>
-
+    <p>First, you have to ensure that the graph database contains data and ontology graphs. <br>
+    You can achieve this by submitting your data for digestion using Triplifier.<br>
+    </p>
+    <hr>
     <header>Start by selecting your data source:</header>
 
     <form method="POST" action="/upload" enctype="multipart/form-data" id="mainForm">
         <div class="form-group">
-            <label for="CSV">CSV:</label>
+            <label for="CSV"><i class="fas fa-file-csv"></i> CSV:</label>
             <input type="radio" id="CSV" name="fileType" value="CSV">
         </div>
 
         <div class="form-group">
-            <label for="Postgres">PostgreSQL:</label>
+            <label for="Postgres"><i class="fas fa-database"></i> PostgreSQL:</label>
             <input type="radio" id="Postgres" name="fileType" value="Postgres">
         </div>
 

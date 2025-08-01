@@ -18,11 +18,11 @@
     <h1>Semantic Annotation</h1>
     <hr>
 
-    <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i>
-        <strong>Welcome to the Annotation Step!</strong><br>
-        This step allows you to apply semantic annotations to your data using standardised ontologies, making your data FAIR (Findable, Accessible, Interoperable, and Reusable).
-    </div>
+    <p>
+        This step allows you to apply semantic annotations to your data using standardised ontologies,
+        making your data more
+        F.A.I.R. (Findable, Accessible, Interoperable, and Reusable) and increase semantic interoperability.
+    </p>
 
     <!-- Status Messages -->
     <div id="statusMessages">
@@ -50,7 +50,7 @@
             </p>
         </div>
     {% else %}
-        
+
         <!-- Optional JSON Upload Section for Direct Annotation -->
         <div id="jsonUploadSection" class="mb-4">
             <div class="card">
@@ -61,20 +61,24 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        If you have a pre-prepared JSON file with data descriptions and semantic mappings, you can upload it directly for annotation processing.
+                        If you have a pre-prepared JSON file with data descriptions and semantic mappings, you can
+                        upload it directly for annotation processing.
                     </p>
 
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i>
                         <strong>What should the JSON contain?</strong><br>
-                        Your JSON file should include data variable definitions, types, and any pre-existing semantic mappings that you want to enhance with additional annotations.
+                        Your JSON file should include data variable definitions, types, and any pre-existing semantic
+                        mappings that you want to enhance with additional annotations.
                     </div>
 
-                    <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data" id="jsonUploadForm">
+                    <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data"
+                          id="jsonUploadForm">
                         <div class="form-group">
                             <label for="annotationJsonPath">JSON File for Annotation:</label>
                             <div class="input-group">
-                                <input type="text" id="annotationJsonPath" name="annotationJsonPath" class="form-control"
+                                <input type="text" id="annotationJsonPath" name="annotationJsonPath"
+                                       class="form-control"
                                        placeholder="Select JSON file..." readonly>
                                 <div class="input-group-append">
                                     <button type="button" class="btn btn-outline-secondary"
@@ -109,12 +113,13 @@
             </div>
             <div class="card-body">
                 <p class="text-muted">
-                    Use the data that has already been uploaded and described in the previous steps for semantic annotation.
+                    Use the data that has already been uploaded and described in the previous steps for semantic
+                    annotation.
                 </p>
-                
-                <form method="GET" action="/annotation-review">
+
+                <form method="GET" action="/describe_landing">
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-tags"></i> Start Semantic Annotation
+                        <i class="fas fa-tags"></i> Start Describing your data
                     </button>
                 </form>
             </div>
@@ -125,6 +130,7 @@
     <a href="/">
         <i class="fas fa-home"></i> Return to welcome page
     </a>
+    <br>
 </div>
 
 <script>
@@ -181,9 +187,9 @@
                 contentType: false,
                 success: function (response) {
                     showStatusMessage("JSON file uploaded successfully! Redirecting to annotation review...", "success");
-                    
+
                     // Redirect to annotation review after short delay
-                    setTimeout(function() {
+                    setTimeout(function () {
                         window.location.href = "/annotation-review";
                     }, 2000);
                 },

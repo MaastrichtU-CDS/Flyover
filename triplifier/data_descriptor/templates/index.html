@@ -62,15 +62,15 @@
         }
 
         .digest-icon {
-            background: linear-gradient(45deg, #4CAF50, #45a049);
+            background: linear-gradient(45deg, #b92f84, #ed144f);
         }
 
         .describe-icon {
-            background: linear-gradient(45deg, #2196F3, #1976D2);
+            background: linear-gradient(45deg, #2196F3, #0862c6);
         }
 
         .annotate-icon {
-            background: linear-gradient(45deg, #FF9800, #F57C00);
+            background: linear-gradient(45deg, #d36500, #FF9800);
         }
 
         .step-title {
@@ -134,8 +134,9 @@
 
     <!-- Workflow Overview -->
     <div class="row">
-        <div class="col-lg-4 col-md-6 mb-4">
-            <div class="workflow-card">
+        <div class="col-lg-4 col-md-6 mb-4" >
+{#            TODO make sure this is only clickable according to rules provided in the header#}
+            <div class="workflow-card" onclick="window.location.href='/digest'" style="cursor: pointer;">
                 <div class="step-icon digest-icon">
                     <i class="fas fa-cookie-bite"></i>
                 </div>
@@ -151,8 +152,9 @@
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
-            <div class="workflow-card">
+        <div class="col-lg-4 col-md-6 mb-4" >
+{#            TODO make sure this is only clickable according to rules provided in the header#}
+            <div class="workflow-card" onclick="window.location.href='/describe_landing'" style="cursor: pointer;">
                 <div class="step-icon describe-icon">
                     <i class="fas fa-edit"></i>
                 </div>
@@ -168,8 +170,10 @@
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
-            <div class="workflow-card">
+        <div class="col-lg-4 col-md-6 mb-4" >
+{#            TODO make sure this is only clickable according to rules provided in the header#}
+            <div class="workflow-card" onclick="window.location.href='/annotation_landing'"
+             style="cursor: pointer;">
                 <div class="step-icon annotate-icon">
                     <i class="fas fa-tags"></i>
                 </div>
@@ -191,7 +195,7 @@
         <h3><i class="fas fa-rocket text-primary"></i> Ready to Get Started?</h3>
         <p class="mb-4">Begin transforming your data into semantically interoperable resources.</p>
         <a href="/digest" class="btn btn-primary btn-lg">
-            <i class="fas fa-play me-2"></i>Start Data F.A.I.R.-ification Process
+            <i class="fas fa-play"></i> Start Data F.A.I.R.-ification Process
         </a>
     </div>
 </div>

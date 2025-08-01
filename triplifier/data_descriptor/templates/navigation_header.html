@@ -53,14 +53,13 @@
     }
 
     .step-number {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         width: 28px;
         height: 28px;
         border-radius: 50%;
         background-color: rgba(255, 255, 255, 0.2);
-        margin-right: 8px;
         font-weight: bold;
         font-size: 0.9em;
     }
@@ -112,7 +111,6 @@
                 <span>Home</span>
             </a>
 
-            <i class="fas fa-ellipsis-v step-arrow"></i>
 
             <!-- Step 1: Digest -->
             <a href="/digest" class="nav-step" id="digest-step">
@@ -227,18 +225,18 @@
                 // If we're on describe or annotate step, digest is completed
                 if (currentStep === 'describe' || currentStep === 'annotate') {
                     steps.digest.element.classList.add('completed');
-                    
+
                     // Update completed icon for digest
                     const digestIcon = steps.digest.element.querySelector('.step-icon');
                     if (digestIcon) {
                         digestIcon.className = 'fas fa-check step-icon';
                     }
                 }
-                
+
                 // If we're on annotate step, describe is also completed
                 if (currentStep === 'annotate') {
                     steps.describe.element.classList.add('completed');
-                    
+
                     // Update completed icon for describe
                     const describeIcon = steps.describe.element.querySelector('.step-icon');
                     if (describeIcon) {
