@@ -315,11 +315,10 @@ def describe_landing():
     """
     This function provides access to the describe landing page when users navigate directly 
     or when they have completed the digest step. It checks if data exists in the repository
-    and blocks access if no data is found, redirecting to digest page.
+    and shows appropriate messaging based on data availability.
     
     Returns:
         flask.render_template: Renders the describe_landing.html template with appropriate status
-        flask.redirect: Redirects to digest page if no data exists
     """
     try:
         # Check if graph exists first
@@ -328,13 +327,36 @@ def describe_landing():
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template('describe_landing.html', message=Markup(message))
         else:
-            # No data found - redirect to digest page with message
-            flash("No data found in the system. Please complete the Digest step first by uploading your data.")
-            return redirect(url_for('index'))
+            # No data found - render page with warning message instead of redirecting
+            message = """
+            <div class="alert alert-warning" role="alert">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>No Data Found</strong><br>
+                You cannot proceed with the describe step as no data has been uploaded yet. 
+                Please go back to the Digest step to upload your data first.
+                <br><br>
+                <a href="/digest" class="btn btn-primary">
+                    <i class="fas fa-arrow-left"></i> Go to Digest Step
+                </a>
+            </div>
+            """
+            return render_template('describe_landing.html', message=Markup(message))
         
     except Exception as e:
-        flash(f"Error accessing describe step: {e}")
-        return redirect(url_for('index'))
+        # On error, show warning message instead of redirecting
+        message = f"""
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Error Accessing Data</strong><br>
+            An error occurred while checking for uploaded data: {e}<br>
+            Please ensure you have completed the Digest step before proceeding.
+            <br><br>
+            <a href="/digest" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Go to Digest Step
+            </a>
+        </div>
+        """
+        return render_template('describe_landing.html', message=Markup(message))
 
 
 @app.route("/describe_variables", methods=['GET', 'POST'])
