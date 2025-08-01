@@ -95,6 +95,8 @@ class Cache:
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
+        self.annotation_json_data = None  # Store uploaded JSON data for annotation
+        self.annotation_json_path = None  # Store path to uploaded JSON file
 
 
 session_cache = Cache()
@@ -306,6 +308,30 @@ def data_submission():
     """
     # Render the 'describe_landing.html' template with the 'title', 'message', and 'route'
     return render_template('describe_landing.html', message=Markup(session_cache.StatusToDisplay))
+
+
+@app.route('/describe_landing')
+def describe_landing():
+    """
+    This function provides access to the describe landing page when users navigate directly 
+    or when they have completed the digest step. It checks if data exists in the repository
+    and provides appropriate guidance.
+    
+    Returns:
+        flask.render_template: Renders the describe_landing.html template with appropriate status
+    """
+    try:
+        # Check if graph exists first
+        if check_graph_exists(session_cache.repo, "http://data.local/"):
+            session_cache.existing_graph = True
+            message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
+        else:
+            message = "No data found. Please complete the Digest step first by uploading your data."
+        
+        return render_template('describe_landing.html', message=Markup(message))
+    except Exception as e:
+        flash(f"Error accessing describe step: {e}")
+        return redirect(url_for('index'))
 
 
 @app.route("/repo", methods=['GET', 'POST'])
@@ -778,6 +804,76 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
 
     except Exception as e:
         abort(500, description=f"An error occurred while processing the ontology, error: {str(e)}")
+
+
+@app.route('/annotation_landing')
+def annotation_landing():
+    """
+    This function provides access to the annotation landing page when users navigate directly 
+    or when they want to start the annotation process. It checks if data exists and provides
+    appropriate options including JSON upload.
+    
+    Returns:
+        flask.render_template: Renders the annotation_landing.html template with appropriate status
+    """
+    try:
+        # Check if graph exists
+        data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
+        session_cache.existing_graph = data_exists
+        
+        message = None
+        if not data_exists:
+            message = "To start annotating, you need to complete the Digest and Describe steps first. Alternatively, you can upload a JSON file with your data descriptions."
+        
+        return render_template('annotation_landing.html', data_exists=data_exists, message=message)
+    except Exception as e:
+        flash(f"Error accessing annotation step: {e}")
+        return redirect(url_for('landing'))
+
+
+@app.route('/upload-annotation-json', methods=['POST'])
+def upload_annotation_json():
+    """
+    Handle the upload of a JSON file for direct annotation.
+    This allows users to upload JSON files with data descriptions for annotation.
+    
+    Returns:
+        flask.jsonify: JSON response indicating success or failure
+    """
+    try:
+        if 'annotationJsonFile' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['annotationJsonFile']
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not file.filename.lower().endswith('.json'):
+            return jsonify({'error': 'File must be a JSON file'}), 400
+
+        # Save the uploaded file
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Try to parse the JSON to validate it
+        try:
+            with open(filepath, 'r') as f:
+                json_data = json.load(f)
+            
+            # Store the JSON data for use in annotation
+            session_cache.annotation_json_data = json_data
+            session_cache.annotation_json_path = filepath
+            
+            return jsonify({'success': 'JSON file uploaded successfully', 'filename': filename})
+            
+        except json.JSONDecodeError:
+            os.remove(filepath)  # Clean up invalid file
+            return jsonify({'error': 'Invalid JSON file format'}), 400
+
+    except Exception as e:
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
 
 @app.route('/annotation-review')

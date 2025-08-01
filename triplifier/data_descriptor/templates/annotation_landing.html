@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Annotation Landing</title>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+</head>
+
+<body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
+<div class="container">
+    <br>
+    <h1>Semantic Annotation</h1>
+    <hr>
+
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <strong>Welcome to the Annotation Step!</strong><br>
+        This step allows you to apply semantic annotations to your data using standardised ontologies, making your data FAIR (Findable, Accessible, Interoperable, and Reusable).
+    </div>
+
+    <!-- Status Messages -->
+    <div id="statusMessages">
+        {% if message %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                {{ message }}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Check if previous steps are completed -->
+    {% if not data_exists %}
+        <div class="alert alert-warning">
+            <h5><i class="fas fa-exclamation-triangle"></i> Prerequisites Required</h5>
+            <p>To use the annotation features, you need to have completed the previous steps:</p>
+            <ul>
+                <li><strong>Step 1 - Digest:</strong> Upload and process your data</li>
+                <li><strong>Step 2 - Describe:</strong> Provide metadata and descriptions for your variables</li>
+            </ul>
+            <p>
+                <a href="/digest" class="btn btn-primary">
+                    <i class="fas fa-arrow-left"></i> Go to Digest Step
+                </a>
+            </p>
+        </div>
+    {% else %}
+        
+        <!-- Optional JSON Upload Section for Direct Annotation -->
+        <div id="jsonUploadSection" class="mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-code"></i> Option 1: Upload JSON File for Direct Annotation
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        If you have a pre-prepared JSON file with data descriptions and semantic mappings, you can upload it directly for annotation processing.
+                    </p>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>What should the JSON contain?</strong><br>
+                        Your JSON file should include data variable definitions, types, and any pre-existing semantic mappings that you want to enhance with additional annotations.
+                    </div>
+
+                    <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data" id="jsonUploadForm">
+                        <div class="form-group">
+                            <label for="annotationJsonPath">JSON File for Annotation:</label>
+                            <div class="input-group">
+                                <input type="text" id="annotationJsonPath" name="annotationJsonPath" class="form-control"
+                                       placeholder="Select JSON file..." readonly>
+                                <div class="input-group-append">
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            onclick="document.getElementById('annotationJsonFile').click();">
+                                        <i class="fas fa-folder-open"></i> Browse
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="file" id="annotationJsonFile" name="annotationJsonFile" style="display:none;"
+                                   accept=".json" onchange="updateAnnotationJsonPath(this)">
+                            <small class="form-text text-muted">
+                                Upload a JSON file containing your data descriptions and variable mappings.
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <button type="submit" id="uploadJsonButton" class="btn btn-success" disabled>
+                                <i class="fas fa-upload"></i> Upload JSON for Annotation
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Use Existing Data Section -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-database"></i> Option 2: Annotate Existing Data
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Use the data that has already been uploaded and described in the previous steps for semantic annotation.
+                </p>
+                
+                <form method="GET" action="/annotation-review">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-tags"></i> Start Semantic Annotation
+                    </button>
+                </form>
+            </div>
+        </div>
+    {% endif %}
+
+    <hr>
+    <a href="/">
+        <i class="fas fa-home"></i> Return to welcome page
+    </a>
+</div>
+
+<script>
+    function updateAnnotationJsonPath(input) {
+        const fullPath = input.value;
+        const fileName = fullPath.split('\\').pop();
+        $("#annotationJsonPath").val(fileName);
+
+        // Enable upload button if file is selected
+        $("#uploadJsonButton").prop("disabled", !fileName);
+    }
+
+    function showStatusMessage(message, type = "success") {
+        const alertClass = type === "error" ? "alert-danger" :
+            type === "info" ? "alert-info" : "alert-success";
+
+        const alertHtml = `
+            <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                <i class="fas fa-${type === "error" ? "exclamation-triangle" :
+            type === "info" ? "info-circle" : "check-circle"}"></i>
+                ${message}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        `;
+
+        $("#statusMessages").html(alertHtml);
+    }
+
+    $(document).ready(function () {
+        // Handle JSON upload form submission
+        $("#jsonUploadForm").submit(function (e) {
+            e.preventDefault();
+
+            if (!$("#annotationJsonFile")[0].files.length) {
+                showStatusMessage("Please select a JSON file to upload.", "error");
+                return;
+            }
+
+            // Create FormData object
+            const formData = new FormData();
+            formData.append("annotationJsonFile", $("#annotationJsonFile")[0].files[0]);
+
+            // Show loading state
+            $("#uploadJsonButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Uploading...');
+
+            // Submit via AJAX
+            $.ajax({
+                url: "/upload-annotation-json",
+                type: "POST",
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (response) {
+                    showStatusMessage("JSON file uploaded successfully! Redirecting to annotation review...", "success");
+                    
+                    // Redirect to annotation review after short delay
+                    setTimeout(function() {
+                        window.location.href = "/annotation-review";
+                    }, 2000);
+                },
+                error: function (xhr, status, error) {
+                    let errorMessage = "Failed to upload JSON file.";
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage = xhr.responseJSON.error;
+                    }
+                    showStatusMessage(errorMessage, "error");
+                    $("#uploadJsonButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload JSON for Annotation');
+                }
+            });
+        });
+    });
+</script>
+
+<!-- Add some custom CSS -->
+<style>
+    .card {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        margin-bottom: 20px;
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .input-group-text {
+        background-color: #e9ecef;
+        border-color: #ced4da;
+    }
+
+    .fas {
+        margin-right: 5px;
+    }
+
+    .alert {
+        margin-top: 15px;
+    }
+
+    .alert-info {
+        border-left: 4px solid #17a2b8;
+    }
+
+    .alert-warning {
+        border-left: 4px solid #ffc107;
+    }
+</style>
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    {% if data_exists %}
+        window.graph_exists = true;
+    {% else %}
+        window.graph_exists = false;
+    {% endif %}
+</script>
+
+</body>
+</html>

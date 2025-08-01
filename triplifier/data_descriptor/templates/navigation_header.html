@@ -135,7 +135,7 @@
             <i class="fas fa-chevron-right step-arrow"></i>
 
             <!-- Step 3: Annotate -->
-            <a href="/annotation-review" class="nav-step" id="annotate-step">
+            <a href="/annotation_landing" class="nav-step" id="annotate-step">
                 <span class="step-number">
                     <i class="fas fa-tags step-icon"></i>
                 </span>
@@ -158,12 +158,12 @@
                 alwaysAccessible: true
             },
             'describe': {
-                pages: ['/describe_variables', '/describe_variable_details', '/variable-details', '/end', '/download'],
+                pages: ['/describe_landing', '/describe_variables', '/describe_variable_details', '/variable-details', '/end', '/download'],
                 element: document.getElementById('describe-step'),
                 requiresData: true
             },
             'annotate': {
-                pages: ['/annotation-review', '/annotation-verify', '/start-annotation'],
+                pages: ['/annotation_landing', '/annotation-review', '/annotation-verify', '/start-annotation'],
                 element: document.getElementById('annotate-step'),
                 requiresData: true
             }
@@ -183,7 +183,6 @@
 
         // Check if data exists (basic check - you can enhance this)
         function hasData() {
-            // TODO ensure this function is called only once per page load and that it works correctly.
             // If graph_exists is already defined from server-side template, use it
             if (typeof graph_exists !== 'undefined') {
                 return graph_exists;
@@ -196,13 +195,13 @@
             $.ajax({
                 url: '/api/check-graph-exists',
                 type: 'GET',
-                async: true,
+                async: false, // Make synchronous to get immediate result
                 success: function (response) {
                     dataExists = response.exists || false;
                 },
                 error: function () {
-                    // Fallback: assume data exists if we're past the digest step
-                    dataExists = currentPath !== '/' && currentPath !== '/upload';
+                    // Fallback: assume no data exists if API call fails
+                    dataExists = false;
                 }
             });
 
@@ -223,13 +222,28 @@
                 steps[currentStep].element.classList.add('active');
             }
 
-            // Set completed steps
+            // Set completed steps based on data existence and current step
             if (dataExists) {
+                // If we're on describe or annotate step, digest is completed
                 if (currentStep === 'describe' || currentStep === 'annotate') {
                     steps.digest.element.classList.add('completed');
+                    
+                    // Update completed icon for digest
+                    const digestIcon = steps.digest.element.querySelector('.step-icon');
+                    if (digestIcon) {
+                        digestIcon.className = 'fas fa-check step-icon';
+                    }
                 }
+                
+                // If we're on annotate step, describe is also completed
                 if (currentStep === 'annotate') {
                     steps.describe.element.classList.add('completed');
+                    
+                    // Update completed icon for describe
+                    const describeIcon = steps.describe.element.querySelector('.step-icon');
+                    if (describeIcon) {
+                        describeIcon.className = 'fas fa-check step-icon';
+                    }
                 }
             }
 
