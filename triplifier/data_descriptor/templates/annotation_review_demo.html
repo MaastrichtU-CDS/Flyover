@@ -948,55 +948,78 @@
             description: `Variable: ${variableName}\nClass: ${variableData.class}\nPredicate: ${variableData.predicate}`
         });
 
-        // Connect variable to Entity using its predicate
-        links.push({
-            source: entityNodeId,
-            target: variableNodeId,
-            predicate: variableData.predicate
-        });
+        // Process schema reconstruction to determine connection sequence
+        let currentSourceId = entityNodeId;
+        let beforeSchemaItems = [];
+        let afterSchemaItems = [];
 
-        let lastSchemaNodeId = variableNodeId;
-
-        // Process schema reconstruction for hierarchical relationships
         if (variableData.schema_reconstruction && Array.isArray(variableData.schema_reconstruction)) {
+            // Separate before and after schema items
             variableData.schema_reconstruction.forEach(item => {
                 if (item.placement === 'after') {
-                    // Add node after variable (like EHR)
-                    const afterNodeId = nodeId++;
-                    nodes.push({
-                        id: afterNodeId,
-                        label: item.aesthetic_label || item.class_label || item.class,
-                        type: 'intermediate',
-                        fullData: item,
-                        description: `Class: ${item.class}\nPredicate: ${item.predicate}`
-                    });
-                    
-                    links.push({
-                        source: lastSchemaNodeId,
-                        target: afterNodeId,
-                        predicate: item.predicate
-                    });
-                    
-                    lastSchemaNodeId = afterNodeId;
+                    afterSchemaItems.push(item);
                 } else {
-                    // Add node before variable (like Demographic) - connects to variable
-                    const beforeNodeId = nodeId++;
-                    nodes.push({
-                        id: beforeNodeId,
-                        label: item.aesthetic_label || item.class_label || item.class,
-                        type: 'intermediate',
-                        fullData: item,
-                        description: `Class: ${item.class}\nPredicate: ${item.predicate}`
-                    });
-                    
-                    links.push({
-                        source: beforeNodeId,
-                        target: variableNodeId,
-                        predicate: item.predicate
-                    });
+                    beforeSchemaItems.push(item);
                 }
             });
+
+            // Create and connect before schema nodes sequentially
+            beforeSchemaItems.forEach((item, index) => {
+                const schemaNodeId = nodeId++;
+                nodes.push({
+                    id: schemaNodeId,
+                    label: item.aesthetic_label || item.class_label || item.class,
+                    type: 'intermediate',
+                    fullData: item,
+                    description: `Class: ${item.class}\nPredicate: ${item.predicate}`
+                });
+                
+                // Connect current source to this schema node
+                links.push({
+                    source: currentSourceId,
+                    target: schemaNodeId,
+                    predicate: index === 0 ? variableData.predicate : item.predicate
+                });
+                
+                // This schema node becomes the source for the next connection
+                currentSourceId = schemaNodeId;
+            });
         }
+
+        // Connect to variable from the last node in the sequence
+        if (beforeSchemaItems.length > 0) {
+            // Last schema node connects to variable using the variable's predicate
+            links.push({
+                source: currentSourceId,
+                target: variableNodeId,
+                predicate: beforeSchemaItems[beforeSchemaItems.length - 1].predicate
+            });
+        } else {
+            // No schema reconstruction, Entity connects directly to variable
+            links.push({
+                source: entityNodeId,
+                target: variableNodeId,
+                predicate: variableData.predicate
+            });
+        }
+
+        // Process after schema items (connect FROM variable)
+        afterSchemaItems.forEach(item => {
+            const afterNodeId = nodeId++;
+            nodes.push({
+                id: afterNodeId,
+                label: item.aesthetic_label || item.class_label || item.class,
+                type: 'intermediate',
+                fullData: item,
+                description: `Class: ${item.class}\nPredicate: ${item.predicate}`
+            });
+            
+            links.push({
+                source: variableNodeId,
+                target: afterNodeId,
+                predicate: item.predicate
+            });
+        });
 
         // Add value mappings as branches from the variable node
         if (variableData.value_mapping && variableData.value_mapping.terms) {
