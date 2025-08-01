@@ -206,27 +206,33 @@
 
         /* Graph Node Styles */
         .graph-node-complete {
-            fill: #28a745;
-            stroke: #1e7e34;
+            fill: #1f77b4;
+            stroke: #155a8a;
             stroke-width: 2;
         }
 
         .graph-node-incomplete {
-            fill: #dc3545;
-            stroke: #c82333;
+            fill: #ff7f0e;
+            stroke: #cc5a00;
             stroke-width: 2;
         }
 
         .graph-node-intermediate {
-            fill: #17a2b8;
-            stroke: #138496;
+            fill: #2ca02c;
+            stroke: #20751f;
             stroke-width: 2;
         }
 
         .graph-node-value {
-            fill: #6f42c1;
-            stroke: #59359a;
+            fill: #d62728;
+            stroke: #a01d1e;
             stroke-width: 1;
+        }
+
+        .graph-node-entity {
+            fill: #9467bd;
+            stroke: #6a4c93;
+            stroke-width: 3;
         }
 
         .graph-link {
@@ -372,13 +378,10 @@
 
     <div class="graph-toggle-controls" id="globalFilters" style="margin-top: 15px;">
         <button class="graph-filter-btn" data-filter="complete" onclick="toggleFilter('complete')">
-            <i class="fas fa-check-circle"></i> Complete Variables
+            <i class="fas fa-check-circle"></i> Described Variables
         </button>
         <button class="graph-filter-btn" data-filter="incomplete" onclick="toggleFilter('incomplete')">
-            <i class="fas fa-exclamation-triangle"></i> Incomplete Variables
-        </button>
-        <button class="graph-filter-btn" data-filter="intermediate" onclick="toggleFilter('intermediate')">
-            <i class="fas fa-sitemap"></i> Schema Hierarchy
+            <i class="fas fa-exclamation-triangle"></i> Undescribed Variables
         </button>
         <button class="graph-filter-btn" data-filter="values" onclick="toggleFilter('values')">
             <i class="fas fa-tags"></i> Value Mappings
@@ -542,7 +545,6 @@
     let activeFilters = {
         complete: true,
         incomplete: true,
-        intermediate: true,
         values: true
     };
 
@@ -679,12 +681,37 @@
             return;
         }
 
-        // Create force simulation
+        // Set Entity node fixed position at center
+        filteredData.nodes.forEach(node => {
+            if (node.type === 'entity') {
+                node.fx = width / 2;
+                node.fy = height / 2;
+            }
+        });
+
+        // Create force simulation with Entity-centered layout
         const simulation = d3.forceSimulation(filteredData.nodes)
-            .force("link", d3.forceLink(filteredData.links).id(d => d.id).distance(80))
-            .force("charge", d3.forceManyBody().strength(-300))
+            .force("link", d3.forceLink(filteredData.links).id(d => d.id)
+                .distance(d => {
+                    // Different distances for different connection types
+                    if (d.source.type === 'entity' || d.target.type === 'entity') return 120; // Entity to variables
+                    if (d.source.type === 'intermediate' || d.target.type === 'intermediate') return 90; // Schema connections
+                    return 70; // Value mappings
+                }))
+            .force("charge", d3.forceManyBody().strength(d => {
+                // Different forces for different node types
+                if (d.type === 'entity') return -800; // Strong repulsion for Entity
+                if (d.type === 'complete' || d.type === 'incomplete') return -400; // Medium for variables
+                return -200; // Weaker for schema and values
+            }))
             .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collision", d3.forceCollide().radius(30));
+            .force("collision", d3.forceCollide().radius(d => {
+                // Different collision radii for different node types
+                if (d.type === 'entity') return 35;
+                if (d.type === 'complete' || d.type === 'incomplete') return 25;
+                if (d.type === 'intermediate') return 20;
+                return 15; // Values
+            }));
 
         // Create tooltip
         const tooltip = createTooltip();
@@ -715,9 +742,16 @@
             .selectAll("circle")
             .data(filteredData.nodes)
             .join("circle")
-            .attr("r", d => d.type === 'value' ? 12 : (d.type === 'variable' ? 20 : 15))
+            .attr("r", d => {
+                // Different sizes for different node types
+                if (d.type === 'entity') return 30;
+                if (d.type === 'complete' || d.type === 'incomplete') return 20;
+                if (d.type === 'intermediate') return 15;
+                return 12; // Values
+            })
             .attr("class", d => `graph-node-${d.type}`)
             .call(d3.drag()
+                .filter(d => d.type !== 'entity') // Prevent dragging Entity node
                 .on("start", dragstarted)
                 .on("drag", dragged)
                 .on("end", dragended))
@@ -792,7 +826,19 @@
         const links = [];
         let nodeId = 0;
 
-        // Create central variable node
+        // Create central Entity node
+        const entityNodeId = nodeId++;
+        nodes.push({
+            id: entityNodeId,
+            label: 'Entity',
+            type: 'entity',
+            fullData: { description: 'Central entity representing the study subject' },
+            description: `Entity: Central node representing the study subject\nDatabase: ${database}`,
+            fx: null, // Will be set to center later
+            fy: null  // Will be set to center later
+        });
+
+        // Create variable node
         const variableNodeId = nodeId++;
         const isComplete = variableData.local_definition && variableData.data_type;
         nodes.push({
@@ -803,7 +849,15 @@
             description: `Variable: ${variableName}\nClass: ${variableData.class}\nPredicate: ${variableData.predicate}`
         });
 
-        let lastNodeId = variableNodeId;
+        // Connect variable to Entity using its predicate
+        links.push({
+            source: entityNodeId,
+            target: variableNodeId,
+            predicate: variableData.predicate,
+            predicateLabel: getPredicateLabel(variableData.predicate)
+        });
+
+        let lastSchemaNodeId = variableNodeId;
 
         // Process schema reconstruction for hierarchical relationships
         if (variableData.schema_reconstruction && Array.isArray(variableData.schema_reconstruction)) {
@@ -820,15 +874,15 @@
                     });
                     
                     links.push({
-                        source: lastNodeId,
+                        source: lastSchemaNodeId,
                         target: afterNodeId,
                         predicate: item.predicate,
                         predicateLabel: getPredicateLabel(item.predicate)
                     });
                     
-                    lastNodeId = afterNodeId;
+                    lastSchemaNodeId = afterNodeId;
                 } else {
-                    // Add node before variable (like Demographic)
+                    // Add node before variable (like Demographic) - connects to variable
                     const beforeNodeId = nodeId++;
                     nodes.push({
                         id: beforeNodeId,
@@ -883,7 +937,9 @@
                     return activeFilters.complete && node.type === 'complete' || 
                            activeFilters.incomplete && node.type === 'incomplete';
                 case 'intermediate':
-                    return activeFilters.intermediate;
+                    return true; // Always show schema hierarchy nodes for context
+                case 'entity':
+                    return true; // Always show entity node
                 case 'value':
                     return activeFilters.values;
                 default:
@@ -931,14 +987,43 @@
     // Get human-readable predicate label
     function getPredicateLabel(predicate) {
         const predicateMap = {
+            // SIO predicates
             'sio:SIO_000008': 'has attribute',
+            'sio:SIO_000221': 'has unit',
             'sio:SIO_000235': 'is about',
             'sio:SIO_000253': 'is part of',
-            'sio:SIO_000221': 'has unit',
+            'sio:SIO_000300': 'is described by',
+            'sio:SIO_000332': 'is input in',
+            'sio:SIO_000628': 'refers to',
             'sio:SIO_000673': 'has identifier',
-            'roo:P100029': 'has finding'
+            'sio:SIO_000747': 'has value',
+            
+            // ROO predicates
+            'roo:P100029': 'has finding',
+            'roo:P100018': 'consists of',
+            'roo:P100042': 'is member of',
+            
+            // NCIT predicates
+            'ncit:C25364': 'has property',
+            'ncit:C93415': 'maps to',
+            
+            // Schema.org predicates
+            'schema:name': 'name',
+            'schema:description': 'description',
+            'schema:value': 'value',
+            'schema:additionalType': 'additional type'
         };
-        return predicateMap[predicate] || predicate.split(':')[1] || predicate;
+        
+        if (predicateMap[predicate]) {
+            return predicateMap[predicate];
+        }
+        
+        // Extract local part from namespaced predicates
+        if (predicate && predicate.includes(':')) {
+            return predicate.split(':')[1];
+        }
+        
+        return predicate || 'related to';
     }
 
     // Enhanced annotation process with progress indication
