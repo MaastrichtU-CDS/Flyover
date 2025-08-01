@@ -334,8 +334,8 @@ def describe_landing():
         return redirect(url_for('index'))
 
 
-@app.route("/repo", methods=['GET', 'POST'])
-def retrieve_columns():
+@app.route("/describe_variables", methods=['GET', 'POST'])
+def describe_variables():
     """
     This function is mapped to the "/describe_landing" URL and is invoked when a POST request is made to this URL.
     It retrieves column information from a GraphDB repository and
@@ -512,14 +512,14 @@ def retrieve_descriptive_info():
 
     # Render the 'describe_variable_details.html' template with the list of variables to further specify
     if session_cache.DescriptiveInfoDetails:
-        return redirect(url_for('variable_details'))
+        return redirect(url_for('describe_variable_details'))
     else:
         # Redirect to the new route after processing the POST request
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
 
-@app.route("/variable-details")
-def variable_details():
+@app.route("/describe_variable_details")
+def describe_variable_details():
     """
     This function is responsible for rendering the 'describe_variable_details.html' page.
 
@@ -663,11 +663,11 @@ def retrieve_detailed_descriptive_info():
             insert_equivalencies(session_cache.descriptive_info[database], variable)
 
     # Redirect the user to the 'download_page' URL
-    return redirect(url_for('download_page'))
+    return redirect(url_for('describe_downloads'))
 
 
-@app.route('/download')
-def download_page():
+@app.route('/describe_downloads')
+def describe_downloads():
     """
     This function is responsible for rendering the 'describe_downloads.html' page.
 
@@ -884,11 +884,11 @@ def annotation_review():
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available for annotation. Please upload a semantic map first.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     if not session_cache.databases.any():
         flash("No databases available for annotation.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
@@ -930,7 +930,7 @@ def annotation_review():
     if total_annotated == 0:
         flash(
             "No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     return render_template('annotation_review.html',
                            annotation_data=annotation_data,
@@ -1043,11 +1043,11 @@ def annotation_verify():
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     if not session_cache.databases.any():
         flash("No databases available.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     # Get annotated variables from all databases using local semantic maps
     annotated_variables = []
