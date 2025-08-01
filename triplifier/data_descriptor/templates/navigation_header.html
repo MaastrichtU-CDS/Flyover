@@ -62,6 +62,7 @@
         background-color: rgba(255, 255, 255, 0.2);
         font-weight: bold;
         font-size: 0.9em;
+        position: relative;
     }
 
     .nav-step.active .step-number {
@@ -75,12 +76,24 @@
 
     .step-icon {
         font-size: 1.1em;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        line-height: 1;
     }
 
     .step-arrow {
         color: rgba(255, 255, 255, 0.5);
         font-size: 1.2em;
         margin: 0 10px;
+    }
+
+    .step-separator {
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 1.2em;
+        margin: 0 10px;
+        font-weight: bold;
     }
 
     @media (max-width: 768px) {
@@ -90,6 +103,11 @@
         }
 
         .step-arrow {
+            transform: rotate(90deg);
+            margin: 5px 0;
+        }
+
+        .step-separator {
             transform: rotate(90deg);
             margin: 5px 0;
         }
@@ -111,6 +129,7 @@
                 <span>Home</span>
             </a>
 
+            <span class="step-separator">|</span>
 
             <!-- Step 1: Digest -->
             <a href="/digest" class="nav-step" id="digest-step">
@@ -213,6 +232,22 @@
             // Reset all steps
             Object.values(steps).forEach(step => {
                 step.element.classList.remove('active', 'completed', 'disabled');
+                // Reset icons to original state
+                const icon = step.element.querySelector('.step-icon');
+                if (icon) {
+                    // Reset digest icon
+                    if (step.element.id === 'digest-step') {
+                        icon.className = 'fas fa-cookie-bite step-icon';
+                    }
+                    // Reset describe icon
+                    else if (step.element.id === 'describe-step') {
+                        icon.className = 'fas fa-edit step-icon';
+                    }
+                    // Reset annotate icon
+                    else if (step.element.id === 'annotate-step') {
+                        icon.className = 'fas fa-tags step-icon';
+                    }
+                }
             });
 
             // Set current step as active
@@ -220,28 +255,34 @@
                 steps[currentStep].element.classList.add('active');
             }
 
-            // Set completed steps based on data existence and current step
+            // Mark digest as completed if data exists (regardless of current page)
             if (dataExists) {
-                // If we're on describe or annotate step, digest is completed
-                if (currentStep === 'describe' || currentStep === 'annotate') {
-                    steps.digest.element.classList.add('completed');
-
-                    // Update completed icon for digest
-                    const digestIcon = steps.digest.element.querySelector('.step-icon');
-                    if (digestIcon) {
-                        digestIcon.className = 'fas fa-check step-icon';
-                    }
+                steps.digest.element.classList.add('completed');
+                const digestIcon = steps.digest.element.querySelector('.step-icon');
+                if (digestIcon) {
+                    digestIcon.className = 'fas fa-check step-icon';
                 }
 
-                // If we're on annotate step, describe is also completed
-                if (currentStep === 'annotate') {
-                    steps.describe.element.classList.add('completed');
-
-                    // Update completed icon for describe
-                    const describeIcon = steps.describe.element.querySelector('.step-icon');
-                    if (describeIcon) {
-                        describeIcon.className = 'fas fa-check step-icon';
+                // If we're on describe or annotate step, they require digest to be completed
+                if (currentStep === 'describe' || currentStep === 'annotate') {
+                    // Describe is completed if we're on annotate step
+                    if (currentStep === 'annotate') {
+                        steps.describe.element.classList.add('completed');
+                        const describeIcon = steps.describe.element.querySelector('.step-icon');
+                        if (describeIcon) {
+                            describeIcon.className = 'fas fa-check step-icon';
+                        }
                     }
+                }
+            }
+
+            // For index page, if data exists, show digest as completed but not active
+            if (currentPath === '/' && dataExists) {
+                steps.digest.element.classList.remove('active');
+                steps.digest.element.classList.add('completed');
+                const digestIcon = steps.digest.element.querySelector('.step-icon');
+                if (digestIcon) {
+                    digestIcon.className = 'fas fa-check step-icon';
                 }
             }
 

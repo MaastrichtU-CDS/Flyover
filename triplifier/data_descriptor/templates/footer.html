@@ -1,0 +1,56 @@
+<!-- Footer Component -->
+<footer class="flyover-footer">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-6">
+                <p class="footer-text">
+                    <i class="fas fa-code"></i> 
+                    <strong>Flyover</strong> v1.0.0
+                </p>
+            </div>
+            <div class="col-md-6 text-md-right">
+                <p class="footer-text">
+                    <i class="fas fa-university"></i> 
+                    Clinical Data Science Maastricht, 2025
+                </p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<style>
+    .flyover-footer {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px 0;
+        margin-top: 50px;
+        border-radius: 8px 8px 0 0;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .footer-text {
+        margin: 0;
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+
+    .footer-text i {
+        margin-right: 8px;
+        opacity: 0.8;
+    }
+
+    .footer-text strong {
+        font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+        .flyover-footer .text-md-right {
+            text-align: left !important;
+            margin-top: 10px;
+        }
+        
+        .flyover-footer .col-md-6 {
+            text-align: center;
+        }
+    }
+</style>

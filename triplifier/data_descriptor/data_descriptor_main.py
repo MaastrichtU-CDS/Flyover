@@ -315,20 +315,23 @@ def describe_landing():
     """
     This function provides access to the describe landing page when users navigate directly 
     or when they have completed the digest step. It checks if data exists in the repository
-    and provides appropriate guidance.
+    and blocks access if no data is found, redirecting to digest page.
     
     Returns:
         flask.render_template: Renders the describe_landing.html template with appropriate status
+        flask.redirect: Redirects to digest page if no data exists
     """
     try:
         # Check if graph exists first
         if check_graph_exists(session_cache.repo, "http://data.local/"):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
+            return render_template('describe_landing.html', message=Markup(message))
         else:
-            message = "No data found. Please complete the Digest step first by uploading your data."
+            # No data found - redirect to digest page with message
+            flash("No data found in the system. Please complete the Digest step first by uploading your data.")
+            return redirect(url_for('index'))
         
-        return render_template('describe_landing.html', message=Markup(message))
     except Exception as e:
         flash(f"Error accessing describe step: {e}")
         return redirect(url_for('index'))

@@ -625,6 +625,9 @@
     }
 </style>
 
+<!-- Include footer -->
+{% include 'footer.html' %}
+
 <script>
     // Pass Flask variables to JavaScript for navigation header
     window.graph_exists = {% if graph_exists %}true{% else %}false{% endif %};
