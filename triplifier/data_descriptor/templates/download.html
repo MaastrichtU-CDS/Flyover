@@ -11,6 +11,9 @@
 </head>
 
 <body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
 <div class="container">
     <br>
     <h1>Save your local metadata</h1>
@@ -73,5 +76,11 @@
     <hr>
     <a href="/">Click here to return to the welcome page.</a>
 </div>
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in describe step
+</script>
+
 </body>
 </html>

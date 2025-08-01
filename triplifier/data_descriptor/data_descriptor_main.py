@@ -100,7 +100,17 @@ class Cache:
 session_cache = Cache()
 
 
+@app.route('/landing')
+def landing():
+    """
+    Render the landing page that provides an overview of the three-step workflow.
+    This serves as the main entry point describing the Digest, Describe, Annotate process.
+    """
+    return render_template('landing.html')
+
+
 @app.route('/')
+@app.route('/digest')
 def index():
     """
     This function is responsible for rendering the index.html page.

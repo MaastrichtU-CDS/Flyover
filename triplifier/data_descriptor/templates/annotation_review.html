@@ -149,6 +149,9 @@
 </head>
 
 <body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
 <div class="container">
     <br>
     <h1><i class="fas fa-search"></i> Review Annotation Data</h1>
@@ -335,6 +338,11 @@
                 button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
             });
     }
+</script>
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in annotate step
 </script>
 
 </body>

@@ -1,0 +1,243 @@
+<!-- Navigation Header Component -->
+<style>
+    .flyover-navigation {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px 0;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .nav-steps {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+
+    .nav-step {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+        color: rgba(255, 255, 255, 0.7);
+        transition: all 0.3s ease;
+        padding: 10px 15px;
+        border-radius: 8px;
+        min-width: 140px;
+        justify-content: center;
+    }
+
+    .nav-step:hover {
+        text-decoration: none;
+        color: white;
+        background-color: rgba(255, 255, 255, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .nav-step.active {
+        color: white;
+        background-color: rgba(255, 255, 255, 0.2);
+        font-weight: bold;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .nav-step.completed {
+        color: #d4edda;
+    }
+
+    .nav-step.disabled {
+        color: rgba(255, 255, 255, 0.4);
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    .step-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: rgba(255, 255, 255, 0.2);
+        margin-right: 8px;
+        font-weight: bold;
+        font-size: 0.9em;
+    }
+
+    .nav-step.active .step-number {
+        background-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .nav-step.completed .step-number {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .step-icon {
+        font-size: 1.1em;
+    }
+
+    .step-arrow {
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 1.2em;
+        margin: 0 10px;
+    }
+
+    @media (max-width: 768px) {
+        .nav-steps {
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .step-arrow {
+            transform: rotate(90deg);
+            margin: 5px 0;
+        }
+        
+        .nav-step {
+            min-width: 200px;
+        }
+    }
+</style>
+
+<div class="flyover-navigation">
+    <div class="container">
+        <div class="nav-steps">
+            <!-- Step 1: Digest -->
+            <a href="/" class="nav-step" id="digest-step">
+                <span class="step-number">
+                    <i class="fas fa-upload step-icon"></i>
+                </span>
+                <span>Digest</span>
+            </a>
+            
+            <i class="fas fa-chevron-right step-arrow"></i>
+            
+            <!-- Step 2: Describe -->
+            <a href="/repo" class="nav-step" id="describe-step">
+                <span class="step-number">
+                    <i class="fas fa-edit step-icon"></i>
+                </span>
+                <span>Describe</span>
+            </a>
+            
+            <i class="fas fa-chevron-right step-arrow"></i>
+            
+            <!-- Step 3: Annotate -->
+            <a href="/annotation-review" class="nav-step" id="annotate-step">
+                <span class="step-number">
+                    <i class="fas fa-tags step-icon"></i>
+                </span>
+                <span>Annotate</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Navigation header functionality
+    (function() {
+        'use strict';
+        
+        // Step configuration
+        const steps = {
+            'digest': {
+                pages: ['/', '/upload', '/data-submission'],
+                element: document.getElementById('digest-step'),
+                alwaysAccessible: true
+            },
+            'describe': {
+                pages: ['/repo', '/units', '/variable-details', '/end', '/download'],
+                element: document.getElementById('describe-step'),
+                requiresData: true
+            },
+            'annotate': {
+                pages: ['/annotation-review', '/annotation-verify', '/start-annotation'],
+                element: document.getElementById('annotate-step'),
+                requiresData: true
+            }
+        };
+        
+        // Get current page path
+        const currentPath = window.location.pathname;
+        
+        // Determine current step
+        let currentStep = null;
+        for (const [stepName, stepConfig] of Object.entries(steps)) {
+            if (stepConfig.pages.some(page => currentPath === page || currentPath.startsWith(page))) {
+                currentStep = stepName;
+                break;
+            }
+        }
+        
+        // Check if data exists (basic check - you can enhance this)
+        function hasData() {
+            // This is a basic check - in a real implementation, you might want to 
+            // make an AJAX call to check if data exists in the database
+            // For now, we'll assume data exists if we're not on the home page
+            // or if there's a graph_exists variable (passed from Flask template)
+            if (typeof graph_exists !== 'undefined') {
+                return graph_exists;
+            }
+            // Fallback: assume data exists if we're past the digest step
+            return currentPath !== '/' && currentPath !== '/upload';
+        }
+        
+        // Update step states
+        function updateStepStates() {
+            const dataExists = hasData();
+            
+            // Reset all steps
+            Object.values(steps).forEach(step => {
+                step.element.classList.remove('active', 'completed', 'disabled');
+            });
+            
+            // Set current step as active
+            if (currentStep && steps[currentStep]) {
+                steps[currentStep].element.classList.add('active');
+            }
+            
+            // Set completed steps
+            if (dataExists) {
+                if (currentStep === 'describe' || currentStep === 'annotate') {
+                    steps.digest.element.classList.add('completed');
+                }
+                if (currentStep === 'annotate') {
+                    steps.describe.element.classList.add('completed');
+                }
+            }
+            
+            // Disable steps that require data when no data exists
+            Object.entries(steps).forEach(([stepName, stepConfig]) => {
+                if (stepConfig.requiresData && !dataExists && stepName !== currentStep) {
+                    stepConfig.element.classList.add('disabled');
+                }
+            });
+        }
+        
+        // Add click handlers for validation
+        Object.entries(steps).forEach(([stepName, stepConfig]) => {
+            stepConfig.element.addEventListener('click', function(e) {
+                if (this.classList.contains('disabled')) {
+                    e.preventDefault();
+                    
+                    // Show user-friendly message
+                    if (stepConfig.requiresData && !hasData()) {
+                        alert('Please complete the Digest step first by uploading your data.');
+                    }
+                    return false;
+                }
+            });
+        });
+        
+        // Initialize the navigation
+        updateStepStates();
+        
+        // Make functions available globally for templates to use
+        window.flyoverNavigation = {
+            updateStepStates: updateStepStates,
+            hasData: hasData
+        };
+    })();
+</script>

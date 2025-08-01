@@ -10,6 +10,9 @@
 </head>
 
 <body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
 <div class="container">
     <br>
     <div {% if not error %} style="display: none;" {% endif %}>
@@ -617,6 +620,11 @@
         margin-right: 5px;
     }
 </style>
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = {% if graph_exists %}true{% else %}false{% endif %};
+</script>
 
 </body>
 </html>
