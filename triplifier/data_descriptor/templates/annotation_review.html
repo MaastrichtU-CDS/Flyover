@@ -218,21 +218,21 @@
         }
 
         .graph-node-intermediate {
-            fill: #2ca02c;
-            stroke: #20751f;
+            fill: #17becf;
+            stroke: #0d8fa1;
             stroke-width: 2;
         }
 
         .graph-node-value {
-            fill: #d62728;
-            stroke: #a01d1e;
+            fill: #e377c2;
+            stroke: #d63384;
             stroke-width: 1;
         }
 
         .graph-node-entity {
-            fill: #9467bd;
-            stroke: #6a4c93;
-            stroke-width: 3;
+            fill: #7f7f7f;
+            stroke: #495057;
+            stroke-width: 2;
         }
 
         .graph-link {
@@ -707,10 +707,10 @@
             .force("center", d3.forceCenter(width / 2, height / 2))
             .force("collision", d3.forceCollide().radius(d => {
                 // Different collision radii for different node types
-                if (d.type === 'entity') return 35;
+                if (d.type === 'entity') return 25;
                 if (d.type === 'complete' || d.type === 'incomplete') return 25;
                 if (d.type === 'intermediate') return 20;
-                return 15; // Values
+                return 15; // Values2
             }));
 
         // Create tooltip
@@ -744,10 +744,10 @@
             .join("circle")
             .attr("r", d => {
                 // Different sizes for different node types
-                if (d.type === 'entity') return 30;
+                if (d.type === 'entity') return 20;
                 if (d.type === 'complete' || d.type === 'incomplete') return 20;
                 if (d.type === 'intermediate') return 15;
-                return 12; // Values
+                return 20; // Values
             })
             .attr("class", d => `graph-node-${d.type}`)
             .call(d3.drag()
@@ -915,7 +915,8 @@
                     links.push({
                         source: variableNodeId,
                         target: valueNodeId,
-                        predicate: 'sio:SIO_000747'
+                        predicate: 'hasValue',
+                        predicateLabel: 'has value'
                     });
                 }
             });
