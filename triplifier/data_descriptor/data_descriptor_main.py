@@ -100,7 +100,7 @@ class Cache:
 session_cache = Cache()
 
 
-@app.route('/landing')
+@app.route('/')
 def landing():
     """
     Render the landing page that provides an overview of the three-step workflow.
@@ -109,7 +109,6 @@ def landing():
     return render_template('landing.html')
 
 
-@app.route('/')
 @app.route('/digest')
 def index():
     """

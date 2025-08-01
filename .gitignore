@@ -24,6 +24,9 @@ Thumbs.db
 dist/
 build/
 
+# GraphDB data and logs (generated files)
+graphdb/data/
+
 # Test and demo files
 test_annotation_ui.py
 setup_test_data.py

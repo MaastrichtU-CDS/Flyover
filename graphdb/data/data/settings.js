@@ -1,5 +1,0 @@
-{
-  "properties" : {
-    "current.location" : ""
-  }
-}
