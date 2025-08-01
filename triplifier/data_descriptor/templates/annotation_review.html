@@ -777,7 +777,7 @@
             .data(filteredData.links)
             .join("text")
             .attr("class", "graph-label-predicate")
-            .text(d => d.predicateLabel);
+            .text(d => d.predicate && d.predicate.includes(':') ? d.predicate.split(':')[1] : d.predicate);
 
         // Update positions on simulation tick
         simulation.on("tick", () => {
@@ -853,8 +853,7 @@
         links.push({
             source: entityNodeId,
             target: variableNodeId,
-            predicate: variableData.predicate,
-            predicateLabel: getPredicateLabel(variableData.predicate)
+            predicate: variableData.predicate
         });
 
         let lastSchemaNodeId = variableNodeId;
@@ -876,8 +875,7 @@
                     links.push({
                         source: lastSchemaNodeId,
                         target: afterNodeId,
-                        predicate: item.predicate,
-                        predicateLabel: getPredicateLabel(item.predicate)
+                        predicate: item.predicate
                     });
                     
                     lastSchemaNodeId = afterNodeId;
@@ -895,8 +893,7 @@
                     links.push({
                         source: beforeNodeId,
                         target: variableNodeId,
-                        predicate: item.predicate,
-                        predicateLabel: getPredicateLabel(item.predicate)
+                        predicate: item.predicate
                     });
                 }
             });
@@ -918,8 +915,7 @@
                     links.push({
                         source: variableNodeId,
                         target: valueNodeId,
-                        predicate: 'sio:SIO_000747',
-                        predicateLabel: getPredicateLabel('sio:SIO_000747')
+                        predicate: 'sio:SIO_000747'
                     });
                 }
             });
