@@ -21,6 +21,28 @@
             margin-bottom: 50px;
             border-radius: 15px;
             text-align: center;
+            position: relative;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url("{{ url_for('custom_static', filename='image-flyover.svg') }}");
+            background-size: 110%;
+            background-position: center 40%;
+            background-repeat: no-repeat;
+            opacity: 0.08;
+            pointer-events: none;
+            border-radius: 15px;
+        }
+
+        .hero-section > * {
+            position: relative;
+            z-index: 1;
         }
 
         .hero-title {
@@ -39,7 +61,7 @@
             background: white;
             border-radius: 15px;
             padding: 30px;
-            margin-bottom: 30px;
+            margin-bottom: 10px;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
             cursor: pointer;
@@ -64,11 +86,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 20px auto;
             font-size: 2rem;
             color: white;
-            flex-shrink: 0;
-            position: relative;
+            margin: 0 auto 20px auto;
         }
 
         .digest-icon {
@@ -87,7 +107,9 @@
             font-size: 1.8rem;
             font-weight: bold;
             margin-bottom: 15px;
+            margin-top: 0;
             text-align: center;
+            width: 100%;
         }
 
         .step-description {
@@ -95,11 +117,16 @@
             color: #666;
             line-height: 1.6;
             margin-bottom: 20px;
+            margin-top: 0;
+            width: 100%;
+            flex-grow: 1;
         }
 
         .step-features {
             list-style: none;
             padding: 0;
+            width: 100%;
+            margin-top: auto;
         }
 
         .step-features li {
@@ -120,10 +147,11 @@
         .cta-section {
             background: white;
             border-radius: 15px;
-            padding: 40px;
+            padding: 20px;
             text-align: center;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
             margin-top: 40px;
+            margin-bottom: 40px;
         }
 
     </style>
@@ -136,7 +164,7 @@
 <div class="container">
     <!-- Hero Section -->
     <div class="hero-section">
-        <h1 class="hero-title">Welcome to Flyover &#x1F426;</h1>
+        <h1 class="hero-title">Welcome to Flyover</h1>
         <p class="hero-subtitle">Your Data F.A.I.R.-ification Tool</p>
         <p class="mb-0">Transform your data into semantically interoperable resoure descriptor framework (RDF) format
             through our guided three-step process</p>
@@ -184,8 +212,8 @@
                     <i class="fas fa-tags"></i>
                 </div>
                 <h3 class="step-title">3. Annotate</h3>
-                <p class="step-description">Apply semantic annotations using standardised ontologies to make your data
-                    FAIR.</p>
+                <p class="step-description">Apply semantic annotations using standardised ontologies to make your data more
+                    F.A.I.R.</p>
                 <ul class="step-features">
                     <li><i class="fas fa-check"></i> Ontology-based annotations</li>
                     <li><i class="fas fa-check"></i> Value mapping to terminologies</li>
@@ -209,49 +237,47 @@
 <!-- Include footer -->
 {% include 'footer.html' %}
 
-<br><br>
-
 <script>
     // Set the current page context for navigation
     window.graph_exists = false; // Landing page - no data yet
 
     // Card navigation functionality
-    $(document).ready(function() {
+    $(document).ready(function () {
         // Check if data exists via AJAX
         $.ajax({
             url: '/api/check-graph-exists',
             type: 'GET',
-            success: function(response) {
+            success: function (response) {
                 const dataExists = response.exists || false;
                 window.graph_exists = dataExists;
-                
+
                 // Update card states based on data existence
                 updateCardStates(dataExists);
-                
+
                 // Update navigation header if the function exists
                 if (window.flyoverNavigation && window.flyoverNavigation.updateStepStates) {
                     window.flyoverNavigation.updateStepStates();
                 }
             },
-            error: function() {
+            error: function () {
                 // Fallback: assume no data exists
                 updateCardStates(false);
             }
         });
-        
+
         // Add click handlers for cards
-        $('.workflow-card').click(function(e) {
+        $('.workflow-card').click(function (e) {
             if ($(this).hasClass('disabled')) {
                 e.preventDefault();
                 const target = $(this).data('target');
-                
+
                 // Show appropriate message based on which card was clicked
                 if (target === '/describe_landing' || target === '/annotation_landing') {
                     alert('Please complete the Digest step first by submitting your data.');
                 }
                 return false;
             }
-            
+
             // Navigate to the target URL
             const target = $(this).data('target');
             if (target) {
@@ -259,16 +285,24 @@
             }
         });
     });
-    
+
     function updateCardStates(dataExists) {
         // Digest card is always accessible
-        $('#digest-card').removeClass('disabled');
-        
+        $('#digest-card').removeClass('disabled').removeAttr('data-toggle data-placement title');
+
         // Describe and Annotate cards require data
         if (!dataExists) {
-            $('#describe-card, #annotate-card').addClass('disabled');
+            $('#describe-card, #annotate-card').addClass('disabled')
+                .attr('data-toggle', 'tooltip')
+                .attr('data-placement', 'top')
+                .attr('title', 'First complete the data digest step to proceed with this step.');
+
+            // Initialize tooltips for disabled cards
+            $('#describe-card, #annotate-card').tooltip();
         } else {
-            $('#describe-card, #annotate-card').removeClass('disabled');
+            $('#describe-card, #annotate-card').removeClass('disabled')
+                .removeAttr('data-toggle data-placement title')
+                .tooltip('dispose');
         }
     }
 </script>

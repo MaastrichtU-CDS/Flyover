@@ -264,7 +264,7 @@ def upload_file():
         message = Markup("You have opted to not submit any new data, "
                          "you can now proceed to describe your data."
                          "<br>"
-                         "<i>In case you do wish to submit data, please return to the welcome page.</i>")
+                         "<i>In case you do wish to submit data, please return to the digest page.</i>")
 
     else:
         success = False
@@ -480,7 +480,7 @@ def retrieve_descriptive_info():
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
         it renders the 'describe_variable_details.html' template with the list of variables to further specify,
-        or proceeds to 'describe_downloads.html' in case there are no variables to specify.
+        or proceeds to 'describe_downloads' in case there are no variables to specify.
     """
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
@@ -1216,6 +1216,15 @@ def verify_annotation_ask():
         return jsonify({'success': False, 'error': str(e)})
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """
+    Serve the favicon.ico file from the assets directory.
+    This route handles browser requests for the favicon.
+    """
+    return send_from_directory(f'{root_dir}{child_dir}/assets', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+
 @app.route('/data_descriptor/assets/<path:filename>')
 def custom_static(filename):
     """
@@ -1444,7 +1453,7 @@ def formulate_local_semantic_map(database):
     for variable_name, variable_info in modified_semantic_map['variable_info'].items():
         modified_semantic_map['variable_info'][variable_name]['local_definition'] = None
 
-        # Reset all local_terms in value_mapping to null as well
+        # Reset all local_terms in value_mapping to null
         if 'value_mapping' in variable_info and 'terms' in variable_info['value_mapping']:
             for term_key in variable_info['value_mapping']['terms']:
                 modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key][
@@ -2049,7 +2058,7 @@ def run_triplifier(properties_file=None):
                                 "<br><br>"
                                 "<i>In case you do not yet wish to describe your data, "
                                 "or you would like to add more data, "
-                                "please return to the welcome page.</i>"
+                                "please return to the digest page.</i>"
                                 "<br>"
                                 "<i>You can always return to Flyover to "
                                 "describe the data that is present in GraphDB.</i>")

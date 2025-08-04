@@ -18,7 +18,7 @@
 
 <div class="container">
     <br>
-    <h1>Data submission finalised</h1>
+    <h1><i class="fas fa-clipboard-check"></i> Data submission finalised</h1>
     <hr>
 
     <p>{{ message }}</p>
@@ -43,7 +43,8 @@
                     variables.
                 </p>
 
-                <div class="alert alert-info">
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
                     <i class="fas fa-info-circle"></i>
                     <strong>What is a Global Semantic Map?</strong><br>
                     A global semantic map defines standardised variable definitions, data types, and value mappings
@@ -89,12 +90,12 @@
 
     <!-- Continue Button -->
     <form method="POST" action="describe_variables" id="continueForm">
-        <p><input class="btn btn-primary" type="submit" value="Click here to describe the data" id="continueButton"
-                  disabled></p>
+        <p>
+            <button class="btn btn-primary" type="submit" id="continueButton" disabled>
+                <i class="fas fa-play"></i> Click here to describe the data
+            </button>
+        </p>
     </form>
-
-    <hr>
-    <a href="/">Click here to return to the welcome page.</a>
 </div>
 
 <!-- Include footer -->
@@ -146,7 +147,7 @@
         $.ajax({
             url: '/api/check-graph-exists',
             type: 'GET',
-            success: function(response) {
+            success: function (response) {
                 if (!response.exists) {
                     // No data found - show redirect message and button
                     $("#dataCheckSection").html(`
@@ -161,12 +162,12 @@
                             </a>
                         </div>
                     `);
-                    
+
                     // Disable the continue button if it exists
                     $("#continueButton").prop("disabled", true);
                 }
             },
-            error: function() {
+            error: function () {
                 // On error, assume no data and show warning
                 $("#dataCheckSection").html(`
                     <div class="alert alert-warning" role="alert">
@@ -222,7 +223,74 @@
                 }
             });
         });
+
+        // Handle continue form submission
+        $("#continueForm").submit(function(e) {
+            // Start loading animation for continue button
+            startLoadingAnimation('#continueButton');
+        });
     });
+
+    // Loading animation functions
+    let loadingInterval;
+
+    function startLoadingAnimation(buttonSelector) {
+        const button = $(buttonSelector);
+        const originalText = button.html();
+
+        // Disable button to prevent multiple submissions
+        button.prop('disabled', true);
+
+        // Start with magnifying glass icon
+        let isMagnifyingArrow = false;
+        button.html('<i class="fas fa-search loading-icon"></i> Retrieving variable names...');
+
+        // Alternate between magnifying glass icons every 1 second with smooth transition
+        loadingInterval = setInterval(function() {
+            const icon = button.find('.loading-icon');
+
+            // Add fade out effect
+            icon.addClass('icon-fade-out');
+
+            setTimeout(function() {
+                if (isMagnifyingArrow) {
+                    icon.removeClass('fa-magnifying-glass-arrow-right').addClass('fa-search');
+                } else {
+                    icon.removeClass('fa-search').addClass('fa-magnifying-glass-arrow-right');
+                }
+                isMagnifyingArrow = !isMagnifyingArrow;
+
+                // Remove fade out and add fade in
+                icon.removeClass('icon-fade-out').addClass('icon-fade-in');
+
+                // Clean up fade in class after animation
+                setTimeout(function() {
+                    icon.removeClass('icon-fade-in');
+                }, 300);
+            }, 150); // Half of transition duration for smooth crossfade
+
+        }, 1000);
+
+        // Store original text for potential restoration
+        button.data('original-text', originalText);
+    }
+
+    function stopLoadingAnimation(buttonSelector) {
+        const button = $(buttonSelector);
+
+        // Clear the interval
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+            loadingInterval = null;
+        }
+
+        // Restore original button state
+        const originalText = button.data('original-text');
+        if (originalText) {
+            button.html(originalText);
+        }
+        button.prop('disabled', false);
+    }
 </script>
 
 <!-- Add some custom CSS -->
@@ -259,6 +327,51 @@
         opacity: 0.6;
         cursor: not-allowed;
     }
+
+    /* Smooth loading animation styles */
+    .loading-icon {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-block;
+    }
+
+    .icon-fade-out {
+        opacity: 0;
+        transform: scale(0.8) rotate(10deg);
+    }
+
+    .icon-fade-in {
+        opacity: 1;
+        transform: scale(1.1) rotate(-5deg);
+        animation: icon-bounce 0.3s ease-out;
+    }
+
+    @keyframes icon-bounce {
+        0% {
+            transform: scale(1.1) rotate(-5deg);
+        }
+        50% {
+            transform: scale(1.2) rotate(0deg);
+        }
+        100% {
+            transform: scale(1) rotate(0deg);
+        }
+    }
+
+    /* Add a subtle pulse effect to the processing button */
+    #continueButton:disabled {
+        background-color: #6c757d !important;
+        border-color: #6c757d !important;
+        animation: subtle-pulse 2s infinite;
+    }
+
+    @keyframes subtle-pulse {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
+        }
+        50% {
+            box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
+        }
+    }
 </style>
 
 <script>
@@ -268,3 +381,4 @@
 
 </body>
 </html>
+

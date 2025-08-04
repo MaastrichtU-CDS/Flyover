@@ -74,7 +74,12 @@
         color: white;
     }
 
-    .step-icon {
+    .step-text {
+        padding-left: 5px;
+        padding-bottom: 2px;
+    }
+
+    .step-icon-header {
         font-size: 1.1em;
         position: absolute;
         top: 50%;
@@ -124,9 +129,9 @@
             <!-- Home -->
             <a href="/" class="nav-step" id="home-step">
                 <span class="step-number">
-                    <i class="fas fa-home step-icon"></i>
+                    <i class="fas fa-home step-icon-header"></i>
                 </span>
-                <span>Home</span>
+                <span class="step-text">Home</span>
             </a>
 
             <span class="step-separator">|</span>
@@ -134,9 +139,9 @@
             <!-- Step 1: Digest -->
             <a href="/digest" class="nav-step" id="digest-step">
                 <span class="step-number">
-                    <i class="fas fa-cookie-bite step-icon"></i>
+                    <i class="fas fa-cookie-bite step-icon-header"></i>
                 </span>
-                <span>Digest</span>
+                <span class="step-text">Digest</span>
             </a>
 
             <i class="fas fa-chevron-right step-arrow"></i>
@@ -144,9 +149,9 @@
             <!-- Step 2: Describe -->
             <a href="/describe_landing" class="nav-step" id="describe-step">
                 <span class="step-number">
-                    <i class="fas fa-edit step-icon"></i>
+                    <i class="fas fa-edit step-icon-header"></i>
                 </span>
-                <span>Describe</span>
+                <span class="step-text">Describe</span>
             </a>
 
             <i class="fas fa-chevron-right step-arrow"></i>
@@ -154,9 +159,9 @@
             <!-- Step 3: Annotate -->
             <a href="/annotation_landing" class="nav-step" id="annotate-step">
                 <span class="step-number">
-                    <i class="fas fa-tags step-icon"></i>
+                    <i class="fas fa-tags step-icon-header"></i>
                 </span>
-                <span>Annotate</span>
+                <span class="step-text">Annotate</span>
             </a>
         </div>
     </div>
@@ -233,19 +238,19 @@
             Object.values(steps).forEach(step => {
                 step.element.classList.remove('active', 'completed', 'disabled');
                 // Reset icons to original state
-                const icon = step.element.querySelector('.step-icon');
+                const icon = step.element.querySelector('.step-icon-header');
                 if (icon) {
                     // Reset digest icon
                     if (step.element.id === 'digest-step') {
-                        icon.className = 'fas fa-cookie-bite step-icon';
+                        icon.className = 'fas fa-cookie-bite step-icon-header';
                     }
                     // Reset describe icon
                     else if (step.element.id === 'describe-step') {
-                        icon.className = 'fas fa-edit step-icon';
+                        icon.className = 'fas fa-edit step-icon-header';
                     }
                     // Reset annotate icon
                     else if (step.element.id === 'annotate-step') {
-                        icon.className = 'fas fa-tags step-icon';
+                        icon.className = 'fas fa-tags step-icon-header';
                     }
                 }
             });
@@ -258,9 +263,9 @@
             // Mark digest as completed if data exists (regardless of current page)
             if (dataExists) {
                 steps.digest.element.classList.add('completed');
-                const digestIcon = steps.digest.element.querySelector('.step-icon');
+                const digestIcon = steps.digest.element.querySelector('.step-icon-header');
                 if (digestIcon) {
-                    digestIcon.className = 'fas fa-check step-icon';
+                    digestIcon.className = 'fas fa-check step-icon-header';
                 }
 
                 // If we're on describe or annotate step, they require digest to be completed
@@ -268,9 +273,9 @@
                     // Describe is completed if we're on annotate step
                     if (currentStep === 'annotate') {
                         steps.describe.element.classList.add('completed');
-                        const describeIcon = steps.describe.element.querySelector('.step-icon');
+                        const describeIcon = steps.describe.element.querySelector('.step-icon-header');
                         if (describeIcon) {
-                            describeIcon.className = 'fas fa-check step-icon';
+                            describeIcon.className = 'fas fa-check step-icon-header';
                         }
                     }
                 }
@@ -280,9 +285,9 @@
             if (currentPath === '/' && dataExists) {
                 steps.digest.element.classList.remove('active');
                 steps.digest.element.classList.add('completed');
-                const digestIcon = steps.digest.element.querySelector('.step-icon');
+                const digestIcon = steps.digest.element.querySelector('.step-icon-header');
                 if (digestIcon) {
-                    digestIcon.className = 'fas fa-check step-icon';
+                    digestIcon.className = 'fas fa-check step-icon-header';
                 }
             }
 

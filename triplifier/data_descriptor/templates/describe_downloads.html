@@ -16,7 +16,7 @@
 
 <div class="container">
     <br>
-    <h1>Save your local metadata</h1>
+    <h1><i class="fas fa-clipboard-check"></i> Save your local metadata</h1>
     <hr>
 
     <p style="line-height: 1.5; margin: 0;">You have now successfully described the data that you have provided!&#x1F389;
@@ -46,16 +46,17 @@
                 <i class="fas fa-download"></i> Download local semantic map
             </button>
         </a>
-        <br><br>
+        <hr>
         <p style="line-height: 1.5; margin: 0;"> With this local semantic map, you can now also annotate your data to
             actually make it semantically interoperable.</p>
         <a href="/annotation-review" {% if not show_semantic_map %} style="display: none;" {% endif %}>
             <button class="btn btn-primary" {% if not show_semantic_map %} style="display: none;" {% endif %}>
-                <i class="fas fa-pencil-alt"></i> Review and Annotate Data
+                <i class="fas fa-play"></i> Review and Annotate Data
             </button>
         </a>
         <div class="mt-4">
-            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+            <div class="alert alert-info py-2"
+                 style="font-size: 0.85em; border-left: 4px solid #764ba2; background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
                 <i class="fas fa-exclamation-triangle"></i>
                 <strong>Semantic mapping and data annotation</strong><br>
                 <div class="mt-1 ms-4">
@@ -73,9 +74,10 @@
             </div>
         </div>
     </div>
-    <hr>
-    <a href="/">Click here to return to the welcome page.</a>
 </div>
+
+<!-- Include footer -->
+{% include 'footer.html' %}
 
 <script>
     // Pass Flask variables to JavaScript for navigation header

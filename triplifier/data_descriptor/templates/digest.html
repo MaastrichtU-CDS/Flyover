@@ -7,7 +7,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Flyover | Data submission</title>
+    <title>Flyover | Data Digest</title>
 </head>
 
 <body>
@@ -34,10 +34,10 @@
         {% endblock %}
     </div>
 
-    <h1>Digest your data</h1>
+    <h1><i class="fas fa-cookie-bite"></i> Digest your data</h1>
     <hr>
-    <p>First, you have to ensure that the graph database contains data and ontology graphs. <br>
-    You can achieve this by submitting your data for digestion using Triplifier.<br>
+    <p>First, you have to ensure that the graph database contains data and ontology graphs.<br>
+    You can achieve this by submitting your data for conversion using Flyover.<br>
     </p>
     <hr>
     <header>Start by selecting your data source:</header>
@@ -143,6 +143,7 @@
                             </div>
                         </div>
                     </div>
+                    <br>
                 </div>
 
                 <!-- Hidden field for cross-graph linking data -->
@@ -171,19 +172,37 @@
         <!-- Hidden field for PK/FK data -->
         <input type="hidden" id="pkFkData" name="pkFkData" value="">
 
-        <input type="submit" id="submitFilesButton" value="Submit Files" class="btn btn-primary">
+        <button type="submit" id="submitFilesButton" class="btn btn-primary"><i class="fas fa-play"></i> Submit Files</button>
+
+        <div class="mt-4">
+            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                <i class="fas fa-info-circle"></i>
+                <strong>Directly uploading your graph data</strong><br>
+                <div class="mt-1 ms-4">
+                    <div class="mt-1">
+                        <p class="mb-1">
+                            Please know that if you have already converted your data using Flyover, then you can also directly upload the files in the GraphDB workbench.
+                            <br>
+                            In that case you can skip this data digest step and proceed to describing and or annotating your data.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         {% if graph_exists %}
             <hr>
-            <p>&#x26A0;<i><b>The associated GraphDB instance already contains a data graph.</b></i><br>
+            <p><i class="fas fa-exclamation-triangle"
+                                   style="margin-right: 5px; align-self: flex-start;"></i><i><b>The associated GraphDB instance already contains a data graph.</b></i><br>
                 <i>It is possible to add more data to this graph, for that you can use the data upload available
                     above.</i><br>
                 <i>It is, however, possible to describe the existing data without having to add new,
                     for that please use the options below.</i></p>
             <i>The existing data graph can also be removed through the GraphDB workbench.</i></p>
-
             <br>
-            <input type="submit" id="submitWithoutData" value="Proceed without adding data" class="btn btn-primary">
+            <button type="submit" id="submitWithoutData" class="btn btn-primary"><i class="fas fa-fast-forward"></i> Proceed without adding data</button>
+            <br>
+            <br>
 
         {% endif %}
     </form>
@@ -564,6 +583,11 @@
 
         // Handle form submission
         $("#mainForm").submit(function(e) {
+            // Start loading animation for Submit Files button - safely check for submitter
+            if (e.originalEvent && e.originalEvent.submitter && $(e.originalEvent.submitter).attr('id') === 'submitFilesButton') {
+                startLoadingAnimation('#submitFilesButton');
+            }
+
             // If CSV is selected and PK/FK section is visible, collect the data
             if ($("#CSV").is(":checked") && $("#pkFkSection").is(":visible")) {
                 const pkFkData = collectPkFkData();
@@ -586,6 +610,67 @@
             }
         });
     });
+
+    // Loading animation functions
+    let loadingInterval;
+
+    function startLoadingAnimation(buttonSelector) {
+        const button = $(buttonSelector);
+        const originalText = button.html();
+
+        // Disable button to prevent multiple submissions
+        button.prop('disabled', true);
+
+        // Start with cookie icon
+        let isCookieBite = false;
+        button.html('<i class="fas fa-cookie loading-icon"></i> Processing...');
+
+        // Alternate between cookie and cookie-bite every 1 second with smooth transition
+        loadingInterval = setInterval(function() {
+            const icon = button.find('.loading-icon');
+
+            // Add fade out effect
+            icon.addClass('icon-fade-out');
+
+            setTimeout(function() {
+                if (isCookieBite) {
+                    icon.removeClass('fa-cookie-bite').addClass('fa-cookie');
+                } else {
+                    icon.removeClass('fa-cookie').addClass('fa-cookie-bite');
+                }
+                isCookieBite = !isCookieBite;
+
+                // Remove fade out and add fade in
+                icon.removeClass('icon-fade-out').addClass('icon-fade-in');
+
+                // Clean up fade in class after animation
+                setTimeout(function() {
+                    icon.removeClass('icon-fade-in');
+                }, 300);
+            }, 150); // Half of transition duration for smooth crossfade
+
+        }, 1000);
+
+        // Store original text for potential restoration
+        button.data('original-text', originalText);
+    }
+
+    function stopLoadingAnimation(buttonSelector) {
+        const button = $(buttonSelector);
+
+        // Clear the interval
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+            loadingInterval = null;
+        }
+
+        // Restore original button state
+        const originalText = button.data('original-text');
+        if (originalText) {
+            button.html(originalText);
+        }
+        button.prop('disabled', false);
+    }
 
 </script>
 
@@ -623,6 +708,51 @@
     .fas {
         margin-right: 5px;
     }
+
+    /* Smooth loading animation styles */
+    .loading-icon {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-block;
+    }
+
+    .icon-fade-out {
+        opacity: 0;
+        transform: scale(0.8) rotate(10deg);
+    }
+
+    .icon-fade-in {
+        opacity: 1;
+        transform: scale(1.1) rotate(-5deg);
+        animation: icon-bounce 0.3s ease-out;
+    }
+
+    @keyframes icon-bounce {
+        0% {
+            transform: scale(1.1) rotate(-5deg);
+        }
+        50% {
+            transform: scale(1.2) rotate(0deg);
+        }
+        100% {
+            transform: scale(1) rotate(0deg);
+        }
+    }
+
+    /* Add a subtle pulse effect to the processing text */
+    #submitFilesButton:disabled {
+        background-color: #6c757d !important;
+        border-color: #6c757d !important;
+        animation: subtle-pulse 2s infinite;
+    }
+
+    @keyframes subtle-pulse {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
+        }
+        50% {
+            box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
+        }
+    }
 </style>
 
 <!-- Include footer -->
@@ -635,3 +765,4 @@
 
 </body>
 </html>
+
