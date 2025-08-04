@@ -79,7 +79,7 @@
             outline: none;
         }
 
-        /* Variable row styling to match categories.html */
+        /* Variable row styling to match describe_variables.html */
         .variable-row {
             display: flex;
             align-items: center;
@@ -155,20 +155,68 @@
             width: 300px !important;
         }
 
+        /* Smooth loading animation styles */
+        .loading-icon {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+        }
+
+        .icon-fade-out {
+            opacity: 0;
+            transform: scale(0.8) rotate(10deg);
+        }
+
+        .icon-fade-in {
+            opacity: 1;
+            transform: scale(1.1) rotate(-5deg);
+            animation: icon-bounce 0.3s ease-out;
+        }
+
+        @keyframes icon-bounce {
+            0% {
+                transform: scale(1.1) rotate(-5deg);
+            }
+            50% {
+                transform: scale(1.2) rotate(0deg);
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+            }
+        }
+
+        /* Add a subtle pulse effect to the processing button */
+        .btn-primary:disabled.processing {
+            background-color: #6c757d !important;
+            border-color: #6c757d !important;
+            animation: subtle-pulse 2s infinite;
+        }
+
+        @keyframes subtle-pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
+            }
+        }
+
     </style>
 </head>
 
 <body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
 <div class="container">
     <br>
-    <h1>Describe categories and units</h1>
+    <h1><i class="fas fa-pencil-ruler"></i> Describe categories and units</h1>
     <hr>
     <p>Please provide more information for the categorical and continuous variables that were defined in the variable
         description page.<br>
     <form class="form-horizontal" method="POST" action="end">
         <hr>
         {% for database, df in dataframes.items() %}
-            <h2 style="display: inline-block;"><i class="fas fa-database"></i>  {{ database }}</h2>
+            <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
             <button class="toggle-button" type="button">
                 <span class="toggle-text">Show more</span>
                 <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
@@ -281,11 +329,16 @@
             <hr>
         {% endfor %}
 
-        <p><input type="submit" value="Submit" class="btn btn-primary"></p>
+        <p>
+            <button type="submit" id="submitBtn" class="btn btn-primary">
+                <i class="fas fa-play"></i> Submit
+            </button>
+        </p>
 
         <!-- Reference Guide Section -->
         <div class="mt-4">
-            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+            <div class="alert alert-info py-2"
+                 style="font-size: 0.85em; border-left: 4px solid #764ba2; background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
                 <i class="fas fa-info-circle"></i>
                 <strong>Reference Guide</strong><br>
                 <div class="mt-1 ms-4">
@@ -336,6 +389,67 @@
         </div>
     </form>
     <script>
+        // Loading animation functions
+        let loadingInterval;
+
+        function startLoadingAnimation(buttonSelector) {
+            const button = $(buttonSelector);
+            const originalText = button.html();
+
+            // Disable button and add processing class
+            button.prop('disabled', true).addClass('processing');
+
+            // Start with edit icon
+            let isPen = false;
+            button.html('<i class="fas fa-edit loading-icon"></i> Processing descriptions...');
+
+            // Alternate between edit and pen every 1 second with smooth transition
+            loadingInterval = setInterval(function() {
+                const icon = button.find('.loading-icon');
+
+                // Add fade out effect
+                icon.addClass('icon-fade-out');
+
+                setTimeout(function() {
+                    if (isPen) {
+                        icon.removeClass('fa-pen').addClass('fa-edit');
+                    } else {
+                        icon.removeClass('fa-edit').addClass('fa-pen');
+                    }
+                    isPen = !isPen;
+
+                    // Remove fade out and add fade in
+                    icon.removeClass('icon-fade-out').addClass('icon-fade-in');
+
+                    // Clean up fade in class after animation
+                    setTimeout(function() {
+                        icon.removeClass('icon-fade-in');
+                    }, 300);
+                }, 150); // Half of transition duration for smooth crossfade
+
+            }, 1000);
+
+            // Store original text for potential restoration
+            button.data('original-text', originalText);
+        }
+
+        function stopLoadingAnimation(buttonSelector) {
+            const button = $(buttonSelector);
+
+            // Clear the interval
+            if (loadingInterval) {
+                clearInterval(loadingInterval);
+                loadingInterval = null;
+            }
+
+            // Restore original button state
+            const originalText = button.data('original-text');
+            if (originalText) {
+                button.html(originalText);
+            }
+            button.prop('disabled', false).removeClass('processing');
+        }
+
         $(document).ready(function () {
             $('.toggle-button').click(function () {
                 var textElement = $(this).find('.toggle-text');
@@ -357,6 +471,12 @@
                 $(this).closest('.variable-row').next('.toggle-content').toggleClass('active');
             });
 
+            // Handle form submission
+            $('form').submit(function(e) {
+                // Start loading animation for submit button
+                startLoadingAnimation('#submitBtn');
+            });
+
             $(".selectpicker").on('show.bs.select', function (e) {
                 var dropdownMenu = $(this).parent().find('.dropdown-menu');
                 var toggleContent = $(this).closest('.toggle-content');
@@ -372,6 +492,15 @@
             });
         });
     </script>
+
+    <script>
+        // Pass Flask variables to JavaScript for navigation header
+        window.graph_exists = true; // Data exists in describe step
+    </script>
+
 </div>
+<!-- Include footer -->
+{% include 'footer.html' %}
 </body>
 </html>
+

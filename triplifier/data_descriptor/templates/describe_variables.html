@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Variable description</title>
-    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-    <link rel="stylesheet" href="{{url_for('custom_static', filename='css/all.min.css') }}"/>
-    <script src="{{url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-    <script src="{{url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-    <script src="{{url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -48,7 +48,7 @@
             padding: 10px;
             background-color: white;
             border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .variable-label {
@@ -139,13 +139,61 @@
         .datatype-feedback i {
             margin-right: 4px;
         }
+
+        /* Smooth loading animation styles */
+        .loading-icon {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+        }
+
+        .icon-fade-out {
+            opacity: 0;
+            transform: scale(0.8) rotate(10deg);
+        }
+
+        .icon-fade-in {
+            opacity: 1;
+            transform: scale(1.1) rotate(-5deg);
+            animation: icon-bounce 0.3s ease-out;
+        }
+
+        @keyframes icon-bounce {
+            0% {
+                transform: scale(1.1) rotate(-5deg);
+            }
+            50% {
+                transform: scale(1.2) rotate(0deg);
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+            }
+        }
+
+        /* Add a subtle pulse effect to the processing button */
+        #submitBtn:disabled.processing {
+            background-color: #6c757d !important;
+            border-color: #6c757d !important;
+            animation: subtle-pulse 2s infinite;
+        }
+
+        @keyframes subtle-pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
+            }
+        }
     </style>
 </head>
 
 <body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
 <div class="container">
     <br>
-    <h1>Describe your data</h1>
+    <h1><i class="fas fa-pencil-ruler"></i> Describe your data</h1>
     <hr>
     <p>Please inspect the variables (i.e. columns) of your database(s).<br>
         For every database that you would like to describe,
@@ -158,7 +206,7 @@
             <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
             <button class="toggle-button" type="button">
                 <span class="toggle-text">Show more</span>
-                <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                <svg class="angle-icon" xmlns="http://www.w3.org/1999/svg" viewBox="0 0 448 512" width="20" height="20">
                     <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
                 </svg>
             </button>
@@ -238,7 +286,8 @@
                                                 </option>
                                             {% endfor %}
                                         </select>
-                                        <small class="datatype-feedback" id="feedback_{{ database }}_{{ item }}" style="display: none; color: #28a745;">
+                                        <small class="datatype-feedback" id="feedback_{{ database }}_{{ item }}"
+                                               style="display: none; color: #28a745;">
                                             <i class="fas fa-magic"></i> Auto-filled based on description
                                         </small>
                                     </div>
@@ -263,12 +312,17 @@
             <hr>
         {% endfor %}
 
-        <p><input type="submit" id="submitBtn" value="Submit" class="btn btn-primary" disabled></p>
+        <p>
+            <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+                <i class="fas fa-play"></i> Submit
+            </button>
+        </p>
     </form>
 
     <!-- Reference Guide Section -->
     <div class="mt-4">
-        <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid #17a2b8;">
+        <div class="alert alert-info py-2"
+             style="font-size: 0.85em; border-left: 4px solid #764ba2; background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
             <i class="fas fa-info-circle"></i>
             <strong>Reference Guide</strong><br>
             <div class="mt-1 ms-4">
@@ -319,7 +373,8 @@
                     <strong style="font-size: 0.9em;">Additional Information:</strong>
                     <div class="mt-1">
                         <p class="mb-1">
-                             &#x1F914; <i>Does none of the available descriptions accurately represent a given variable?</i><br>
+                            &#x1F914; <i>Does none of the available descriptions accurately represent a given
+                            variable?</i><br>
                             <span class="ms-3">Please select 'Other' and specify what the variable represents in the text box.</span>
                         </p>
                         <p class="mb-0">
@@ -333,6 +388,9 @@
     </div>
 </div>
 
+<!-- Include footer -->
+{% include 'footer.html' %}
+
 <script>
     // Global datatype mapping passed from backend
     var descriptionToDatatype = {{ description_to_datatype|tojson }};
@@ -340,6 +398,67 @@
     // Track which fields were auto-filled vs manually overridden
     var autoFilledFields = new Set();
     var manualOverrides = new Set();
+
+    // Loading animation functions
+    let loadingInterval;
+
+    function startLoadingAnimation(buttonSelector) {
+        const button = $(buttonSelector);
+        const originalText = button.html();
+
+        // Disable button and add processing class for styling
+        button.prop('disabled', true).addClass('processing');
+
+        // Start with edit icon
+        let isPen = false;
+        button.html('<i class="fas fa-edit loading-icon"></i> Processing descriptions...');
+
+        // Alternate between edit and pen every 1 second with smooth transition
+        loadingInterval = setInterval(function() {
+            const icon = button.find('.loading-icon');
+
+            // Add fade out effect
+            icon.addClass('icon-fade-out');
+
+            setTimeout(function() {
+                if (isPen) {
+                    icon.removeClass('fa-pen').addClass('fa-edit');
+                } else {
+                    icon.removeClass('fa-edit').addClass('fa-pen');
+                }
+                isPen = !isPen;
+
+                // Remove fade out and add fade in
+                icon.removeClass('icon-fade-out').addClass('icon-fade-in');
+
+                // Clean up fade in class after animation
+                setTimeout(function() {
+                    icon.removeClass('icon-fade-in');
+                }, 300);
+            }, 150); // Half of transition duration for smooth crossfade
+
+        }, 1000);
+
+        // Store original text for potential restoration
+        button.data('original-text', originalText);
+    }
+
+    function stopLoadingAnimation(buttonSelector) {
+        const button = $(buttonSelector);
+
+        // Clear the interval
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+            loadingInterval = null;
+        }
+
+        // Restore original button state
+        const originalText = button.data('original-text');
+        if (originalText) {
+            button.html(originalText);
+        }
+        button.prop('disabled', false).removeClass('processing');
+    }
 
     $(document).ready(function () {
         $('.toggle-button').click(function () {
@@ -408,6 +527,12 @@
             }
         });
 
+        // Handle form submission
+        $('form').submit(function(e) {
+            // Start loading animation for submit button
+            startLoadingAnimation('#submitBtn');
+        });
+
         // Check for pre-selected values on page load
         checkDescriptions();
     });
@@ -432,7 +557,7 @@
 
                     // Show feedback that this was auto-filled
                     feedback.show();
-                    setTimeout(function() {
+                    setTimeout(function () {
                         feedback.fadeOut();
                     }, 3000);
                 }
@@ -450,7 +575,7 @@
     function showOverrideConfirmation(database, item) {
         var feedback = $('#feedback_' + database + '_' + item);
         feedback.html('<i class="fas fa-user-edit"></i> Manually overridden').css('color', '#ffc107').show();
-        setTimeout(function() {
+        setTimeout(function () {
             feedback.fadeOut();
         }, 2000);
     }
@@ -498,5 +623,12 @@
         checkDescriptions();
     });
 </script>
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in describe step
+</script>
+
 </body>
 </html>
+

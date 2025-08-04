@@ -15,13 +15,15 @@
             padding: 10px 20px;
             background: #fff;
             border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
         }
+
         .variable-name {
             font-weight: bold;
             flex-grow: 1;
             min-width: 200px;
         }
+
         .status-indicator {
             display: flex;
             align-items: center;
@@ -29,47 +31,64 @@
             min-width: 200px;
             margin-left: auto;
         }
+
         .status-icon {
             font-size: 1.2em;
             margin-left: 10px;
         }
+
         .status-message {
             font-size: 1em;
             text-align: right;
         }
+
         .spinner {
             animation: spin 1s linear infinite;
             color: #007bff;
         }
+
         .success {
             color: #28a745;
         }
+
         .error {
             color: #dc3545;
         }
+
         .filter-section {
             margin-bottom: 20px;
             padding: 15px;
             background: #f8f9fa;
             border-radius: 8px;
         }
+
         .pagination {
             margin-top: 20px;
             justify-content: center;
         }
+
         .hidden {
             display: none;
         }
+
         .unannotated {
             background: #f8f9fa;
         }
+
         @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
 <body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
 <div class="container">
     <h1><i class="fas fa-check-circle"></i> Annotation Verification</h1>
     <hr>
@@ -100,35 +119,35 @@
     <div id="all-variables-list">
         <!-- Described Variables -->
         {% for variable_name, variable_data in variable_data.items() %}
-        <div class="variable-item" data-status="pending">
-            <span class="variable-name">{{ variable_name.split('.')[-1] }} ({{ variable_name.split('.')[0] }})</span>
-            <div class="status-indicator">
+            <div class="variable-item" data-status="pending">
+                <span class="variable-name">{{ variable_name.split('.')[-1] }} ({{ variable_name.split('.')[0] }})</span>
+                <div class="status-indicator">
                 <span class="status-message" id="message-{{ variable_name|replace('.', '-') }}">
                     Checking annotation...
                 </span>
-                <span class="status-icon" id="icon-{{ variable_name|replace('.', '-') }}">
+                    <span class="status-icon" id="icon-{{ variable_name|replace('.', '-') }}">
                     <i class="fas fa-spinner spinner"></i>
                 </span>
+                </div>
             </div>
-        </div>
         {% endfor %}
 
         <!-- Undescribed Variables -->
         {% set printed_variables = [] %}
         {% for variable_name in unannotated_variables %}
-        {% set variable_short_name = variable_name.split('.')[-1] %}
-        {% if variable_short_name not in printed_variables %}
-        <div class="variable-item unannotated" data-status="undescribed">
-            <span class="variable-name">{{ variable_short_name }}</span>
-            <div class="status-indicator">
-                <span class="status-message">Not described</span>
-                <span class="status-icon">
+            {% set variable_short_name = variable_name.split('.')[-1] %}
+            {% if variable_short_name not in printed_variables %}
+                <div class="variable-item unannotated" data-status="undescribed">
+                    <span class="variable-name">{{ variable_short_name }}</span>
+                    <div class="status-indicator">
+                        <span class="status-message">Not described</span>
+                        <span class="status-icon">
                     <i class="fas fa-times-circle error"></i>
                 </span>
-            </div>
-        </div>
-        {% set printed_variables = printed_variables.append(variable_short_name) %}
-        {% endif %}
+                    </div>
+                </div>
+                {% set printed_variables = printed_variables.append(variable_short_name) %}
+            {% endif %}
         {% endfor %}
     </div>
 
@@ -141,6 +160,8 @@
 
     <hr>
     <a href="/" class="btn btn-primary"><i class="fas fa-home"></i> Return to Home</a>
+    <br>
+    <br>
 </div>
 
 <script>
@@ -210,18 +231,18 @@
         }
 
         // Change page
-        window.changePage = function(page) {
+        window.changePage = function (page) {
             currentPage = page;
             updateDisplay();
         };
 
         // Add event listeners for filters
-        document.getElementById('searchInput').addEventListener('input', function() {
+        document.getElementById('searchInput').addEventListener('input', function () {
             currentPage = 1;
             updateDisplay();
         });
 
-        document.getElementById('statusFilter').addEventListener('change', function() {
+        document.getElementById('statusFilter').addEventListener('change', function () {
             currentPage = 1;
             updateDisplay();
         });
@@ -230,47 +251,56 @@
         updateDisplay();
 
         // Process annotations for described variables
-        variables.forEach(function(variableName) {
+        variables.forEach(function (variableName) {
             const iconId = 'icon-' + variableName.replace('.', '-');
             const messageId = 'message-' + variableName.replace('.', '-');
             const item = document.querySelector(`[id="message-${variableName.replace('.', '-')}"]`).closest('.variable-item');
 
             fetch('/verify-annotation-ask', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ variable: variableName })
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({variable: variableName})
             })
-            .then(response => response.json())
-            .then(data => {
-                const icon = document.getElementById(iconId);
-                const message = document.getElementById(messageId);
-                if (data.success && typeof(data.valid) !== 'undefined') {
-                    if (data.valid) {
-                        icon.innerHTML = '<i class="fas fa-check-circle success"></i>';
-                        message.textContent = 'Successfully annotated';
-                        item.dataset.status = 'success';
+                .then(response => response.json())
+                .then(data => {
+                    const icon = document.getElementById(iconId);
+                    const message = document.getElementById(messageId);
+                    if (data.success && typeof (data.valid) !== 'undefined') {
+                        if (data.valid) {
+                            icon.innerHTML = '<i class="fas fa-check-circle success"></i>';
+                            message.textContent = 'Successfully annotated';
+                            item.dataset.status = 'success';
+                        } else {
+                            icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
+                            message.textContent = 'Annotation failed';
+                            item.dataset.status = 'error';
+                        }
                     } else {
                         icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                        message.textContent = 'Annotation failed';
+                        message.textContent = 'Error: ' + (data.error || 'Unknown error');
                         item.dataset.status = 'error';
                     }
-                } else {
+                    updateDisplay();
+                })
+                .catch(error => {
+                    const icon = document.getElementById(iconId);
+                    const message = document.getElementById(messageId);
                     icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                    message.textContent = 'Error: ' + (data.error || 'Unknown error');
+                    message.textContent = 'Network error';
                     item.dataset.status = 'error';
-                }
-                updateDisplay();
-            })
-            .catch(error => {
-                const icon = document.getElementById(iconId);
-                const message = document.getElementById(messageId);
-                icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                message.textContent = 'Network error';
-                item.dataset.status = 'error';
-                updateDisplay();
-            });
+                    updateDisplay();
+                });
         });
     });
 </script>
+
+<!-- Include footer -->
+{% include 'footer.html' %}
+
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in annotate step
+</script>
+
 </body>
 </html>

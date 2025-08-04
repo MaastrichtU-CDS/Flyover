@@ -95,25 +95,36 @@ class Cache:
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
+        self.annotation_json_data = None  # Store uploaded JSON data for annotation
+        self.annotation_json_path = None  # Store path to uploaded JSON file
 
 
 session_cache = Cache()
 
 
 @app.route('/')
+def landing():
+    """
+    Render the landing page that provides an overview of the three-step workflow.
+    This serves as the main entry point describing the Digest, Describe, Annotate process.
+    """
+    return render_template('index.html')
+
+
+@app.route('/digest')
 def index():
     """
-    This function is responsible for rendering the index.html page.
+    This function is responsible for rendering the digest.html page.
     It is mapped to the root URL ("/") of the Flask application.
 
     The function first checks if a data graph already exists in the GraphDB repository.
-    If it does, the index.html page is rendered with a flag indicating that the graph exists.
+    If it does, the digest.html page is rendered with a flag indicating that the graph exists.
     If the graph does not exist or if an error occurs during the check,
-    the index.html page is rendered without the flag.
+    the digest.html page is rendered without the flag.
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'index.html' template.
+        it renders the 'digest.html' template.
 
     Raises:
         Exception: If an error occurs while checking if the data graph exists,
@@ -122,15 +133,15 @@ def index():
     # Check whether a data graph already exists
     try:
         if check_graph_exists(session_cache.repo, "http://data.local/"):
-            # If the data graph exists, render the index.html page with a flag indicating that the graph exists
+            # If the data graph exists, render the digest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
-            return render_template('index.html', graph_exists=session_cache.existing_graph)
+            return render_template('digest.html', graph_exists=session_cache.existing_graph)
     except Exception as e:
         # If an error occurs, flash the error message to the user
         flash(f"Failed to check if the a data graph already exists, error: {e}")
 
-    # If the data graph does not exist or if an error occurs, render the index.html page without the flag
-    return render_template('index.html')
+    # If the data graph does not exist or if an error occurs, render the digest.html page without the flag
+    return render_template('digest.html')
 
 
 @app.route('/upload-semantic-map', methods=['POST'])
@@ -176,7 +187,6 @@ def upload_file():
     """
     This function handles the file upload process.
     It accepts CSV files and handles data from a PostgreSQL database.
-    JSON file handling has been moved to a separate route (/upload-semantic-map).
 
     The function works as follows:
     1. It retrieves the file type and CSV files from the form data.
@@ -187,8 +197,8 @@ def upload_file():
     4. It returns a response indicating whether the triplifier run was successful.
 
     Returns:
-        flask.Response: A Flask response object containing the rendered 'triples.html' template
-         if the triplifier run was successful, or the 'index.html' template if it was not.
+        flask.Response: A Flask response object containing the rendered 'describe_landing.html' template
+         if the triplifier run was successful, or the 'digest.html' template if it was not.
     """
     upload = True
     file_type = request.form.get('fileType')
@@ -208,12 +218,12 @@ def upload_file():
         # Check if any CSV file has a filename
         if not any(csv_file.filename for csv_file in csv_files):
             flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
-            return render_template('index.html', error=True)
+            return render_template('digest.html', error=True)
 
         for csv_file in csv_files:
             if allowed_file(csv_file.filename, {'csv'}) is False:
                 flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
-                return render_template('index.html', error=True)
+                return render_template('digest.html', error=True)
 
         try:
             separator_sign = str(request.form.get('csv_separator_sign'))
@@ -231,7 +241,7 @@ def upload_file():
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
-            return render_template('index.html', error=True)
+            return render_template('digest.html', error=True)
 
         session_cache.csvPath = [os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename)) for
                                  csv_file in csv_files]
@@ -254,7 +264,7 @@ def upload_file():
         message = Markup("You have opted to not submit any new data, "
                          "you can now proceed to describe your data."
                          "<br>"
-                         "<i>In case you do wish to submit data, please return to the welcome page.</i>")
+                         "<i>In case you do wish to submit data, please return to the digest page.</i>")
 
     else:
         success = False
@@ -277,35 +287,84 @@ def upload_file():
         return redirect(url_for('data_submission'))
     else:
         flash(f"Attempting to proceed resulted in an error: {message}")
-        return render_template('index.html', error=True, graph_exists=session_cache.existing_graph)
+        return render_template('digest.html', error=True, graph_exists=session_cache.existing_graph)
 
 
 @app.route('/data-submission')
 def data_submission():
     """
     This function is mapped to the "/data-submission" URL and is invoked when a GET request is made to this URL.
-    It retrieves a status message from the session cache and renders the 'triples.html' template with the message.
+    It retrieves a status message from the session cache and renders the 'describe_landing.html' template with the message.
 
     The function performs the following steps:
     1. Retrieves the status message from the 'StatusToDisplay' object in the session cache.
     2. The status message is marked as safe for inclusion in HTML/XML output
     using the Markup function from the 'markupsafe' module.
-    3. Renders the 'triples.html' template with the status message.
+    3. Renders the 'describe_landing.html' template with the status message.
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'triples.html' template with the status message.
+        it renders the 'describe_landing.html' template with the status message.
     """
-    # Render the 'triples.html' template with the 'title', 'message', and 'route'
-    return render_template('triples.html', message=Markup(session_cache.StatusToDisplay))
+    # Render the 'describe_landing.html' template with the 'title', 'message', and 'route'
+    return render_template('describe_landing.html', message=Markup(session_cache.StatusToDisplay))
 
 
-@app.route("/repo", methods=['GET', 'POST'])
-def retrieve_columns():
+@app.route('/describe_landing')
+def describe_landing():
     """
-    This function is mapped to the "/repo" URL and is invoked when a POST request is made to this URL.
+    This function provides access to the describe landing page when users navigate directly 
+    or when they have completed the digest step. It checks if data exists in the repository
+    and shows appropriate messaging based on data availability.
+    
+    Returns:
+        flask.render_template: Renders the describe_landing.html template with appropriate status
+    """
+    try:
+        # Check if graph exists first
+        if check_graph_exists(session_cache.repo, "http://data.local/"):
+            session_cache.existing_graph = True
+            message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
+            return render_template('describe_landing.html', message=Markup(message))
+        else:
+            # No data found - render page with warning message instead of redirecting
+            message = """
+            <div class="alert alert-warning" role="alert">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>No Data Found</strong><br>
+                You cannot proceed with the describe step as no data has been uploaded yet. 
+                Please go back to the Digest step to upload your data first.
+                <br><br>
+                <a href="/digest" class="btn btn-primary">
+                    <i class="fas fa-arrow-left"></i> Go to Digest Step
+                </a>
+            </div>
+            """
+            return render_template('describe_landing.html', message=Markup(message))
+        
+    except Exception as e:
+        # On error, show warning message instead of redirecting
+        message = f"""
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle"></i>
+            <strong>Error Accessing Data</strong><br>
+            An error occurred while checking for uploaded data: {e}<br>
+            Please ensure you have completed the Digest step before proceeding.
+            <br><br>
+            <a href="/digest" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Go to Digest Step
+            </a>
+        </div>
+        """
+        return render_template('describe_landing.html', message=Markup(message))
+
+
+@app.route("/describe_variables", methods=['GET', 'POST'])
+def describe_variables():
+    """
+    This function is mapped to the "/describe_landing" URL and is invoked when a POST request is made to this URL.
     It retrieves column information from a GraphDB repository and
-    prepares it for rendering in the 'categories.html' template.
+    prepares it for rendering in the 'describe_variables.html' template.
 
     The function performs the following steps:
     1. Executes a SPARQL query to fetch the URI and column name of each column in the GraphDB repository.
@@ -316,11 +375,11 @@ def retrieve_columns():
     6. Creates a dictionary of dataframes, where the key is the unique database name and
     the value is the corresponding dataframe.
     7. Gets the global variable names for the description drop-down menu.
-    8. Renders the 'categories.html' template with the dictionary of dataframes and the global variable names.
+    8. Renders the 'describe_variables.html' template with the dictionary of dataframes and the global variable names.
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'categories.html' template with the dictionary of dataframes and the global variable names.
+        it renders the 'describe_variables.html' template with the dictionary of dataframes and the global variable names.
     """
     # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
     column_query = """
@@ -390,8 +449,8 @@ def retrieve_columns():
                         words = datatype.split()
                         preselected_datatypes[key_variation] = ' '.join(word.capitalize() for word in words)
 
-    # Render the 'categories.html' template with all the necessary data
-    return render_template('categories.html',
+    # Render the 'describe_variables.html' template with all the necessary data
+    return render_template('describe_variables.html',
                            dataframes=dataframes,
                            global_variable_names=global_names,
                            preselected_descriptions=preselected_descriptions,
@@ -403,7 +462,7 @@ def retrieve_columns():
 def retrieve_descriptive_info():
     """
     This function is responsible for retrieving descriptive information about the variables in the databases.
-    It is mapped to the "/units" URL and is invoked when a POST request is made to this URL.
+    It is mapped to the "/describe_variable_details" URL and is invoked when a POST request is made to this URL.
 
     The function performs the following steps:
     1. Iterates over each database in the session cache.
@@ -416,12 +475,12 @@ def retrieve_descriptive_info():
        it retrieves the categories for the local variable and stores them in the session cache.
     7. If the data type of the local variable is 'Continuous',
     it adds the local variable to a list of variables to further specify.
-    8. Finally, it renders the 'units.html' template with the list of variables to further specify.
+    8. Finally, it renders the 'describe_variable_details.html' template with the list of variables to further specify.
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'units.html' template with the list of variables to further specify,
-        or proceeds to 'download.html' in case there are no variables to specify.
+        it renders the 'describe_variable_details.html' template with the list of variables to further specify,
+        or proceeds to 'describe_downloads' in case there are no variables to specify.
     """
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
@@ -476,18 +535,18 @@ def retrieve_descriptive_info():
         if not session_cache.DescriptiveInfoDetails[database]:
             del session_cache.DescriptiveInfoDetails[database]
 
-    # Render the 'units.html' template with the list of variables to further specify
+    # Render the 'describe_variable_details.html' template with the list of variables to further specify
     if session_cache.DescriptiveInfoDetails:
-        return redirect(url_for('variable_details'))
+        return redirect(url_for('describe_variable_details'))
     else:
         # Redirect to the new route after processing the POST request
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
 
-@app.route("/variable-details")
-def variable_details():
+@app.route("/describe_variable_details")
+def describe_variable_details():
     """
-    This function is responsible for rendering the 'units.html' page.
+    This function is responsible for rendering the 'describe_variable_details.html' page.
 
     Returns:
         flask.render_template: A Flask function that renders the 'variable-details.html' template.
@@ -556,7 +615,7 @@ def variable_details():
     else:
         variable_info = {}
 
-    return render_template('units.html',
+    return render_template('describe_variable_details.html',
                            dataframes=dataframes,
                            global_variable_info=variable_info,
                            preselected_values=preselected_values)
@@ -629,22 +688,22 @@ def retrieve_detailed_descriptive_info():
             insert_equivalencies(session_cache.descriptive_info[database], variable)
 
     # Redirect the user to the 'download_page' URL
-    return redirect(url_for('download_page'))
+    return redirect(url_for('describe_downloads'))
 
 
-@app.route('/download')
-def download_page():
+@app.route('/describe_downloads')
+def describe_downloads():
     """
-    This function is responsible for rendering the 'download.html' page.
+    This function is responsible for rendering the 'describe_downloads.html' page.
 
     Returns:
-        flask.render_template: A Flask function that renders the 'download.html' template.
+        flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
     """
     if isinstance(session_cache.global_semantic_map, dict) and isinstance(session_cache.descriptive_info, dict):
-        return render_template('download.html',
+        return render_template('describe_downloads.html',
                                graphdb_location="http://localhost:7200/", show_semantic_map=True)
     else:
-        return render_template('download.html',
+        return render_template('describe_downloads.html',
                                graphdb_location="http://localhost:7200/", show_semantic_map=False)
 
 
@@ -772,6 +831,76 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
         abort(500, description=f"An error occurred while processing the ontology, error: {str(e)}")
 
 
+@app.route('/annotation_landing')
+def annotation_landing():
+    """
+    This function provides access to the annotation landing page when users navigate directly 
+    or when they want to start the annotation process. It checks if data exists and provides
+    appropriate options including JSON upload.
+    
+    Returns:
+        flask.render_template: Renders the annotation_landing.html template with appropriate status
+    """
+    try:
+        # Check if graph exists
+        data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
+        session_cache.existing_graph = data_exists
+        
+        message = None
+        if not data_exists:
+            message = "To start annotating, you need to complete the Digest and Describe steps first. Alternatively, you can upload a JSON file with your data descriptions."
+        
+        return render_template('annotation_landing.html', data_exists=data_exists, message=message)
+    except Exception as e:
+        flash(f"Error accessing annotation step: {e}")
+        return redirect(url_for('landing'))
+
+
+@app.route('/upload-annotation-json', methods=['POST'])
+def upload_annotation_json():
+    """
+    Handle the upload of a JSON file for direct annotation.
+    This allows users to upload JSON files with data descriptions for annotation.
+    
+    Returns:
+        flask.jsonify: JSON response indicating success or failure
+    """
+    try:
+        if 'annotationJsonFile' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['annotationJsonFile']
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not file.filename.lower().endswith('.json'):
+            return jsonify({'error': 'File must be a JSON file'}), 400
+
+        # Save the uploaded file
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Try to parse the JSON to validate it
+        try:
+            with open(filepath, 'r') as f:
+                json_data = json.load(f)
+            
+            # Store the JSON data for use in annotation
+            session_cache.annotation_json_data = json_data
+            session_cache.annotation_json_path = filepath
+            
+            return jsonify({'success': 'JSON file uploaded successfully', 'filename': filename})
+            
+        except json.JSONDecodeError:
+            os.remove(filepath)  # Clean up invalid file
+            return jsonify({'error': 'Invalid JSON file format'}), 400
+
+    except Exception as e:
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+
+
 @app.route('/annotation-review')
 def annotation_review():
     """
@@ -780,11 +909,11 @@ def annotation_review():
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available for annotation. Please upload a semantic map first.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     if not session_cache.databases.any():
         flash("No databases available for annotation.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
@@ -826,7 +955,7 @@ def annotation_review():
     if total_annotated == 0:
         flash(
             "No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     return render_template('annotation_review.html',
                            annotation_data=annotation_data,
@@ -939,11 +1068,11 @@ def annotation_verify():
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     if not session_cache.databases.any():
         flash("No databases available.")
-        return redirect(url_for('download_page'))
+        return redirect(url_for('describe_downloads'))
 
     # Get annotated variables from all databases using local semantic maps
     annotated_variables = []
@@ -975,8 +1104,9 @@ def annotation_verify():
     # Set success message if annotation was successful
     success_message = None
     if annotation_status and all(status.get('success') for status in annotation_status.values()):
-        success_message = ("The data processing is now complete and semantic interoperability has been achieved for the variables outlined above."
-                           "You can now close this page and proceed to the next steps in your workflow.")
+        success_message = (
+            "The data processing is now complete and semantic interoperability has been achieved for the variables outlined above."
+            "You can now close this page and proceed to the next steps in your workflow.")
 
     return render_template('annotation_verify.html',
                            annotated_variables=annotated_variables,
@@ -1086,12 +1216,13 @@ def verify_annotation_ask():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/annotation-ui-demo')
-def annotation_ui_demo():
-    """Demo page showing the annotation UI functionality"""
-    with open('/home/runner/work/Flyover/Flyover/annotation_ui_demo.html', 'r') as f:
-        content = f.read()
-    return content
+@app.route('/favicon.ico')
+def favicon():
+    """
+    Serve the favicon.ico file from the assets directory.
+    This route handles browser requests for the favicon.
+    """
+    return send_from_directory(f'{root_dir}{child_dir}/assets', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 
 @app.route('/data_descriptor/assets/<path:filename>')
@@ -1129,6 +1260,27 @@ def allowed_file(filename, allowed_extensions):
     """
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+
+@app.route('/api/check-graph-exists', methods=['GET'])
+def api_check_graph_exists():
+    """
+    API endpoint to check if graph data exists in the repository.
+
+    Returns:
+        flask.jsonify: JSON response with exists boolean and optional error message
+    """
+    try:
+        if not session_cache.repo:
+            return jsonify({'exists': False, 'error': 'No repository configured'})
+
+        # Check if the main data graph exists
+        graph_uri = "http://data.local/"
+        exists = check_graph_exists(session_cache.repo, graph_uri)
+
+        return jsonify({'exists': exists})
+    except Exception as e:
+        return jsonify({'exists': False, 'error': str(e)})
 
 
 def check_graph_exists(repo, graph_uri):
@@ -1176,7 +1328,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
 
     Returns:
     str: The result of the query execution as a string if the execution is successful.
-    flask.render_template: A Flask function that renders the 'index.html' template
+    flask.render_template: A Flask function that renders the 'digest.html' template
     if an error occurs during the query execution.
 
     Raises:
@@ -1189,7 +1341,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
     3. Executes the SPARQL query on the constructed endpoint URL.
     4. If the query execution is successful, returns the result as a string.
     5. If an error occurs during the query execution,
-    flashes an error message to the user and renders the 'index.html' template.
+    flashes an error message to the user and renders the 'digest.html' template.
     """
     if query_type is None:
         query_type = "query"
@@ -1206,9 +1358,9 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
         # Return the result of the query execution
         return response.text
     except Exception as e:
-        # If an error occurs, flash the error message to the user and render the 'index.html' template
+        # If an error occurs, flash the error message to the user and render the 'digest.html' template
         flash(f'Unexpected error when connecting to GraphDB, error: {e}.')
-        return render_template('index.html')
+        return render_template('digest.html')
 
 
 def retrieve_categories(repo, column_name):
@@ -1258,12 +1410,12 @@ def retrieve_global_names():
     If it is a dictionary, it attempts to retrieve the keys from the 'variable_info' field of the global semantic map,
     capitalise them, replace underscores with spaces, and return them as a list.
     If an error occurs during this process,
-    it flashes an error message to the user and renders the 'index.html' template.
+    it flashes an error message to the user and renders the 'digest.html' template.
 
     Returns:
         list: A list of strings representing the names of the global variables.
         flask.render_template: A Flask function that renders a template.
-        In this case, it renders the 'index.html' template if an error occurs.
+        In this case, it renders the 'digest.html' template if an error occurs.
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         return ['Research subject identifier', 'Biological sex', 'Age at inclusion', 'Other']
@@ -1273,7 +1425,7 @@ def retrieve_global_names():
                     session_cache.global_semantic_map['variable_info'].keys()] + ['Other']
         except Exception as e:
             flash(f"Failed to read the global semantic map. Error: {e}")
-            return render_template('index.html', error=True)
+            return render_template('digest.html', error=True)
 
 
 def formulate_local_semantic_map(database):
@@ -1301,7 +1453,7 @@ def formulate_local_semantic_map(database):
     for variable_name, variable_info in modified_semantic_map['variable_info'].items():
         modified_semantic_map['variable_info'][variable_name]['local_definition'] = None
 
-        # Reset all local_terms in value_mapping to null as well
+        # Reset all local_terms in value_mapping to null
         if 'value_mapping' in variable_info and 'terms' in variable_info['value_mapping']:
             for term_key in variable_info['value_mapping']['terms']:
                 modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key][
@@ -1395,7 +1547,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
     table (str): The name of the table in the PostgreSQL database.
 
     Returns:
-    flask.Response: A Flask response object containing the rendered 'index.html' template if
+    flask.Response: A Flask response object containing the rendered 'digest.html' template if
                     the connection to the PostgreSQL database fails.
     None: If the connection to the PostgreSQL database is successful.
     """
@@ -1413,7 +1565,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         print("connect() ERROR:", err)
         session_cache.conn = None
         flash('Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!')
-        return render_template('index.html', error=True)
+        return render_template('digest.html', error=True)
 
     # Write connection details to properties file
     with open(f"{root_dir}{child_dir}/triplifierSQL.properties", "w") as f:
@@ -1906,7 +2058,7 @@ def run_triplifier(properties_file=None):
                                 "<br><br>"
                                 "<i>In case you do not yet wish to describe your data, "
                                 "or you would like to add more data, "
-                                "please return to the welcome page.</i>"
+                                "please return to the digest page.</i>"
                                 "<br>"
                                 "<i>You can always return to Flyover to "
                                 "describe the data that is present in GraphDB.</i>")

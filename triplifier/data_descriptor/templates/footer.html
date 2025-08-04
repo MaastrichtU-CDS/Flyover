@@ -1,0 +1,151 @@
+<!-- Footer Component -->
+<footer class="flyover-footer">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4 text-md-left">
+                <p class="footer-text-md">
+                    <a href="https://clinicaldatascience.nl/" target="_blank">
+                        <img src="{{ url_for('custom_static', filename='logo-cds.svg') }}"
+                             alt="Clinical Data Science Maastricht" class="footer-logo">
+                    </a>
+                </p>
+            </div>
+            <div class="col-md-4 text-md-center">
+                <p class="footer-text">
+                </p>
+            </div>
+            <div class="col-md-4 text-md-right">
+                <a href="https://github.com/MaastrichtU-CDS/Flyover" target="_blank" class="footer-link">
+                    <p class="footer-text">
+                        <i class="fas fa-code"></i>
+                        <strong>Flyover</strong> v2.0.0
+                    </p>
+                </a>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<style>
+    /* Ensure body and html take full height */
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Use flexbox for proper layout */
+    body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    /* Main content wrapper should grow to fill space */
+    .main-content {
+        flex: 1;
+        padding-bottom: 120px; /* Space for footer */
+    }
+
+    .flyover-footer {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px 0;
+        border-radius: 8px 8px 0 0;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        margin-top: auto;
+        width: 100%;
+    }
+
+    .flyover-footer .col-md-4 {
+        display: flex;
+        align-items: center;
+        min-height: 80px;
+    }
+
+    .flyover-footer .col-md-4.text-md-right {
+        justify-content: flex-end;
+    }
+
+    .flyover-footer .col-md-4.text-md-left {
+        justify-content: flex-start;
+    }
+
+    .flyover-footer .col-md-4 p {
+        width: 100%;
+    }
+
+    .footer-text {
+        margin: 0;
+        font-size: 0.9rem;
+        opacity: 0.9;
+        text-align: right;
+        color: white;
+    }
+
+    .footer-text-md {
+        margin: 0;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .footer-logo {
+        height: 90px;
+        opacity: 0.9;
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block;
+        vertical-align: middle;
+    }
+
+    .footer-text i {
+        margin-right: 8px;
+        opacity: 0.8;
+    }
+
+    .footer-text strong {
+        font-weight: 600;
+    }
+
+    .footer-link {
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        width: 100%;
+    }
+
+    .footer-link:hover {
+        text-decoration: none;
+        color: inherit;
+        opacity: 0.8;
+    }
+
+    @media (max-width: 768px) {
+        .main-content {
+            padding-bottom: 140px;
+        }
+
+        .flyover-footer .text-md-right,
+        .flyover-footer .text-md-center,
+        .flyover-footer .text-md-left {
+            margin-top: 10px;
+            text-align: center !important;
+        }
+
+        .flyover-footer .col-md-4:first-child {
+            margin-top: 0;
+        }
+
+        .flyover-footer .col-md-4 {
+            min-height: 60px;
+        }
+
+        .footer-text {
+            text-align: center !important;
+        }
+
+        body {
+            padding-bottom: 120px;
+        }
+    }
+</style>
