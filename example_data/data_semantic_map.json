@@ -1,6 +1,6 @@
 {
   "endpoint": "http://localhost:7200/repositories/userRepo/statements",
-  "database_name": "HEAD-NECK-RADIOMICS-HN1_Clinical_data_updated_July_2020",
+  "database_name": null,
   "prefixes": "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>\nPREFIX sio: <http://semanticscience.org/resource/>\n",
   "variable_info": {
     "identifier": {

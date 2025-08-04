@@ -56,16 +56,17 @@
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="fas fa-file-code"></i> Option 1: Upload JSON File for Direct Annotation
+                        <i class="fas fa-project-diagram"></i> Option 1: Upload Finalised Flyover Semantic Map for Direct Annotation
                     </h5>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        If you have a pre-prepared JSON file with data descriptions and semantic mappings, you can
+                        If you have a finalised semantic map JSON file with data descriptions and semantic mappings, you can
                         upload it directly for annotation processing.
                     </p>
 
-                    <div class="alert alert-info">
+                    <div class="alert alert-info"
+                         style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
                         <i class="fas fa-info-circle"></i>
                         <strong>What should the JSON contain?</strong><br>
                         Your JSON file should include data variable definitions, types, and any pre-existing semantic
@@ -108,18 +109,17 @@
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-database"></i> Option 2: Annotate Existing Data
+                    <i class="fas fa-edit"></i> Option 2: Describe Existing Data
                 </h5>
             </div>
             <div class="card-body">
                 <p class="text-muted">
-                    Use the data that has already been uploaded and described in the previous steps for semantic
-                    annotation.
+                    Use the data that has already been uploaded and describe it in the "Describe" steps.
                 </p>
 
                 <form method="GET" action="/describe_landing">
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-tags"></i> Start Describing your data
+                        <i class="fas fa-play"></i> Start Describing your data
                     </button>
                 </form>
             </div>
@@ -240,9 +240,6 @@
         border-left: 4px solid #ffc107;
     }
 </style>
-
-<!-- Include footer -->
-{% include 'footer.html' %}
 
 <script>
     // Pass Flask variables to JavaScript for navigation header
