@@ -20,6 +20,7 @@ from io import StringIO
 from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
+from utils.json_utils import recursive_json_to_csv
 
 from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
                    send_from_directory, jsonify)
@@ -203,6 +204,7 @@ def upload_file():
     upload = True
     file_type = request.form.get('fileType')
     csv_files = request.files.getlist('csvFile')
+    json_file = request.files.get('json_file')
     pk_fk_data = request.form.get('pkFkData')
     cross_graph_link_data = request.form.get('crossGraphLinkData')
 
@@ -251,6 +253,42 @@ def upload_file():
             for path in session_cache.csvPath:
                 if os.path.exists(path):
                     os.remove(path)
+
+    elif file_type == 'JSON':
+        if not json_file or not json_file.filename:
+            flash("Please upload a '.json' file.")
+            return render_template('index.html', error=True)
+
+        if not allowed_file(json_file.filename, {'json'}):
+            flash("Only '.json' is allowed for JSON uploads.")
+            return render_template('index.html', error=True)
+
+        try:
+            json_name = secure_filename(json_file.filename)
+            json_path = os.path.join(app.config['UPLOAD_FOLDER'], json_name)
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            json_file.save(json_path)
+            # print(f"Saved JSON to: {json_path}")
+
+            base = os.path.splitext(json_name)[0]
+            csv_name = f"{base}.csv"
+            csv_path = os.path.join(app.config['UPLOAD_FOLDER'], csv_name)
+
+            recursive_json_to_csv(json_path, csv_path)
+
+            session_cache.csvData = [pd.read_csv(csv_path, sep=',', decimal='.', encoding='utf-8')]
+            session_cache.csvPath = [csv_path]
+
+            try:
+                os.remove(json_path)
+            except Exception:
+                pass
+
+            success, message = run_triplifier('triplifierCSV.properties')
+
+        except Exception as e:
+            flash(f"Unexpected error while converting JSON to CSV: {e}")
+            return render_template('index.html', error=True)
 
     elif file_type == 'Postgres':
         handle_postgres_data(request.form.get('username'), request.form.get('password'),

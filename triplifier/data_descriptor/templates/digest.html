@@ -53,6 +53,11 @@
             <input type="radio" id="Postgres" name="fileType" value="Postgres">
         </div>
 
+        <div class="form-group">
+            <label for="JSON"><i class="fas fa-code"></i> JSON:</label>
+            <input type="radio" id="JSON" name="fileType" value="JSON">
+        </div>
+
         <div id="csvform" style="display: none;">
             <hr>
             <label for="csvPath">Please specify the path of the CSV file(s) you would like to process</label>
@@ -167,6 +172,17 @@
             <br>
             <label for="POSTGRES_DB">PostgreSQL Database:</label>
             <input type="text" id="POSTGRES_DB" name="POSTGRES_DB">
+        </div>
+
+        <div id="jsonform" style="display: none;">
+            <hr>
+            <label for="jsonPath">Please upload your JSON file for processing</label>
+            <br>
+            <input type="text" id="jsonPath" name="jsonPath" placeholder="Enter JSON File Path" readonly>
+            <input type="button" class="btn btn-primary" value="..."
+                onclick="document.getElementById('jsonFile').click();">
+            <input type="file" id="jsonFile" name="json_file" style="display:none;" accept=".json"
+                onchange="document.getElementById('jsonPath').value = this.files[0].name">
         </div>
 
         <!-- Hidden field for PK/FK data -->
@@ -465,6 +481,14 @@
         });
     }
 
+    function updateJsonPath(input) {
+        if (input.files && input.files.length > 0) {
+            document.getElementById('jsonPath').value = input.files[0].name;
+        } else {
+            document.getElementById('jsonPath').value = '';
+        }
+    }
+
     function collectPkFkData() {
         let pkFkData = [];
 
@@ -505,12 +529,13 @@
         // Enable the other submit button when the necessary fields are filled
         $("input[type=text], input[type=file], input[type=password]").on("change keyup", function () {
             var csvFile = $("#csvFile").val();
+            var jsonFile = $("#jsonFile").val();
             var username = $("#username").val();
             var password = $("#password").val();
             var postgresUrl = $("#POSTGRES_URL").val();
             var postgresDb = $("#POSTGRES_DB").val();
 
-            if (($("#CSV").is(":checked") && csvFile) || ($("#Postgres").is(":checked") && username && password && postgresUrl && postgresDb)) {
+            if (($("#CSV").is(":checked") && csvFile) || ($("#JSON").is(":checked") && jsonFile) || ($("#Postgres").is(":checked") && username && password && postgresUrl && postgresDb)) {
                 $("#submitFilesButton").prop("disabled", false);
             } else {
                 $("#submitFilesButton").prop("disabled", true);
@@ -519,13 +544,24 @@
 
         $("#CSV").click(function () {
             $("#csvform").show();
+            $("#jsonform").hide();
             $("#postgresform").hide();
         });
 
         $("#Postgres").click(function () {
             $("#csvform").hide();
+            $("#jsonform").hide();
             $("#postgresform").show();
             // Hide data linking section for PostgreSQL
+            $("#dataLinkingSection").hide();
+        });
+
+        $("#JSON").click(function () {
+            $("#jsonform").show();
+            $("#csvform").hide();
+            $("#postgresform").hide();
+            // Hide CSV-only helpers when JSON is chosen
+            $("#pkFkSection").hide();
             $("#dataLinkingSection").hide();
         });
 
