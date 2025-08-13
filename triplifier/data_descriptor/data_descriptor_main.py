@@ -95,7 +95,6 @@ class Cache:
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
-        self.annotation_json_data = None  # Store uploaded JSON data for annotation
         self.annotation_json_path = None  # Store path to uploaded JSON file
 
 
@@ -888,7 +887,7 @@ def upload_annotation_json():
                 json_data = json.load(f)
             
             # Store the JSON data for use in annotation
-            session_cache.annotation_json_data = json_data
+            session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
             
             return jsonify({'success': 'JSON file uploaded successfully', 'filename': filename})
@@ -909,11 +908,11 @@ def annotation_review():
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available for annotation. Please upload a semantic map first.")
-        return redirect(url_for('describe_downloads'))
+        return redirect(url_for('annotation_landing'))
 
     if not session_cache.databases.any():
         flash("No databases available for annotation.")
-        return redirect(url_for('describe_downloads'))
+        return redirect(url_for('digest'))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
