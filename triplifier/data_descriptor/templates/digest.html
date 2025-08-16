@@ -498,23 +498,75 @@
         });
     }
 
+    function validatePkFkRelationships() {
+        if (!$("#pkFkSection").is(":visible")) {
+            return true; // No PK/FK section visible, validation passes
+        }
+
+        let hasIncompleteFkRelationship = false;
+        let validationMessage = "";
+
+        csvFiles.forEach((file, index) => {
+            const fk = $(`#fk_${index}`).val();
+            const fkTable = $(`#fkTable_${index}`).val();
+            const fkColumn = $(`#fkColumn_${index}`).val();
+
+            // If a foreign key is selected but the referenced table's primary key is not selected
+            if (fk && fkTable) {
+                // Find the index of the referenced table
+                const referencedTableIndex = csvFiles.findIndex(f => f.name === fkTable);
+                if (referencedTableIndex !== -1) {
+                    const referencedTablePk = $(`#pk_${referencedTableIndex}`).val();
+
+                    // If the referenced table doesn't have a primary key selected
+                    if (!referencedTablePk) {
+                        hasIncompleteFkRelationship = true;
+                        validationMessage = `Foreign key relationship incomplete: ${file.name} references ${fkTable}, but ${fkTable} needs a primary key selected.`;
+                    }
+                }
+            }
+        });
+
+        return !hasIncompleteFkRelationship;
+    }
+
+    function updateSubmitButtonState() {
+        var csvFile = $("#csvFile").val();
+        var username = $("#username").val();
+        var password = $("#password").val();
+        var postgresUrl = $("#POSTGRES_URL").val();
+        var postgresDb = $("#POSTGRES_DB").val();
+
+        // Check basic field validation
+        var basicValidation = ($("#CSV").is(":checked") && csvFile) ||
+                             ($("#Postgres").is(":checked") && username && password && postgresUrl && postgresDb);
+
+        // Check PK/FK validation
+        var pkFkValidation = validatePkFkRelationships();
+
+        if (basicValidation && pkFkValidation) {
+            $("#submitFilesButton").prop("disabled", false);
+            $("#submitFilesButton").removeAttr("title");
+        } else {
+            $("#submitFilesButton").prop("disabled", true);
+            if (!pkFkValidation) {
+                $("#submitFilesButton").attr("title", "Please select primary keys for all tables that are referenced by foreign keys");
+            }
+        }
+    }
+
     $(document).ready(function () {
         // Initially disable the other submit button
         $("#submitFilesButton").prop("disabled", true);
 
         // Enable the other submit button when the necessary fields are filled
         $("input[type=text], input[type=file], input[type=password]").on("change keyup", function () {
-            var csvFile = $("#csvFile").val();
-            var username = $("#username").val();
-            var password = $("#password").val();
-            var postgresUrl = $("#POSTGRES_URL").val();
-            var postgresDb = $("#POSTGRES_DB").val();
+            updateSubmitButtonState();
+        });
 
-            if (($("#CSV").is(":checked") && csvFile) || ($("#Postgres").is(":checked") && username && password && postgresUrl && postgresDb)) {
-                $("#submitFilesButton").prop("disabled", false);
-            } else {
-                $("#submitFilesButton").prop("disabled", true);
-            }
+        // Add event listeners to PK/FK dropdowns to trigger validation
+        $(document).on('change', '[id^="pk_"], [id^="fk_"], [id^="fkTable_"], [id^="fkColumn_"]', function() {
+            updateSubmitButtonState();
         });
 
         $("#CSV").click(function () {

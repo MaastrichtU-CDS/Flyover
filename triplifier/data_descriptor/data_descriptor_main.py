@@ -1644,25 +1644,6 @@ def insert_equivalencies(descriptive_info, variable):
     return execute_query(session_cache.repo, query, "update", "/statements")
 
 
-def generate_fk_predicate(fk_config, base_uri):
-    """Generate FK predicate URI using the same base as column class URIs"""
-    return (
-        f"{base_uri}cell_refers_to"
-    )
-
-
-def extract_base_uri(column_class_uri):
-    """Extract base URI from column class URI"""
-    # Example: http://data.local/rdf/ontology/patient_data_b.id
-    # Returns: http://data.local/rdf/ontology/
-    if column_class_uri:
-        # Find the last slash and extract everything before it + slash
-        last_slash = column_class_uri.rfind('/')
-        if last_slash != -1:
-            return column_class_uri[:last_slash + 1]
-    return "http://data.local/rdf/ontology/"  # fallback
-
-
 def get_column_class_uri(table_name, column_name):
     """Retrieve column class URI"""
     query = f"""
@@ -1770,9 +1751,7 @@ def process_pk_fk_relationships():
                 print(f"Could not find URIs for FK relationship: {fk_config}")
                 continue
 
-            # Extract base URI from the source column URI and generate predicate
-            base_uri = extract_base_uri(source_uri)
-            fk_predicate = generate_fk_predicate(fk_config, base_uri)
+            fk_predicate = f"http://um-cds/ontologies/databaseontology/fk_refers_to"
 
             # Insert the relationship
             insert_fk_relation(fk_predicate, source_uri, target_uri)
@@ -1930,15 +1909,7 @@ def process_cross_graph_relationships():
             session_cache.cross_graph_link_status = "failed"
             return False
 
-        # Generate predicate
-        base_uri = extract_base_uri(new_column_uri)
-        fk_config = {
-            'foreignKeyTable': link_data['newTableName'],
-            'foreignKeyColumn': link_data['newColumnName'],
-            'primaryKeyTable': link_data['existingTableName'],
-            'primaryKeyColumn': link_data['existingColumnName']
-        }
-        predicate = generate_fk_predicate(fk_config, base_uri)
+        predicate = f"http://um-cds/ontologies/databaseontology/fk_refers_to"
 
         # Insert the relationship
         insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)
