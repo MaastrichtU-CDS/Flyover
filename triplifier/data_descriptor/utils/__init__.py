@@ -8,7 +8,7 @@ from .data_preprocessing import (
     get_original_column_name
 )
 
-from .data_digest import (
+from .data_ingest import (
     upload_file_to_graphdb,
     upload_ontology_then_data
 )

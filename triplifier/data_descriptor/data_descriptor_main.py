@@ -44,7 +44,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
-from utils.data_digest import upload_ontology_then_data
+from utils.data_ingest import upload_ontology_then_data
 from annotation_helper.src.miscellaneous import add_annotation, read_file
 
 app = Flask(__name__)
@@ -105,25 +105,25 @@ session_cache = Cache()
 def landing():
     """
     Render the landing page that provides an overview of the three-step workflow.
-    This serves as the main entry point describing the Digest, Describe, Annotate process.
+    This serves as the main entry point describing the Ingest, Describe, Annotate process.
     """
     return render_template('index.html')
 
 
-@app.route('/digest')
+@app.route('/ingest')
 def index():
     """
-    This function is responsible for rendering the digest.html page.
+    This function is responsible for rendering the ingest.html page.
     It is mapped to the root URL ("/") of the Flask application.
 
     The function first checks if a data graph already exists in the GraphDB repository.
-    If it does, the digest.html page is rendered with a flag indicating that the graph exists.
+    If it does, the ingest.html page is rendered with a flag indicating that the graph exists.
     If the graph does not exist or if an error occurs during the check,
-    the digest.html page is rendered without the flag.
+    the ingest.html page is rendered without the flag.
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'digest.html' template.
+        it renders the 'ingest.html' template.
 
     Raises:
         Exception: If an error occurs while checking if the data graph exists,
@@ -132,15 +132,15 @@ def index():
     # Check whether a data graph already exists
     try:
         if check_graph_exists(session_cache.repo, "http://data.local/"):
-            # If the data graph exists, render the digest.html page with a flag indicating that the graph exists
+            # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
-            return render_template('digest.html', graph_exists=session_cache.existing_graph)
+            return render_template('ingest.html', graph_exists=session_cache.existing_graph)
     except Exception as e:
         # If an error occurs, flash the error message to the user
         flash(f"Failed to check if the a data graph already exists, error: {e}")
 
-    # If the data graph does not exist or if an error occurs, render the digest.html page without the flag
-    return render_template('digest.html')
+    # If the data graph does not exist or if an error occurs, render the ingest.html page without the flag
+    return render_template('ingest.html')
 
 
 @app.route('/upload-semantic-map', methods=['POST'])
@@ -197,7 +197,7 @@ def upload_file():
 
     Returns:
         flask.Response: A Flask response object containing the rendered 'describe_landing.html' template
-         if the triplifier run was successful, or the 'digest.html' template if it was not.
+         if the triplifier run was successful, or the 'ingest.html' template if it was not.
     """
     upload = True
     file_type = request.form.get('fileType')
@@ -217,12 +217,12 @@ def upload_file():
         # Check if any CSV file has a filename
         if not any(csv_file.filename for csv_file in csv_files):
             flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
-            return render_template('digest.html', error=True)
+            return render_template('ingest.html', error=True)
 
         for csv_file in csv_files:
             if allowed_file(csv_file.filename, {'csv'}) is False:
                 flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
-                return render_template('digest.html', error=True)
+                return render_template('ingest.html', error=True)
 
         try:
             separator_sign = str(request.form.get('csv_separator_sign'))
@@ -240,7 +240,7 @@ def upload_file():
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
-            return render_template('digest.html', error=True)
+            return render_template('ingest.html', error=True)
 
         session_cache.csvPath = [os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename)) for
                                  csv_file in csv_files]
@@ -263,7 +263,7 @@ def upload_file():
         message = Markup("You have opted to not submit any new data, "
                          "you can now proceed to describe your data."
                          "<br>"
-                         "<i>In case you do wish to submit data, please return to the digest page.</i>")
+                         "<i>In case you do wish to submit data, please return to the ingest page.</i>")
 
     else:
         success = False
@@ -286,7 +286,7 @@ def upload_file():
         return redirect(url_for('data_submission'))
     else:
         flash(f"Attempting to proceed resulted in an error: {message}")
-        return render_template('digest.html', error=True, graph_exists=session_cache.existing_graph)
+        return render_template('ingest.html', error=True, graph_exists=session_cache.existing_graph)
 
 
 @app.route('/data-submission')
@@ -313,7 +313,7 @@ def data_submission():
 def describe_landing():
     """
     This function provides access to the describe landing page when users navigate directly 
-    or when they have completed the digest step. It checks if data exists in the repository
+    or when they have completed the ingest step. It checks if data exists in the repository
     and shows appropriate messaging based on data availability.
     
     Returns:
@@ -332,10 +332,10 @@ def describe_landing():
                 <i class="fas fa-exclamation-triangle"></i>
                 <strong>No Data Found</strong><br>
                 You cannot proceed with the describe step as no data has been uploaded yet. 
-                Please go back to the Digest step to upload your data first.
+                Please go back to the Ingest step to upload your data first.
                 <br><br>
-                <a href="/digest" class="btn btn-primary">
-                    <i class="fas fa-arrow-left"></i> Go to Digest Step
+                <a href="/ingest" class="btn btn-primary">
+                    <i class="fas fa-arrow-left"></i> Go to Ingest Step
                 </a>
             </div>
             """
@@ -348,10 +348,10 @@ def describe_landing():
             <i class="fas fa-exclamation-triangle"></i>
             <strong>Error Accessing Data</strong><br>
             An error occurred while checking for uploaded data: {e}<br>
-            Please ensure you have completed the Digest step before proceeding.
+            Please ensure you have completed the Ingest step before proceeding.
             <br><br>
-            <a href="/digest" class="btn btn-primary">
-                <i class="fas fa-arrow-left"></i> Go to Digest Step
+            <a href="/ingest" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Go to Ingest Step
             </a>
         </div>
         """
@@ -847,7 +847,7 @@ def annotation_landing():
         
         message = None
         if not data_exists:
-            message = "To start annotating, you need to complete the Digest and Describe steps first. Alternatively, you can upload a JSON file with your data descriptions."
+            message = "To start annotating, you need to complete the Ingest and Describe steps first. Alternatively, you can upload a JSON file with your data descriptions."
         
         return render_template('annotation_landing.html', data_exists=data_exists, message=message)
     except Exception as e:
@@ -912,7 +912,7 @@ def annotation_review():
 
     if not session_cache.databases.any():
         flash("No databases available for annotation.")
-        return redirect(url_for('digest'))
+        return redirect(url_for('ingest'))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
@@ -1327,7 +1327,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
 
     Returns:
     str: The result of the query execution as a string if the execution is successful.
-    flask.render_template: A Flask function that renders the 'digest.html' template
+    flask.render_template: A Flask function that renders the 'ingest.html' template
     if an error occurs during the query execution.
 
     Raises:
@@ -1340,7 +1340,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
     3. Executes the SPARQL query on the constructed endpoint URL.
     4. If the query execution is successful, returns the result as a string.
     5. If an error occurs during the query execution,
-    flashes an error message to the user and renders the 'digest.html' template.
+    flashes an error message to the user and renders the 'ingest.html' template.
     """
     if query_type is None:
         query_type = "query"
@@ -1357,9 +1357,9 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
         # Return the result of the query execution
         return response.text
     except Exception as e:
-        # If an error occurs, flash the error message to the user and render the 'digest.html' template
+        # If an error occurs, flash the error message to the user and render the 'ingest.html' template
         flash(f'Unexpected error when connecting to GraphDB, error: {e}.')
-        return render_template('digest.html')
+        return render_template('ingest.html')
 
 
 def retrieve_categories(repo, column_name):
@@ -1409,12 +1409,12 @@ def retrieve_global_names():
     If it is a dictionary, it attempts to retrieve the keys from the 'variable_info' field of the global semantic map,
     capitalise them, replace underscores with spaces, and return them as a list.
     If an error occurs during this process,
-    it flashes an error message to the user and renders the 'digest.html' template.
+    it flashes an error message to the user and renders the 'ingest.html' template.
 
     Returns:
         list: A list of strings representing the names of the global variables.
         flask.render_template: A Flask function that renders a template.
-        In this case, it renders the 'digest.html' template if an error occurs.
+        In this case, it renders the 'ingest.html' template if an error occurs.
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         return ['Research subject identifier', 'Biological sex', 'Age at inclusion', 'Other']
@@ -1424,7 +1424,7 @@ def retrieve_global_names():
                     session_cache.global_semantic_map['variable_info'].keys()] + ['Other']
         except Exception as e:
             flash(f"Failed to read the global semantic map. Error: {e}")
-            return render_template('digest.html', error=True)
+            return render_template('ingest.html', error=True)
 
 
 def formulate_local_semantic_map(database):
@@ -1546,7 +1546,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
     table (str): The name of the table in the PostgreSQL database.
 
     Returns:
-    flask.Response: A Flask response object containing the rendered 'digest.html' template if
+    flask.Response: A Flask response object containing the rendered 'ingest.html' template if
                     the connection to the PostgreSQL database fails.
     None: If the connection to the PostgreSQL database is successful.
     """
@@ -1564,7 +1564,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         print("connect() ERROR:", err)
         session_cache.conn = None
         flash('Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!')
-        return render_template('digest.html', error=True)
+        return render_template('ingest.html', error=True)
 
     # Write connection details to properties file
     with open(f"{root_dir}{child_dir}/triplifierSQL.properties", "w") as f:
@@ -2028,7 +2028,7 @@ def run_triplifier(properties_file=None):
                                 "<br><br>"
                                 "<i>In case you do not yet wish to describe your data, "
                                 "or you would like to add more data, "
-                                "please return to the digest page.</i>"
+                                "please return to the ingest page.</i>"
                                 "<br>"
                                 "<i>You can always return to Flyover to "
                                 "describe the data that is present in GraphDB.</i>")

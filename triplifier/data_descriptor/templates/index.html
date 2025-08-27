@@ -91,7 +91,7 @@
             margin: 0 auto 20px auto;
         }
 
-        .digest-icon {
+        .ingest-icon {
             background: linear-gradient(45deg, #b92f84, #ed144f);
         }
 
@@ -173,11 +173,11 @@
     <!-- Workflow Overview -->
     <div class="row">
         <div class="col-lg-4 col-md-6 mb-4">
-            <div class="workflow-card" id="digest-card" data-target="/digest">
-                <div class="step-icon digest-icon">
+            <div class="workflow-card" id="ingest-card" data-target="/ingest">
+                <div class="step-icon ingest-icon">
                     <i class="fas fa-cookie-bite"></i>
                 </div>
-                <h3 class="step-title">1. Digest</h3>
+                <h3 class="step-title">1. Ingest</h3>
                 <p class="step-description">Upload and process your datasets to prepare them for semantic
                     annotation and interoperability.</p>
                 <ul class="step-features">
@@ -228,7 +228,7 @@
     <div class="cta-section">
         <h3><i class="fas fa-rocket text-primary"></i> Ready to Get Started?</h3>
         <p class="mb-4">Begin transforming your data into semantically interoperable resources.</p>
-        <a href="/digest" class="btn btn-primary btn-lg">
+        <a href="/ingest" class="btn btn-primary btn-lg">
             <i class="fas fa-play"></i> Start Data F.A.I.R.-ification Process
         </a>
     </div>
@@ -273,7 +273,7 @@
 
                 // Show appropriate message based on which card was clicked
                 if (target === '/describe_landing' || target === '/annotation_landing') {
-                    alert('Please complete the Digest step first by submitting your data.');
+                    alert('Please complete the Ingest step first by submitting your data.');
                 }
                 return false;
             }
@@ -287,15 +287,15 @@
     });
 
     function updateCardStates(dataExists) {
-        // Digest card is always accessible
-        $('#digest-card').removeClass('disabled').removeAttr('data-toggle data-placement title');
+        // Ingest card is always accessible
+        $('#ingest-card').removeClass('disabled').removeAttr('data-toggle data-placement title');
 
         // Describe and Annotate cards require data
         if (!dataExists) {
             $('#describe-card, #annotate-card').addClass('disabled')
                 .attr('data-toggle', 'tooltip')
                 .attr('data-placement', 'top')
-                .attr('title', 'First complete the data digest step to proceed with this step.');
+                .attr('title', 'First complete the data ingest step to proceed with this step.');
 
             // Initialize tooltips for disabled cards
             $('#describe-card, #annotate-card').tooltip();

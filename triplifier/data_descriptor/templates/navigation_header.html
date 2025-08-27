@@ -136,12 +136,12 @@
 
             <span class="step-separator">|</span>
 
-            <!-- Step 1: Digest -->
-            <a href="/digest" class="nav-step" id="digest-step">
+            <!-- Step 1: Ingest -->
+            <a href="/ingest" class="nav-step" id="ingest-step">
                 <span class="step-number">
                     <i class="fas fa-cookie-bite step-icon-header"></i>
                 </span>
-                <span class="step-text">Digest</span>
+                <span class="step-text">Ingest</span>
             </a>
 
             <i class="fas fa-chevron-right step-arrow"></i>
@@ -174,9 +174,9 @@
 
         // Step configuration
         const steps = {
-            'digest': {
-                pages: ['/digest', '/upload', '/data-submission'],
-                element: document.getElementById('digest-step'),
+            'ingest': {
+                pages: ['/ingest', '/upload', '/data-submission'],
+                element: document.getElementById('ingest-step'),
                 alwaysAccessible: true
             },
             'describe': {
@@ -240,8 +240,8 @@
                 // Reset icons to original state
                 const icon = step.element.querySelector('.step-icon-header');
                 if (icon) {
-                    // Reset digest icon
-                    if (step.element.id === 'digest-step') {
+                    // Reset ingest icon
+                    if (step.element.id === 'ingest-step') {
                         icon.className = 'fas fa-cookie-bite step-icon-header';
                     }
                     // Reset describe icon
@@ -260,15 +260,15 @@
                 steps[currentStep].element.classList.add('active');
             }
 
-            // Mark digest as completed if data exists (regardless of current page)
+            // Mark ingest as completed if data exists (regardless of current page)
             if (dataExists) {
-                steps.digest.element.classList.add('completed');
-                const digestIcon = steps.digest.element.querySelector('.step-icon-header');
-                if (digestIcon) {
-                    digestIcon.className = 'fas fa-check step-icon-header';
+                steps.ingest.element.classList.add('completed');
+                const ingestIcon = steps.ingest.element.querySelector('.step-icon-header');
+                if (ingestIcon) {
+                    ingestIcon.className = 'fas fa-check step-icon-header';
                 }
 
-                // If we're on describe or annotate step, they require digest to be completed
+                // If we're on describe or annotate step, they require ingest to be completed
                 if (currentStep === 'describe' || currentStep === 'annotate') {
                     // Describe is completed if we're on annotate step
                     if (currentStep === 'annotate') {
@@ -281,13 +281,13 @@
                 }
             }
 
-            // For index page, if data exists, show digest as completed but not active
+            // For index page, if data exists, show ingest as completed but not active
             if (currentPath === '/' && dataExists) {
-                steps.digest.element.classList.remove('active');
-                steps.digest.element.classList.add('completed');
-                const digestIcon = steps.digest.element.querySelector('.step-icon-header');
-                if (digestIcon) {
-                    digestIcon.className = 'fas fa-check step-icon-header';
+                steps.ingest.element.classList.remove('active');
+                steps.ingest.element.classList.add('completed');
+                const ingestIcon = steps.ingest.element.querySelector('.step-icon-header');
+                if (ingestIcon) {
+                    ingestIcon.className = 'fas fa-check step-icon-header';
                 }
             }
 
@@ -307,7 +307,7 @@
 
                     // Show user-friendly message
                     if (stepConfig.requiresData && !hasData()) {
-                        alert('Please complete the Digest step first by submitting your data.');
+                        alert('Please complete the Ingest step first by submitting your data.');
                     }
                     return false;
                 }

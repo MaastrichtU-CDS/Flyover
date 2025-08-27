@@ -156,10 +156,10 @@
                             <i class="fas fa-exclamation-triangle"></i>
                             <strong>No Data Found</strong><br>
                             You cannot proceed with the describe step as no data has been uploaded yet. 
-                            Please go back to the Digest step to upload your data first.
+                            Please go back to the Ingest step to upload your data first.
                             <br><br>
-                            <a href="/digest" class="btn btn-primary">
-                                <i class="fas fa-arrow-left"></i> Go to Digest Step
+                            <a href="/ingest" class="btn btn-primary">
+                                <i class="fas fa-arrow-left"></i> Go to Ingest Step
                             </a>
                         </div>
                     `);
@@ -174,10 +174,10 @@
                     <div class="alert alert-warning" role="alert">
                         <i class="fas fa-exclamation-triangle"></i>
                         <strong>Unable to Verify Data</strong><br>
-                        Please ensure you have completed the Digest step before proceeding.
+                        Please ensure you have completed the Ingest step before proceeding.
                         <br><br>
-                        <a href="/digest" class="btn btn-primary">
-                            <i class="fas fa-arrow-left"></i> Go to Digest Step
+                        <a href="/ingest" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Go to Ingest Step
                         </a>
                     </div>
                 `);
@@ -377,7 +377,7 @@
 
 <script>
     // Pass Flask variables to JavaScript for navigation header
-    window.graph_exists = true; // Data has been digested at this point
+    window.graph_exists = true; // Data has been ingested at this point
 </script>
 
 </body>
