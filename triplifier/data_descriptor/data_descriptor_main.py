@@ -77,8 +77,21 @@ session_cache = Cache(repo)
 @app.route('/')
 def landing():
     """
-    Render the landing page that provides an overview of the three-step workflow.
-    This serves as the main entry point describing the Ingest, Describe, Annotate process.
+    Landing page route handler for the Flyover application.
+    
+    Renders the main landing page that provides an overview of the three-step workflow:
+    1. Ingest - Upload and process data
+    2. Describe - Add metadata and semantic descriptions
+    3. Annotate - Apply semantic annotations and relationships
+    
+    Returns:
+        flask.render_template: Rendered index.html template
+        
+    Route:
+        GET / - Main application landing page
+        
+    Template:
+        index.html - Contains workflow overview and navigation
     """
     return render_template('index.html')
 
@@ -86,33 +99,52 @@ def landing():
 @app.route('/ingest')
 def index():
     """
-    This function is responsible for rendering the ingest.html page.
-    It is mapped to the root URL ("/") of the Flask application.
-
-    The function first checks if a data graph already exists in the GraphDB repository.
-    If it does, the ingest.html page is rendered with a flag indicating that the graph exists.
-    If the graph does not exist or if an error occurs during the check,
-    the ingest.html page is rendered without the flag.
-
+    Ingest page route handler for data upload and processing.
+    
+    This route renders the ingest.html page where users can upload CSV files or
+    connect to PostgreSQL databases. The function checks if data already exists
+    in the GraphDB repository and displays appropriate messaging.
+    
+    Workflow:
+        1. Check if data graph exists in GraphDB using modular check_graph_exists()
+        2. If graph exists, set session flag and display existing data message
+        3. If no graph or error, display standard ingest page
+        4. Flash error messages for any GraphDB connection issues
+    
     Returns:
-        flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'ingest.html' template.
-
-    Raises:
-        Exception: If an error occurs while checking if the data graph exists,
-        an exception is raised, and its error message is flashed to the user.
+        flask.render_template: Rendered ingest.html template
+            - With graph_exists=True if data already present
+            - With standard content if no existing data
+            
+    Route:
+        GET /ingest - Data ingestion and upload interface
+        
+    Template:
+        ingest.html - File upload and database connection forms
+        
+    Dependencies:
+        - modules.check_graph_exists: Modular function for GraphDB graph existence checking
+        - session_cache: Global session state management
+        - graphdb_url: GraphDB connection configuration
+        
+    Error Handling:
+        - Catches GraphDB connection exceptions
+        - Flashes user-friendly error messages
+        - Gracefully falls back to standard ingest page
     """
-    # Check whether a data graph already exists
+    # Check whether a data graph already exists in GraphDB using modular function
     try:
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
-            # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
+        # Use modular check_graph_exists with proper parameter passing
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
+            # Data exists - update session state and render with existing data flag
             session_cache.existing_graph = True
             return render_template('ingest.html', graph_exists=session_cache.existing_graph)
     except Exception as e:
-        # If an error occurs, flash the error message to the user
+        # GraphDB connection error - flash user-friendly message and continue
+        logger.error(f"GraphDB connection error in ingest route: {e}")
         flash(f"Failed to check if the a data graph already exists, error: {e}")
 
-    # If the data graph does not exist or if an error occurs, render the ingest.html page without the flag
+    # No existing data or error occurred - render standard ingest page
     return render_template('ingest.html')
 
 
@@ -294,7 +326,7 @@ def describe_landing():
     """
     try:
         # Check if graph exists first
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template('describe_landing.html', message=Markup(message))
@@ -377,7 +409,7 @@ def describe_variables():
     dataframes = {value: column_info[column_info['database'] == value] for value in unique_values}
 
     # Get the global variable names for the description drop-down menu
-    global_names = retrieve_global_names()
+    global_names = retrieve_global_names(session_cache)
 
     # Create dictionaries to store preselected values from semantic map
     preselected_descriptions = {}
@@ -482,7 +514,8 @@ def retrieve_descriptive_info():
                 # If the data type of the local variable is 'Categorical',
                 # retrieve the categories for the local variable and store them in the session cache
                 if data_type == 'Categorical':
-                    cat = retrieve_categories(session_cache.repo, local_variable_name)
+                    cat = retrieve_categories(session_cache.repo, local_variable_name, 
+                                             lambda repo, query: execute_query(repo, query, None, None, graphdb_url))
                     df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
                     # Check if description is missing and format display name accordingly
                     if not global_variable_name or global_variable_name.strip() == '':
@@ -815,7 +848,7 @@ def annotation_landing():
     """
     try:
         # Check if graph exists
-        data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
+        data_exists = check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url)
         session_cache.existing_graph = data_exists
         
         message = None
