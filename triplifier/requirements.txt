@@ -12,3 +12,8 @@ python-dateutil==2.9.0.post0
 pytz==2025.2
 requests==2.32.3
 six==1.17.0
+
+# Additional Flask extensions for production readiness
+Flask-CORS==5.0.0
+Flask-Caching==2.3.0
+python-dotenv==1.0.1
