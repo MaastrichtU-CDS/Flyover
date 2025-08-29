@@ -19,19 +19,21 @@ from .data_operations import (
     formulate_local_semantic_map,
     handle_postgres_data
 )
-from .relationship_processing import (
-    insert_equivalencies,
-    get_column_class_uri,
-    insert_fk_relation,
-    process_pk_fk_relationships,
-    background_pk_fk_processing,
-    get_existing_graph_structure,
-    get_existing_column_class_uri,
-    insert_cross_graph_relation,
-    process_cross_graph_relationships,
-    background_cross_graph_processing
-)
-from .triplification import run_triplifier
+
+# TODO: Enable these imports after full extraction is complete
+# from .relationship_processing import (
+#     insert_equivalencies,
+#     get_column_class_uri,
+#     insert_fk_relation,
+#     process_pk_fk_relationships,
+#     background_pk_fk_processing,
+#     get_existing_graph_structure,
+#     get_existing_column_class_uri,
+#     insert_cross_graph_relation,
+#     process_cross_graph_relationships,
+#     background_cross_graph_processing
+# )
+# from .triplification import run_triplifier
 
 __all__ = [
     # App configuration
@@ -54,18 +56,19 @@ __all__ = [
     'formulate_local_semantic_map',
     'handle_postgres_data',
     
-    # Relationship processing
-    'insert_equivalencies',
-    'get_column_class_uri',
-    'insert_fk_relation',
-    'process_pk_fk_relationships',
-    'background_pk_fk_processing',
-    'get_existing_graph_structure',
-    'get_existing_column_class_uri',
-    'insert_cross_graph_relation',
-    'process_cross_graph_relationships',
-    'background_cross_graph_processing',
-    
-    # Triplification
-    'run_triplifier'
+    # TODO: Enable these after full extraction
+    # # Relationship processing
+    # 'insert_equivalencies',
+    # 'get_column_class_uri',
+    # 'insert_fk_relation',
+    # 'process_pk_fk_relationships',
+    # 'background_pk_fk_processing',
+    # 'get_existing_graph_structure',
+    # 'get_existing_column_class_uri',
+    # 'insert_cross_graph_relation',
+    # 'process_cross_graph_relationships',
+    # 'background_cross_graph_processing',
+    # 
+    # # Triplification
+    # 'run_triplifier'
 ]

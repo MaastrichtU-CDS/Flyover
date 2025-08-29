@@ -26,18 +26,19 @@ from flask import (abort, after_this_request, Flask, redirect, render_template, 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-
-def setup_logging():
-    """Setup centralised logging with timestamp format"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s] [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S %z',
-        handlers=[
-            logging.StreamHandler()
-        ]
-    )
-
+# Import modular components
+from modules import (
+    setup_logging,
+    Cache,
+    allowed_file,
+    check_graph_exists,
+    api_check_graph_exists,
+    execute_query,
+    retrieve_categories,
+    retrieve_global_names,
+    formulate_local_semantic_map,
+    handle_postgres_data
+)
 
 # Initialize logging immediately
 setup_logging()
@@ -70,35 +71,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 
-class Cache:
-    def __init__(self):
-        self.repo = repo
-        self.file_path = None
-        self.table = None
-        self.url = None
-        self.username = None
-        self.password = None
-        self.db_name = None
-        self.conn = None
-        self.col_cursor = None
-        self.csvData = None
-        self.csvPath = None
-        self.uploaded_file = None
-        self.global_semantic_map = None
-        self.existing_graph = False
-        self.databases = None
-        self.descriptive_info = None
-        self.DescriptiveInfoDetails = None
-        self.StatusToDisplay = None
-        self.pk_fk_data = None
-        self.pk_fk_status = None  # "processing", "success", "failed"
-        self.cross_graph_link_data = None
-        self.cross_graph_link_status = None
-        self.annotation_status = None  # Store annotation results
-        self.annotation_json_path = None  # Store path to uploaded JSON file
-
-
-session_cache = Cache()
+session_cache = Cache(repo)
 
 
 @app.route('/')
@@ -1246,21 +1219,6 @@ def custom_static(filename):
     return send_from_directory(f'{root_dir}{child_dir}/assets', filename)
 
 
-def allowed_file(filename, allowed_extensions):
-    """
-    This function checks if the uploaded file has an allowed extension.
-
-    Parameters:
-    filename (str): The name of the file to be checked.
-    allowed_extensions (set): A set of strings representing the allowed file extensions.
-
-    Returns:
-    bool: True if the file has an allowed extension, False otherwise.
-    """
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in allowed_extensions
-
-
 @app.route('/api/check-graph-exists', methods=['GET'])
 def api_check_graph_exists():
     """
@@ -1275,129 +1233,11 @@ def api_check_graph_exists():
 
         # Check if the main data graph exists
         graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri)
+        exists = check_graph_exists(session_cache.repo, graph_uri, graphdb_url)
 
         return jsonify({'exists': exists})
     except Exception as e:
         return jsonify({'exists': False, 'error': str(e)})
-
-
-def check_graph_exists(repo, graph_uri):
-    """
-    This function checks if a graph exists in a GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the repository in GraphDB.
-    graph_uri (str): The URI of the graph to check.
-
-    Returns:
-    bool: True if the graph exists, False otherwise.
-
-    Raises:
-    Exception: If the request to the GraphDB instance fails,
-    an exception is raised with the status code of the failed request.
-    """
-    # Construct the SPARQL query
-    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
-
-    # Send a GET request to the GraphDB instance
-    response = requests.get(
-        f"{graphdb_url}/repositories/{repo}",
-        params={"query": query},
-        headers={"Accept": "application/sparql-results+json"}
-    )
-
-    # If the request is successful, return the result of the ASK query
-    if response.status_code == 200:
-        return response.json()['boolean']
-    # If the request fails, raise an exception with the status code
-    else:
-        raise Exception(f"Query failed with status code {response.status_code}")
-
-
-def execute_query(repo, query, query_type=None, endpoint_appendices=None):
-    """
-    This function executes a SPARQL query on a specified GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the GraphDB repository on which the query is to be executed.
-    query (str): The SPARQL query to be executed.
-    query_type (str, optional): The type of the SPARQL query. Defaults to "query".
-    endpoint_appendices (str, optional): Additional endpoint parameters. Defaults to "".
-
-    Returns:
-    str: The result of the query execution as a string if the execution is successful.
-    flask.render_template: A Flask function that renders the 'ingest.html' template
-    if an error occurs during the query execution.
-
-    Raises:
-    Exception: If an error occurs during the query execution,
-    an exception is raised and its error message is flashed to the user.
-
-    The function performs the following steps:
-    1. Checks if query_type and endpoint_appendices are None. If they are, sets them to their default values.
-    2. Constructs the endpoint URL using the provided repository name and endpoint_appendices.
-    3. Executes the SPARQL query on the constructed endpoint URL.
-    4. If the query execution is successful, returns the result as a string.
-    5. If an error occurs during the query execution,
-    flashes an error message to the user and renders the 'ingest.html' template.
-    """
-    if query_type is None:
-        query_type = "query"
-
-    if endpoint_appendices is None:
-        endpoint_appendices = ""
-    try:
-        # Construct the endpoint URL
-        endpoint = f"{graphdb_url}/repositories/" + repo + endpoint_appendices
-        # Execute the query
-        response = requests.post(endpoint,
-                                 data={query_type: query},
-                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
-        # Return the result of the query execution
-        return response.text
-    except Exception as e:
-        # If an error occurs, flash the error message to the user and render the 'ingest.html' template
-        flash(f'Unexpected error when connecting to GraphDB, error: {e}.')
-        return render_template('ingest.html')
-
-
-def retrieve_categories(repo, column_name):
-    """
-    This function executes a SPARQL query on a specified GraphDB repository
-    to retrieve the categories of a given column.
-
-    Parameters:
-    repo (str): The name of the GraphDB repository on which the query is to be executed.
-    column_name (str): The name of the column for which the categories are to be retrieved.
-
-    Returns:
-    str: The result of the query execution as a string if the execution is successful.
-
-    The function performs the following steps:
-    1. Constructs a SPARQL query that selects the value and count of each category in the specified column.
-    2. Executes the query on the specified GraphDB repository using the execute_query function.
-    3. Returns the result of the query execution.
-
-    The SPARQL query works as follows:
-    1. It selects the value and count of each category in the specified column.
-    2. It groups the results by the value of the category.
-    """
-    query_categories = f"""
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://{repo}.local/rdf/ontology/>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        SELECT ?value (COUNT(?value) as ?count)
-        WHERE 
-        {{  
-           ?a a ?v.
-           ?v dbo:column '{column_name}'.
-           ?a dbo:has_cell ?cell.
-           ?cell dbo:has_value ?value
-        }} 
-        GROUP BY (?value)
-    """
-    return execute_query(repo, query_categories)
 
 
 def retrieve_global_names():

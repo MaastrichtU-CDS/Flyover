@@ -5,7 +5,6 @@ This module contains application-level configuration functions including logging
 """
 
 import logging
-from typing import None
 
 
 def setup_logging() -> None:

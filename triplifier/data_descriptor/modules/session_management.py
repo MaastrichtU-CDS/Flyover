@@ -42,16 +42,22 @@ class Cache:
         annotation_json_path (Optional[str]): Path to uploaded annotation JSON file
     """
     
-    def __init__(self) -> None:
+    def __init__(self, repo: Optional[str] = None) -> None:
         """
         Initialize the Cache with default values.
         
         Sets up all session variables with appropriate default values.
-        The repo value is inherited from the global environment configuration.
+        
+        Args:
+            repo (Optional[str]): Repository identifier, if None uses environment or default
         """
-        # Get repo from environment or use default
-        # This will be set by the main application during initialization
-        self.repo: str = os.getenv('FLYOVER_REPOSITORY_NAME', 'userRepo')
+        # Set repo from parameter, environment, or default
+        if repo:
+            self.repo = repo
+        elif os.getenv('FLYOVER_REPOSITORY_NAME'):
+            self.repo = os.getenv('FLYOVER_REPOSITORY_NAME')
+        else:
+            self.repo = 'userRepo'
         
         # File and database connection attributes
         self.file_path: Optional[str] = None
