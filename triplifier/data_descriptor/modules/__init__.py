@@ -11,13 +11,18 @@ from .file_operations import allowed_file
 from .graphdb_operations import (
     check_graph_exists,
     api_check_graph_exists,
-    execute_query
+    execute_query,
+    upload_file_to_graphdb,
+    upload_ontology_then_data
 )
 from .data_operations import (
     retrieve_categories,
     retrieve_global_names,
     formulate_local_semantic_map,
-    handle_postgres_data
+    handle_postgres_data,
+    clean_column_names,
+    preprocess_dataframe,
+    get_original_column_name
 )
 
 # TODO: Enable these imports after full extraction is complete
@@ -49,12 +54,17 @@ __all__ = [
     'check_graph_exists',
     'api_check_graph_exists',
     'execute_query',
+    'upload_file_to_graphdb',
+    'upload_ontology_then_data',
     
     # Data operations
     'retrieve_categories',
     'retrieve_global_names',
     'formulate_local_semantic_map',
     'handle_postgres_data',
+    'clean_column_names',
+    'preprocess_dataframe',
+    'get_original_column_name',
     
     # TODO: Enable these after full extraction
     # # Relationship processing
