@@ -74,9 +74,7 @@ class ProductionConfig(Config):
     LOG_TO_STDOUT = False
     
     # Enhanced security in production
-    SECRET_KEY = os.environ.get('SECRET_KEY')
-    if not SECRET_KEY:
-        raise ValueError("No SECRET_KEY set for production environment")
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'default-secret-key-change-in-production'
 
 
 class TestingConfig(Config):
@@ -102,11 +100,8 @@ class DockerConfig(Config):
     CHILD_DIR = 'data_descriptor'
     
     # Use environment variables for Docker deployment
-    GRAPHDB_URL = os.environ.get('FLYOVER_GRAPHDB_URL')
-    REPOSITORY_NAME = os.environ.get('FLYOVER_REPOSITORY_NAME')
-    
-    if not GRAPHDB_URL or not REPOSITORY_NAME:
-        raise ValueError("GraphDB URL and Repository Name must be set in Docker environment")
+    GRAPHDB_URL = os.environ.get('FLYOVER_GRAPHDB_URL', 'http://graphdb:7200')
+    REPOSITORY_NAME = os.environ.get('FLYOVER_REPOSITORY_NAME', 'defaultRepo')
 
 
 # Configuration mapping
