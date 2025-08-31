@@ -213,7 +213,7 @@
     <hr>
     <p>Please provide more information for the categorical and continuous variables that were defined in the variable
         description page.<br>
-    <form class="form-horizontal" method="POST" action="end">
+    <form class="form-horizontal" method="POST" action="{{ url_for('describe.end') }}">
         <hr>
         {% for database, df in dataframes.items() %}
             <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>

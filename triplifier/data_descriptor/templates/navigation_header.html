@@ -127,7 +127,7 @@
     <div class="container">
         <div class="nav-steps">
             <!-- Home -->
-            <a href="/" class="nav-step" id="home-step">
+            <a href="{{ url_for('main.landing') }}" class="nav-step" id="home-step">
                 <span class="step-number">
                     <i class="fas fa-home step-icon-header"></i>
                 </span>
@@ -137,7 +137,7 @@
             <span class="step-separator">|</span>
 
             <!-- Step 1: Ingest -->
-            <a href="/ingest" class="nav-step" id="ingest-step">
+            <a href="{{ url_for('ingest.index') }}" class="nav-step" id="ingest-step">
                 <span class="step-number">
                     <i class="fas fa-cookie-bite step-icon-header"></i>
                 </span>
@@ -147,7 +147,7 @@
             <i class="fas fa-chevron-right step-arrow"></i>
 
             <!-- Step 2: Describe -->
-            <a href="/describe_landing" class="nav-step" id="describe-step">
+            <a href="{{ url_for('describe.describe_landing') }}" class="nav-step" id="describe-step">
                 <span class="step-number">
                     <i class="fas fa-edit step-icon-header"></i>
                 </span>
@@ -157,7 +157,7 @@
             <i class="fas fa-chevron-right step-arrow"></i>
 
             <!-- Step 3: Annotate -->
-            <a href="/annotation_landing" class="nav-step" id="annotate-step">
+            <a href="{{ url_for('annotate.annotation_landing') }}" class="nav-step" id="annotate-step">
                 <span class="step-number">
                     <i class="fas fa-tags step-icon-header"></i>
                 </span>
@@ -175,17 +175,17 @@
         // Step configuration
         const steps = {
             'ingest': {
-                pages: ['/ingest', '/upload', '/data-submission'],
+                pages: ['/ingest', '/ingest/', '/ingest/upload', '/ingest/data-submission'],
                 element: document.getElementById('ingest-step'),
                 alwaysAccessible: true
             },
             'describe': {
-                pages: ['/describe_landing', '/describe_variables', '/describe_variable_details', '/describe_downloads'],
+                pages: ['/describe/landing', '/describe/variables', '/describe/variable-details', '/describe/downloads'],
                 element: document.getElementById('describe-step'),
                 requiresData: true
             },
             'annotate': {
-                pages: ['/annotation_landing', '/annotation-review', '/annotation-verify', '/start-annotation'],
+                pages: ['/annotate/landing', '/annotate/review', '/annotate/verify', '/annotate/start-annotation'],
                 element: document.getElementById('annotate-step'),
                 requiresData: true
             }
@@ -215,7 +215,7 @@
 
             // Use synchronous AJAX for immediate result (note: this blocks the UI momentarily)
             $.ajax({
-                url: '/api/check-graph-exists',
+                url: '{{ url_for("api.check_graph_exists") }}',
                 type: 'GET',
                 async: false, // Make synchronous to get immediate result
                 success: function (response) {

@@ -200,7 +200,7 @@
         please select the type and description of your columns from the drop-down menu.<br>
     </p>
 
-    <form class="form-horizontal" method="POST" action="units">
+    <form class="form-horizontal" method="POST" action="{{ url_for('describe.units') }}">
         <hr>
         {% for database, df in dataframes.items() %}
             <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>

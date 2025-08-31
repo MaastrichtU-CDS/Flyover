@@ -260,7 +260,7 @@
         <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process
         </button>
-        <a href="/describe_downloads" class="btn btn-light">
+        <a href="{{ url_for('describe.downloads') }}" class="btn btn-light">
             <i class="fas fa-arrow-left"></i> Back to Downloads
         </a>
         <br>
@@ -287,7 +287,7 @@
             <strong>No annotation data found</strong><br>
             Please ensure you have uploaded a semantic map and described your data before proceeding.
             <br><br>
-            <a href="/" class="btn btn-light">Return to Home</a>
+            <a href="{{ url_for('main.landing') }}" class="btn btn-light">Return to Home</a>
         </div>
     {% endif %}
 </div>
@@ -296,6 +296,9 @@
 {% include 'footer.html' %}
 
 <script>
+    // URLs from Flask
+    const annotationVerifyUrl = "{{ url_for('annotate.annotation_verify') }}";
+
     // Toggle functionality for database sections (matching describe_variables.html pattern)
     $(document).ready(function () {
         $('.toggle-button').click(function () {
@@ -327,7 +330,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    window.location.href = '/annotation-verify';
+                    window.location.href = annotationVerifyUrl;
                 } else {
                     alert('Error: ' + data.error);
                     button.disabled = false;

@@ -44,7 +44,7 @@
                 <li><strong>Step 2 - Describe:</strong> Provide metadata and descriptions for your variables</li>
             </ul>
             <p>
-                <a href="/ingest" class="btn btn-primary">
+                <a href="{{ url_for('ingest.index') }}" class="btn btn-primary">
                     <i class="fas fa-arrow-left"></i> Go to Ingest Step
                 </a>
             </p>
@@ -73,7 +73,7 @@
                         mappings that you want to enhance with additional annotations.
                     </div>
 
-                    <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data"
+                    <form method="POST" action="{{ url_for('annotate.upload_annotation_json') }}" enctype="multipart/form-data"
                           id="jsonUploadForm">
                         <div class="form-group">
                             <label for="annotationJsonPath">JSON File for Annotation:</label>
@@ -117,7 +117,7 @@
                     Use the data that has already been uploaded and describe it in the "Describe" steps.
                 </p>
 
-                <form method="GET" action="/describe_landing">
+                <form method="GET" action="{{ url_for('describe.describe_landing') }}">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-play"></i> Start Describing your data
                     </button>
@@ -134,6 +134,9 @@
 {% include 'footer.html' %}
 
 <script>
+    // URLs from Flask
+    const annotationReviewUrl = "{{ url_for('annotate.annotation_review') }}";
+
     function updateAnnotationJsonPath(input) {
         const fullPath = input.value;
         const fileName = fullPath.split('\\').pop();
@@ -190,7 +193,7 @@
 
                     // Redirect to annotation review after short delay
                     setTimeout(function () {
-                        window.location.href = "/annotation-review";
+                        window.location.href = annotationReviewUrl;
                     }, 2000);
                 },
                 error: function (xhr, status, error) {

@@ -30,7 +30,7 @@
     <p style="line-height: 1.5; margin: 0;">Alternative file formats can be retrieved manually through the <a
             href="{{ graphdb_location }}" target="_blank">GraphDB user interface</a>.</p>
 
-    <a href="/downloadOntology" download="local_ontology.owl">
+    <a href="{{ url_for('describe.download_ontology') }}" download="local_ontology.owl">
         <button class="btn btn-outline-secondary"><i class="fas fa-download"></i> Download local ontology</button>
     </a>
     <br>
@@ -40,7 +40,7 @@
             descriptions to a local semantic map. <br>
             You can download the local semantic map version through the 'Download local
             semantic map' button below.</p>
-        <a href="/downloadSemanticMap" download="semantic_map.json">
+        <a href="{{ url_for('describe.download_semantic_map') }}" download="semantic_map.json">
             <button class="btn btn-outline-secondary " {% if not show_semantic_map %}
                     style="display: none;" {% endif %}>
                 <i class="fas fa-download"></i> Download local semantic map
@@ -49,7 +49,7 @@
         <hr>
         <p style="line-height: 1.5; margin: 0;"> With this local semantic map, you can now also annotate your data to
             actually make it semantically interoperable.</p>
-        <a href="/annotation-review" {% if not show_semantic_map %} style="display: none;" {% endif %}>
+        <a href="{{ url_for('annotate.annotation_review') }}" {% if not show_semantic_map %} style="display: none;" {% endif %}>
             <button class="btn btn-primary" {% if not show_semantic_map %} style="display: none;" {% endif %}>
                 <i class="fas fa-play"></i> Review and Annotate Data
             </button>
