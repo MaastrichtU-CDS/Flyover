@@ -47,4 +47,4 @@ CMD ["gunicorn", \
     "--bind", "0.0.0.0:5000", \
     "--preload", \
     "--env", "GEVENT_SUPPORT=True", \
-    "data_descriptor.data_descriptor_main:app"]
+    "data_descriptor.app:app"]
