@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flyover | Welcome</title>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}">
-    <script src="{{ url_for('custom_static', filename='js/jquery-3.5.1.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('main.assets', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('main.assets', filename='css/all.min.css') }}">
+    <script src="{{ url_for('main.assets', filename='js/jquery-3.5.1.min.js') }}"></script>
+    <script src="{{ url_for('main.assets', filename='js/bootstrap.bundle.min.js') }}"></script>
 
     <style>
         body {
@@ -31,7 +31,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-image: url("{{ url_for('custom_static', filename='image-flyover.svg') }}");
+            background-image: url("{{ url_for('main.assets', filename='image-flyover.svg') }}");
             background-size: 110%;
             background-position: center 40%;
             background-repeat: no-repeat;

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-<script src="{{ url_for('custom_static', filename='js/jquery-3.5.1.min.js') }}"></script>
-<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('main.assets', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('main.assets', filename='css/all.min.css') }}"/>
+<script src="{{ url_for('main.assets', filename='js/jquery-3.5.1.min.js') }}"></script>
+<script src="{{ url_for('main.assets', filename='js/bootstrap.bundle.min.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -42,8 +42,7 @@
     <hr>
     <header>Start by selecting your data source:</header>
 
-    <form method="POST" action="/upload" enctype="multipart/form-data" id="mainForm">
-        <div class="form-group">
+        <form method="POST" action="{{ url_for('ingest.upload') }}" enctype="multipart/form-data" id="mainForm">        <div class="form-group">
             <label for="CSV"><i class="fas fa-file-csv"></i> CSV:</label>
             <input type="radio" id="CSV" name="fileType" value="CSV">
         </div>
@@ -249,7 +248,7 @@
     // Function to load existing graph tables and columns
     function loadExistingGraphData() {
         $.ajax({
-            url: '/get-existing-graph-structure',
+            url: '{{ url_for("api.check_graph_exists") }}',
             method: 'GET',
             success: function(data) {
                 // Populate existing table dropdown
