@@ -73,7 +73,7 @@ def check_graph_exists():
             }), 400
         
         # Check graph existence using modular function
-        exists = api_check_graph_exists(repo, graph_uri, graphdb_url)
+        exists = api_check_graph_exists(session_cache)
         
         logger.info(f"Graph existence check: {repo}/{graph_uri} -> {exists}")
         

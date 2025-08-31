@@ -34,30 +34,29 @@ def get_graphdb_config() -> tuple[str, str]:
     return graphdb_url, repo
 
 
-def api_check_graph_exists(session_cache: Any) -> Any:
+def api_check_graph_exists(session_cache: Any) -> bool:
     """
-    API endpoint to check if graph data exists in the repository.
-    
-    This function provides a JSON API endpoint for checking the existence
-    of graph data in the configured GraphDB repository.
-    
+    Check if graph data exists in the repository.
+
+    This function checks the existence of graph data in the configured
+    GraphDB repository and returns a boolean result.
+
     Args:
         session_cache: The session cache object containing repository configuration
-        
+
     Returns:
-        flask.jsonify: JSON response with exists boolean and optional error message
+        bool: True if graph exists, False otherwise
+
+    Raises:
+        Exception: If repository is not configured or check fails
     """
-    try:
-        if not session_cache.repo:
-            return jsonify({'exists': False, 'error': 'No repository configured'})
+    if not session_cache.repo:
+        raise Exception('No repository configured')
 
-        # Check if the main data graph exists
-        graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri)
-
-        return jsonify({'exists': exists})
-    except Exception as e:
-        return jsonify({'exists': False, 'error': str(e)})
+    # Check if the main data graph exists
+    graph_uri = "http://data.local/"
+    exists = check_graph_exists(session_cache.repo, graph_uri)
+    return exists
 
 
 def check_graph_exists(repo: str, graph_uri: str, graphdb_url: Optional[str] = None) -> bool:
