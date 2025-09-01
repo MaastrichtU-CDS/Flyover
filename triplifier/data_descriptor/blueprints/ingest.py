@@ -8,8 +8,10 @@ and initial data processing.
 import os
 import json
 import logging
+import pandas as pd
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from werkzeug.utils import secure_filename
+from markupsafe import Markup
 
 # Import modular components
 from modules import (
@@ -17,9 +19,10 @@ from modules import (
     allowed_file,
     check_graph_exists,
     handle_postgres_data,
-    preprocess_dataframe
+    preprocess_dataframe,
+    upload_ontology_then_data,
+    run_triplifier
 )
-from modules import upload_ontology_then_data
 
 ingest_bp = Blueprint('ingest', __name__, url_prefix='/ingest')
 logger = logging.getLogger(__name__)
@@ -144,54 +147,109 @@ def upload_semantic_map():
 @ingest_bp.route('/upload', methods=['POST'])
 def upload():
     """
-    Handle main data file upload processing.
+    Handle main data file upload processing with triplification.
     
     This route processes uploaded CSV files and PostgreSQL database connections,
-    performing initial data validation and preprocessing before storing in GraphDB.
+    performing initial data validation, triplification, and upload to GraphDB.
     
     Workflow:
         1. Determine upload type (file upload vs database connection)
-        2. For file uploads: validate, save, and preprocess CSV data
-        3. For database connections: validate credentials and retrieve data
-        4. Store processed data in session cache
-        5. Redirect to appropriate next step based on semantic map availability
+        2. Process and store data
+        3. Run triplifier to convert data to RDF format
+        4. Upload ontology and data to GraphDB
+        5. Trigger background relationship processing
+        6. Redirect to data-submission page with status
     
     Returns:
-        flask.redirect: Redirect to data-submission or describe_landing
+        flask.redirect: Redirect to data-submission page on success
         flask.render_template: Re-render ingest page with errors
         
     Route:
-        POST /ingest/upload - Main data upload processing handler
+        POST /ingest/upload - Main data upload processing with triplification
         
     Request Data:
         upload_type (str): 'file' or 'database'
+        pkFkData (str, optional): JSON string containing PK/FK relationship data
+        crossGraphLinkData (str, optional): JSON string containing cross-graph linking data
         
         For file uploads:
             file: CSV file to process
+            csv_separator_sign (str, optional): CSV separator character (default: ',')
+            csv_decimal_sign (str, optional): CSV decimal character (default: '.')
             
         For database connections:
             host, port, database, username, password: Connection parameters
             
     Session Variables:
-        session_cache.cleaned_df (DataFrame): Preprocessed data
-        session_cache.original_column_names (dict): Column name mappings
-        session_cache.pg_* (str): Database connection parameters
+        session_cache.csvData (list): Preprocessed CSV dataframes
+        session_cache.csvPath (list): Paths to saved CSV files
+        session_cache.pk_fk_data (dict): PK/FK relationship data
+        session_cache.cross_graph_link_data (dict): Cross-graph linking data
+        session_cache.StatusToDisplay (str): Status message for display
         
     Flash Messages:
-        Success: File uploaded/database connected successfully
-        Error: Validation, connection, or processing errors
+        Success: Triplification and upload completion status
+        Error: Validation, processing, triplification, or upload errors
     """
     session_cache = current_app.session_cache
     upload_type = request.form.get('upload_type')
+    pk_fk_data = request.form.get('pkFkData')
+    cross_graph_link_data = request.form.get('crossGraphLinkData')
+    upload = True
+
+    # Store PK/FK data in session cache
+    if pk_fk_data:
+        try:
+            session_cache.pk_fk_data = json.loads(pk_fk_data)
+        except json.JSONDecodeError:
+            flash('Invalid PK/FK data format')
+            return render_template('ingest.html')
+
+    # Store cross-graph linking data in session cache
+    if cross_graph_link_data:
+        try:
+            session_cache.cross_graph_link_data = json.loads(cross_graph_link_data)
+        except json.JSONDecodeError:
+            flash('Invalid cross-graph linking data format')
+            return render_template('ingest.html')
     
     try:
         if upload_type == 'file':
-            return _handle_file_upload(session_cache)
+            success, message = _handle_file_upload_with_triplification(session_cache)
         elif upload_type == 'database':
-            return _handle_database_connection(session_cache)
+            success, message = _handle_database_connection_with_triplification(session_cache)
+        elif upload_type is None:
+            # User opted to not submit new data
+            success = True
+            upload = False
+            message = Markup("You have opted to not submit any new data, "
+                             "you can now proceed to describe your data."
+                             "<br>"
+                             "<i>In case you do wish to submit data, please return to the ingest page.</i>")
         else:
-            flash('Invalid upload type specified')
-            return render_template('ingest.html')
+            success = False
+            message = "An unexpected error occurred. Please try again."
+
+        if success:
+            session_cache.StatusToDisplay = message
+
+            if upload:
+                logger.info("🚀 Initiating sequential upload to GraphDB")
+                upload_success, upload_messages = upload_ontology_then_data(
+                    current_app.config.get('ROOT_DIR', ''), 
+                    current_app.config['GRAPHDB_URL'], 
+                    session_cache.repo,
+                    data_background=False
+                )
+
+                for msg in upload_messages:
+                    logger.info(f"📝 {msg}")
+
+            # Redirect to the data submission page after processing
+            return redirect(url_for('ingest.data_submission'))
+        else:
+            flash(f"Attempting to proceed resulted in an error: {message}")
+            return render_template('ingest.html', error=True, graph_exists=session_cache.existing_graph)
             
     except Exception as e:
         logger.error(f"Error in upload processing: {e}")
@@ -202,82 +260,118 @@ def upload():
 @ingest_bp.route('/data-submission')
 def data_submission():
     """
-    Display data submission confirmation page.
+    Display data submission confirmation page with status.
     
-    This route shows a summary of uploaded data and allows users to
-    proceed with data submission or return to modify their upload.
+    This route shows the status of the triplification and upload process,
+    allowing users to proceed to the describe step.
     
     Returns:
-        flask.render_template: Rendered data-submission.html template
+        flask.render_template: Rendered describe_landing.html template with status message
         
     Route:
-        GET /ingest/data-submission - Data submission confirmation page
+        GET /ingest/data-submission - Data submission status and confirmation page
         
     Template:
-        data-submission.html - Data summary and submission options
+        describe_landing.html - Status display and next step navigation
+        
+    Session Variables:
+        session_cache.StatusToDisplay (str): Status message from triplification process
     """
-    return render_template('data-submission.html')
+    session_cache = current_app.session_cache
+    message = getattr(session_cache, 'StatusToDisplay', 'Data submission completed successfully.')
+    return render_template('describe_landing.html', message=Markup(message))
 
 
-def _handle_file_upload(session_cache: Cache):
+def _handle_file_upload_with_triplification(session_cache: Cache):
     """
-    Handle CSV file upload processing.
+    Handle CSV file upload processing with triplification.
     
     Args:
         session_cache (Cache): Application session cache
         
     Returns:
-        flask.redirect or flask.render_template: Response based on processing result
+        Tuple[bool, str]: (success_flag, status_message)
     """
-    if 'file' not in request.files:
-        flash('No file selected')
-        return render_template('ingest.html')
+    files = request.files.getlist('file') if 'file' in request.files else [request.files.get('file')]
+    csv_files = [f for f in files if f and f.filename]
+    
+    if not csv_files:
+        return False, "If opting to submit a CSV data source, please upload it as a '.csv' file."
 
-    file = request.files['file']
-    if file.filename == '':
-        flash('No file selected')
-        return render_template('ingest.html')
-
-    if not allowed_file(file.filename, current_app.config['ALLOWED_EXTENSIONS']):
-        flash('Invalid file type. Please upload a CSV file.')
-        return render_template('ingest.html')
+    # Validate all files
+    for csv_file in csv_files:
+        if not allowed_file(csv_file.filename, {'csv'}):
+            return False, "If opting to submit a CSV data source, please upload it as a '.csv' file."
 
     try:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        # Get CSV parsing parameters
+        separator_sign = request.form.get('csv_separator_sign', ',')
+        if not separator_sign:
+            separator_sign = ','
+
+        decimal_sign = request.form.get('csv_decimal_sign', '.')
+        if not decimal_sign:
+            decimal_sign = '.'
+
+        # Process CSV files
+        session_cache.csvData = []
+        session_cache.csvPath = []
         
-        # Preprocess the uploaded file
-        cleaned_df, original_column_names = preprocess_dataframe(filepath)
-        
-        session_cache.cleaned_df = cleaned_df
-        session_cache.original_column_names = original_column_names
-        session_cache.file_path = filepath
-        
-        logger.info(f"File uploaded and preprocessed successfully: {filename}")
-        flash('File uploaded successfully!')
-        
-        # Redirect based on semantic map availability
-        if hasattr(session_cache, 'uploaded_semantic_map'):
-            return redirect(url_for('ingest.data_submission'))
-        else:
-            return redirect(url_for('describe.describe_landing'))
+        for csv_file in csv_files:
+            # Save the file
+            filename = secure_filename(csv_file.filename)
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            csv_file.save(filepath)
+            session_cache.csvPath.append(filepath)
             
+            # Read and preprocess the CSV
+            df = pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)
+            cleaned_df, original_column_names = preprocess_dataframe(df)
+            session_cache.csvData.append(cleaned_df)
+            
+            # Store additional metadata for the first file
+            if len(session_cache.csvData) == 1:
+                session_cache.cleaned_df = cleaned_df
+                session_cache.original_column_names = original_column_names
+                session_cache.file_path = filepath
+
+        logger.info(f"CSV files processed successfully: {[f.filename for f in csv_files]}")
+        
+        # Run triplifier
+        success, message = run_triplifier(
+            'triplifierCSV.properties',
+            session_cache,
+            current_app.config['UPLOAD_FOLDER'],
+            current_app.config.get('ROOT_DIR', ''),
+            current_app.config.get('CHILD_DIR', '.')
+        )
+        
+        # Clean up temporary files
+        for path in session_cache.csvPath:
+            if os.path.exists(path):
+                os.remove(path)
+        
+        return success, message
+        
     except Exception as e:
-        logger.error(f"File upload processing error: {e}")
-        flash(f'Error processing file: {e}')
-        return render_template('ingest.html')
+        # Clean up on error
+        if hasattr(session_cache, 'csvPath'):
+            for path in session_cache.csvPath:
+                if os.path.exists(path):
+                    os.remove(path)
+        logger.error(f"File upload and triplification error: {e}")
+        return False, f'Error processing file: {e}'
 
 
-def _handle_database_connection(session_cache: Cache):
+def _handle_database_connection_with_triplification(session_cache: Cache):
     """
-    Handle PostgreSQL database connection and data retrieval.
+    Handle PostgreSQL database connection and data processing with triplification.
     
     Args:
         session_cache (Cache): Application session cache
         
     Returns:
-        flask.redirect or flask.render_template: Response based on connection result
+        Tuple[bool, str]: (success_flag, status_message)
     """
     try:
         # Extract database connection parameters
@@ -286,10 +380,10 @@ def _handle_database_connection(session_cache: Cache):
         database = request.form.get('database')
         username = request.form.get('username')
         password = request.form.get('password')
+        table = request.form.get('table')
         
         if not all([host, database, username, password]):
-            flash('All database connection fields are required')
-            return render_template('ingest.html')
+            return False, 'All database connection fields are required'
         
         # Store connection parameters in session
         session_cache.pg_host = host
@@ -301,15 +395,22 @@ def _handle_database_connection(session_cache: Cache):
         # Test connection and retrieve data
         success = handle_postgres_data(session_cache)
         
-        if success:
-            logger.info(f"Database connection successful: {host}:{port}/{database}")
-            flash('Database connected successfully!')
-            return redirect(url_for('describe.describe_landing'))
-        else:
-            flash('Failed to connect to database. Please check your credentials.')
-            return render_template('ingest.html')
+        if not success:
+            return False, 'Failed to connect to database. Please check your credentials.'
+            
+        logger.info(f"Database connection successful: {host}:{port}/{database}")
+        
+        # Run triplifier for SQL data
+        success, message = run_triplifier(
+            'triplifierSQL.properties',
+            session_cache,
+            current_app.config['UPLOAD_FOLDER'],
+            current_app.config.get('ROOT_DIR', ''),
+            current_app.config.get('CHILD_DIR', '.')
+        )
+        
+        return success, message
             
     except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        flash(f'Database connection error: {e}')
-        return render_template('ingest.html')
+        logger.error(f"Database connection and triplification error: {e}")
+        return False, f'Database processing error: {e}'

@@ -24,6 +24,7 @@ from .data_operations import (
     preprocess_dataframe,
     get_original_column_name
 )
+from .triplification import run_triplifier
 
 # TODO: Enable these imports after full extraction is complete
 # from .relationship_processing import (
@@ -38,7 +39,6 @@ from .data_operations import (
 #     process_cross_graph_relationships,
 #     background_cross_graph_processing
 # )
-# from .triplification import run_triplifier
 
 __all__ = [
     # App configuration
@@ -66,6 +66,9 @@ __all__ = [
     'preprocess_dataframe',
     'get_original_column_name',
     
+    # Triplification
+    'run_triplifier',
+    
     # TODO: Enable these after full extraction
     # # Relationship processing
     # 'insert_equivalencies',
@@ -78,7 +81,4 @@ __all__ = [
     # 'insert_cross_graph_relation',
     # 'process_cross_graph_relationships',
     # 'background_cross_graph_processing',
-    # 
-    # # Triplification
-    # 'run_triplifier'
 ]

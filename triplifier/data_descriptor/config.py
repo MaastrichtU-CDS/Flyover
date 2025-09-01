@@ -44,8 +44,13 @@ class Config:
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
         
-        # Set Flask config
+        # Set Flask config including all path configurations
+        config_instance = cls()
         app.config['UPLOAD_FOLDER'] = upload_folder
+        app.config['ROOT_DIR'] = config_instance.ROOT_DIR
+        app.config['CHILD_DIR'] = config_instance.CHILD_DIR
+        app.config['GRAPHDB_URL'] = config_instance.GRAPHDB_URL
+        app.config['REPOSITORY_NAME'] = config_instance.REPOSITORY_NAME
 
 
 class DevelopmentConfig(Config):
