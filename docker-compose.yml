@@ -5,7 +5,7 @@ services:
     #build:
     #  context: ./graphdb
     ports:
-      - "7200:7200"
+      - "127.0.0.1:7200:7200"
     volumes:
       - ./graphdb/data:/opt/graphdb/home
     environment:
@@ -22,7 +22,7 @@ services:
     #build:
     #  context: ./triplifier
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
       - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
