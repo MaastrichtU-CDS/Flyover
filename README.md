@@ -4,9 +4,10 @@
 
 We have built a dockerized Data FAIR-ification tool that takes clinical datasets and converts them into Resource
 Descriptor Format (RDF).
-This conversion is done by an application which parses an entire structured table as a simple
-flattened RDF object.
-This so-called "Triplifier" tool works with PostGreSQL and CSV tables.
+This conversion is done by the Python-based Triplifier application which parses entire structured tables as
+flattened RDF objects.
+The Triplifier tool works with PostGreSQL and CSV tables, and has been migrated from Java to Python for better
+integration and maintainability.
 
 For user data, a new module (data_descriptor) is created where the user can describe their own data and provide us with
 the metadata, which can then be used to create annotations.
@@ -19,7 +20,7 @@ For a detailed explanation and a practical example of this tool, please refer to
 
 A simple graphical interface tool for helping a local user to describe their own data (in the form of CSV or
 PostGreSQL).
-On uploading the data, Triplifier runs and converts this data into RDF triples which is then uploaded to
+On uploading the data, the Python Triplifier runs and converts this data into RDF triples which is then uploaded to
 the RDF store, along with an OWL file.
 The next page displays the list of columns and prompts the user to give some
 basic information about their data which is then added back to the OWL file in the RDF store.

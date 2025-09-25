@@ -27,7 +27,6 @@ services:
       - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
-      - JAVA_OPTS=-Xms4g -Xmx12g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
     hostname: "data.local"
     networks:
       - proxynet

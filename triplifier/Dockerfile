@@ -10,9 +10,10 @@ RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
     git \
     libpq-dev \
+    ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org --no-cache-dir -r requirements.txt
 
 # Now copy the application code
 COPY data_descriptor/ /app/data_descriptor/

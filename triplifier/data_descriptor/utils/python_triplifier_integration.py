@@ -3,14 +3,12 @@ import tempfile
 import sqlite3
 import yaml
 import socket
+import sys
+import subprocess
 from typing import Tuple, Union
 from io import StringIO
 
 import pandas as pd
-from pythonTool.main_app import run_triplifier as python_run_triplifier
-from pythonTool.db_inspector import DatabaseInspector
-from pythonTool.rdf.ontology_factory import OntologyFactory
-from pythonTool.rdf.data_factory import DataFactory
 
 import logging
 
@@ -75,28 +73,46 @@ class PythonTriplifierIntegration:
             # Set up file paths
             ontology_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'ontology.owl')
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
+            base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Create a mock args object
-            class Args:
-                def __init__(self):
-                    self.config = config_path
-                    self.output = output_path
-                    self.ontology = ontology_path
-                    self.baseuri = base_uri or f"http://{self.hostname}/"
-                    self.ontologyAndOrData = None  # Convert both ontology and data
+            # Set up path for pythonTool module
+            pythontool_path = os.path.join(os.path.dirname(__file__), '..')
             
-            args = Args()
+            # Run Python Triplifier as subprocess
+            env = os.environ.copy()
+            env['PYTHONPATH'] = pythontool_path + ':' + env.get('PYTHONPATH', '')
             
-            # Run Python Triplifier
-            python_run_triplifier(args)
+            cmd = [
+                sys.executable, '-m', 'pythonTool.main_app',
+                '-c', config_path,
+                '-o', output_path,
+                '-t', ontology_path,
+                '-b', base_uri
+            ]
             
-            # Clean up temporary files
-            if os.path.exists(config_path):
-                os.remove(config_path)
-            if os.path.exists(temp_db_path):
-                os.remove(temp_db_path)
+            result = subprocess.run(
+                cmd,
+                cwd=pythontool_path,
+                env=env,
+                capture_output=True,
+                text=True
+            )
             
-            return True, "CSV data triplified successfully using Python Triplifier."
+            if result.returncode == 0:
+                logger.info(f"Python Triplifier executed successfully")
+                logger.info(f"Output: {result.stdout}")
+                
+                # Clean up temporary files
+                if os.path.exists(config_path):
+                    os.remove(config_path)
+                if os.path.exists(temp_db_path):
+                    os.remove(temp_db_path)
+                
+                return True, "CSV data triplified successfully using Python Triplifier."
+            else:
+                logger.error(f"Python Triplifier failed with return code {result.returncode}")
+                logger.error(f"Error output: {result.stderr}")
+                return False, f"Python Triplifier error: {result.stderr}"
             
         except Exception as e:
             logger.error(f"Error in CSV triplification: {e}")
@@ -116,22 +132,39 @@ class PythonTriplifierIntegration:
             config_path = os.path.join(self.root_dir, self.child_dir, 'triplifierSQL.yaml')
             ontology_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'ontology.owl')
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
+            base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Create a mock args object
-            class Args:
-                def __init__(self):
-                    self.config = config_path
-                    self.output = output_path
-                    self.ontology = ontology_path
-                    self.baseuri = base_uri or f"http://{self.hostname}/"
-                    self.ontologyAndOrData = None  # Convert both ontology and data
+            # Set up path for pythonTool module
+            pythontool_path = os.path.join(os.path.dirname(__file__), '..')
             
-            args = Args()
+            # Run Python Triplifier as subprocess
+            env = os.environ.copy()
+            env['PYTHONPATH'] = pythontool_path + ':' + env.get('PYTHONPATH', '')
             
-            # Run Python Triplifier
-            python_run_triplifier(args)
+            cmd = [
+                sys.executable, '-m', 'pythonTool.main_app',
+                '-c', config_path,
+                '-o', output_path,
+                '-t', ontology_path,
+                '-b', base_uri
+            ]
             
-            return True, "PostgreSQL data triplified successfully using Python Triplifier."
+            result = subprocess.run(
+                cmd,
+                cwd=pythontool_path,
+                env=env,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"Python Triplifier executed successfully")
+                logger.info(f"Output: {result.stdout}")
+                return True, "PostgreSQL data triplified successfully using Python Triplifier."
+            else:
+                logger.error(f"Python Triplifier failed with return code {result.returncode}")
+                logger.error(f"Error output: {result.stderr}")
+                return False, f"Python Triplifier error: {result.stderr}"
             
         except Exception as e:
             logger.error(f"Error in SQL triplification: {e}")
