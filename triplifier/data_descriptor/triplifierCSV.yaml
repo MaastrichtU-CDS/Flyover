@@ -1,0 +1,5 @@
+db:
+  url: "sqlite:////app/data_descriptor/static/files/temp.db"
+
+# CSV-specific configuration will be dynamically configured by Python code
+# The CSV files will be converted to SQLite for processing by Python Triplifier

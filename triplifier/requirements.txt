@@ -12,3 +12,8 @@ python-dateutil==2.9.0.post0
 pytz==2025.2
 requests==2.32.3
 six==1.17.0
+# Python Triplifier package
+git+https://github.com/MaastrichtU-CDS/triplifier.git@release/2.0
+PyYAML>=5.3
+rdflib>=6.0.0
+SQLAlchemy>=1.4

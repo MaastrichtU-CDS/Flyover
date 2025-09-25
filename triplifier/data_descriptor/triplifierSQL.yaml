@@ -1,0 +1,2 @@
+db:
+  url: "postgresql://postgres:postgres@postgres/opc"

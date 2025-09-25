@@ -5,28 +5,14 @@ WORKDIR /app
 # Copy only the requirements file first to leverage Docker cache
 COPY requirements.txt /app/
 
-# Install dependencies in a single layer
+# Install dependencies in a single layer (removed Java dependencies)
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
-    wget \
-    curl \
-    default-jre-headless \
+    git \
     libpq-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir -r requirements.txt
-
-# Set Java environment variables
-ENV JAVA_HOME /usr/lib/jvm/default-java
-ENV PATH $PATH:$JAVA_HOME/bin
-
-# Set default JAVA_OPTS (can be overridden via environment)
-ENV JAVA_OPTS="-Xms2g -Xmx8g"
-
-# Download PostgreSQL JDBC driver
-ENV POST_URL https://jdbc.postgresql.org/download/postgresql-42.2.5.jar
-RUN wget ${POST_URL} && \
-    rm -rf /root/.cache /tmp/*
 
 # Now copy the application code
 COPY data_descriptor/ /app/data_descriptor/
