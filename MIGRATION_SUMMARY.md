@@ -6,7 +6,7 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 ## Key Changes Made
 
 ### 1. Dependencies & Environment
-- **Updated `requirements.txt`**: Added PyYAML, rdflib, SQLAlchemy dependencies
+- **Updated `requirements.txt`**: Now uses `triplifier>=2.2.0` PyPI package instead of copying source code
 - **Modified `Dockerfile`**: Removed Java runtime, JRE, and JDBC driver dependencies
 - **Updated `docker-compose.yml`**: Removed Java-specific environment variables (JAVA_OPTS)
 
@@ -21,7 +21,7 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 ### 3. Integration Layer
 - **Created `PythonTriplifierIntegration` class**: Clean abstraction for Python Triplifier calls
 - **CSV Processing**: Converts CSV data to SQLite for Python Triplifier compatibility  
-- **Subprocess Approach**: Uses `python -m pythonTool.main_app` to avoid import complexity
+- **Command-line Interface**: Uses `triplifier` command from PyPI package
 - **Error Handling**: Comprehensive logging and error reporting
 
 ### 4. Code Changes
@@ -33,7 +33,7 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 - **Removed Java artifacts**: 
   - `javaTool/triplifier.jar`
   - Old `.properties` files
-- **Added Python Triplifier source**: Embedded `pythonTool/` module from release/2.0
+- **Removed copied Python source**: No longer copies `pythonTool/` source code, uses PyPI package
 
 ## Architecture
 
@@ -42,26 +42,27 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 Flyover → subprocess → java -jar triplifier.jar -p config.properties
 ```
 
-### After (Python) 
+### After (Python with PyPI package) 
 ```
-Flyover → PythonTriplifierIntegration → subprocess → python -m pythonTool.main_app -c config.yaml
+Flyover → PythonTriplifierIntegration → subprocess → triplifier -c config.yaml
 ```
 
 ## Benefits
 
-1. **Better Integration**: No external JAR dependencies
-2. **Improved Maintainability**: Python codebase aligns with Flyover
-3. **Enhanced Debugging**: Direct access to Python stack traces
-4. **Reduced Container Size**: No JRE installation needed
-5. **Faster Builds**: No Java/JDBC driver downloads
+1. **Clean Dependencies**: Uses official PyPI package instead of copied source code
+2. **Better Integration**: No external JAR dependencies
+3. **Improved Maintainability**: Python codebase aligns with Flyover
+4. **Enhanced Debugging**: Direct access to Python stack traces
+5. **Reduced Container Size**: No JRE installation needed
+6. **Faster Builds**: No Java/JDBC driver downloads
+7. **Official Package**: Uses maintained PyPI package instead of copied code
 
 ## Testing
 
-- ✅ Docker build successful
-- ✅ Dependencies install correctly  
-- ✅ YAML configuration generation
-- ✅ SQLite/pandas integration
-- ✅ Basic functionality verified
+- ✅ Docker build successful with PyPI triplifier package
+- ✅ Triplifier command available in container  
+- ✅ YAML configuration generation works
+- ✅ All Python dependencies install correctly
 
 ## Compatibility
 
@@ -70,4 +71,4 @@ Flyover → PythonTriplifierIntegration → subprocess → python -m pythonTool.
 - **Output**: Generates same RDF/OWL files
 - **Background Jobs**: PK/FK and cross-graph processing preserved
 
-The migration is complete and ready for production use!
+The migration is complete and uses the official PyPI package as requested!

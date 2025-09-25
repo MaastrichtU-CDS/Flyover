@@ -3,7 +3,6 @@ import tempfile
 import sqlite3
 import yaml
 import socket
-import sys
 import subprocess
 from typing import Tuple, Union
 from io import StringIO
@@ -75,15 +74,9 @@ class PythonTriplifierIntegration:
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Set up path for pythonTool module
-            pythontool_path = os.path.join(os.path.dirname(__file__), '..')
-            
-            # Run Python Triplifier as subprocess
-            env = os.environ.copy()
-            env['PYTHONPATH'] = pythontool_path + ':' + env.get('PYTHONPATH', '')
-            
+            # Run Python Triplifier using the command-line interface from PyPI package
             cmd = [
-                sys.executable, '-m', 'pythonTool.main_app',
+                'triplifier',
                 '-c', config_path,
                 '-o', output_path,
                 '-t', ontology_path,
@@ -92,8 +85,6 @@ class PythonTriplifierIntegration:
             
             result = subprocess.run(
                 cmd,
-                cwd=pythontool_path,
-                env=env,
                 capture_output=True,
                 text=True
             )
@@ -134,15 +125,9 @@ class PythonTriplifierIntegration:
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Set up path for pythonTool module
-            pythontool_path = os.path.join(os.path.dirname(__file__), '..')
-            
-            # Run Python Triplifier as subprocess
-            env = os.environ.copy()
-            env['PYTHONPATH'] = pythontool_path + ':' + env.get('PYTHONPATH', '')
-            
+            # Run Python Triplifier using the command-line interface from PyPI package
             cmd = [
-                sys.executable, '-m', 'pythonTool.main_app',
+                'triplifier',
                 '-c', config_path,
                 '-o', output_path,
                 '-t', ontology_path,
@@ -151,8 +136,6 @@ class PythonTriplifierIntegration:
             
             result = subprocess.run(
                 cmd,
-                cwd=pythontool_path,
-                env=env,
                 capture_output=True,
                 text=True
             )
