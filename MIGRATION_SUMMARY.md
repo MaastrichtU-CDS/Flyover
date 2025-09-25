@@ -21,7 +21,7 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 ### 3. Integration Layer
 - **Created `PythonTriplifierIntegration` class**: Clean abstraction for Python Triplifier calls
 - **CSV Processing**: Converts CSV data to SQLite for Python Triplifier compatibility  
-- **Command-line Interface**: Uses `triplifier` command from PyPI package
+- **Direct API Integration**: Uses Python function calls instead of subprocess command execution
 - **Error Handling**: Comprehensive logging and error reporting
 
 ### 4. Code Changes
@@ -42,25 +42,26 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 Flyover → subprocess → java -jar triplifier.jar -p config.properties
 ```
 
-### After (Python with PyPI package) 
+### After (Python with PyPI package direct API) 
 ```
-Flyover → PythonTriplifierIntegration → subprocess → triplifier -c config.yaml
+Flyover → PythonTriplifierIntegration → run_triplifier(args) → Direct function call
 ```
 
 ## Benefits
 
 1. **Clean Dependencies**: Uses official PyPI package instead of copied source code
-2. **Better Integration**: No external JAR dependencies
-3. **Improved Maintainability**: Python codebase aligns with Flyover
-4. **Enhanced Debugging**: Direct access to Python stack traces
-5. **Reduced Container Size**: No JRE installation needed
-6. **Faster Builds**: No Java/JDBC driver downloads
-7. **Official Package**: Uses maintained PyPI package instead of copied code
+2. **Direct API Integration**: No subprocess overhead, direct Python function calls
+3. **Better Integration**: No external JAR dependencies
+4. **Improved Maintainability**: Python codebase aligns with Flyover
+5. **Enhanced Debugging**: Direct access to Python stack traces and native error handling
+6. **Reduced Container Size**: No JRE installation needed
+7. **Faster Builds**: No Java/JDBC driver downloads
+8. **Official Package**: Uses maintained PyPI package instead of copied code
 
 ## Testing
 
 - ✅ Docker build successful with PyPI triplifier package
-- ✅ Triplifier command available in container  
+- ✅ Direct API function calls working in container  
 - ✅ YAML configuration generation works
 - ✅ All Python dependencies install correctly
 

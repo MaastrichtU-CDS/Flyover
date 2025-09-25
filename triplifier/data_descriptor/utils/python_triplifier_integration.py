@@ -3,7 +3,6 @@ import tempfile
 import sqlite3
 import yaml
 import socket
-import subprocess
 from typing import Tuple, Union
 from io import StringIO
 
@@ -24,7 +23,7 @@ class PythonTriplifierIntegration:
     
     def run_triplifier_csv(self, csv_data_list, csv_paths, base_uri=None):
         """
-        Process CSV data using Python Triplifier.
+        Process CSV data using Python Triplifier API directly.
         
         Args:
             csv_data_list: List of pandas DataFrames
@@ -35,6 +34,9 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
+            # Import triplifier modules
+            from pythonTool.main_app import run_triplifier
+            
             # Create a temporary SQLite database
             temp_db_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'temp_triplifier.db')
             os.makedirs(os.path.dirname(temp_db_path), exist_ok=True)
@@ -74,36 +76,29 @@ class PythonTriplifierIntegration:
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Run Python Triplifier using the command-line interface from PyPI package
-            cmd = [
-                'triplifier',
-                '-c', config_path,
-                '-o', output_path,
-                '-t', ontology_path,
-                '-b', base_uri
-            ]
+            # Create arguments object for the triplifier
+            class Args:
+                def __init__(self):
+                    self.config = config_path
+                    self.output = output_path
+                    self.ontology = ontology_path
+                    self.baseuri = base_uri
+                    self.ontologyAndOrData = None  # Convert both ontology and data
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True
-            )
+            args = Args()
             
-            if result.returncode == 0:
-                logger.info(f"Python Triplifier executed successfully")
-                logger.info(f"Output: {result.stdout}")
-                
-                # Clean up temporary files
-                if os.path.exists(config_path):
-                    os.remove(config_path)
-                if os.path.exists(temp_db_path):
-                    os.remove(temp_db_path)
-                
-                return True, "CSV data triplified successfully using Python Triplifier."
-            else:
-                logger.error(f"Python Triplifier failed with return code {result.returncode}")
-                logger.error(f"Error output: {result.stderr}")
-                return False, f"Python Triplifier error: {result.stderr}"
+            # Run Python Triplifier directly using the API
+            run_triplifier(args)
+            
+            logger.info(f"Python Triplifier executed successfully")
+            
+            # Clean up temporary files
+            if os.path.exists(config_path):
+                os.remove(config_path)
+            if os.path.exists(temp_db_path):
+                os.remove(temp_db_path)
+            
+            return True, "CSV data triplified successfully using Python Triplifier."
             
         except Exception as e:
             logger.error(f"Error in CSV triplification: {e}")
@@ -111,7 +106,7 @@ class PythonTriplifierIntegration:
     
     def run_triplifier_sql(self, base_uri=None):
         """
-        Process PostgreSQL data using Python Triplifier.
+        Process PostgreSQL data using Python Triplifier API directly.
         
         Args:
             base_uri: Base URI for RDF generation
@@ -120,34 +115,30 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
+            # Import triplifier modules
+            from pythonTool.main_app import run_triplifier
+            
             config_path = os.path.join(self.root_dir, self.child_dir, 'triplifierSQL.yaml')
             ontology_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'ontology.owl')
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Run Python Triplifier using the command-line interface from PyPI package
-            cmd = [
-                'triplifier',
-                '-c', config_path,
-                '-o', output_path,
-                '-t', ontology_path,
-                '-b', base_uri
-            ]
+            # Create arguments object for the triplifier
+            class Args:
+                def __init__(self):
+                    self.config = config_path
+                    self.output = output_path
+                    self.ontology = ontology_path
+                    self.baseuri = base_uri
+                    self.ontologyAndOrData = None  # Convert both ontology and data
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True
-            )
+            args = Args()
             
-            if result.returncode == 0:
-                logger.info(f"Python Triplifier executed successfully")
-                logger.info(f"Output: {result.stdout}")
-                return True, "PostgreSQL data triplified successfully using Python Triplifier."
-            else:
-                logger.error(f"Python Triplifier failed with return code {result.returncode}")
-                logger.error(f"Error output: {result.stderr}")
-                return False, f"Python Triplifier error: {result.stderr}"
+            # Run Python Triplifier directly using the API
+            run_triplifier(args)
+            
+            logger.info(f"Python Triplifier executed successfully")
+            return True, "PostgreSQL data triplified successfully using Python Triplifier."
             
         except Exception as e:
             logger.error(f"Error in SQL triplification: {e}")
