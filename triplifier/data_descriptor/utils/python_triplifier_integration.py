@@ -118,7 +118,17 @@ class PythonTriplifierIntegration:
             # Import triplifier modules
             from pythonTool.main_app import run_triplifier
             
-            config_path = os.path.join(self.root_dir, self.child_dir, 'triplifierSQL.yaml')
+            # Create YAML configuration dynamically
+            config = {
+                'db': {
+                    'url': "postgresql://postgres:postgres@postgres/opc"
+                }
+            }
+            
+            config_path = os.path.join(self.root_dir, self.child_dir, 'triplifier_sql_config.yaml')
+            with open(config_path, 'w') as f:
+                yaml.dump(config, f)
+            
             ontology_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'ontology.owl')
             output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
@@ -138,6 +148,11 @@ class PythonTriplifierIntegration:
             run_triplifier(args)
             
             logger.info(f"Python Triplifier executed successfully")
+            
+            # Clean up temporary config file
+            if os.path.exists(config_path):
+                os.remove(config_path)
+            
             return True, "PostgreSQL data triplified successfully using Python Triplifier."
             
         except Exception as e:

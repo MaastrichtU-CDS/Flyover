@@ -33,7 +33,8 @@ Successfully migrated Flyover from using the Java-based Triplifier application t
 - **Removed Java artifacts**: 
   - `javaTool/triplifier.jar`
   - Old `.properties` files
-- **Removed copied Python source**: No longer copies `pythonTool/` source code, uses PyPI package
+- **Removed unnecessary files**: Static YAML config files, now generates config dynamically
+- **Simplified configuration**: Both CSV and SQL use dynamic config generation
 
 ## Architecture
 
