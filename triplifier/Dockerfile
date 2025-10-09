@@ -8,6 +8,7 @@ COPY requirements.txt /app/
 # Install dependencies in a single layer (removed Java dependencies)
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
+    curl \
     git \
     libpq-dev \
     ca-certificates \
