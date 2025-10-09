@@ -27,6 +27,10 @@ services:
       - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
+      # Optional: Override default PostgreSQL database settings for Triplifier
+      # - TRIPLIFIER_DB_URL=postgresql://postgres/opc
+      # - TRIPLIFIER_DB_USER=postgres
+      # - TRIPLIFIER_DB_PASSWORD=postgres
     hostname: "data.local"
     networks:
       - proxynet

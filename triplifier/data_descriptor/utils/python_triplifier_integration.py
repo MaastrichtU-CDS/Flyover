@@ -5,6 +5,7 @@ import yaml
 import socket
 from typing import Tuple, Union
 from io import StringIO
+from markupsafe import Markup
 
 import pandas as pd
 
@@ -71,9 +72,9 @@ class PythonTriplifierIntegration:
             with open(config_path, 'w') as f:
                 yaml.dump(config, f)
             
-            # Set up file paths
-            ontology_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'ontology.owl')
-            output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
+            # Set up file paths - output to root_dir for upload_ontology_then_data compatibility
+            ontology_path = os.path.join(self.root_dir, 'ontology.owl')
+            output_path = os.path.join(self.root_dir, 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
             # Create arguments object for the triplifier
@@ -91,6 +92,7 @@ class PythonTriplifierIntegration:
             run_triplifier(args)
             
             logger.info(f"Python Triplifier executed successfully")
+            logger.info(f"Generated files: {ontology_path}, {output_path}")
             
             # Clean up temporary files
             if os.path.exists(config_path):
@@ -102,14 +104,19 @@ class PythonTriplifierIntegration:
             
         except Exception as e:
             logger.error(f"Error in CSV triplification: {e}")
+            import traceback
+            traceback.print_exc()
             return False, f"Error processing CSV data: {str(e)}"
     
-    def run_triplifier_sql(self, base_uri=None):
+    def run_triplifier_sql(self, base_uri=None, db_url=None, db_user=None, db_password=None):
         """
         Process PostgreSQL data using Python Triplifier API directly.
         
         Args:
             base_uri: Base URI for RDF generation
+            db_url: Database connection URL (can be set from environment variable)
+            db_user: Database user (can be set from environment variable)
+            db_password: Database password (can be set from environment variable)
             
         Returns:
             Tuple[bool, str]: (success, message/error)
@@ -118,19 +125,34 @@ class PythonTriplifierIntegration:
             # Import triplifier modules
             from pythonTool.main_app import run_triplifier
             
+            # Get database configuration from environment variables if not provided
+            if db_url is None:
+                db_url = os.getenv('TRIPLIFIER_DB_URL', 'postgresql://postgres/opc')
+            if db_user is None:
+                db_user = os.getenv('TRIPLIFIER_DB_USER', 'postgres')
+            if db_password is None:
+                db_password = os.getenv('TRIPLIFIER_DB_PASSWORD', 'postgres')
+            
             # Create YAML configuration dynamically
             config = {
                 'db': {
-                    'url': "postgresql://postgres:postgres@postgres/opc"
+                    'url': db_url
                 }
             }
+            
+            # Add user and password if they're not in the URL
+            if db_user and '://' in db_url and '@' not in db_url:
+                # Insert credentials into URL
+                parts = db_url.split('://')
+                config['db']['url'] = f"{parts[0]}://{db_user}:{db_password}@{parts[1]}"
             
             config_path = os.path.join(self.root_dir, self.child_dir, 'triplifier_sql_config.yaml')
             with open(config_path, 'w') as f:
                 yaml.dump(config, f)
             
-            ontology_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'ontology.owl')
-            output_path = os.path.join(self.root_dir, self.child_dir, 'static', 'files', 'output.ttl')
+            # Set up file paths - output to root_dir for upload_ontology_then_data compatibility
+            ontology_path = os.path.join(self.root_dir, 'ontology.owl')
+            output_path = os.path.join(self.root_dir, 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
             # Create arguments object for the triplifier
@@ -148,6 +170,7 @@ class PythonTriplifierIntegration:
             run_triplifier(args)
             
             logger.info(f"Python Triplifier executed successfully")
+            logger.info(f"Generated files: {ontology_path}, {output_path}")
             
             # Clean up temporary config file
             if os.path.exists(config_path):
@@ -157,4 +180,47 @@ class PythonTriplifierIntegration:
             
         except Exception as e:
             logger.error(f"Error in SQL triplification: {e}")
+            import traceback
+            traceback.print_exc()
             return False, f"Error processing PostgreSQL data: {str(e)}"
+
+
+def run_triplifier(properties_file=None, root_dir='', child_dir='.', csv_data_list=None, csv_paths=None):
+    """
+    Run the Python Triplifier for CSV or SQL data.
+    This function is the main entry point for triplification.
+    
+    Args:
+        properties_file: Legacy parameter for backwards compatibility ('triplifierCSV.properties' or 'triplifierSQL.properties')
+        root_dir: Root directory for file operations
+        child_dir: Child directory for file operations
+        csv_data_list: List of pandas DataFrames (for CSV mode)
+        csv_paths: List of CSV file paths (for CSV mode)
+        
+    Returns:
+        Tuple[bool, Union[str, Markup]]: (success, message)
+    """
+    try:
+        # Initialize Python Triplifier integration
+        triplifier = PythonTriplifierIntegration(root_dir, child_dir)
+        
+        if properties_file == 'triplifierCSV.properties':
+            # Use Python Triplifier for CSV processing
+            success, message = triplifier.run_triplifier_csv(
+                csv_data_list, 
+                csv_paths
+            )
+            
+        elif properties_file == 'triplifierSQL.properties':
+            # Use Python Triplifier for PostgreSQL processing
+            success, message = triplifier.run_triplifier_sql()
+        else:
+            return False, f"Unknown properties file: {properties_file}"
+
+        return success, message
+            
+    except Exception as e:
+        logger.error(f'Unexpected error attempting to run the Python Triplifier: {e}')
+        import traceback
+        traceback.print_exc()
+        return False, f'Unexpected error attempting to run the Triplifier, error: {e}'

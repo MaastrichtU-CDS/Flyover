@@ -45,7 +45,6 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
-from utils.python_triplifier_integration import PythonTriplifierIntegration
 from annotation_helper.src.miscellaneous import add_annotation, read_file
 
 app = Flask(__name__)
@@ -1942,11 +1941,10 @@ def background_cross_graph_processing():
 def run_triplifier(properties_file=None):
     """
     This function runs the Python Triplifier and checks if it ran successfully.
-    Replaces the old Java-based implementation.
+    Wrapper function that calls the actual implementation in python_triplifier_integration.py
     """
     try:
-        # Initialize Python Triplifier integration
-        triplifier = PythonTriplifierIntegration(root_dir, child_dir)
+        from utils.python_triplifier_integration import run_triplifier as run_triplifier_impl
         
         if properties_file == 'triplifierCSV.properties':
             if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
@@ -1958,14 +1956,21 @@ def run_triplifier(properties_file=None):
                 csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
 
             # Use Python Triplifier for CSV processing
-            success, message = triplifier.run_triplifier_csv(
-                session_cache.csvData, 
-                session_cache.csvPath
+            success, message = run_triplifier_impl(
+                properties_file=properties_file,
+                root_dir=root_dir,
+                child_dir=child_dir,
+                csv_data_list=session_cache.csvData,
+                csv_paths=session_cache.csvPath
             )
             
         elif properties_file == 'triplifierSQL.properties':
             # Use Python Triplifier for PostgreSQL processing
-            success, message = triplifier.run_triplifier_sql()
+            success, message = run_triplifier_impl(
+                properties_file=properties_file,
+                root_dir=root_dir,
+                child_dir=child_dir
+            )
         else:
             return False, f"Unknown properties file: {properties_file}"
 
@@ -1997,7 +2002,10 @@ def run_triplifier(properties_file=None):
 
     except Exception as e:
         logger.error(f'Unexpected error attempting to run the Python Triplifier: {e}')
+        import traceback
+        traceback.print_exc()
         return False, f'Unexpected error attempting to run the Triplifier, error: {e}'
+
 
 
 if __name__ == "__main__":
