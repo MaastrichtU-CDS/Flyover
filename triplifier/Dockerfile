@@ -1,32 +1,30 @@
 FROM python:3.13-alpine
 WORKDIR /app
 
-# Copy only the requirements file first to leverage Docker cache
-COPY requirements.txt /app/
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
 
-# Install build dependencies (removed after use)
+# Install build dependencies, Python packages, and clean up
 RUN apk add --no-cache --virtual .build-deps \
     gcc \
     python3-dev \
     musl-dev \
-    libpq \
     postgresql-dev \
-    git \
-    ca-certificates \
     && apk add --no-cache \
+    libpq \
+    ca-certificates \
     curl \
-    libpq
+    && pip install --no-cache-dir -r requirements.txt \
+    && apk del .build-deps \
+    && rm -rf /var/cache/apk/* /root/.cache
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Remove build dependencies
-RUN apk del .build-deps
-
-# Copy the application code
+# Copy the entire application code
 COPY data_descriptor/ /app/data_descriptor/
 
-# Use Gunicorn as the WSGI server
+# Ensure the working directory is set correctly
+WORKDIR /app
+
+# Run Gunicorn
 CMD ["gunicorn", \
     "--workers", "1", \
     "--worker-class", "gevent", \
