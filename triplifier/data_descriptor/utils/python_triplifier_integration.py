@@ -142,6 +142,10 @@ class PythonTriplifierIntegration:
         """
         Generate ontology file from CSV data.
         
+        NOTE: Due to a bug in triplifier package (COLUMNREFERENCE not defined),
+        this function is not currently usable. Use run_triplifier_csv() instead
+        which generates both ontology and data in a single call.
+        
         Args:
             csv_data_list: List of pandas DataFrames
             csv_paths: List of CSV file paths
@@ -173,6 +177,10 @@ class PythonTriplifierIntegration:
     def generate_data_csv(self, csv_data_list, csv_paths, base_uri=None):
         """
         Generate data file from CSV data (requires ontology to exist).
+        
+        NOTE: Due to a bug in triplifier package (COLUMNREFERENCE not defined),
+        this function is not currently usable. Use run_triplifier_csv() instead
+        which generates both ontology and data in a single call.
         
         Args:
             csv_data_list: List of pandas DataFrames
@@ -211,6 +219,10 @@ class PythonTriplifierIntegration:
         """
         Generate ontology file from SQL database.
         
+        NOTE: Due to a bug in triplifier package (COLUMNREFERENCE not defined),
+        this function is not currently usable. Use run_triplifier_sql() instead
+        which generates both ontology and data in a single call.
+        
         Args:
             base_uri: Base URI for RDF generation
             db_url: Database connection URL
@@ -243,6 +255,10 @@ class PythonTriplifierIntegration:
     def generate_data_sql(self, base_uri=None, db_url=None, db_user=None, db_password=None):
         """
         Generate data file from SQL database (requires ontology to exist).
+        
+        NOTE: Due to a bug in triplifier package (COLUMNREFERENCE not defined),
+        this function is not currently usable. Use run_triplifier_sql() instead
+        which generates both ontology and data in a single call.
         
         Args:
             base_uri: Base URI for RDF generation
@@ -279,7 +295,7 @@ class PythonTriplifierIntegration:
     def run_triplifier_csv(self, csv_data_list, csv_paths, base_uri=None):
         """
         Process CSV data using Python Triplifier API directly.
-        Generates both ontology and data files sequentially.
+        Generates both ontology and data files in a single call (workaround for triplifier bug).
         
         Args:
             csv_data_list: List of pandas DataFrames
@@ -290,20 +306,24 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Step 1: Generate ontology
-            success, message = self.generate_ontology_csv(csv_data_list, csv_paths, base_uri)
-            if not success:
-                return False, f"Ontology generation failed: {message}"
+            temp_db_path, config_path = self._prepare_csv_database(csv_data_list, csv_paths)
             
-            # Step 2: Generate data
-            success, message = self.generate_data_csv(csv_data_list, csv_paths, base_uri)
-            if not success:
-                return False, f"Data generation failed: {message}"
-            
-            logger.info(f"Python Triplifier executed successfully")
             ontology_path = os.path.join(self.root_dir, 'ontology.owl')
             output_path = os.path.join(self.root_dir, 'output.ttl')
+            base_uri = base_uri or f"http://{self.hostname}/"
+            
+            # Generate both ontology and data in single call to avoid triplifier bug
+            # when loading ontology separately
+            self._run_triplifier_step(config_path, ontology_path, output_path, base_uri, mode=None)
+            
+            logger.info(f"Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
+            
+            # Clean up temporary files
+            if os.path.exists(config_path):
+                os.remove(config_path)
+            if os.path.exists(temp_db_path):
+                os.remove(temp_db_path)
             
             return True, "CSV data triplified successfully using Python Triplifier."
             
@@ -316,7 +336,7 @@ class PythonTriplifierIntegration:
     def run_triplifier_sql(self, base_uri=None, db_url=None, db_user=None, db_password=None):
         """
         Process PostgreSQL data using Python Triplifier API directly.
-        Generates both ontology and data files sequentially.
+        Generates both ontology and data files in a single call (workaround for triplifier bug).
         
         Args:
             base_uri: Base URI for RDF generation
@@ -328,20 +348,22 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Step 1: Generate ontology
-            success, message = self.generate_ontology_sql(base_uri, db_url, db_user, db_password)
-            if not success:
-                return False, f"Ontology generation failed: {message}"
+            config_path = self._prepare_sql_config(db_url, db_user, db_password)
             
-            # Step 2: Generate data
-            success, message = self.generate_data_sql(base_uri, db_url, db_user, db_password)
-            if not success:
-                return False, f"Data generation failed: {message}"
-            
-            logger.info(f"Python Triplifier executed successfully")
             ontology_path = os.path.join(self.root_dir, 'ontology.owl')
             output_path = os.path.join(self.root_dir, 'output.ttl')
+            base_uri = base_uri or f"http://{self.hostname}/"
+            
+            # Generate both ontology and data in single call to avoid triplifier bug
+            # when loading ontology separately
+            self._run_triplifier_step(config_path, ontology_path, output_path, base_uri, mode=None)
+            
+            logger.info(f"Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
+            
+            # Clean up temporary config file
+            if os.path.exists(config_path):
+                os.remove(config_path)
             
             return True, "PostgreSQL data triplified successfully using Python Triplifier."
             
