@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
+from utils.session_cache_utils import populate_databases_from_rdf
 from annotation_helper.src.miscellaneous import add_annotation, read_file
 
 app = Flask(__name__)
@@ -910,6 +911,13 @@ def annotation_review():
         flash("No semantic map available for annotation. Please upload a semantic map first.")
         return redirect(url_for('annotation_landing'))
 
+    # Populate databases from RDF store if not already set
+    if session_cache.databases is None:
+        if not populate_databases_from_rdf(session_cache, execute_query):
+            flash("No databases available for annotation. Please complete the ingest step first.")
+            return redirect(url_for('ingest'))
+    
+    # Check if databases array is empty
     if not session_cache.databases.any():
         flash("No databases available for annotation.")
         return redirect(url_for('ingest'))
@@ -970,6 +978,12 @@ def start_annotation():
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({'success': False, 'error': 'No semantic map available'})
 
+        # Populate databases from RDF store if not already set
+        if session_cache.databases is None:
+            if not populate_databases_from_rdf(session_cache, execute_query):
+                return jsonify({'success': False, 'error': 'No databases available for annotation. Please complete the ingest step first.'})
+        
+        # Check if databases array is empty
         if not session_cache.databases.any():
             return jsonify({'success': False, 'error': 'No databases available for annotation'})
 
@@ -1069,6 +1083,13 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for('describe_downloads'))
 
+    # Populate databases from RDF store if not already set
+    if session_cache.databases is None:
+        if not populate_databases_from_rdf(session_cache, execute_query):
+            flash("No databases available. Please complete the ingest step first.")
+            return redirect(url_for('describe_downloads'))
+    
+    # Check if databases array is empty
     if not session_cache.databases.any():
         flash("No databases available.")
         return redirect(url_for('describe_downloads'))

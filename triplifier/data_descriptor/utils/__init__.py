@@ -13,10 +13,15 @@ from .data_ingest import (
     upload_ontology_then_data
 )
 
+from .session_cache_utils import (
+    populate_databases_from_rdf
+)
+
 __all__ = [
     'clean_column_names',
     'preprocess_dataframe',
     'get_original_column_name',
     'upload_file_to_graphdb',
-    'upload_ontology_then_data'
+    'upload_ontology_then_data',
+    'populate_databases_from_rdf'
 ]
