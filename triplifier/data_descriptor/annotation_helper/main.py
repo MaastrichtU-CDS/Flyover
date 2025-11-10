@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from src.miscellaneous import read_file, add_annotation
+from .src.miscellaneous import read_file, add_annotation
 
 
 def main():
