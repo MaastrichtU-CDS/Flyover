@@ -104,7 +104,7 @@ class Cache:
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
-        self.annotation_json_path = None  # Store path to uploaded JSON file
+        self.annotation_json_path = None  # Store path to the uploaded JSON file
 
 
 session_cache = Cache()
@@ -157,7 +157,7 @@ def index():
 @app.route("/upload-semantic-map", methods=["POST"])
 def upload_semantic_map():
     """
-    Handle the upload of a global semantic map JSON file from the triples page.
+    Handle the upload of a global semantic map JSON file from the data_submission page.
     This function processes the JSON file and stores it in the session cache for semantic mapping.
 
     Returns:
