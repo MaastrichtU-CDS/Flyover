@@ -10,7 +10,6 @@ pandas==2.2.3
 psycopg2-binary==2.9.10
 python-dateutil==2.9.0.post0
 pytz==2025.2
-requests==2.32.3
+requests==2.32.5
 six==1.17.0
-# Python Triplifier package from PyPI
 triplifier>=2.2.0
