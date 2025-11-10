@@ -25,7 +25,9 @@ def main():
     """
     # check for command-line arguments
     if len(sys.argv) < 2:
-        json_file_path = input("Please provide the path to your annotation settings JSON file:\n")
+        json_file_path = input(
+            "Please provide the path to your annotation settings JSON file:\n"
+        )
     else:
         json_file_path = sys.argv[1]
 
@@ -33,8 +35,12 @@ def main():
     path = os.path.dirname(json_file_path)
 
     # set up logging
-    logging.basicConfig(filename=f"{os.path.join(path, 'annotation_log.txt')}", filemode='a', level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(
+        filename=f"{os.path.join(path, 'annotation_log.txt')}",
+        filemode="a",
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
 
     # read the settings
     settings_content = read_file(file_name=json_file_path)
@@ -42,7 +48,9 @@ def main():
     # check for 'endpoint' key existence in settings
     endpoint = settings_content.get("endpoint")
     if isinstance(endpoint, str) is False:
-        logging.error("'endpoint' key not found in the settings or not provided as string, exiting.")
+        logging.error(
+            "'endpoint' key not found in the settings or not provided as string, exiting."
+        )
         sys.exit(1)
     elif len(endpoint) < 1:
         logging.error("Endpoint is empty, exiting.")
@@ -51,7 +59,9 @@ def main():
     # check for 'database_name' key existence in settings
     database = settings_content.get("database_name")
     if isinstance(database, str) is False:
-        logging.error("'database' key not found in the settings or not provided as string, exiting.")
+        logging.error(
+            "'database' key not found in the settings or not provided as string, exiting."
+        )
         sys.exit(1)
     elif len(database) < 1:
         logging.error("Database name is empty, exiting.")
@@ -59,17 +69,27 @@ def main():
 
     prefixes = settings_content.get("prefixes")
     if isinstance(prefixes, str) is False:
-        logging.error("'prefixes' key not found in the settings or not provided as string, exiting.")
+        logging.error(
+            "'prefixes' key not found in the settings or not provided as string, exiting."
+        )
         sys.exit(1)
     elif len(prefixes) < 1:
-        logging.warning("Prefixes are empty, please note that default prefixes are limited to: "
-                        "'db', 'dbo', 'rdf', 'owl', 'roo', and 'ncit'.")
+        logging.warning(
+            "Prefixes are empty, please note that default prefixes are limited to: "
+            "'db', 'dbo', 'rdf', 'owl', 'roo', and 'ncit'."
+        )
         sys.exit(1)
 
     # run annotations if specified
     annotations = settings_content.get("variable_info")
     if annotations:
-        add_annotation(endpoint=endpoint, database=database, prefixes=prefixes, annotation_data=annotations, path=path)
+        add_annotation(
+            endpoint=endpoint,
+            database=database,
+            prefixes=prefixes,
+            annotation_data=annotations,
+            path=path,
+        )
 
 
 if __name__ == "__main__":
