@@ -5,7 +5,7 @@ Data preprocessing utilities for cleaning and preparing data for the Flyover app
 import pandas as pd
 import re
 import logging
-from typing import Tuple, List
+from typing import Dict, List, Tuple
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -154,7 +154,7 @@ def _handle_duplicate_columns(columns: List[str]) -> List[str]:
     Returns:
         List of unique column names
     """
-    seen = {}
+    seen: Dict[str, int] = {}
     final_columns = []
     duplicates_handled = 0
 
