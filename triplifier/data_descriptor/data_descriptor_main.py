@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
-from annotation_helper.src.miscellaneous import add_annotation, read_file
+from annotation_helper.src.miscellaneous import add_annotation
 
 app = Flask(__name__)
 
@@ -185,7 +185,9 @@ def upload_semantic_map():
             return (
                 jsonify(
                     {
-                        "error": 'Invalid semantic map format. Please ensure the JSON file contains a "variable_info" field with semantic variable definitions.'
+                        "error": "Invalid semantic map format. "
+                        'Please ensure the JSON file contains a "variable_info" '
+                        "field with semantic variable definitions."
                     }
                 ),
                 400,
@@ -341,7 +343,8 @@ def upload_file():
 def data_submission():
     """
     This function is mapped to the "/data-submission" URL and is invoked when a GET request is made to this URL.
-    It retrieves a status message from the session cache and renders the 'describe_landing.html' template with the message.
+    It retrieves a status message from the session cache and
+    renders the 'describe_landing.html' template with the message.
 
     The function performs the following steps:
     1. Retrieves the status message from the 'StatusToDisplay' object in the session cache.
@@ -428,7 +431,8 @@ def describe_variables():
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'describe_variables.html' template with the dictionary of dataframes and the global variable names.
+        it renders the 'describe_variables.html' template
+        with the dictionary of dataframes and the global variable names.
     """
     # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
     column_query = """
@@ -679,7 +683,10 @@ def describe_variable_details():
 
                             # Add preselected value to dictionary
                             if matching_term:
-                                key = f"{database}_{var_info.get('local_definition', '')}_category_\"{category.get('value')}\""
+                                key = (
+                                    f"{database}_{var_info.get('local_definition', '')}_category_"
+                                    f'"{category.get("value")}"'
+                                )
                                 preselected_values[key] = matching_term
 
                             # Add a row to the dataframe
@@ -687,7 +694,7 @@ def describe_variable_details():
                     else:
                         # Iterate over the categories
                         for category in categories:
-                            # Add a row to the dataframe for each category with
+                            # Add a row to the dataframe for each category with a
                             # the column name as the variable name and the value as the category
                             rows.append({"column": var_name, "value": category})
 
@@ -778,7 +785,7 @@ def retrieve_detailed_descriptive_info():
                 elif "_category_" in key and not key.startswith("count_"):
                     # Retrieve the category and the associated value and comment from the request form and
                     # store them in the session cache
-                    category = key.split('_category_"')[1].split(f'"')[0]
+                    category = key.split('_category_"')[1].split('"')[0]
                     count_form = f'count_{database}_{variable}_category_"{category}"'
                     session_cache.descriptive_info[database][variable][
                         f"Category: {category}"
@@ -985,7 +992,10 @@ def annotation_landing():
 
         message = None
         if not data_exists:
-            message = "To start annotating, you need to complete the Ingest and Describe steps first. Alternatively, you can upload a JSON file with your data descriptions."
+            message = (
+                "To start annotating, you need to complete the Ingest and Describe steps first. "
+                "Alternatively, you can upload a JSON file with your data descriptions."
+            )
 
         return render_template(
             "annotation_landing.html", data_exists=data_exists, message=message
@@ -1097,7 +1107,8 @@ def annotation_review():
 
     if total_annotated == 0:
         flash(
-            "No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes."
+            "No variables are ready for annotation. "
+            "Please ensure variables have local definitions, predicates, and classes."
         )
         return redirect(url_for("describe_downloads"))
 
@@ -1145,7 +1156,11 @@ def start_annotation():
             # Get prefixes from the local semantic map
             prefixes = local_semantic_map.get(
                 "prefixes",
-                "PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+                "PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> "
+                "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> "
+                "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
+                "PREFIX roo: <http://www.cancerdata.org/roo/> "
+                "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
             )
 
             # Filter only variables that have local definitions
@@ -1167,7 +1182,7 @@ def start_annotation():
 
             try:
                 # Use add_annotation function from the annotation helper for this database
-                annotation_result = add_annotation(
+                add_annotation(
                     endpoint=endpoint,
                     database=database,
                     prefixes=prefixes,
@@ -1215,7 +1230,8 @@ def start_annotation():
         return jsonify(
             {
                 "success": True,
-                "message": f"Annotation process completed for {total_annotated_vars} variables across {len(session_cache.databases)} databases",
+                "message": f"Annotation process completed for {total_annotated_vars} "
+                f"variables across {len(session_cache.databases)} databases",
             }
         )
 
@@ -1271,7 +1287,8 @@ def annotation_verify():
         status.get("success") for status in annotation_status.values()
     ):
         success_message = (
-            "The data processing is now complete and semantic interoperability has been achieved for the variables outlined above."
+            "The data processing is now complete and "
+            "semantic interoperability has been achieved for the variables outlined above."
             "You can now close this page and proceed to the next steps in your workflow."
         )
 
@@ -1362,8 +1379,7 @@ def verify_annotation_ask():
                     )
 
         ask_query = f"""
-            {prefixes}
-            
+            {prefixes}            
             ASK {{
               {' '.join(ask_query_parts)}
             }}
@@ -1935,7 +1951,7 @@ def get_column_class_uri(table_name, column_name):
             return None
 
         if "uri" not in column_info.columns:
-            print(f"Query result format error: no 'uri' column found")
+            print("Query result format error: no 'uri' column found")
             return None
 
         return column_info["uri"].iloc[0]
@@ -2018,12 +2034,14 @@ def process_pk_fk_relationships():
                 print(f"Could not find URIs for FK relationship: {fk_config}")
                 continue
 
-            fk_predicate = f"http://um-cds/ontologies/databaseontology/fk_refers_to"
+            fk_predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
 
             # Insert the relationship
             insert_fk_relation(fk_predicate, source_uri, target_uri)
             print(
-                f"Created FK relationship: {fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> {fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}"
+                f"Created FK relationship: "
+                f"{fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> "
+                f"{fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}"
             )
 
         session_cache.pk_fk_status = "success"
@@ -2178,13 +2196,15 @@ def process_cross_graph_relationships():
             session_cache.cross_graph_link_status = "failed"
             return False
 
-        predicate = f"http://um-cds/ontologies/databaseontology/fk_refers_to"
+        predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
 
         # Insert the relationship
         insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)
 
         print(
-            f"Created cross-graph relationship: {link_data['newTableName']}.{link_data['newColumnName']} -> {link_data['existingTableName']}.{link_data['existingColumnName']}"
+            f"Created cross-graph relationship: "
+            f"{link_data['newTableName']}.{link_data['newColumnName']} -> "
+            f"{link_data['existingTableName']}.{link_data['existingColumnName']}"
         )
 
         session_cache.cross_graph_link_status = "success"
@@ -2249,7 +2269,10 @@ def run_triplifier(properties_file=None):
         java_opts = os.getenv("JAVA_OPTS", "-Xms2g -Xmx8g")
 
         # Use gevent subprocess for better integration with gevent worker
-        command = f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}"
+        command = (
+            f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar "
+            f"-p {root_dir}{child_dir}/{properties_file}"
+        )
 
         # Use gevent.subprocess.check_output instead of Popen to avoid threading issues
         try:
