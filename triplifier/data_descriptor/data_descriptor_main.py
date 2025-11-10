@@ -2352,4 +2352,11 @@ def run_triplifier(properties_file=None):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    # Use 0.0.0.0 in Docker (safe within container network), 127.0.0.1 for local dev
+    is_docker = os.getenv("FLYOVER_GRAPHDB_URL") is not None
+    default_host = "0.0.0.0" if is_docker else "127.0.0.1"
+
+    host = os.getenv("FLASK_HOST", default_host)
+    port = int(os.getenv("FLASK_PORT", "5000"))
+
+    app.run(host=host, port=port)
