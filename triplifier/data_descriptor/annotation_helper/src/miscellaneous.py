@@ -881,7 +881,9 @@ def _add_annotation(
         _variable_definition: local_definition,
         _variable_class: class_object,
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():
@@ -970,7 +972,9 @@ def _add_mapping(
     # replace the placeholders
     replacements = {
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():
@@ -1008,7 +1012,9 @@ def _check_for_data_class(
         _database: database_name,
         _class_label: class_label,
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():
@@ -1018,7 +1024,7 @@ def _check_for_data_class(
     response = __post_query(
         endpoint=endpoint.rsplit("/statements", 1)[0],
         query=query,
-        data_style=f"query=" + query,
+        data_style="query=" + query,
     )
 
     return response, query
@@ -1047,7 +1053,9 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     replacements = {
         _variable_predicate: predicate,
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():
@@ -1060,7 +1068,7 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     response = __post_query(
         endpoint=endpoint.rsplit("/statements", 1)[0],
         query=query,
-        data_style=f"query=" + query,
+        data_style="query=" + query,
     )
 
     return response, query
@@ -1113,7 +1121,9 @@ def _construct_extra_class(
         _class_aesthetic_label: class_aesthetic_label,
         _class_iri_label: class_iri_label,
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():
@@ -1169,7 +1179,9 @@ def _construct_extra_node(
         _node_class: node_class,
         _node_aesthetic_label: node_aesthetic_label,
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():
@@ -1222,7 +1234,9 @@ def _remove_component(
         _variable_definition: local_variable,
         "dbo:has_column": component_to_remove,
         _prefixes_to_add: prefixes,
-        "# Template that is automatically filled using Python.": "# This query was automatically generated using the annotation helper.",
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
     }
 
     for old, new in replacements.items():

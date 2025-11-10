@@ -6,7 +6,6 @@ from typing import Tuple, List
 # Use gevent for consistency with the main app
 import gevent
 from gevent import subprocess as gevent_subprocess
-from gevent import spawn
 
 # Use the centrally configured logger
 logger = logging.getLogger(__name__)

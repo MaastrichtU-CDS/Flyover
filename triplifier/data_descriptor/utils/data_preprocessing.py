@@ -199,7 +199,7 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     processed_df.attrs["original_columns"] = original_columns
     processed_df.attrs["column_mapping"] = dict(zip(cleaned_columns, original_columns))
 
-    logger.info(f"DataFrame preprocessing completed successfully")
+    logger.info("DataFrame preprocessing completed successfully")
     logger.debug(
         f"Column mapping created: {len(processed_df.attrs['column_mapping'])} entries"
     )
