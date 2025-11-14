@@ -124,7 +124,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🛡️ Bandit - Security Linting (HIGH SEVERITY)" >> $GITHUB_STEP_SUMMARY
         echo "Running Bandit security linter (high severity only)..."
-        bandit -r . -ll -f screen
+        bandit -r . -lll -f screen
         echo "✅ No high-severity security issues found" >> $GITHUB_STEP_SUMMARY
       continue-on-error: false
 
