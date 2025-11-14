@@ -1,0 +1,449 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  python-quality:
+    name: Python Quality Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy safety bandit
+        # Install project dependencies if they exist
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+    - name: Apply Black formatting
+      run: |
+        black .
+        echo "✅ Black formatting applied"
+
+    - name: Commit Black changes
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "style(python): apply Black formatting [skip ci]"
+        commit_user_name: "github-actions[bot]"
+        commit_user_email: "github-actions[bot]@users.noreply.github.com"
+
+    - name: Check code with flake8 (Critical Errors)
+      run: |
+        echo "## 🐍 Flake8 - Critical Errors" >> $GITHUB_STEP_SUMMARY
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --max-line-length=120 --extend-ignore=C901,E203,E402,W291,W503
+        echo "✅ No critical errors found" >> $GITHUB_STEP_SUMMARY
+      continue-on-error: false
+
+    - name: Check code with flake8 (Full Report)
+      id: flake8-warnings
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📋 Flake8 - Style Warnings" >> $GITHUB_STEP_SUMMARY
+        flake8 . --count --max-complexity=10 --max-line-length=120 --statistics --extend-ignore=C901,E203,E402,W291,W503 > flake8-report.txt 2>&1 || true
+        # Check if there are actual issues (more than just the count "0")
+        if [ -s flake8-report.txt ] && grep -qv "^0$" flake8-report.txt && grep -qE "^[^0]|:[0-9]+:[0-9]+:" flake8-report.txt; then
+          echo "⚠️ **WARNING: Style issues found. Please review and fix.**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat flake8-report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat flake8-report.txt
+        else
+          echo "✅ No style warnings" >> $GITHUB_STEP_SUMMARY
+        fi
+      continue-on-error: true
+
+    - name: Type check with mypy
+      id: mypy-check
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔍 Mypy - Type Checking" >> $GITHUB_STEP_SUMMARY
+        mypy . --install-types --non-interactive --ignore-missing-imports --show-error-codes --pretty > mypy-report.txt 2>&1 || true
+        if grep -q "error:" mypy-report.txt; then
+          echo "⚠️ **WARNING: Type checking issues found. Consider adding type hints.**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat mypy-report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat mypy-report.txt
+        else
+          echo "✅ No type checking issues" >> $GITHUB_STEP_SUMMARY
+        fi
+      continue-on-error: true
+
+    - name: Security check with Safety (HIGH severity - BLOCKING)
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔒 Safety - Dependency Vulnerabilities (HIGH SEVERITY)" >> $GITHUB_STEP_SUMMARY
+        echo "Checking dependencies for known security vulnerabilities..."
+        safety check -r triplifier/requirements.txt
+        echo "✅ No high-severity vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+      continue-on-error: false
+
+    - name: Security check with Safety (All severities - WARNING)
+      id: safety-all
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔒 Safety - All Vulnerabilities (INFORMATIONAL)" >> $GITHUB_STEP_SUMMARY
+        safety check -r triplifier/requirements.txt > safety-report.txt 2>&1 || true
+        # Strip ANSI color codes and check for actual vulnerabilities
+        sed 's/\x1b\[[0-9;]*m//g' safety-report.txt > safety-clean.txt
+        if grep -qE "[1-9][0-9]* vulnerabilities reported" safety-clean.txt; then
+          echo "⚠️ **WARNING: Some vulnerabilities detected. Review the report below.**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat safety-clean.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat safety-clean.txt
+        else
+          echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+        fi
+      continue-on-error: true
+
+    - name: Security check with Bandit (HIGH severity - BLOCKING)
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🛡️ Bandit - Security Linting (HIGH SEVERITY)" >> $GITHUB_STEP_SUMMARY
+        echo "Running Bandit security linter (high severity only)..."
+        bandit -r . -lll -f screen
+        echo "✅ No high-severity security issues found" >> $GITHUB_STEP_SUMMARY
+      continue-on-error: false
+
+    - name: Security check with Bandit (All severities - WARNING)
+      id: bandit-all
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🛡️ Bandit - All Security Issues (INFORMATIONAL)" >> $GITHUB_STEP_SUMMARY
+        bandit -r . -f json -o bandit-report.json || true
+        bandit -r . -f screen > bandit-screen.txt 2>&1 || true
+        if grep -q "Issue:" bandit-screen.txt; then
+          echo "⚠️ **WARNING: Security issues detected. Review the report below.**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat bandit-screen.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat bandit-screen.txt
+        else
+          echo "✅ No security issues found" >> $GITHUB_STEP_SUMMARY
+        fi
+      continue-on-error: true
+
+    - name: Upload Bandit report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bandit-security-report
+        path: bandit-report.json
+        retention-days: 30
+
+    - name: Python Summary
+      if: always()
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Python Quality Summary Lingo" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Auto-Applied" >> $GITHUB_STEP_SUMMARY
+        echo "- **Black**: Auto-formatting applied and committed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚫 Blocking Issues (Will Fail Build)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Flake8 Critical**: Syntax errors, undefined names" >> $GITHUB_STEP_SUMMARY
+        echo "- **Safety HIGH**: High-severity dependency vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bandit HIGH**: High-severity security issues" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ⚠️ Non-Blocking Warnings (Review Recommended)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Flake8 Warnings**: Code style and complexity" >> $GITHUB_STEP_SUMMARY
+        echo "- **Mypy**: Type checking hints" >> $GITHUB_STEP_SUMMARY
+        echo "- **Safety LOW/MEDIUM**: Lower-severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bandit LOW/MEDIUM**: Lower-severity security issues" >> $GITHUB_STEP_SUMMARY
+
+#  html-quality:
+#    name: HTML/Template Quality Checks
+#    runs-on: ubuntu-latest
+#    permissions:
+#      contents: write
+#      pull-requests: write
+#
+#    steps:
+#    - name: Checkout code
+#      uses: actions/checkout@v4
+#      with:
+#        fetch-depth: 0
+#        token: ${{ secrets.GITHUB_TOKEN }}
+#
+#    - name: Set up Python
+#      uses: actions/setup-python@v5
+#      with:
+#        python-version: '3.x'
+#
+#    - name: Set up Node.js
+#      uses: actions/setup-node@v4
+#      with:
+#        node-version: '20'
+#
+#    - name: Install djLint
+#      run: |
+#        pip install djlint
+#
+#    - name: Install HTMLHint
+#      run: |
+#        npm install -g htmlhint
+#
+#    - name: Create HTMLHint config
+#      run: |
+#        cat > .htmlhintrc << 'EOF'
+#        {
+#          "tagname-lowercase": true,
+#          "attr-lowercase": true,
+#          "attr-value-double-quotes": true,
+#          "doctype-first": false,
+#          "tag-pair": true,
+#          "spec-char-escape": true,
+#          "id-unique": true,
+#          "src-not-empty": true,
+#          "attr-no-duplication": true,
+#          "title-require": false,
+#          "alt-require": true,
+#          "doctype-html5": true,
+#          "style-disabled": false,
+#          "inline-style-disabled": false,
+#          "inline-script-disabled": false,
+#          "space-tab-mixed-disabled": "space",
+#          "id-class-ad-disabled": true,
+#          "attr-unsafe-chars": true
+#        }
+#        EOF
+#
+#    - name: Create djLint config
+#      run: |
+#        cat > .djlintrc << 'EOF'
+#        {
+#          "indent": 2,
+#          "max_line_length": 120,
+#          "format_attribute_template_tags": true,
+#          "format_css": true,
+#          "format_js": true,
+#          "ignore": "H006,H030,H031",
+#          "profile": "jinja"
+#        }
+#        EOF
+#
+#    - name: Format HTML templates with djLint
+#      run: |
+#        echo "## 📄 djLint - Formatting Flask/Jinja2 Templates" >> $GITHUB_STEP_SUMMARY
+#        djlint --reformat --quiet . || true
+#        echo "✅ HTML templates formatted with djLint" >> $GITHUB_STEP_SUMMARY
+#
+#    - name: Commit djLint formatting
+#      uses: stefanzweifel/git-auto-commit-action@v5
+#      with:
+#        commit_message: "style(html): apply djLint formatting [skip ci]"
+#        commit_user_name: "github-actions[bot]"
+#        commit_user_email: "github-actions[bot]@users.noreply.github.com"
+#
+#    - name: Lint HTML templates with djLint
+#      id: djlint-check
+#      run: |
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "## 🔍 djLint - Linting Results" >> $GITHUB_STEP_SUMMARY
+#        djlint --lint . > djlint-report.txt 2>&1 || true
+#        if grep -q "error" djlint-report.txt || grep -q "warning" djlint-report.txt; then
+#          echo "⚠️ **WARNING: Template issues found. Please review.**" >> $GITHUB_STEP_SUMMARY
+#          echo '```' >> $GITHUB_STEP_SUMMARY
+#          cat djlint-report.txt >> $GITHUB_STEP_SUMMARY
+#          echo '```' >> $GITHUB_STEP_SUMMARY
+#          cat djlint-report.txt
+#        else
+#          echo "✅ No template issues found" >> $GITHUB_STEP_SUMMARY
+#        fi
+#      continue-on-error: true
+#
+#    - name: Lint HTML with HTMLHint
+#      id: htmlhint-check
+#      run: |
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "## 📝 HTMLHint - Validation Results" >> $GITHUB_STEP_SUMMARY
+#        htmlhint "**/*.html" > htmlhint-report.txt 2>&1 || true
+#        if grep -q "error" htmlhint-report.txt || grep -q "warning" htmlhint-report.txt; then
+#          echo "⚠️ **WARNING: HTML validation issues found. Please review.**" >> $GITHUB_STEP_SUMMARY
+#          echo '```' >> $GITHUB_STEP_SUMMARY
+#          cat htmlhint-report.txt >> $GITHUB_STEP_SUMMARY
+#          echo '```' >> $GITHUB_STEP_SUMMARY
+#          cat htmlhint-report.txt
+#        else
+#          echo "✅ No HTML validation issues found" >> $GITHUB_STEP_SUMMARY
+#        fi
+#      continue-on-error: true
+#
+#    - name: HTML Summary
+#      if: always()
+#      run: |
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "---" >> $GITHUB_STEP_SUMMARY
+#        echo "## 📊 HTML Quality Summary" >> $GITHUB_STEP_SUMMARY
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "✅ **djLint**: Flask/Jinja2 templates formatted and linted" >> $GITHUB_STEP_SUMMARY
+#        echo "📝 **HTMLHint**: HTML validation performed" >> $GITHUB_STEP_SUMMARY
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "**Note**: All HTML issues are warnings only and won't block your build" >> $GITHUB_STEP_SUMMARY
+#
+#  javascript-quality:
+#    name: JavaScript Quality Checks
+#    runs-on: ubuntu-latest
+#    permissions:
+#      contents: write
+#      pull-requests: write
+#
+#    steps:
+#    - name: Checkout code
+#      uses: actions/checkout@v4
+#      with:
+#        fetch-depth: 0
+#        token: ${{ secrets.GITHUB_TOKEN }}
+#
+#    - name: Set up Node.js
+#      uses: actions/setup-node@v4
+#      with:
+#        node-version: '20'
+#
+#    - name: Install linting tools
+#      run: |
+#        npm install -g prettier eslint
+#        npm init -y
+#        npm install --save-dev @eslint/js eslint-config-prettier
+#
+#    - name: Create Prettier config
+#      run: |
+#        cat > .prettierrc.json << 'EOF'
+#        {
+#          "semi": true,
+#          "trailingComma": "es5",
+#          "singleQuote": true,
+#          "printWidth": 100,
+#          "tabWidth": 2,
+#          "useTabs": false,
+#          "arrowParens": "avoid",
+#          "endOfLine": "lf"
+#        }
+#        EOF
+#
+#    - name: Create Prettier ignore file
+#      run: |
+#        cat > .prettierignore << 'EOF'
+#        node_modules
+#        .git
+#        *.min.js
+#        *.min.css
+#        dist
+#        build
+#        EOF
+#
+#    - name: Create ESLint config
+#      run: |
+#        cat > eslint.config.js << 'EOF'
+#        import js from '@eslint/js';
+#        import prettier from 'eslint-config-prettier';
+#
+#        export default [
+#          js.configs.recommended,
+#          prettier,
+#          {
+#            rules: {
+#              'no-unused-vars': 'warn',
+#              'no-undef': 'warn',
+#              'no-console': 'off'
+#            },
+#            languageOptions: {
+#              globals: {
+#                window: 'readonly',
+#                document: 'readonly',
+#                console: 'readonly',
+#                setTimeout: 'readonly',
+#                setInterval: 'readonly',
+#                clearTimeout: 'readonly',
+#                clearInterval: 'readonly',
+#                fetch: 'readonly',
+#                alert: 'readonly',
+#                confirm: 'readonly',
+#                prompt: 'readonly',
+#                $: 'readonly',
+#                jQuery: 'readonly'
+#              }
+#            }
+#          }
+#        ];
+#        EOF
+#
+#    - name: Format JavaScript with Prettier
+#      run: |
+#        echo "## 🎨 Prettier - Formatting JavaScript/CSS" >> $GITHUB_STEP_SUMMARY
+#        prettier --write "**/*.{js,css,json}" --ignore-unknown || true
+#        echo "✅ JavaScript/CSS formatted with Prettier" >> $GITHUB_STEP_SUMMARY
+#
+#    - name: Lint JavaScript with ESLint (Auto-fix)
+#      run: |
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "## 📜 ESLint - Auto-fixing JavaScript" >> $GITHUB_STEP_SUMMARY
+#        eslint "**/*.js" --fix --ignore-pattern "node_modules/" --ignore-pattern "*.min.js" || true
+#        echo "✅ ESLint auto-fixes applied" >> $GITHUB_STEP_SUMMARY
+#      continue-on-error: true
+#
+#    - name: Commit formatting and fixes
+#      uses: stefanzweifel/git-auto-commit-action@v5
+#      with:
+#        commit_message: "style(js): apply Prettier and ESLint formatting [skip ci]"
+#        commit_user_name: "github-actions[bot]"
+#        commit_user_email: "github-actions[bot]@users.noreply.github.com"
+#
+#    - name: ESLint report (Check remaining issues)
+#      id: eslint-check
+#      run: |
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "## 🔍 ESLint - Final Check" >> $GITHUB_STEP_SUMMARY
+#        eslint "**/*.js" --ignore-pattern "node_modules/" --ignore-pattern "*.min.js" > eslint-report.txt 2>&1 || true
+#        if grep -q "error" eslint-report.txt || grep -q "warning" eslint-report.txt; then
+#          echo "⚠️ **WARNING: JavaScript issues found. Please review and fix.**" >> $GITHUB_STEP_SUMMARY
+#          echo '```' >> $GITHUB_STEP_SUMMARY
+#          cat eslint-report.txt >> $GITHUB_STEP_SUMMARY
+#          echo '```' >> $GITHUB_STEP_SUMMARY
+#          cat eslint-report.txt
+#        else
+#          echo "✅ No JavaScript issues found" >> $GITHUB_STEP_SUMMARY
+#        fi
+#      continue-on-error: true
+#
+#    - name: JavaScript Summary
+#      if: always()
+#      run: |
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "---" >> $GITHUB_STEP_SUMMARY
+#        echo "## 📊 JavaScript Quality Summary" >> $GITHUB_STEP_SUMMARY
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "✅ **Prettier**: JavaScript/CSS formatted and committed" >> $GITHUB_STEP_SUMMARY
+#        echo "✅ **ESLint**: Auto-fixes applied and committed" >> $GITHUB_STEP_SUMMARY
+#        echo "" >> $GITHUB_STEP_SUMMARY
+#        echo "**Note**: All JavaScript issues are warnings only and won't block your build" >> $GITHUB_STEP_SUMMARY

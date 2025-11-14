@@ -6,31 +6,39 @@ from pathlib import Path
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
-template_dir = os.path.join(script_dir, 'sparql_templates')
+template_dir = os.path.join(script_dir, "sparql_templates")
 
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
 dry_run = False
 
 # not a beauty but works
-_database = 'databasename'
-_variable_definition = 'localvariable'
-_variable_predicate = 'PLACEHOLDER:variablepredicate'
-_variable_class = 'PLACEHOLDER:variableclass'
+_database = "databasename"
+_variable_definition = "localvariable"
+_variable_predicate = "PLACEHOLDER:variablepredicate"
+_variable_class = "PLACEHOLDER:variableclass"
 
-_node_label = 'reconstructionlabel'
-_node_class = 'PLACEHOLDER:reconstructionclass'
-_node_aesthetic_label = 'reconstructionaestheticlabel'
+_node_label = "reconstructionlabel"
+_node_class = "PLACEHOLDER:reconstructionclass"
+_node_aesthetic_label = "reconstructionaestheticlabel"
 
-_class_label = 'reconstructionlabel'
-_class_predicate = 'PLACEHOLDER:reconstructionpredicate'
-_class_class = 'PLACEHOLDER:reconstructionclass'
-_class_aesthetic_label = 'reconstructionaestheticlabel'
-_class_iri_label = 'reconstructioniri'
+_class_label = "reconstructionlabel"
+_class_predicate = "PLACEHOLDER:reconstructionpredicate"
+_class_class = "PLACEHOLDER:reconstructionclass"
+_class_aesthetic_label = "reconstructionaestheticlabel"
+_class_iri_label = "reconstructioniri"
 
-_prefixes_to_add = 'PREFIX PLACEHOLDER: <>'
+_prefixes_to_add = "PREFIX PLACEHOLDER: <>"
 
 
-def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_has_column=False, save_query=True):
+def add_annotation(
+    endpoint,
+    database,
+    prefixes,
+    annotation_data,
+    path,
+    remove_has_column=False,
+    save_query=True,
+):
     """
     Add the annotation for a series of variables
 
@@ -182,8 +190,10 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
     :param bool save_query: whether to save the query generated for the mapping
     """
     if dry_run:
-        logging.info('Please not that this was specified as dry run in miscellaneous.py; '
-                     'no queries will be posted to the endpoint.')
+        logging.info(
+            "Please not that this was specified as dry run in miscellaneous.py; "
+            "no queries will be posted to the endpoint."
+        )
 
     construction_queries = {}
     value_mapping_queries = None
@@ -193,7 +203,9 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         annotation_data = read_file(file_name=annotation_data, path=path)
 
     if isinstance(annotation_data, dict) is False:
-        logging.warning('Annotation data incorrectly formatted, please see function docstring for an example.')
+        logging.warning(
+            "Annotation data incorrectly formatted, please see function docstring for an example."
+        )
         return None
 
     # identify all necessary classes and nodes
@@ -201,39 +213,55 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
     necessary_nodes = set()
 
     for generic_category, variable_data in annotation_data.items():
-        reconstruction_data = variable_data.get('schema_reconstruction')
+        reconstruction_data = variable_data.get("schema_reconstruction")
         if isinstance(reconstruction_data, list):
             for reconstruction in reconstruction_data:
-                if 'class' in reconstruction.get('type'):
-                    class_label = reconstruction.get('class_label')
-                    class_predicate = reconstruction.get('predicate')
-                    class_class_object = reconstruction.get('class')
-                    class_aesthetic_label = reconstruction.get('aesthetic_label')
-                    necessary_classes.add((class_label, class_predicate, class_class_object, class_aesthetic_label))
-                elif 'node' in reconstruction.get('type'):
-                    node_label = reconstruction.get('node_label')
-                    node_class = reconstruction.get('class')
-                    node_aesthetic_label = reconstruction.get('aesthetic_label')
+                if "class" in reconstruction.get("type"):
+                    class_label = reconstruction.get("class_label")
+                    class_predicate = reconstruction.get("predicate")
+                    class_class_object = reconstruction.get("class")
+                    class_aesthetic_label = reconstruction.get("aesthetic_label")
+                    necessary_classes.add(
+                        (
+                            class_label,
+                            class_predicate,
+                            class_class_object,
+                            class_aesthetic_label,
+                        )
+                    )
+                elif "node" in reconstruction.get("type"):
+                    node_label = reconstruction.get("node_label")
+                    node_class = reconstruction.get("class")
+                    node_aesthetic_label = reconstruction.get("aesthetic_label")
                     necessary_nodes.add((node_label, node_class, node_aesthetic_label))
 
     # add all necessary classes and nodes
-    for class_label, class_predicate, class_class_object, class_aesthetic_label in necessary_classes:
-        construction_response, construction_query = _construct_extra_class(endpoint=endpoint,
-                                                                           prefixes=prefixes,
-                                                                           database_name=database,
-                                                                           class_predicate=class_predicate,
-                                                                           class_class_object=class_class_object,
-                                                                           class_label=class_label,
-                                                                           class_aesthetic_label=class_aesthetic_label.capitalize(),
-                                                                           class_iri_label=class_aesthetic_label.lower().replace(
-                                                                               ' ', '_'))
+    for (
+        class_label,
+        class_predicate,
+        class_class_object,
+        class_aesthetic_label,
+    ) in necessary_classes:
+        construction_response, construction_query = _construct_extra_class(
+            endpoint=endpoint,
+            prefixes=prefixes,
+            database_name=database,
+            class_predicate=class_predicate,
+            class_class_object=class_class_object,
+            class_label=class_label,
+            class_aesthetic_label=class_aesthetic_label.capitalize(),
+            class_iri_label=class_aesthetic_label.lower().replace(" ", "_"),
+        )
 
         if dry_run is False:
-            construction_success = check_data_class(endpoint=endpoint, database_name=database,
-                                                    prefixes=prefixes,
-                                                    class_label=class_label,
-                                                    variable=generic_category,
-                                                    response=construction_response)
+            construction_success = check_data_class(
+                endpoint=endpoint,
+                database_name=database,
+                prefixes=prefixes,
+                class_label=class_label,
+                variable=generic_category,
+                response=construction_response,
+            )
         else:
             construction_success = True
 
@@ -241,17 +269,24 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
             construction_queries.update({class_label: construction_query})
 
     for node_label, node_class, node_aesthetic_label in necessary_nodes:
-        construction_response, construction_query = _construct_extra_node(endpoint=endpoint, database_name=database,
-                                                                          prefixes=prefixes,
-                                                                          node_label=node_label, node_class=node_class,
-                                                                          node_aesthetic_label=node_aesthetic_label.capitalize())
+        construction_response, construction_query = _construct_extra_node(
+            endpoint=endpoint,
+            database_name=database,
+            prefixes=prefixes,
+            node_label=node_label,
+            node_class=node_class,
+            node_aesthetic_label=node_aesthetic_label.capitalize(),
+        )
 
         if dry_run is False:
-            construction_success = check_data_class(endpoint=endpoint, database_name=database,
-                                                    prefixes=prefixes,
-                                                    class_label=node_label,
-                                                    variable=generic_category,
-                                                    response=construction_response)
+            construction_success = check_data_class(
+                endpoint=endpoint,
+                database_name=database,
+                prefixes=prefixes,
+                class_label=node_label,
+                variable=generic_category,
+                response=construction_response,
+            )
         else:
             construction_success = True
 
@@ -267,185 +302,293 @@ def add_annotation(endpoint, database, prefixes, annotation_data, path, remove_h
         removal_queries = {}
 
         # retrieve standard information
-        predicate = variable_data.get('predicate')
-        class_object = variable_data.get('class')
-        local_definition = variable_data.get('local_definition', None)
+        predicate = variable_data.get("predicate")
+        class_object = variable_data.get("class")
+        local_definition = variable_data.get("local_definition", None)
         if local_definition is None:
             continue
 
         # break the loop if annotation data is not properly defined
-        if not all(isinstance(var, str) for var in (predicate, class_object, local_definition)):
-            logging.warning(f'Annotation data for variable {generic_category} is incorrectly formatted, '
-                            f'please see function docstring for an example.')
+        if not all(
+            isinstance(var, str) for var in (predicate, class_object, local_definition)
+        ):
+            logging.warning(
+                f"Annotation data for variable {generic_category} is incorrectly formatted, "
+                f"please see function docstring for an example."
+            )
             continue
 
-        classes_insertion_before = ''
-        classes_insertion_after = ''
-        classes_where_before = ''
-        classes_where_after = ''
-        nodes_insertion = ''
+        classes_insertion_before = ""
+        classes_insertion_after = ""
+        classes_where_before = ""
+        classes_where_after = ""
+        nodes_insertion = ""
 
         # check if schema reconstruction was defined
-        reconstruction_data = variable_data.get('schema_reconstruction')
+        reconstruction_data = variable_data.get("schema_reconstruction")
         if isinstance(reconstruction_data, list):
             construction_queries = {}
 
             for reconstruction in reconstruction_data:
                 # when the reconstruction class is specified as class, create add a class to the datatable
-                if 'class' in reconstruction.get('type'):
-                    class_predicate = reconstruction.get('predicate')
-                    class_class_object = reconstruction.get('class')
-                    class_label = reconstruction.get('class_label')
-                    class_aesthetic_label = reconstruction.get('aesthetic_label')
-                    placement = reconstruction.get('placement', 'before')
+                if "class" in reconstruction.get("type"):
+                    class_predicate = reconstruction.get("predicate")
+                    class_class_object = reconstruction.get("class")
+                    class_label = reconstruction.get("class_label")
+                    class_aesthetic_label = reconstruction.get("aesthetic_label")
+                    placement = reconstruction.get("placement", "before")
 
                     # break the loop if schema reconstruction is necessary but not properly defined
-                    if not all(isinstance(var, str) for var in (
-                            class_predicate, class_class_object, class_label, class_aesthetic_label)):
+                    if not all(
+                        isinstance(var, str)
+                        for var in (
+                            class_predicate,
+                            class_class_object,
+                            class_label,
+                            class_aesthetic_label,
+                        )
+                    ):
                         logging.warning(
-                            f'Schema reconstruction data for variable {generic_category} is incorrectly formatted, '
-                            'please see function docstring for an example.')
+                            f"Schema reconstruction data for variable {generic_category} is incorrectly formatted, "
+                            "please see function docstring for an example."
+                        )
                         break
 
-                    if placement == 'before':
+                    if placement == "before":
                         components += 1
                         if components == 1:
-                            classes_insertion_before = f'{class_predicate} ?component{components}.\n\n        '
+                            classes_insertion_before = (
+                                f"{class_predicate} ?component{components}.\n\n        "
+                            )
                         else:
-                            classes_insertion_before = (f'{classes_insertion_before}'
-                                                        f'?component{components - 1} {class_predicate} ?component{components}.'
-                                                        f'\n\n        ')
+                            classes_insertion_before = (
+                                f"{classes_insertion_before}"
+                                f"?component{components - 1} {class_predicate} ?component{components}."
+                                f"\n\n        "
+                            )
 
-                        classes_where_before = (f'{classes_where_before}'
-                                                f'?tablerow dbo:has_column ?component{components} .'
-                                                f'\n\n    '
-                                                f'?component{components} rdf:type db:{database}.{class_label} .'
-                                                f'\n\n\n    ')
+                        classes_where_before = (
+                            f"{classes_where_before}"
+                            f"?tablerow dbo:has_column ?component{components} ."
+                            f"\n\n    "
+                            f"?component{components} rdf:type db:{database}.{class_label} ."
+                            f"\n\n\n    "
+                        )
 
-                    elif placement == 'after':
-                        classes_insertion_after = (f'\n\n        {classes_insertion_after}'
-                                                   f'?component{components + 1} {class_predicate} ?component{components + 2}.')
+                    elif placement == "after":
+                        classes_insertion_after = (
+                            f"\n\n        {classes_insertion_after}"
+                            f"?component{components + 1} {class_predicate} ?component{components + 2}."
+                        )
 
                         components_to_remove.update({class_label: class_predicate})
 
-                        classes_where_after = (f'\n\n\n    '
-                                               f'{classes_where_after}'
-                                               f'?tablerow dbo:has_column ?component{components + 2} .'
-                                               f'\n\n    '
-                                               f'?component{components + 2} rdf:type db:{database}.{class_label} .')
+                        classes_where_after = (
+                            f"\n\n\n    "
+                            f"{classes_where_after}"
+                            f"?tablerow dbo:has_column ?component{components + 2} ."
+                            f"\n\n    "
+                            f"?component{components + 2} rdf:type db:{database}.{class_label} ."
+                        )
                     else:
                         logging.warning(
-                            f'Placement for class {class_label} in variable {generic_category} is incorrectly defined, '
-                            'please see function docstring for an example.')
+                            f"Placement for class {class_label} in variable {generic_category} is incorrectly defined, "
+                            "please see function docstring for an example."
+                        )
                         break
 
-                elif 'node' in reconstruction.get('type'):
-                    node_predicate = reconstruction.get('predicate')
-                    node_class = reconstruction.get('class')
-                    node_label = reconstruction.get('node_label')
-                    node_aesthetic_label = reconstruction.get('aesthetic_label')
+                elif "node" in reconstruction.get("type"):
+                    node_predicate = reconstruction.get("predicate")
+                    node_class = reconstruction.get("class")
+                    node_label = reconstruction.get("node_label")
+                    node_aesthetic_label = reconstruction.get("aesthetic_label")
 
                     # break the loop if schema reconstruction is necessary but not properly defined
-                    if not all(isinstance(var, str) for var in (
-                            node_predicate, node_class, node_label,
-                            node_aesthetic_label)):
+                    if not all(
+                        isinstance(var, str)
+                        for var in (
+                            node_predicate,
+                            node_class,
+                            node_label,
+                            node_aesthetic_label,
+                        )
+                    ):
                         logging.warning(
-                            f'Schema reconstruction data for variable {generic_category} is incorrectly formatted, '
-                            'please see function docstring for an example.')
+                            f"Schema reconstruction data for variable {generic_category} is incorrectly formatted, "
+                            "please see function docstring for an example."
+                        )
                         break
 
                     if len(classes_insertion_before) == 0:
-                        nodes_insertion = (f'{nodes_insertion}\n\n        '
-                                           f'?component1 {node_predicate} db:{database}.{node_label}.')
+                        nodes_insertion = (
+                            f"{nodes_insertion}\n\n        "
+                            f"?component1 {node_predicate} db:{database}.{node_label}."
+                        )
 
                     # if classes are added, the component number is the last class and not the variable; thus +1
                     else:
-                        nodes_insertion = (f'{nodes_insertion}\n\n        '
-                                           f'?component{components + 1} {node_predicate} db:{database}.{node_label}.')
+                        nodes_insertion = (
+                            f"{nodes_insertion}\n\n        "
+                            f"?component{components + 1} {node_predicate} db:{database}.{node_label}."
+                        )
 
         # reset construction_success for each variable
         construction_success = True
 
         if construction_success:
             # add the annotation with specified reconstructions
-            response, query = _add_annotation(endpoint=endpoint, variable=generic_category,
-                                              database_name=database, prefixes=prefixes,
-                                              local_definition=local_definition,
-                                              predicate=predicate, class_object=class_object,
-                                              classes_insertion_before=classes_insertion_before,
-                                              classes_insertion_after=classes_insertion_after,
-                                              classes_where_before=classes_where_before,
-                                              classes_where_after=classes_where_after,
-                                              nodes_insertion=nodes_insertion, components=components)
+            response, query = _add_annotation(
+                endpoint=endpoint,
+                variable=generic_category,
+                database_name=database,
+                prefixes=prefixes,
+                local_definition=local_definition,
+                predicate=predicate,
+                class_object=class_object,
+                classes_insertion_before=classes_insertion_before,
+                classes_insertion_after=classes_insertion_after,
+                classes_where_before=classes_where_before,
+                classes_where_after=classes_where_after,
+                nodes_insertion=nodes_insertion,
+                components=components,
+            )
 
             # check whether the annotation was added successfully
             if dry_run is False:
-                annotation_success = check_predicate(endpoint=endpoint, predicate=predicate,
-                                                     variable=generic_category,
-                                                     response=response, prefixes=prefixes)
+                annotation_success = check_predicate(
+                    endpoint=endpoint,
+                    predicate=predicate,
+                    variable=generic_category,
+                    response=response,
+                    prefixes=prefixes,
+                )
             else:
                 annotation_success = True
 
             # add the value mapping if necessary and possible
-            if annotation_success and isinstance(variable_data.get('value_mapping'), dict):
-                value_mapping_responses, value_mapping_queries = add_mapping(endpoint=endpoint, prefixes=prefixes,
-                                                                             variable=generic_category,
-                                                                             super_class=class_object,
-                                                                             value_map=variable_data['value_mapping'])
+            if annotation_success and isinstance(
+                variable_data.get("value_mapping"), dict
+            ):
+                value_mapping_responses, value_mapping_queries = add_mapping(
+                    endpoint=endpoint,
+                    prefixes=prefixes,
+                    variable=generic_category,
+                    super_class=class_object,
+                    value_map=variable_data["value_mapping"],
+                )
 
             # remove the 'has_column' section
             if remove_has_column:
-                components_to_remove.update({local_definition: 'dbo:has_column'})
+                components_to_remove.update({local_definition: "dbo:has_column"})
 
             # remove all specified components
             for label, component in components_to_remove.items():
-                response, removal = _remove_component(endpoint=endpoint, database_name=database, prefixes=prefixes,
-                                                      local_variable=label, component_to_remove=component)
+                response, removal = _remove_component(
+                    endpoint=endpoint,
+                    database_name=database,
+                    prefixes=prefixes,
+                    local_variable=label,
+                    component_to_remove=component,
+                )
                 # store the removal queries for saving
                 removal_queries.update({label: removal})
 
         if save_query:
-            if os.path.exists(os.path.join(path, 'generated_queries')) is False:
-                os.mkdir(os.path.join(path, 'generated_queries'))
+            if os.path.exists(os.path.join(path, "generated_queries")) is False:
+                os.mkdir(os.path.join(path, "generated_queries"))
 
-            if os.path.exists(os.path.join(path, 'generated_queries', 'schema_reconstruction')) is False:
-                os.mkdir(os.path.join(path, 'generated_queries', 'schema_reconstruction'))
+            if (
+                os.path.exists(
+                    os.path.join(path, "generated_queries", "schema_reconstruction")
+                )
+                is False
+            ):
+                os.mkdir(
+                    os.path.join(path, "generated_queries", "schema_reconstruction")
+                )
 
-            if os.path.exists(os.path.join(path, 'generated_queries', generic_category)) is False:
-                os.mkdir(os.path.join(path, 'generated_queries', generic_category))
+            if (
+                os.path.exists(
+                    os.path.join(path, "generated_queries", generic_category)
+                )
+                is False
+            ):
+                os.mkdir(os.path.join(path, "generated_queries", generic_category))
 
-            write_file(f'{generic_category}', query,
-                       os.path.join(path, 'generated_queries', generic_category), '.rq')
+            write_file(
+                f"{generic_category}",
+                query,
+                os.path.join(path, "generated_queries", generic_category),
+                ".rq",
+            )
 
             if isinstance(value_mapping_queries, dict):
-                if os.path.exists(os.path.join(path, 'generated_queries', generic_category, 'mappings')) is False:
-                    os.mkdir(os.path.join(path, 'generated_queries', generic_category, 'mappings'))
+                if (
+                    os.path.exists(
+                        os.path.join(
+                            path, "generated_queries", generic_category, "mappings"
+                        )
+                    )
+                    is False
+                ):
+                    os.mkdir(
+                        os.path.join(
+                            path, "generated_queries", generic_category, "mappings"
+                        )
+                    )
 
                 for term, value_mapping_query in value_mapping_queries.items():
-                    write_file(f'{generic_category}_value_mapping_term_{term}', value_mapping_query,
-                               os.path.join(path, 'generated_queries', generic_category, 'mappings'), '.rq')
+                    write_file(
+                        f"{generic_category}_value_mapping_term_{term}",
+                        value_mapping_query,
+                        os.path.join(
+                            path, "generated_queries", generic_category, "mappings"
+                        ),
+                        ".rq",
+                    )
 
             if isinstance(removal_queries, dict) and len(removal_queries) > 0:
-                if os.path.exists(os.path.join(path, 'generated_queries', generic_category, 'removals')) is False:
-                    os.mkdir(os.path.join(path, 'generated_queries', generic_category, 'removals'))
+                if (
+                    os.path.exists(
+                        os.path.join(
+                            path, "generated_queries", generic_category, "removals"
+                        )
+                    )
+                    is False
+                ):
+                    os.mkdir(
+                        os.path.join(
+                            path, "generated_queries", generic_category, "removals"
+                        )
+                    )
 
                 for label, removal in removal_queries.items():
-                    write_file(f'{generic_category}_removal_in_{label}', removal,
-                               os.path.join(path, 'generated_queries', generic_category, 'removals'), '.rq')
+                    write_file(
+                        f"{generic_category}_removal_in_{label}",
+                        removal,
+                        os.path.join(
+                            path, "generated_queries", generic_category, "removals"
+                        ),
+                        ".rq",
+                    )
 
         if isinstance(construction_queries, dict):
             for aesthetic_label, construction_query in construction_queries.items():
-                write_file(f'schema_reconstruction_{aesthetic_label}', construction_query,
-                           os.path.join(path, 'generated_queries', 'schema_reconstruction'), '.rq')
+                write_file(
+                    f"schema_reconstruction_{aesthetic_label}",
+                    construction_query,
+                    os.path.join(path, "generated_queries", "schema_reconstruction"),
+                    ".rq",
+                )
 
         components = 0
         components_to_remove = {}
         removal_queries = {}
-        classes_insertion_before = ''
-        classes_insertion_after = ''
-        classes_where_before = ''
-        classes_where_after = ''
-        nodes_insertion = ''
+        classes_insertion_before = ""
+        classes_insertion_after = ""
+        classes_where_before = ""
+        classes_where_after = ""
+        nodes_insertion = ""
         construction_queries = None
         value_mapping_queries = None
         query = None
@@ -464,16 +607,16 @@ def get_unique_prefixes(query, prefixes):
     """
     # Extract prefixes from the template query
     template_prefixes = set()
-    for line in query.split('\n'):
-        if line.startswith('PREFIX'):
+    for line in query.split("\n"):
+        if line.startswith("PREFIX"):
             template_prefixes.add(line)
 
     # Extract prefixes from the input prefixes string
-    input_prefixes = set(prefixes.split('\n'))
+    input_prefixes = set(prefixes.split("\n"))
 
     # Only add prefixes that are not already in the template
     unique_prefixes = input_prefixes - template_prefixes
-    return '\n'.join(unique_prefixes)
+    return "\n".join(unique_prefixes)
 
 
 def add_mapping(endpoint, prefixes, variable, super_class, value_map):
@@ -489,22 +632,28 @@ def add_mapping(endpoint, prefixes, variable, super_class, value_map):
     responses = []
     queries = {}
 
-    if isinstance(value_map.get('terms'), dict):
-        for term, term_data in value_map['terms'].items():
-            target_class = term_data.get('target_class')
-            local_term = term_data.get('local_term', None)
+    if isinstance(value_map.get("terms"), dict):
+        for term, term_data in value_map["terms"].items():
+            target_class = term_data.get("target_class")
+            local_term = term_data.get("local_term", None)
             if local_term is None:
                 continue
 
             if not all(isinstance(var, str) for var in (target_class, local_term)):
                 logging.warning(
-                    f'Value mapping for term {term} of variable {variable} is incorrectly formatted, '
-                    'please see function docstring for an example.')
+                    f"Value mapping for term {term} of variable {variable} is incorrectly formatted, "
+                    "please see function docstring for an example."
+                )
                 continue
 
             # call your add_mapping function with the appropriate arguments
-            response, query = _add_mapping(endpoint=endpoint, prefixes=prefixes,
-                                           target_class=target_class, super_class=super_class, local_term=local_term)
+            response, query = _add_mapping(
+                endpoint=endpoint,
+                prefixes=prefixes,
+                target_class=target_class,
+                super_class=super_class,
+                local_term=local_term,
+            )
 
             # store response and query in a list
             responses.append(response)
@@ -512,12 +661,16 @@ def add_mapping(endpoint, prefixes, variable, super_class, value_map):
 
         return responses, queries
     else:
-        logging.warning(f'Value map for variable {variable} is incorrectly defined, '
-                        f'please see function docstring for an example.')
+        logging.warning(
+            f"Value map for variable {variable} is incorrectly defined, "
+            f"please see function docstring for an example."
+        )
         return None, None
 
 
-def check_data_class(endpoint, database_name, prefixes, class_label, variable, response):
+def check_data_class(
+    endpoint, database_name, prefixes, class_label, variable, response
+):
     """
     check whether a predicate has been added to the endpoint
 
@@ -530,24 +683,31 @@ def check_data_class(endpoint, database_name, prefixes, class_label, variable, r
     :return:
     """
     if 200 <= response.status_code < 300:
-        response, check_query = _check_for_data_class(endpoint=endpoint, database_name=database_name, prefixes=prefixes,
-                                                      class_label=class_label)
+        response, check_query = _check_for_data_class(
+            endpoint=endpoint,
+            database_name=database_name,
+            prefixes=prefixes,
+            class_label=class_label,
+        )
         _response = json.loads(response.text)
-        if _response.get('boolean', True) is True:
+        if _response.get("boolean", True) is True:
             logging.info(
-                f'Class {class_label} was successfully annotated for {variable}.')
+                f"Class {class_label} was successfully annotated for {variable}."
+            )
             return True
 
         else:
             logging.warning(
-                f'Query for {variable} was successfully run on endpoint {endpoint}, '
-                f'but class {class_label} was not found, consider checking the query.')
+                f"Query for {variable} was successfully run on endpoint {endpoint}, "
+                f"but class {class_label} was not found, consider checking the query."
+            )
             return False
 
     else:
         logging.warning(
-            f'Query for {variable}, was not successfully run on endpoint: {endpoint}.\n'
-            f'HTTP response code: {response.status_code}.')
+            f"Query for {variable}, was not successfully run on endpoint: {endpoint}.\n"
+            f"HTTP response code: {response.status_code}."
+        )
         return False
 
 
@@ -563,23 +723,28 @@ def check_predicate(endpoint, prefixes, predicate, variable, response):
     :return:
     """
     if 200 <= response.status_code < 300:
-        response, check_query = _check_for_predicate(endpoint=endpoint, predicate=predicate, prefixes=prefixes)
+        response, check_query = _check_for_predicate(
+            endpoint=endpoint, predicate=predicate, prefixes=prefixes
+        )
         _response = json.loads(response.text)
-        if _response.get('boolean', True) is True:
+        if _response.get("boolean", True) is True:
             logging.info(
-                f'Predicate {predicate} was successfully annotated for {variable}.')
+                f"Predicate {predicate} was successfully annotated for {variable}."
+            )
             return True
 
         else:
             logging.warning(
-                f'Query for {variable} was successfully run on endpoint {endpoint}, '
-                f'but predicate {predicate} was not found, consider checking the query.')
+                f"Query for {variable} was successfully run on endpoint {endpoint}, "
+                f"but predicate {predicate} was not found, consider checking the query."
+            )
             return False
 
     else:
         logging.warning(
-            f'Query: {variable}, was not successfully run on endpoint: {endpoint}.\n'
-            f'HTTP response code: {response.status_code}.')
+            f"Query: {variable}, was not successfully run on endpoint: {endpoint}.\n"
+            f"HTTP response code: {response.status_code}."
+        )
         return False
 
 
@@ -599,9 +764,9 @@ def read_file(file_name, path=None):
 
     # try to read the file and raise an error if unsuccessful
     try:
-        logging.debug(f'Reading file {file_path}')
-        with open(file_path, 'r') as file:
-            if file_name.lower().endswith('.json'):
+        logging.debug(f"Reading file {file_path}")
+        with open(file_path, "r") as file:
+            if file_name.lower().endswith(".json"):
                 # if the file has a .json extension, treat it as a JSON file
                 file_contents = json.load(file)
             else:
@@ -609,9 +774,11 @@ def read_file(file_name, path=None):
                 file_contents = file.read()
             return file_contents
     except FileNotFoundError:
-        logging.error(f'Error: File {file_path} not found.')
+        logging.error(f"Error: File {file_path} not found.")
     except Exception as e:
-        logging.error(f'An error occurred: {e} when attempting to read file {file_path}.')
+        logging.error(
+            f"An error occurred: {e} when attempting to read file {file_path}."
+        )
 
 
 def write_file(file_name, content, path=None, file_extension=None):
@@ -627,21 +794,34 @@ def write_file(file_name, content, path=None, file_extension=None):
     if path is None:
         path = os.getcwd()
 
-    file_path = os.path.join(path, f'{file_name}{file_extension}')
+    file_path = os.path.join(path, f"{file_name}{file_extension}")
 
     # try to write to the file and raise an error if unsuccessful
     try:
-        logging.debug(f'Writing file {file_path}')
-        with open(file_path, 'w') as file:
+        logging.debug(f"Writing file {file_path}")
+        with open(file_path, "w") as file:
             file.write(content)
-        logging.debug(f'File {file_path} successfully written.')
+        logging.debug(f"File {file_path} successfully written.")
     except Exception as e:
-        logging.error(f'An error occurred while writing the file: {e}')
+        logging.error(f"An error occurred while writing the file: {e}")
 
 
-def _add_annotation(endpoint, prefixes, variable, database_name, local_definition, predicate, class_object,
-                    classes_insertion_before, classes_insertion_after, classes_where_before, classes_where_after,
-                    nodes_insertion, components, template_file=None):
+def _add_annotation(
+    endpoint,
+    prefixes,
+    variable,
+    database_name,
+    local_definition,
+    predicate,
+    class_object,
+    classes_insertion_before,
+    classes_insertion_after,
+    classes_where_before,
+    classes_where_after,
+    nodes_insertion,
+    components,
+    template_file=None,
+):
     """
     Directly add an annotation
 
@@ -660,10 +840,12 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
-    logging.debug(f'Adding standard annotation for {variable} to endpoint {endpoint}, database {database_name}')
+    logging.debug(
+        f"Adding standard annotation for {variable} to endpoint {endpoint}, database {database_name}"
+    )
 
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'template_annotation.rq')
+        template_file = os.path.join(template_dir, "template_annotation.rq")
 
     # retrieve the mapping template
     query = read_file(template_file)
@@ -672,30 +854,37 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
     # the classes should precede the variable if present
     if components > 0:
         # if there already are more components, the variable will carry the number of components +1
-        variable_component_name = f'?component{components + 1}'
-        variable_insertion = f'?component{components} {predicate} {variable_component_name}.'
+        variable_component_name = f"?component{components + 1}"
+        variable_insertion = (
+            f"?component{components} {predicate} {variable_component_name}."
+        )
     else:
         components = 1
-        variable_component_name = f'?component{components}'
-        variable_insertion = f'{predicate} {variable_component_name}.'
+        variable_component_name = f"?component{components}"
+        variable_insertion = f"{predicate} {variable_component_name}."
 
-    variable_where = (f'?tablerow dbo:has_column {variable_component_name} .\n\n    '
-                      f'{variable_component_name} rdf:type db:{database_name}.{local_definition} .')
+    variable_where = (
+        f"?tablerow dbo:has_column {variable_component_name} .\n\n    "
+        f"{variable_component_name} rdf:type db:{database_name}.{local_definition} ."
+    )
 
     # concatenate the insertions and where statements in a logical order
-    full_insertion = f'{classes_insertion_before}{variable_insertion}{classes_insertion_after}{nodes_insertion}'
-    full_where = f'{classes_where_before}{variable_where}{classes_where_after}'
+    full_insertion = f"{classes_insertion_before}{variable_insertion}{classes_insertion_after}{nodes_insertion}"
+    full_where = f"{classes_where_before}{variable_where}{classes_where_after}"
 
     # establish what components go where
-    replacements = {f'{_variable_predicate} ?component0.': full_insertion,
-                    '?tablerow dbo:has_column ?component0 .\n\n    '
-                    f'?component0 rdf:type db:{_database}.{_variable_definition} .': full_where,
-                    _database: database_name,
-                    _variable_definition: local_definition,
-                    _variable_class: class_object,
-                    _prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        f"{_variable_predicate} ?component0.": full_insertion,
+        "?tablerow dbo:has_column ?component0 .\n\n    "
+        f"?component0 rdf:type db:{_database}.{_variable_definition} .": full_where,
+        _database: database_name,
+        _variable_definition: local_definition,
+        _variable_class: class_object,
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
@@ -706,7 +895,9 @@ def _add_annotation(endpoint, prefixes, variable, database_name, local_definitio
     return response, query
 
 
-def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, template_file=None):
+def _add_mapping(
+    endpoint, prefixes, target_class, super_class, local_term, template_file=None
+):
     """
     directly add a mapping between various classes and data-specific term
 
@@ -718,17 +909,21 @@ def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, temp
     :param str template_file: file name of the mapping template, e.g., template_mapping.rq
     :return: response from request
     """
-    logging.debug(f'Adding mapping for {super_class} to endpoint {endpoint}')
+    logging.debug(f"Adding mapping for {super_class} to endpoint {endpoint}")
 
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'template_mapping.rq')
+        template_file = os.path.join(template_dir, "template_mapping.rq")
 
     # retrieve the mapping template
     query = read_file(template_file)
     prefixes = get_unique_prefixes(query, prefixes)
 
     # Create a dictionary to store the prefixes and their URIs
-    prefix_to_uri = {prefix.split()[1][:-1]: prefix.split()[2][1:-1] for prefix in prefixes.split('\n') if prefix}
+    prefix_to_uri = {
+        prefix.split()[1][:-1]: prefix.split()[2][1:-1]
+        for prefix in prefixes.split("\n")
+        if prefix
+    }
 
     # Split the query into lines
     lines = query.split("\n")
@@ -750,26 +945,37 @@ def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, temp
             prefix_to_uri[prefix] = uri
 
     # Extract the prefix from the target_class and super_class
-    target_class_prefix = target_class.split(":")[0] if ":" in target_class else target_class
-    super_class_prefix = super_class.split(":")[0] if ":" in super_class else super_class
+    target_class_prefix = (
+        target_class.split(":")[0] if ":" in target_class else target_class
+    )
+    super_class_prefix = (
+        super_class.split(":")[0] if ":" in super_class else super_class
+    )
 
     target_class = target_class.replace(":", "")
     super_class = super_class.replace(":", "")
 
     # Replace the prefix with the URI in the target_class and super_class
     if target_class_prefix in prefix_to_uri:
-        target_class = target_class.replace(target_class_prefix, prefix_to_uri[target_class_prefix])
+        target_class = target_class.replace(
+            target_class_prefix, prefix_to_uri[target_class_prefix]
+        )
 
     if super_class_prefix in prefix_to_uri:
-        super_class = super_class.replace(super_class_prefix, prefix_to_uri[super_class_prefix])
+        super_class = super_class.replace(
+            super_class_prefix, prefix_to_uri[super_class_prefix]
+        )
 
     # add the target_class, super_class, and local_term
     query = query % (target_class, super_class, local_term)
 
     # replace the placeholders
-    replacements = {_prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
@@ -780,7 +986,9 @@ def _add_mapping(endpoint, prefixes, target_class, super_class, local_term, temp
     return response, query
 
 
-def _check_for_data_class(endpoint, database_name, prefixes, class_label, template_file=None):
+def _check_for_data_class(
+    endpoint, database_name, prefixes, class_label, template_file=None
+):
     """
     check whether a statement has been added
 
@@ -791,25 +999,33 @@ def _check_for_data_class(endpoint, database_name, prefixes, class_label, templa
     :return: response from request
     """
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'quality_control', 'template_to_check_class.rq')
+        template_file = os.path.join(
+            template_dir, "quality_control", "template_to_check_class.rq"
+        )
 
     # retrieve the mapping template
     query = read_file(template_file)
     prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the placeholders
-    replacements = {_database: database_name,
-                    _class_label: class_label,
-                    _prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        _database: database_name,
+        _class_label: class_label,
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
 
     # run the query
-    response = __post_query(endpoint=endpoint.rsplit('/statements', 1)[0], query=query,
-                            data_style=f'query=' + query)
+    response = __post_query(
+        endpoint=endpoint.rsplit("/statements", 1)[0],
+        query=query,
+        data_style="query=" + query,
+    )
 
     return response, query
 
@@ -825,34 +1041,50 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     :return: response from request
     """
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'quality_control', 'template_to_check_predicate.rq')
+        template_file = os.path.join(
+            template_dir, "quality_control", "template_to_check_predicate.rq"
+        )
 
     # retrieve the mapping template
     query = read_file(template_file)
     prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the placeholders
-    replacements = {_variable_predicate: predicate,
-                    _prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        _variable_predicate: predicate,
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
 
     # remove the prefix for cleanliness
-    query.replace(_prefixes_to_add, '')
+    query.replace(_prefixes_to_add, "")
 
     # run the query
-    response = __post_query(endpoint=endpoint.rsplit('/statements', 1)[0], query=query,
-                            data_style=f'query=' + query)
+    response = __post_query(
+        endpoint=endpoint.rsplit("/statements", 1)[0],
+        query=query,
+        data_style="query=" + query,
+    )
 
     return response, query
 
 
-def _construct_extra_class(endpoint, database_name, prefixes, class_label, class_predicate, class_class_object,
-                           class_aesthetic_label, class_iri_label,
-                           template_file=None):
+def _construct_extra_class(
+    endpoint,
+    database_name,
+    prefixes,
+    class_label,
+    class_predicate,
+    class_class_object,
+    class_aesthetic_label,
+    class_iri_label,
+    template_file=None,
+):
     """
     Directly add an annotation with an extra class
 
@@ -867,31 +1099,38 @@ def _construct_extra_class(endpoint, database_name, prefixes, class_label, class
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
-    logging.debug(f'Constructing extra {class_label} to endpoint {endpoint}, database {database_name}')
+    logging.debug(
+        f"Constructing extra {class_label} to endpoint {endpoint}, database {database_name}"
+    )
 
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'schema_reconstruction', 'template_for_extra_class.rq')
+        template_file = os.path.join(
+            template_dir, "schema_reconstruction", "template_for_extra_class.rq"
+        )
 
     # retrieve the mapping template
     query = read_file(template_file)
     prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the components
-    replacements = {_database: database_name,
-                    _class_label: class_label,
-                    _class_predicate: class_predicate,
-                    _class_class: class_class_object,
-                    _class_aesthetic_label: class_aesthetic_label,
-                    _class_iri_label: class_iri_label,
-                    _prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        _database: database_name,
+        _class_label: class_label,
+        _class_predicate: class_predicate,
+        _class_class: class_class_object,
+        _class_aesthetic_label: class_aesthetic_label,
+        _class_iri_label: class_iri_label,
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
 
     # remove the prefix for cleanliness
-    query.replace(_prefixes_to_add, '')
+    query.replace(_prefixes_to_add, "")
 
     # run the query
     response = __post_query(endpoint, query)
@@ -899,8 +1138,15 @@ def _construct_extra_class(endpoint, database_name, prefixes, class_label, class
     return response, query
 
 
-def _construct_extra_node(endpoint, database_name, prefixes, node_label, node_class, node_aesthetic_label,
-                          template_file=None):
+def _construct_extra_node(
+    endpoint,
+    database_name,
+    prefixes,
+    node_label,
+    node_class,
+    node_aesthetic_label,
+    template_file=None,
+):
     """
     Add an extra node that can be used to associate to an actual variable
 
@@ -913,29 +1159,36 @@ def _construct_extra_node(endpoint, database_name, prefixes, node_label, node_cl
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
-    logging.debug(f'Adding extra node for {node_label} to endpoint {endpoint}, database {database_name}')
+    logging.debug(
+        f"Adding extra node for {node_label} to endpoint {endpoint}, database {database_name}"
+    )
 
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'schema_reconstruction', 'template_for_extra_node.rq')
+        template_file = os.path.join(
+            template_dir, "schema_reconstruction", "template_for_extra_node.rq"
+        )
 
     # retrieve the mapping template
     query = read_file(template_file)
     prefixes = get_unique_prefixes(query, prefixes)
 
     # replace the components
-    replacements = {_database: database_name,
-                    _node_label: node_label,
-                    _node_class: node_class,
-                    _node_aesthetic_label: node_aesthetic_label,
-                    _prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        _database: database_name,
+        _node_label: node_label,
+        _node_class: node_class,
+        _node_aesthetic_label: node_aesthetic_label,
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
 
     # remove the prefix for cleanliness
-    query.replace(_prefixes_to_add, '')
+    query.replace(_prefixes_to_add, "")
 
     # run the query
     response = __post_query(endpoint, query)
@@ -943,8 +1196,14 @@ def _construct_extra_node(endpoint, database_name, prefixes, node_label, node_cl
     return response, query
 
 
-def _remove_component(endpoint, database_name, prefixes, local_variable, component_to_remove='dbo:has_column',
-                      template_file=None):
+def _remove_component(
+    endpoint,
+    database_name,
+    prefixes,
+    local_variable,
+    component_to_remove="dbo:has_column",
+    template_file=None,
+):
     """
     remove a component such as dbo:has_column for a certain local variable name
 
@@ -956,22 +1215,29 @@ def _remove_component(endpoint, database_name, prefixes, local_variable, compone
     :param str template_file: file name of the template, e.g., src/sparql_templates/template_mapping.rq
     :return: response from request
     """
-    logging.debug(f'Remove has_column for {local_variable} on endpoint {endpoint}, database {database_name}')
+    logging.debug(
+        f"Remove has_column for {local_variable} on endpoint {endpoint}, database {database_name}"
+    )
 
     if not isinstance(template_file, str):
-        template_file = os.path.join(template_dir, 'schema_reconstruction', 'template_to_remove_component.rq')
+        template_file = os.path.join(
+            template_dir, "schema_reconstruction", "template_to_remove_component.rq"
+        )
 
     # retrieve the mapping template
     query = read_file(template_file)
     prefixes = get_unique_prefixes(query, prefixes)
 
     # replace components
-    replacements = {_database: database_name,
-                    _variable_definition: local_variable,
-                    'dbo:has_column': component_to_remove,
-                    _prefixes_to_add: prefixes,
-                    '# Template that is automatically filled using Python.':
-                        '# This query was automatically generated using the annotation helper.'}
+    replacements = {
+        _database: database_name,
+        _variable_definition: local_variable,
+        "dbo:has_column": component_to_remove,
+        _prefixes_to_add: prefixes,
+        "# Template that is automatically filled using Python.": (
+            "# This query was automatically generated using the annotation helper."
+        ),
+    }
 
     for old, new in replacements.items():
         query = query.replace(old, new)
@@ -993,14 +1259,14 @@ def __post_query(endpoint, query, headers=None, data_style=None):
     :return:
     """
     if isinstance(headers, dict) is False:
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
     if isinstance(data_style, str) is False:
-        data_style = 'update=' + query
+        data_style = "update=" + query
 
     if dry_run is False:
         annotation_response = requests.post(endpoint, data=data_style, headers=headers)
     else:
-        annotation_response = 'not-a-http-response'
+        annotation_response = "not-a-http-response"
 
     return annotation_response

@@ -21,8 +21,19 @@ from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
 
-from flask import (abort, after_this_request, Flask, redirect, render_template, request, flash, Response, url_for,
-                   send_from_directory, jsonify)
+from flask import (
+    abort,
+    after_this_request,
+    Flask,
+    redirect,
+    render_template,
+    request,
+    flash,
+    Response,
+    url_for,
+    send_from_directory,
+    jsonify,
+)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,11 +42,9 @@ def setup_logging():
     """Setup centralised logging with timestamp format"""
     logging.basicConfig(
         level=logging.INFO,
-        format='[%(asctime)s] [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S %z',
-        handlers=[
-            logging.StreamHandler()
-        ]
+        format="[%(asctime)s] [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S %z",
+        handlers=[logging.StreamHandler()],
     )
 
 
@@ -45,29 +54,29 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
-from annotation_helper.src.miscellaneous import add_annotation, read_file
+from annotation_helper.src.miscellaneous import add_annotation
 
 app = Flask(__name__)
 
-if os.getenv('FLYOVER_GRAPHDB_URL') and os.getenv('FLYOVER_REPOSITORY_NAME'):
+if os.getenv("FLYOVER_GRAPHDB_URL") and os.getenv("FLYOVER_REPOSITORY_NAME"):
     # Assume it is running in Docker
-    graphdb_url = os.getenv('FLYOVER_GRAPHDB_URL')
-    repo = os.getenv('FLYOVER_REPOSITORY_NAME')
+    graphdb_url = os.getenv("FLYOVER_GRAPHDB_URL")
+    repo = os.getenv("FLYOVER_REPOSITORY_NAME")
     app.config["DEBUG"] = False
-    root_dir = '/app/'
-    child_dir = 'data_descriptor'
+    root_dir = "/app/"
+    child_dir = "data_descriptor"
 else:
     # Assume it is not running in Docker
-    graphdb_url = 'http://localhost:7200'
-    repo = 'userRepo'
+    graphdb_url = "http://localhost:7200"
+    repo = "userRepo"
     app.config["DEBUG"] = False
-    root_dir = ''
-    child_dir = '.'
+    root_dir = ""
+    child_dir = "."
 
 app.secret_key = "secret_key"
-app.config['UPLOAD_FOLDER'] = os.path.join(child_dir, 'static', 'files')
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+app.config["UPLOAD_FOLDER"] = os.path.join(child_dir, "static", "files")
+if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+    os.makedirs(app.config["UPLOAD_FOLDER"])
 
 
 class Cache:
@@ -95,22 +104,22 @@ class Cache:
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
-        self.annotation_json_path = None  # Store path to uploaded JSON file
+        self.annotation_json_path = None  # Store path to the uploaded JSON file
 
 
 session_cache = Cache()
 
 
-@app.route('/')
+@app.route("/")
 def landing():
     """
     Render the landing page that provides an overview of the three-step workflow.
     This serves as the main entry point describing the Ingest, Describe, Annotate process.
     """
-    return render_template('index.html')
+    return render_template("index.html")
 
 
-@app.route('/ingest')
+@app.route("/ingest")
 def index():
     """
     This function is responsible for rendering the ingest.html page.
@@ -134,54 +143,75 @@ def index():
         if check_graph_exists(session_cache.repo, "http://data.local/"):
             # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
-            return render_template('ingest.html', graph_exists=session_cache.existing_graph)
+            return render_template(
+                "ingest.html", graph_exists=session_cache.existing_graph
+            )
     except Exception as e:
         # If an error occurs, flash the error message to the user
         flash(f"Failed to check if the a data graph already exists, error: {e}")
 
     # If the data graph does not exist or if an error occurs, render the ingest.html page without the flag
-    return render_template('ingest.html')
+    return render_template("ingest.html")
 
 
-@app.route('/upload-semantic-map', methods=['POST'])
+@app.route("/upload-semantic-map", methods=["POST"])
 def upload_semantic_map():
     """
-    Handle the upload of a global semantic map JSON file from the triples page.
+    Handle the upload of a global semantic map JSON file from the data_submission page.
     This function processes the JSON file and stores it in the session cache for semantic mapping.
 
     Returns:
         flask.Response: JSON response indicating success or error
     """
-    semantic_map_file = request.files.get('semanticMapFile')
+    semantic_map_file = request.files.get("semanticMapFile")
 
     if not semantic_map_file or not semantic_map_file.filename:
-        return jsonify({'error': 'No semantic map file provided'}), 400
+        return jsonify({"error": "No semantic map file provided"}), 400
 
-    if not allowed_file(semantic_map_file.filename, {'json'}):
-        return jsonify({'error': 'Please upload a valid .json file for the semantic map'}), 400
+    if not allowed_file(semantic_map_file.filename, {"json"}):
+        return (
+            jsonify({"error": "Please upload a valid .json file for the semantic map"}),
+            400,
+        )
 
     try:
         # Read and parse the JSON file
-        session_cache.global_semantic_map = json.loads(semantic_map_file.read().decode('utf-8'))
+        session_cache.global_semantic_map = json.loads(
+            semantic_map_file.read().decode("utf-8")
+        )
 
         # Validate that it has the required structure for semantic mapping
-        if not isinstance(session_cache.global_semantic_map.get('variable_info'), dict):
-            return jsonify({
-                'error': 'Invalid semantic map format. Please ensure the JSON file contains a "variable_info" field with semantic variable definitions.'
-            }), 400
+        if not isinstance(session_cache.global_semantic_map.get("variable_info"), dict):
+            return (
+                jsonify(
+                    {
+                        "error": "Invalid semantic map format. "
+                        'Please ensure the JSON file contains a "variable_info" '
+                        "field with semantic variable definitions."
+                    }
+                ),
+                400,
+            )
 
-        return jsonify({
-            'success': True,
-            'message': 'Global semantic map uploaded successfully and ready for semantic mapping'
-        })
+        return jsonify(
+            {
+                "success": True,
+                "message": "Global semantic map uploaded successfully and ready for semantic mapping",
+            }
+        )
 
     except json.JSONDecodeError as e:
-        return jsonify({'error': f'Invalid JSON format in semantic map: {str(e)}'}), 400
+        return jsonify({"error": f"Invalid JSON format in semantic map: {str(e)}"}), 400
     except Exception as e:
-        return jsonify({'error': f'Unexpected error processing the semantic map: {str(e)}'}), 400
+        return (
+            jsonify(
+                {"error": f"Unexpected error processing the semantic map: {str(e)}"}
+            ),
+            400,
+        )
 
 
-@app.route('/upload', methods=['POST'])
+@app.route("/upload", methods=["POST"])
 def upload_file():
     """
     This function handles the file upload process.
@@ -200,70 +230,89 @@ def upload_file():
          if the triplifier run was successful, or the 'ingest.html' template if it was not.
     """
     upload = True
-    file_type = request.form.get('fileType')
-    csv_files = request.files.getlist('csvFile')
-    pk_fk_data = request.form.get('pkFkData')
-    cross_graph_link_data = request.form.get('crossGraphLinkData')
+    file_type = request.form.get("fileType")
+    csv_files = request.files.getlist("csvFile")
+    pk_fk_data = request.form.get("pkFkData")
+    cross_graph_link_data = request.form.get("crossGraphLinkData")
 
     # Store PK/FK data in session cache
     if pk_fk_data:
         session_cache.pk_fk_data = json.loads(pk_fk_data)
 
-    # Store cross-graph linking data in session cache
+    # Store cross-graph linking data in the session cache
     if cross_graph_link_data:
         session_cache.cross_graph_link_data = json.loads(cross_graph_link_data)
 
-    if file_type == 'CSV' and csv_files:
+    if file_type == "CSV" and csv_files:
         # Check if any CSV file has a filename
         if not any(csv_file.filename for csv_file in csv_files):
-            flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
-            return render_template('ingest.html', error=True)
+            flash(
+                "If opting to submit a CSV data source, please upload it as a '.csv' file."
+            )
+            return render_template("ingest.html", error=True)
 
         for csv_file in csv_files:
-            if allowed_file(csv_file.filename, {'csv'}) is False:
-                flash("If opting to submit a CSV data source, please upload it as a '.csv' file.")
-                return render_template('ingest.html', error=True)
+            if allowed_file(csv_file.filename, {"csv"}) is False:
+                flash(
+                    "If opting to submit a CSV data source, please upload it as a '.csv' file."
+                )
+                return render_template("ingest.html", error=True)
 
         try:
-            separator_sign = str(request.form.get('csv_separator_sign'))
+            separator_sign = str(request.form.get("csv_separator_sign"))
             if len(separator_sign) == 0:
-                separator_sign = ','
+                separator_sign = ","
 
-            decimal_sign = str(request.form.get('csv_decimal_sign'))
+            decimal_sign = str(request.form.get("csv_decimal_sign"))
             if len(decimal_sign) == 0:
-                decimal_sign = '.'
+                decimal_sign = "."
 
             session_cache.csvData = []
             for csv_file in csv_files:
                 session_cache.csvData.append(
-                    preprocess_dataframe(pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)))
+                    preprocess_dataframe(
+                        pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)
+                    )
+                )
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
-            return render_template('ingest.html', error=True)
+            return render_template("ingest.html", error=True)
 
-        session_cache.csvPath = [os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(csv_file.filename)) for
-                                 csv_file in csv_files]
+        session_cache.csvPath = [
+            os.path.join(
+                app.config["UPLOAD_FOLDER"], secure_filename(csv_file.filename)
+            )
+            for csv_file in csv_files
+        ]
         try:
-            success, message = run_triplifier('triplifierCSV.properties')
+            success, message = run_triplifier("triplifierCSV.properties")
         finally:
             for path in session_cache.csvPath:
                 if os.path.exists(path):
                     os.remove(path)
 
-    elif file_type == 'Postgres':
-        handle_postgres_data(request.form.get('username'), request.form.get('password'),
-                             request.form.get('POSTGRES_URL'), request.form.get('POSTGRES_DB'),
-                             request.form.get('table'))
-        success, message = run_triplifier('triplifierSQL.properties')
+    elif file_type == "Postgres":
+        handle_postgres_data(
+            request.form.get("username"),
+            request.form.get("password"),
+            request.form.get("POSTGRES_URL"),
+            request.form.get("POSTGRES_DB"),
+            request.form.get("table"),
+        )
+        success, message = run_triplifier("triplifierSQL.properties")
 
-    elif file_type != 'Postgres' and not any(csv_file.filename for csv_file in csv_files):
+    elif file_type != "Postgres" and not any(
+        csv_file.filename for csv_file in csv_files
+    ):
         success = True
         upload = False
-        message = Markup("You have opted to not submit any new data, "
-                         "you can now proceed to describe your data."
-                         "<br>"
-                         "<i>In case you do wish to submit data, please return to the ingest page.</i>")
+        message = Markup(
+            "You have opted to not submit any new data, "
+            "you can now proceed to describe your data."
+            "<br>"
+            "<i>In case you do wish to submit data, please return to the ingest page.</i>"
+        )
 
     else:
         success = False
@@ -275,25 +324,27 @@ def upload_file():
         if upload:
             logger.info("🚀 Initiating sequential upload to GraphDB")
             upload_success, upload_messages = upload_ontology_then_data(
-                root_dir, graphdb_url, repo,
-                data_background=False
+                root_dir, graphdb_url, repo, data_background=False
             )
 
             for msg in upload_messages:
                 logger.info(f"📝 {msg}")
 
         # Redirect to the new route after processing the POST request
-        return redirect(url_for('data_submission'))
+        return redirect(url_for("data_submission"))
     else:
         flash(f"Attempting to proceed resulted in an error: {message}")
-        return render_template('ingest.html', error=True, graph_exists=session_cache.existing_graph)
+        return render_template(
+            "ingest.html", error=True, graph_exists=session_cache.existing_graph
+        )
 
 
-@app.route('/data-submission')
+@app.route("/data-submission")
 def data_submission():
     """
     This function is mapped to the "/data-submission" URL and is invoked when a GET request is made to this URL.
-    It retrieves a status message from the session cache and renders the 'describe_landing.html' template with the message.
+    It retrieves a status message from the session cache and
+    renders the 'describe_landing.html' template with the message.
 
     The function performs the following steps:
     1. Retrieves the status message from the 'StatusToDisplay' object in the session cache.
@@ -306,27 +357,29 @@ def data_submission():
         it renders the 'describe_landing.html' template with the status message.
     """
     # Render the 'describe_landing.html' template with the 'title', 'message', and 'route'
-    return render_template('describe_landing.html', message=Markup(session_cache.StatusToDisplay))
+    return render_template(
+        "describe_landing.html", message=Markup(session_cache.StatusToDisplay)
+    )
 
 
-@app.route('/describe_landing')
+@app.route("/describe_landing")
 def describe_landing():
     """
-    This function provides access to the describe landing page when users navigate directly 
-    or when they have completed the ingest step. It checks if data exists in the repository
-    and shows appropriate messaging based on data availability.
-    
+    This function provides access to the describe landing page when users navigate directly
+    or when they have completed the 'ingest' step.
+    It checks if data exists in the repository and shows appropriate messaging based on data availability.
+
     Returns:
         flask.render_template: Renders the describe_landing.html template with appropriate status
     """
     try:
-        # Check if graph exists first
+        # Check if the graph exists first
         if check_graph_exists(session_cache.repo, "http://data.local/"):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
-            return render_template('describe_landing.html', message=Markup(message))
+            return render_template("describe_landing.html", message=Markup(message))
         else:
-            # No data found - render page with warning message instead of redirecting
+            # No data found - render page with a warning message instead of redirecting
             message = """
             <div class="alert alert-warning" role="alert">
                 <i class="fas fa-exclamation-triangle"></i>
@@ -339,10 +392,10 @@ def describe_landing():
                 </a>
             </div>
             """
-            return render_template('describe_landing.html', message=Markup(message))
-        
+            return render_template("describe_landing.html", message=Markup(message))
+
     except Exception as e:
-        # On error, show warning message instead of redirecting
+        # On error, show a warning message instead of redirecting
         message = f"""
         <div class="alert alert-danger" role="alert">
             <i class="fas fa-exclamation-triangle"></i>
@@ -355,10 +408,10 @@ def describe_landing():
             </a>
         </div>
         """
-        return render_template('describe_landing.html', message=Markup(message))
+        return render_template("describe_landing.html", message=Markup(message))
 
 
-@app.route("/describe_variables", methods=['GET', 'POST'])
+@app.route("/describe_variables", methods=["GET", "POST"])
 def describe_variables():
     """
     This function is mapped to the "/describe_landing" URL and is invoked when a POST request is made to this URL.
@@ -378,7 +431,8 @@ def describe_variables():
 
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'describe_variables.html' template with the dictionary of dataframes and the global variable names.
+        it renders the 'describe_variables.html' template
+        with the dictionary of dataframes and the global variable names.
     """
     # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
     column_query = """
@@ -391,22 +445,26 @@ def describe_variables():
     # Execute the query and read the results into a pandas DataFrame
     column_info = pd.read_csv(StringIO(execute_query(session_cache.repo, column_query)))
     # Extract the database name from the URI and add it as a new column in the DataFrame
-    column_info['database'] = column_info['uri'].str.extract(r'.*/(.*?)\.', expand=False)
+    column_info["database"] = column_info["uri"].str.extract(
+        r".*/(.*?)\.", expand=False
+    )
 
     # Drop the 'uri' column from the DataFrame
-    column_info = column_info.drop(columns=['uri'])
+    column_info = column_info.drop(columns=["uri"])
 
-    # Get unique values in 'database' column and store them in the session cache
-    unique_values = column_info['database'].unique()
+    # Get unique values in the 'database' column and store them in the session cache
+    unique_values = column_info["database"].unique()
     session_cache.databases = unique_values
 
     # Create a dictionary of dataframes, where the key is the database name, and the value is a corresponding dataframe
-    dataframes = {value: column_info[column_info['database'] == value] for value in unique_values}
+    dataframes = {
+        value: column_info[column_info["database"] == value] for value in unique_values
+    }
 
-    # Get the global variable names for the description drop-down menu
+    # Get the global variable names to use in the description drop-down menu
     global_names = retrieve_global_names()
 
-    # Create dictionaries to store preselected values from semantic map
+    # Create dictionaries to store preselected values from the semantic map
     preselected_descriptions = {}
     preselected_datatypes = {}
 
@@ -414,50 +472,64 @@ def describe_variables():
     description_to_datatype = {}
 
     # If a global semantic map exists and contains variable_info
-    if isinstance(session_cache.global_semantic_map, dict) and 'variable_info' in session_cache.global_semantic_map:
-        for var_name, var_info in session_cache.global_semantic_map['variable_info'].items():
+    if (
+        isinstance(session_cache.global_semantic_map, dict)
+        and "variable_info" in session_cache.global_semantic_map
+    ):
+        for var_name, var_info in session_cache.global_semantic_map[
+            "variable_info"
+        ].items():
             # Create mapping for auto-population (description -> datatype)
-            description_display = var_name.capitalize().replace('_', ' ')
-            if 'data_type' in var_info:
-                datatype = var_info['data_type'].lower()
+            description_display = var_name.capitalize().replace("_", " ")
+            if "data_type" in var_info:
+                datatype = var_info["data_type"].lower()
                 words = datatype.split()
-                datatype_display = ' '.join(word.capitalize() for word in words)
+                datatype_display = " ".join(word.capitalize() for word in words)
                 description_to_datatype[description_display] = datatype_display
 
             for db in unique_values:  # For each database
                 # Match by local_definition if available
-                local_def = var_info.get('local_definition', var_name)
+                local_def = var_info.get("local_definition", var_name)
                 key = f"{db}_{local_def}"
                 preselected_descriptions[key] = description_display
-                if 'data_type' in var_info:
-                    datatype = var_info['data_type'].lower()
+                if "data_type" in var_info:
+                    datatype = var_info["data_type"].lower()
                     words = datatype.split()
-                    preselected_datatypes[key] = ' '.join(word.capitalize() for word in words)
+                    preselected_datatypes[key] = " ".join(
+                        word.capitalize() for word in words
+                    )
 
-                # Match by column name variations
+                # Match-by-column name variations
                 variations = [
                     var_name,
                     var_name.lower(),
-                    var_name.replace('_', ''),
-                    var_name.replace('_', ' '),
+                    var_name.replace("_", ""),
+                    var_name.replace("_", " "),
                 ]
                 for variation in variations:
                     key_variation = f"{db}_{variation}"
-                    if key_variation not in preselected_descriptions and 'data_type' in var_info:
-                        datatype = var_info['data_type'].lower()
+                    if (
+                        key_variation not in preselected_descriptions
+                        and "data_type" in var_info
+                    ):
+                        datatype = var_info["data_type"].lower()
                         words = datatype.split()
-                        preselected_datatypes[key_variation] = ' '.join(word.capitalize() for word in words)
+                        preselected_datatypes[key_variation] = " ".join(
+                            word.capitalize() for word in words
+                        )
 
     # Render the 'describe_variables.html' template with all the necessary data
-    return render_template('describe_variables.html',
-                           dataframes=dataframes,
-                           global_variable_names=global_names,
-                           preselected_descriptions=preselected_descriptions,
-                           preselected_datatypes=preselected_datatypes,
-                           description_to_datatype=description_to_datatype)
+    return render_template(
+        "describe_variables.html",
+        dataframes=dataframes,
+        global_variable_names=global_names,
+        preselected_descriptions=preselected_descriptions,
+        preselected_datatypes=preselected_datatypes,
+        description_to_datatype=description_to_datatype,
+    )
 
 
-@app.route("/units", methods=['POST'])
+@app.route("/units", methods=["POST"])
 def retrieve_descriptive_info():
     """
     This function is responsible for retrieving descriptive information about the variables in the databases.
@@ -490,45 +562,61 @@ def retrieve_descriptive_info():
 
         # TODO improve database name handling; e.g. using database_2025_a and database_2025 combined will cause issues
         for local_variable_name in request.form:
-            if (not re.search("^ncit_comment_", local_variable_name) and
-                    not any(db in local_variable_name for db in session_cache.databases if db != database)):
-                local_variable_name = local_variable_name.replace(f'{database}_', '')
-                form_local_variable_name = f'{database}_{local_variable_name}'
+            if not re.search("^ncit_comment_", local_variable_name) and not any(
+                db in local_variable_name
+                for db in session_cache.databases
+                if db != database
+            ):
+                local_variable_name = local_variable_name.replace(f"{database}_", "")
+                form_local_variable_name = f"{database}_{local_variable_name}"
 
                 data_type = request.form.get(form_local_variable_name)
-                global_variable_name = request.form.get('ncit_comment_' + form_local_variable_name)
-                comment = request.form.get('comment_' + form_local_variable_name)
+                global_variable_name = request.form.get(
+                    "ncit_comment_" + form_local_variable_name
+                )
+                comment = request.form.get("comment_" + form_local_variable_name)
 
                 # Store the data type, global variable name, and comment for the local variable in the session cache
                 session_cache.descriptive_info[database][local_variable_name] = {
-                    'type': f'Variable type: {data_type}',
-                    'description': f'Variable description: {global_variable_name}',
-                    'comments': f'Variable comment: {comment if comment else "No comment provided"}'
+                    "type": f"Variable type: {data_type}",
+                    "description": f"Variable description: {global_variable_name}",
+                    "comments": f'Variable comment: {comment if comment else "No comment provided"}',
                 }
 
                 # If the data type of the local variable is 'Categorical',
                 # retrieve the categories for the local variable and store them in the session cache
-                if data_type == 'Categorical':
+                if data_type == "Categorical":
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
                     df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
-                    # Check if description is missing and format display name accordingly
-                    if not global_variable_name or global_variable_name.strip() == '':
-                        display_name = f'Missing Description (or "{local_variable_name}")'
+                    # Check if the description is missing and format display name accordingly
+                    if not global_variable_name or global_variable_name.strip() == "":
+                        display_name = (
+                            f'Missing Description (or "{local_variable_name}")'
+                        )
                     else:
-                        display_name = f'{global_variable_name} (or "{local_variable_name}")'
+                        display_name = (
+                            f'{global_variable_name} (or "{local_variable_name}")'
+                        )
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {display_name: df.to_dict('records')})
+                        {display_name: df.to_dict("records")}
+                    )
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
-                elif data_type == 'Continuous':
-                    # Check if description is missing and format display name accordingly
-                    if not global_variable_name or global_variable_name.strip() == '':
-                        display_name = f'Missing Description (or "{local_variable_name}")'
+                elif data_type == "Continuous":
+                    # Check if the description is missing and format display name accordingly
+                    if not global_variable_name or global_variable_name.strip() == "":
+                        display_name = (
+                            f'Missing Description (or "{local_variable_name}")'
+                        )
                     else:
-                        display_name = f'{global_variable_name} (or "{local_variable_name}")'
+                        display_name = (
+                            f'{global_variable_name} (or "{local_variable_name}")'
+                        )
                     session_cache.DescriptiveInfoDetails[database].append(display_name)
                 else:
-                    insert_equivalencies(session_cache.descriptive_info[database], local_variable_name)
+                    insert_equivalencies(
+                        session_cache.descriptive_info[database], local_variable_name
+                    )
 
         # Remove databases that do not have any descriptive information
         if not session_cache.DescriptiveInfoDetails[database]:
@@ -536,10 +624,10 @@ def retrieve_descriptive_info():
 
     # Render the 'describe_variable_details.html' template with the list of variables to further specify
     if session_cache.DescriptiveInfoDetails:
-        return redirect(url_for('describe_variable_details'))
+        return redirect(url_for("describe_variable_details"))
     else:
         # Redirect to the new route after processing the POST request
-        return redirect(url_for('describe_downloads'))
+        return redirect(url_for("describe_downloads"))
 
 
 @app.route("/describe_variable_details")
@@ -555,7 +643,7 @@ def describe_variable_details():
 
     # Iterate over the items in the dictionary
     for database, variables in session_cache.DescriptiveInfoDetails.items():
-        # Initialize an empty list to hold the rows of the dataframe
+        # Initialise an empty list to hold the rows of the dataframe
         rows = []
 
         # Iterate over the variables
@@ -563,7 +651,7 @@ def describe_variable_details():
             # Check if the variable is a string (continuous variable)
             if isinstance(variable, str):
                 # Add a row to the dataframe with the column name as the variable name and the value as pd.NA
-                rows.append({'column': variable, 'value': None})
+                rows.append({"column": variable, "value": None})
             # Check if the variable is a dictionary (categorical variable)
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
@@ -571,37 +659,44 @@ def describe_variable_details():
                     # If this variable exists in the global semantic map
                     if isinstance(session_cache.global_semantic_map, dict):
                         # Get global variable name (removing the local name in parentheses)
-                        global_var = var_name.split(' (or')[0].lower().replace(' ', '_')
+                        global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
 
-                        var_info = session_cache.global_semantic_map['variable_info'].get(global_var, {})
-                        value_mapping = var_info.get('value_mapping', {}).get('terms', {})
+                        var_info = session_cache.global_semantic_map[
+                            "variable_info"
+                        ].get(global_var, {})
+                        value_mapping = var_info.get("value_mapping", {}).get(
+                            "terms", {}
+                        )
 
                         # Iterate over the categories
                         for category in categories:
                             # Find matching term in value_mapping
                             matching_term = None
-                            category_value = category.get('value')
+                            category_value = category.get("value")
 
                             for term, term_info in value_mapping.items():
-                                local_term = term_info.get('local_term')
+                                local_term = term_info.get("local_term")
                                 # Convert both to strings for comparison
                                 if str(local_term) == str(category_value):
-                                    matching_term = term.title().replace('_', ' ')
+                                    matching_term = term.title().replace("_", " ")
                                     break
 
                             # Add preselected value to dictionary
                             if matching_term:
-                                key = f"{database}_{var_info.get('local_definition', '')}_category_\"{category.get('value')}\""
+                                key = (
+                                    f"{database}_{var_info.get('local_definition', '')}_category_"
+                                    f'"{category.get("value")}"'
+                                )
                                 preselected_values[key] = matching_term
 
                             # Add a row to the dataframe
-                            rows.append({'column': var_name, 'value': category})
+                            rows.append({"column": var_name, "value": category})
                     else:
                         # Iterate over the categories
                         for category in categories:
                             # Add a row to the dataframe for each category with
                             # the column name as the variable name and the value as the category
-                            rows.append({'column': var_name, 'value': category})
+                            rows.append({"column": var_name, "value": category})
 
         # Convert the list of rows to a dataframe
         df = pd.DataFrame(rows)
@@ -610,17 +705,19 @@ def describe_variable_details():
         dataframes[database] = df
 
     if isinstance(session_cache.global_semantic_map, dict):
-        variable_info = session_cache.global_semantic_map.get('variable_info')
+        variable_info = session_cache.global_semantic_map.get("variable_info")
     else:
         variable_info = {}
 
-    return render_template('describe_variable_details.html',
-                           dataframes=dataframes,
-                           global_variable_info=variable_info,
-                           preselected_values=preselected_values)
+    return render_template(
+        "describe_variable_details.html",
+        dataframes=dataframes,
+        global_variable_info=variable_info,
+        preselected_values=preselected_values,
+    )
 
 
-@app.route("/end", methods=['GET', 'POST'])
+@app.route("/end", methods=["GET", "POST"])
 def retrieve_detailed_descriptive_info():
     """
     This function is responsible for retrieving detailed descriptive information about the variables in the databases.
@@ -635,7 +732,7 @@ def retrieve_detailed_descriptive_info():
     5. If there is only one key, it retrieves the value associated with this key from the request form and
     stores it in the 'units' field of the variable in the session cache.
     6. If there are multiple keys, it iterates over each key. If the key contains '_category_',
-    it retrieves the category and the associated value, comment and count from the request form and
+    it retrieves the category and the associated value, comment, and count from the request form and
     stores them in the session cache.
     7. It then calls the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository.
     8. Finally, it redirects the user to the 'download_page' URL.
@@ -650,47 +747,67 @@ def retrieve_detailed_descriptive_info():
         keys = [key for key in request.form if key.startswith(database)]
         # Identify the variables associated with these keys
         variables = [
-            key.split('_category_')[0].split(f'{database}_')[1] if '_category_' in key else
-            (key.split('_notation_missing_or_unspecified')[0].split(f'{database}_')[
-                 1] if '_notation_missing_or_unspecified' in key else
-             key.split(f'{database}_')[1])
-            for key in keys]
+            (
+                key.split("_category_")[0].split(f"{database}_")[1]
+                if "_category_" in key
+                else (
+                    key.split("_notation_missing_or_unspecified")[0].split(
+                        f"{database}_"
+                    )[1]
+                    if "_notation_missing_or_unspecified" in key
+                    else key.split(f"{database}_")[1]
+                )
+            )
+            for key in keys
+        ]
 
         # Iterate over each unique variable
         for variable in set(variables):
             # Retrieve all keys from the request form that contain the variable name and do not start with 'comment_'
-            keys = [key for key in request.form if variable in key and not key.startswith('comment_')
-                    and not key.startswith('count_')]
+            keys = [
+                key
+                for key in request.form
+                if variable in key
+                and not key.startswith("comment_")
+                and not key.startswith("count_")
+            ]
 
             for key in keys:
 
-                if '_notation_missing_or_unspecified' in key:
-                    session_cache.descriptive_info[database][variable][f'Category: {request.form.get(key)}'] = (
-                            f'Category {request.form.get(key)}: missing_or_unspecified' or
-                            "No missing value notation provided")
+                if "_notation_missing_or_unspecified" in key:
+                    session_cache.descriptive_info[database][variable][
+                        f"Category: {request.form.get(key)}"
+                    ] = (
+                        f"Category {request.form.get(key)}: missing_or_unspecified"
+                        or "No missing value notation provided"
+                    )
 
-                elif '_category_' in key and not key.startswith('count_'):
+                elif "_category_" in key and not key.startswith("count_"):
                     # Retrieve the category and the associated value and comment from the request form and
                     # store them in the session cache
-                    category = key.split('_category_"')[1].split(f'"')[0]
+                    category = key.split('_category_"')[1].split('"')[0]
                     count_form = f'count_{database}_{variable}_category_"{category}"'
-                    session_cache.descriptive_info[database][variable][f'Category: {category}'] = \
-                        (f'Category {category}: {request.form.get(key)}, comment: '
-                         f'{request.form.get(f"comment_{key}") or "No comment provided"},  '
-                         f'count: {request.form.get(count_form) or "No count available"}')
+                    session_cache.descriptive_info[database][variable][
+                        f"Category: {category}"
+                    ] = (
+                        f"Category {category}: {request.form.get(key)}, comment: "
+                        f'{request.form.get(f"comment_{key}") or "No comment provided"},  '
+                        f'count: {request.form.get(count_form) or "No count available"}'
+                    )
                 # Handle units
-                elif 'count_' not in key:
-                    session_cache.descriptive_info[database][variable]['units'] = request.form.get(
-                        key) or 'No units specified'
+                elif "count_" not in key:
+                    session_cache.descriptive_info[database][variable]["units"] = (
+                        request.form.get(key) or "No units specified"
+                    )
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
             insert_equivalencies(session_cache.descriptive_info[database], variable)
 
     # Redirect the user to the 'download_page' URL
-    return redirect(url_for('describe_downloads'))
+    return redirect(url_for("describe_downloads"))
 
 
-@app.route('/describe_downloads')
+@app.route("/describe_downloads")
 def describe_downloads():
     """
     This function is responsible for rendering the 'describe_downloads.html' page.
@@ -698,15 +815,23 @@ def describe_downloads():
     Returns:
         flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
     """
-    if isinstance(session_cache.global_semantic_map, dict) and isinstance(session_cache.descriptive_info, dict):
-        return render_template('describe_downloads.html',
-                               graphdb_location="http://localhost:7200/", show_semantic_map=True)
+    if isinstance(session_cache.global_semantic_map, dict) and isinstance(
+        session_cache.descriptive_info, dict
+    ):
+        return render_template(
+            "describe_downloads.html",
+            graphdb_location="http://localhost:7200/",
+            show_semantic_map=True,
+        )
     else:
-        return render_template('describe_downloads.html',
-                               graphdb_location="http://localhost:7200/", show_semantic_map=False)
+        return render_template(
+            "describe_downloads.html",
+            graphdb_location="http://localhost:7200/",
+            show_semantic_map=False,
+        )
 
 
-@app.route('/downloadSemanticMap', methods=['GET'])
+@app.route("/downloadSemanticMap", methods=["GET"])
 def download_semantic_map():
     """
     This function generates a modified version of the global semantic map by adding local definitions to it.
@@ -729,7 +854,7 @@ def download_semantic_map():
        and writes the modified semantic map to the zip file.
     4. After the request has been handled, it removes the zip file.
     5. If there is only one database,
-       it generates a modified version of the global semantic map by adding local definitions to it,
+       it generates a modified version of the global semantic map by adding local definitions to it
        and returns the modified semantic map as a JSON response.
     6. If an error occurs during the processing of the semantic map,
        it returns an HTTP response with a status code of 500 (Internal Server Error)
@@ -738,13 +863,13 @@ def download_semantic_map():
     try:
         # Check if there are multiple databases
         if len(session_cache.databases) > 1:
-            _filename = 'local_semantic maps.zip'
+            _filename = "local_semantic maps.zip"
             # Loop through each database
             for database in session_cache.databases:
-                filename = f'local_semantic_map_{database}.json'
+                filename = f"local_semantic_map_{database}.json"
 
-                # Open the zip file in append mode
-                with zipfile.ZipFile(_filename, 'a') as zipf:
+                # Open the zip file in the 'append' mode
+                with zipfile.ZipFile(_filename, "a") as zipf:
                     # Generate a modified version of the global semantic map by adding local definitions to it
                     modified_semantic_map = formulate_local_semantic_map(database)
 
@@ -757,34 +882,47 @@ def download_semantic_map():
                 try:
                     os.remove(_filename)
                 except Exception as error:
-                    app.logger.error("Error removing or closing downloaded file handle", error)
+                    app.logger.error(
+                        "Error removing or closing downloaded file handle", error
+                    )
                 return response
 
             # Open the zip file in binary mode and return it as a response
-            with open(_filename, 'rb') as f:
-                return Response(f.read(), mimetype='application/zip',
-                                headers={'Content-Disposition': f'attachment;filename={_filename}'})
+            with open(_filename, "rb") as f:
+                return Response(
+                    f.read(),
+                    mimetype="application/zip",
+                    headers={"Content-Disposition": f"attachment;filename={_filename}"},
+                )
         else:
             # If there is only one database
             database = session_cache.databases[0]
-            filename = f'local_semantic_map_{database}.json'
+            filename = f"local_semantic_map_{database}.json"
 
             try:
                 # Generate a modified version of the global semantic map by adding local definitions to it
                 modified_semantic_map = formulate_local_semantic_map(database)
 
                 # Return the modified semantic map as a JSON response
-                return Response(json.dumps(modified_semantic_map, indent=4),
-                                mimetype='application/json',
-                                headers={'Content-Disposition': f'attachment;filename={filename}'})
+                return Response(
+                    json.dumps(modified_semantic_map, indent=4),
+                    mimetype="application/json",
+                    headers={"Content-Disposition": f"attachment;filename={filename}"},
+                )
             except Exception as e:
-                abort(500, description=f"An error occurred while processing the semantic map, error: {str(e)}")
+                abort(
+                    500,
+                    description=f"An error occurred while processing the semantic map, error: {str(e)}",
+                )
 
     except Exception as e:
-        abort(500, description=f"An error occurred while processing the semantic map, error: {str(e)}")
+        abort(
+            500,
+            description=f"An error occurred while processing the semantic map, error: {str(e)}",
+        )
 
 
-@app.route('/downloadOntology', methods=['GET'])
+@app.route("/downloadOntology", methods=["GET"])
 def download_ontology(named_graph="http://ontology.local/", filename=None):
     """
     This function downloads an ontology from a specified graph and returns it as a response which
@@ -804,115 +942,131 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
     """
     if session_cache.csvPath is not None and session_cache.existing_graph is False:
         if len(session_cache.csvPath) == 1:
-            database_name = session_cache.csvPath[0][session_cache.csvPath[0].rfind(os.path.sep) + 1:
-                                                     session_cache.csvPath[0].rfind('.')]
+            database_name = session_cache.csvPath[0][
+                session_cache.csvPath[0].rfind(os.path.sep)
+                + 1 : session_cache.csvPath[0].rfind(".")
+            ]
         else:
-            database_name = 'for_multiple_databases'
+            database_name = "for_multiple_databases"
     else:
-        database_name = 'for_multiple_databases'
+        database_name = "for_multiple_databases"
 
     if filename is None:
-        filename = f'local_ontology_{database_name}.nt'
+        filename = f"local_ontology_{database_name}.nt"
 
     try:
         response = requests.get(
             f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
             params={"graph": named_graph},
-            headers={"Accept": "application/n-triples"}
+            headers={"Accept": "application/n-triples"},
         )
 
         if response.status_code == 200:
-            return Response(response.text,
-                            mimetype='application/n-triples',
-                            headers={'Content-Disposition': f'attachment;filename={filename}'})
+            return Response(
+                response.text,
+                mimetype="application/n-triples",
+                headers={"Content-Disposition": f"attachment;filename={filename}"},
+            )
 
     except Exception as e:
-        abort(500, description=f"An error occurred while processing the ontology, error: {str(e)}")
+        abort(
+            500,
+            description=f"An error occurred while processing the ontology, error: {str(e)}",
+        )
 
 
-@app.route('/annotation_landing')
+@app.route("/annotation_landing")
 def annotation_landing():
     """
-    This function provides access to the annotation landing page when users navigate directly 
-    or when they want to start the annotation process. It checks if data exists and provides
-    appropriate options including JSON upload.
-    
+    This function provides access to the annotation landing page when users navigate directly
+    or when they want to start the annotation process.
+    It checks if data exists and provides the appropriate options, including JSON upload.
+
     Returns:
         flask.render_template: Renders the annotation_landing.html template with appropriate status
     """
     try:
-        # Check if graph exists
+        # Check if the graph exists
         data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
         session_cache.existing_graph = data_exists
-        
+
         message = None
         if not data_exists:
-            message = "To start annotating, you need to complete the Ingest and Describe steps first. Alternatively, you can upload a JSON file with your data descriptions."
-        
-        return render_template('annotation_landing.html', data_exists=data_exists, message=message)
+            message = (
+                "To start annotating, you need to complete the Ingest and Describe steps first. "
+                "Alternatively, you can upload a JSON file with your data descriptions."
+            )
+
+        return render_template(
+            "annotation_landing.html", data_exists=data_exists, message=message
+        )
     except Exception as e:
         flash(f"Error accessing annotation step: {e}")
-        return redirect(url_for('landing'))
+        return redirect(url_for("landing"))
 
 
-@app.route('/upload-annotation-json', methods=['POST'])
+@app.route("/upload-annotation-json", methods=["POST"])
 def upload_annotation_json():
     """
     Handle the upload of a JSON file for direct annotation.
     This allows users to upload JSON files with data descriptions for annotation.
-    
+
     Returns:
         flask.jsonify: JSON response indicating success or failure
     """
     try:
-        if 'annotationJsonFile' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
+        if "annotationJsonFile" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-        file = request.files['annotationJsonFile']
-        
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+        file = request.files["annotationJsonFile"]
 
-        if not file.filename.lower().endswith('.json'):
-            return jsonify({'error': 'File must be a JSON file'}), 400
+        if file.filename == "":
+            return jsonify({"error": "No file selected"}), 400
+
+        if not file.filename.lower().endswith(".json"):
+            return jsonify({"error": "File must be a JSON file"}), 400
 
         # Save the uploaded file
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(filepath)
 
         # Try to parse the JSON to validate it
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath, "r") as f:
                 json_data = json.load(f)
-            
+
             # Store the JSON data for use in annotation
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
-            
-            return jsonify({'success': 'JSON file uploaded successfully', 'filename': filename})
-            
+
+            return jsonify(
+                {"success": "JSON file uploaded successfully", "filename": filename}
+            )
+
         except json.JSONDecodeError:
             os.remove(filepath)  # Clean up invalid file
-            return jsonify({'error': 'Invalid JSON file format'}), 400
+            return jsonify({"error": "Invalid JSON file format"}), 400
 
     except Exception as e:
-        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 
-@app.route('/annotation-review')
+@app.route("/annotation-review")
 def annotation_review():
     """
     Display the annotation review page where users can inspect their semantic map
     before running the annotation process. Uses local semantic maps per database.
     """
     if not isinstance(session_cache.global_semantic_map, dict):
-        flash("No semantic map available for annotation. Please upload a semantic map first.")
-        return redirect(url_for('annotation_landing'))
+        flash(
+            "No semantic map available for annotation. Please upload a semantic map first."
+        )
+        return redirect(url_for("annotation_landing"))
 
     if not session_cache.databases.any():
         flash("No databases available for annotation.")
-        return redirect(url_for('ingest'))
+        return redirect(url_for("ingest"))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
@@ -921,7 +1075,7 @@ def annotation_review():
     for database in session_cache.databases:
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get('variable_info', {})
+        variable_info = local_semantic_map.get("variable_info", {})
 
         if not variable_info:
             continue
@@ -934,16 +1088,16 @@ def annotation_review():
             var_copy = dict(var_data)
 
             # Validate required fields
-            if not var_copy.get('predicate'):
+            if not var_copy.get("predicate"):
                 logger.warning(f"Variable {var_name} in {database} missing predicate")
                 continue
 
-            if not var_copy.get('class'):
+            if not var_copy.get("class"):
                 logger.warning(f"Variable {var_name} in {database} missing class")
                 continue
 
-            # Check if this variable has a local definition (from local semantic map)
-            if var_copy.get('local_definition'):
+            # Check if this variable has a local definition (from the local semantic map)
+            if var_copy.get("local_definition"):
                 annotation_data[database][var_name] = var_copy
             else:
                 unannotated_variables.append(f"{database}.{var_name}")
@@ -953,31 +1107,37 @@ def annotation_review():
 
     if total_annotated == 0:
         flash(
-            "No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.")
-        return redirect(url_for('describe_downloads'))
+            "No variables are ready for annotation. "
+            "Please ensure variables have local definitions, predicates, and classes."
+        )
+        return redirect(url_for("describe_downloads"))
 
-    return render_template('annotation_review.html',
-                           annotation_data=annotation_data,
-                           unannotated_variables=unannotated_variables)
+    return render_template(
+        "annotation_review.html",
+        annotation_data=annotation_data,
+        unannotated_variables=unannotated_variables,
+    )
 
 
-@app.route('/start-annotation', methods=['POST'])
+@app.route("/start-annotation", methods=["POST"])
 def start_annotation():
     """
     Start the annotation process using local semantic maps per database.
     """
     try:
         if not isinstance(session_cache.global_semantic_map, dict):
-            return jsonify({'success': False, 'error': 'No semantic map available'})
+            return jsonify({"success": False, "error": "No semantic map available"})
 
         if not session_cache.databases.any():
-            return jsonify({'success': False, 'error': 'No databases available for annotation'})
+            return jsonify(
+                {"success": False, "error": "No databases available for annotation"}
+            )
 
         # Get endpoint information
         endpoint = f"{graphdb_url}/repositories/{session_cache.repo}/statements"
 
-        # Create temporary directory for annotation process
-        temp_dir = '/tmp/annotation_temp'
+        # Create a temporary directory for the annotation process
+        temp_dir = "/tmp/annotation_temp"
         os.makedirs(temp_dir, exist_ok=True)
 
         # Initialize annotation status
@@ -991,75 +1151,96 @@ def start_annotation():
 
             # Get the local semantic map for this specific database
             local_semantic_map = formulate_local_semantic_map(database)
-            variable_info = local_semantic_map.get('variable_info', {})
+            variable_info = local_semantic_map.get("variable_info", {})
 
             # Get prefixes from the local semantic map
-            prefixes = local_semantic_map.get('prefixes',
-                                              'PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> PREFIX owl: <http://www.w3.org/2002/07/owl#> PREFIX roo: <http://www.cancerdata.org/roo/> PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>')
+            prefixes = local_semantic_map.get(
+                "prefixes",
+                "PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> "
+                "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> "
+                "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
+                "PREFIX roo: <http://www.cancerdata.org/roo/> "
+                "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+            )
 
             # Filter only variables that have local definitions
             annotated_variables = {
                 var_name: var_data
                 for var_name, var_data in variable_info.items()
-                if var_data.get('local_definition')
+                if var_data.get("local_definition")
             }
 
             if not annotated_variables:
-                logger.info(f"No variables with local definitions found for database {database}")
+                logger.info(
+                    f"No variables with local definitions found for database {database}"
+                )
                 continue
 
-            logger.info(f"Starting annotation process for {len(annotated_variables)} variables in {database}")
+            logger.info(
+                f"Starting annotation process for {len(annotated_variables)} variables in {database}"
+            )
 
             try:
                 # Use add_annotation function from the annotation helper for this database
-                annotation_result = add_annotation(
+                add_annotation(
                     endpoint=endpoint,
                     database=database,
                     prefixes=prefixes,
                     annotation_data=annotated_variables,
                     path=temp_dir,
                     remove_has_column=False,
-                    save_query=True
+                    save_query=True,
                 )
 
                 # For now, we'll assume success for variables with local definitions
-                # In a real implementation, the add_annotation function should return status
+                # In the future the add_annotation function should return status
                 for var_name, var_data in annotated_variables.items():
                     session_cache.annotation_status[f"{database}.{var_name}"] = {
-                        'success': True,
-                        'message': 'Annotation completed successfully',
-                        'database': database
+                        "success": True,
+                        "message": "Annotation completed successfully",
+                        "database": database,
                     }
 
                 total_annotated_vars += len(annotated_variables)
-                logger.info(f"Annotation process completed successfully for database {database}")
+                logger.info(
+                    f"Annotation process completed successfully for database {database}"
+                )
 
             except Exception as annotation_error:
-                logger.error(f"Error during annotation execution for database {database}: {str(annotation_error)}")
+                logger.error(
+                    f"Error during annotation execution for database {database}: {str(annotation_error)}"
+                )
 
                 # Mark all variables as failed for this database
                 for var_name in annotated_variables.keys():
                     session_cache.annotation_status[f"{database}.{var_name}"] = {
-                        'success': False,
-                        'error': str(annotation_error),
-                        'database': database
+                        "success": False,
+                        "error": str(annotation_error),
+                        "database": database,
                     }
 
         if total_annotated_vars == 0:
             return jsonify(
-                {'success': False, 'error': 'No variables with local definitions found across all databases'})
+                {
+                    "success": False,
+                    "error": "No variables with local definitions found across all databases",
+                }
+            )
 
-        return jsonify({
-            'success': True,
-            'message': f'Annotation process completed for {total_annotated_vars} variables across {len(session_cache.databases)} databases'
-        })
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Annotation process completed for {total_annotated_vars} "
+                f"variables across {len(session_cache.databases)} databases",
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error during annotation setup: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({"success": False, "error": str(e)})
 
 
-@app.route('/annotation-verify')
+@app.route("/annotation-verify")
 def annotation_verify():
     """
     Display the annotation verification page where users can test their annotations.
@@ -1067,11 +1248,11 @@ def annotation_verify():
     """
     if not isinstance(session_cache.global_semantic_map, dict):
         flash("No semantic map available.")
-        return redirect(url_for('describe_downloads'))
+        return redirect(url_for("describe_downloads"))
 
     if not session_cache.databases.any():
         flash("No databases available.")
-        return redirect(url_for('describe_downloads'))
+        return redirect(url_for("describe_downloads"))
 
     # Get annotated variables from all databases using local semantic maps
     annotated_variables = []
@@ -1081,18 +1262,18 @@ def annotation_verify():
     for database in session_cache.databases:
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get('variable_info', {})
+        variable_info = local_semantic_map.get("variable_info", {})
 
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Check if this variable has a local definition (from local semantic map)
-            if var_data.get('local_definition'):
+            # Check if this variable has a local definition (from the local semantic map)
+            if var_data.get("local_definition"):
                 annotated_variables.append(full_var_name)
                 variable_data[full_var_name] = {
                     **var_data,
-                    'database': database,
-                    'prefixes': local_semantic_map.get('prefixes', '')
+                    "database": database,
+                    "prefixes": local_semantic_map.get("prefixes", ""),
                 }
             else:
                 unannotated_variables.append(full_var_name)
@@ -1102,55 +1283,68 @@ def annotation_verify():
 
     # Set success message if annotation was successful
     success_message = None
-    if annotation_status and all(status.get('success') for status in annotation_status.values()):
+    if annotation_status and all(
+        status.get("success") for status in annotation_status.values()
+    ):
         success_message = (
-            "The data processing is now complete and semantic interoperability has been achieved for the variables outlined above."
-            "You can now close this page and proceed to the next steps in your workflow.")
+            "The data processing is now complete and "
+            "semantic interoperability has been achieved for the variables outlined above."
+            "You can now close this page and proceed to the next steps in your workflow."
+        )
 
-    return render_template('annotation_verify.html',
-                           annotated_variables=annotated_variables,
-                           unannotated_variables=unannotated_variables,
-                           annotation_status=annotation_status,
-                           variable_data=variable_data,
-                           success_message=success_message)
+    return render_template(
+        "annotation_verify.html",
+        annotated_variables=annotated_variables,
+        unannotated_variables=unannotated_variables,
+        annotation_status=annotation_status,
+        variable_data=variable_data,
+        success_message=success_message,
+    )
 
 
-@app.route('/verify-annotation-ask', methods=['POST'])
+@app.route("/verify-annotation-ask", methods=["POST"])
 def verify_annotation_ask():
     """
-    Verify annotation using ASK query for a specific variable.
+    Verify annotation using an ASK query for a specific variable.
     This endpoint is used for live validation on the annotation verify page.
     """
     try:
         data = request.get_json()
-        variable_name = data.get('variable')
+        variable_name = data.get("variable")
 
         if not variable_name:
-            return jsonify({'success': False, 'error': 'No variable specified'})
+            return jsonify({"success": False, "error": "No variable specified"})
 
         # Parse database and variable from the full variable name (database.variable)
-        if '.' in variable_name:
-            database, var_name = variable_name.split('.', 1)
+        if "." in variable_name:
+            database, var_name = variable_name.split(".", 1)
         else:
-            return jsonify({'success': False, 'error': 'Invalid variable format. Expected: database.variable'})
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Invalid variable format. Expected: database.variable",
+                }
+            )
 
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get('variable_info', {})
+        variable_info = local_semantic_map.get("variable_info", {})
         var_data = variable_info.get(var_name)
 
         if not var_data:
-            return jsonify({'success': False, 'error': 'Variable not found'})
+            return jsonify({"success": False, "error": "Variable not found"})
 
         # Get variable information
-        local_definition = var_data.get('local_definition')
-        var_class = var_data.get('class')
+        local_definition = var_data.get("local_definition")
+        var_class = var_data.get("class")
 
         if not local_definition:
-            return jsonify({'success': False, 'error': 'Variable has no local definition'})
+            return jsonify(
+                {"success": False, "error": "Variable has no local definition"}
+            )
 
         # Get prefixes from the local semantic map - construct proper prefix string
-        prefixes_dict = local_semantic_map.get('prefixes', {})
+        prefixes_dict = local_semantic_map.get("prefixes", {})
 
         # Build prefixes string with required prefixes
         prefixes = """PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -1171,18 +1365,21 @@ def verify_annotation_ask():
         ask_query_parts = []
 
         # Add the main equivalentClass statement
-        ask_query_parts.append(f"db:{database}.{local_definition} owl:equivalentClass {var_class} .")
+        ask_query_parts.append(
+            f"db:{database}.{local_definition} owl:equivalentClass {var_class} ."
+        )
 
         # Check for value mappings and add target_class subClassOf statements
-        value_mapping = var_data.get('value_mapping', {})
-        if value_mapping and value_mapping.get('terms'):
-            for term, term_info in value_mapping['terms'].items():
-                if term_info.get('local_term') and term_info.get('target_class'):
-                    ask_query_parts.append(f"{term_info['target_class']} rdfs:subClassOf {var_class} .")
+        value_mapping = var_data.get("value_mapping", {})
+        if value_mapping and value_mapping.get("terms"):
+            for term, term_info in value_mapping["terms"].items():
+                if term_info.get("local_term") and term_info.get("target_class"):
+                    ask_query_parts.append(
+                        f"{term_info['target_class']} rdfs:subClassOf {var_class} ."
+                    )
 
         ask_query = f"""
-            {prefixes}
-            
+            {prefixes}            
             ASK {{
               {' '.join(ask_query_parts)}
             }}
@@ -1194,37 +1391,50 @@ def verify_annotation_ask():
         response = requests.get(
             f"{graphdb_url}/repositories/{session_cache.repo}",
             params={"query": ask_query},
-            headers={"Accept": "application/sparql-results+json"}
+            headers={"Accept": "application/sparql-results+json"},
         )
 
         if response.status_code == 200:
             result = response.json()
-            is_valid = result.get('boolean', False)
+            is_valid = result.get("boolean", False)
 
-            return jsonify({
-                'success': True,
-                'valid': is_valid,
-                'query': ask_query  # For debugging purposes
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "valid": is_valid,
+                    "query": ask_query,  # For debugging purposes
+                }
+            )
         else:
-            logger.error(f"ASK query failed with status {response.status_code}: {response.text}")
-            return jsonify({'success': False, 'error': f'Query failed with status {response.status_code}'})
+            logger.error(
+                f"ASK query failed with status {response.status_code}: {response.text}"
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Query failed with status {response.status_code}",
+                }
+            )
 
     except Exception as e:
         logger.error(f"Error verifying annotation with ASK query: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({"success": False, "error": str(e)})
 
 
-@app.route('/favicon.ico')
+@app.route("/favicon.ico")
 def favicon():
     """
-    Serve the favicon.ico file from the assets directory.
+    Serve the favicon.ico file from the 'assets' directory.
     This route handles browser requests for the favicon.
     """
-    return send_from_directory(f'{root_dir}{child_dir}/assets', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(
+        f"{root_dir}{child_dir}/assets",
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+    )
 
 
-@app.route('/data_descriptor/assets/<path:filename>')
+@app.route("/data_descriptor/assets/<path:filename>")
 def custom_static(filename):
     """
     Serve static files from the custom assets directory.
@@ -1243,7 +1453,7 @@ def custom_static(filename):
         To serve a CSS file located at 'triplifier/data_descriptor/assets/css/bootstrap.min.css',
         you would access it via the URL '/data_descriptor/assets/css/bootstrap.min.css'.
     """
-    return send_from_directory(f'{root_dir}{child_dir}/assets', filename)
+    return send_from_directory(f"{root_dir}{child_dir}/assets", filename)
 
 
 def allowed_file(filename, allowed_extensions):
@@ -1257,29 +1467,28 @@ def allowed_file(filename, allowed_extensions):
     Returns:
     bool: True if the file has an allowed extension, False otherwise.
     """
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in allowed_extensions
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
 
 
-@app.route('/api/check-graph-exists', methods=['GET'])
+@app.route("/api/check-graph-exists", methods=["GET"])
 def api_check_graph_exists():
     """
     API endpoint to check if graph data exists in the repository.
 
     Returns:
-        flask.jsonify: JSON response with exists boolean and optional error message
+        flask.jsonify: JSON response with the 'exists' boolean and optional error message
     """
     try:
         if not session_cache.repo:
-            return jsonify({'exists': False, 'error': 'No repository configured'})
+            return jsonify({"exists": False, "error": "No repository configured"})
 
         # Check if the main data graph exists
         graph_uri = "http://data.local/"
         exists = check_graph_exists(session_cache.repo, graph_uri)
 
-        return jsonify({'exists': exists})
+        return jsonify({"exists": exists})
     except Exception as e:
-        return jsonify({'exists': False, 'error': str(e)})
+        return jsonify({"exists": False, "error": str(e)})
 
 
 def check_graph_exists(repo, graph_uri):
@@ -1304,12 +1513,12 @@ def check_graph_exists(repo, graph_uri):
     response = requests.get(
         f"{graphdb_url}/repositories/{repo}",
         params={"query": query},
-        headers={"Accept": "application/sparql-results+json"}
+        headers={"Accept": "application/sparql-results+json"},
     )
 
     # If the request is successful, return the result of the ASK query
     if response.status_code == 200:
-        return response.json()['boolean']
+        return response.json()["boolean"]
     # If the request fails, raise an exception with the status code
     else:
         raise Exception(f"Query failed with status code {response.status_code}")
@@ -1332,13 +1541,13 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
 
     Raises:
     Exception: If an error occurs during the query execution,
-    an exception is raised and its error message is flashed to the user.
+    an exception is raised, and its error message is flashed to the user.
 
     The function performs the following steps:
-    1. Checks if query_type and endpoint_appendices are None. If they are, sets them to their default values.
+    1. Checks if query_type and endpoint_appendices are None. If they are, set them to their default values.
     2. Constructs the endpoint URL using the provided repository name and endpoint_appendices.
     3. Executes the SPARQL query on the constructed endpoint URL.
-    4. If the query execution is successful, returns the result as a string.
+    4. If the query execution is successful, it returns the result as a string.
     5. If an error occurs during the query execution,
     flashes an error message to the user and renders the 'ingest.html' template.
     """
@@ -1351,15 +1560,17 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
         # Construct the endpoint URL
         endpoint = f"{graphdb_url}/repositories/" + repo + endpoint_appendices
         # Execute the query
-        response = requests.post(endpoint,
-                                 data={query_type: query},
-                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+        response = requests.post(
+            endpoint,
+            data={query_type: query},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
         # Return the result of the query execution
         return response.text
     except Exception as e:
         # If an error occurs, flash the error message to the user and render the 'ingest.html' template
-        flash(f'Unexpected error when connecting to GraphDB, error: {e}.')
-        return render_template('ingest.html')
+        flash(f"Unexpected error when connecting to GraphDB, error: {e}.")
+        return render_template("ingest.html")
 
 
 def retrieve_categories(repo, column_name):
@@ -1417,19 +1628,26 @@ def retrieve_global_names():
         In this case, it renders the 'ingest.html' template if an error occurs.
     """
     if not isinstance(session_cache.global_semantic_map, dict):
-        return ['Research subject identifier', 'Biological sex', 'Age at inclusion', 'Other']
+        return [
+            "Research subject identifier",
+            "Biological sex",
+            "Age at inclusion",
+            "Other",
+        ]
     else:
         try:
-            return [name.capitalize().replace('_', ' ') for name in
-                    session_cache.global_semantic_map['variable_info'].keys()] + ['Other']
+            return [
+                name.capitalize().replace("_", " ")
+                for name in session_cache.global_semantic_map["variable_info"].keys()
+            ] + ["Other"]
         except Exception as e:
             flash(f"Failed to read the global semantic map. Error: {e}")
-            return render_template('ingest.html', error=True)
+            return render_template("ingest.html", error=True)
 
 
 def formulate_local_semantic_map(database):
     """
-    This function modifies the global semantic map by updating local definitions 
+    This function modifies the global semantic map by updating local definitions
     and setting unmapped variables to null. It also includes datatype information.
 
     Parameters:
@@ -1442,21 +1660,25 @@ def formulate_local_semantic_map(database):
     modified_semantic_map = copy.deepcopy(session_cache.global_semantic_map)
 
     # Update the 'database_name' field in the semantic map
-    if isinstance(modified_semantic_map.get('database_name'), str):
-        modified_semantic_map['database_name'] = database
+    if isinstance(modified_semantic_map.get("database_name"), str):
+        modified_semantic_map["database_name"] = database
     else:
-        modified_semantic_map.update({'database_name': database})
+        modified_semantic_map.update({"database_name": database})
 
     # Reset all local_definitions to null and datatypes to empty string
     # This ensures that unmapped fields are properly cleared
-    for variable_name, variable_info in modified_semantic_map['variable_info'].items():
-        modified_semantic_map['variable_info'][variable_name]['local_definition'] = None
+    for variable_name, variable_info in modified_semantic_map["variable_info"].items():
+        modified_semantic_map["variable_info"][variable_name]["local_definition"] = None
 
         # Reset all local_terms in value_mapping to null
-        if 'value_mapping' in variable_info and 'terms' in variable_info['value_mapping']:
-            for term_key in variable_info['value_mapping']['terms']:
-                modified_semantic_map['variable_info'][variable_name]['value_mapping']['terms'][term_key][
-                    'local_term'] = None
+        if (
+            "value_mapping" in variable_info
+            and "terms" in variable_info["value_mapping"]
+        ):
+            for term_key in variable_info["value_mapping"]["terms"]:
+                modified_semantic_map["variable_info"][variable_name]["value_mapping"][
+                    "terms"
+                ][term_key]["local_term"] = None
 
     # Process only the variables that are filled in the UI
     # Process local definitions and update the existing semantic map
@@ -1464,12 +1686,20 @@ def formulate_local_semantic_map(database):
 
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         # Skip if no description is provided (empty field in UI)
-        if 'description' not in local_value or not local_value['description']:
+        if "description" not in local_value or not local_value["description"]:
             continue
 
-        global_variable = local_value['description'].split('Variable description: ')[1].lower().replace(' ', '_')
+        global_variable = (
+            local_value["description"]
+            .split("Variable description: ")[1]
+            .lower()
+            .replace(" ", "_")
+        )
 
-        if global_variable and global_variable in session_cache.global_semantic_map['variable_info']:
+        if (
+            global_variable
+            and global_variable in session_cache.global_semantic_map["variable_info"]
+        ):
             # Handle duplicate global variables by creating new entries with suffix
             if global_variable in used_global_variables:
                 suffix = used_global_variables[global_variable] + 1
@@ -1477,44 +1707,73 @@ def formulate_local_semantic_map(database):
                 used_global_variables[global_variable] = suffix
 
                 # Create new entry based on original
-                modified_semantic_map['variable_info'][new_global_variable] = copy.deepcopy(
-                    session_cache.global_semantic_map['variable_info'][global_variable]
+                modified_semantic_map["variable_info"][new_global_variable] = (
+                    copy.deepcopy(
+                        session_cache.global_semantic_map["variable_info"][
+                            global_variable
+                        ]
+                    )
                 )
 
                 # Reset the new entry's local fields to null initially
-                modified_semantic_map['variable_info'][new_global_variable]['local_definition'] = None
-                modified_semantic_map['variable_info'][new_global_variable]['data_type'] = None
+                modified_semantic_map["variable_info"][new_global_variable][
+                    "local_definition"
+                ] = None
+                modified_semantic_map["variable_info"][new_global_variable][
+                    "data_type"
+                ] = None
             else:
                 new_global_variable = global_variable
                 used_global_variables[global_variable] = 0
 
-            # Update local definition (only if field was filled in UI)
-            modified_semantic_map['variable_info'][new_global_variable]['local_definition'] = local_variable
+            # Update local definition (only if the field was filled in UI)
+            modified_semantic_map["variable_info"][new_global_variable][
+                "local_definition"
+            ] = local_variable
 
             # Extract and add datatype information from UI
-            datatype_value = local_value['type'].split('Variable type: ')[1].lower().replace(' ', '_')
+            datatype_value = (
+                local_value["type"]
+                .split("Variable type: ")[1]
+                .lower()
+                .replace(" ", "_")
+            )
             # Only set datatype if it's not empty
             if datatype_value and datatype_value.strip():
-                modified_semantic_map['variable_info'][new_global_variable]['data_type'] = datatype_value
+                modified_semantic_map["variable_info"][new_global_variable][
+                    "data_type"
+                ] = datatype_value
             else:
                 # Try to extract from request data or set default
-                modified_semantic_map['variable_info'][new_global_variable]['data_type'] = None
+                modified_semantic_map["variable_info"][new_global_variable][
+                    "data_type"
+                ] = None
 
             # Process value mapping if it exists
-            if 'value_mapping' in modified_semantic_map['variable_info'][new_global_variable]:
-                original_terms = modified_semantic_map['variable_info'][new_global_variable]['value_mapping']['terms']
+            if (
+                "value_mapping"
+                in modified_semantic_map["variable_info"][new_global_variable]
+            ):
+                original_terms = modified_semantic_map["variable_info"][
+                    new_global_variable
+                ]["value_mapping"]["terms"]
                 used_global_terms = {}  # Track usage for duplicate term handling
 
                 # Reset all local_terms to null first (already done above, but being explicit here)
                 # Reset local_term for all terms first
                 for term_key in original_terms:
-                    original_terms[term_key]['local_term'] = None
+                    original_terms[term_key]["local_term"] = None
 
                 # Update local terms based on UI input (only for filled categories)
                 for category, value in local_value.items():
-                    if category.startswith('Category: ') and value and value.strip():
-                        global_term = value.split(': ')[1].split(', comment')[0].lower().replace(' ', '_')
-                        local_term_value = category.split(': ')[1]
+                    if category.startswith("Category: ") and value and value.strip():
+                        global_term = (
+                            value.split(": ")[1]
+                            .split(", comment")[0]
+                            .lower()
+                            .replace(" ", "_")
+                        )
+                        local_term_value = category.split(": ")[1]
 
                         if global_term in original_terms:
                             # Handle duplicate terms
@@ -1523,11 +1782,17 @@ def formulate_local_semantic_map(database):
                                 new_global_term = f"{global_term}_{suffix}"
                                 used_global_terms[global_term] = suffix
 
-                                # Create new term entry
-                                original_terms[new_global_term] = copy.deepcopy(original_terms[global_term])
-                                original_terms[new_global_term]['local_term'] = local_term_value
+                                # Create a new term entry
+                                original_terms[new_global_term] = copy.deepcopy(
+                                    original_terms[global_term]
+                                )
+                                original_terms[new_global_term][
+                                    "local_term"
+                                ] = local_term_value
                             else:
-                                original_terms[global_term]['local_term'] = local_term_value
+                                original_terms[global_term][
+                                    "local_term"
+                                ] = local_term_value
                                 used_global_terms[global_term] = 0
 
     return modified_semantic_map
@@ -1551,31 +1816,42 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
     None: If the connection to the PostgreSQL database is successful.
     """
     # Cache information
-    session_cache.username, session_cache.password, session_cache.url, session_cache.db_name, session_cache.table = (
-        username, password, postgres_url, postgres_db, table)
+    (
+        session_cache.username,
+        session_cache.password,
+        session_cache.url,
+        session_cache.db_name,
+        session_cache.table,
+    ) = (username, password, postgres_url, postgres_db, table)
 
     try:
         # Establish PostgreSQL connection
-        session_cache.conn = connect(dbname=session_cache.db_name, user=session_cache.username,
-                                     host=session_cache.url,
-                                     password=session_cache.password)
+        session_cache.conn = connect(
+            dbname=session_cache.db_name,
+            user=session_cache.username,
+            host=session_cache.url,
+            password=session_cache.password,
+        )
         print("Connection:", session_cache.conn)
     except Exception as err:
         print("connect() ERROR:", err)
         session_cache.conn = None
-        flash('Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!')
-        return render_template('ingest.html', error=True)
+        flash(
+            "Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!"
+        )
+        return render_template("ingest.html", error=True)
 
-    # Write connection details to properties file
+    # Write connection details to the properties file
     with open(f"{root_dir}{child_dir}/triplifierSQL.properties", "w") as f:
-        f.write(f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
-                f"jdbc.user = {session_cache.username}\n"
-                f"jdbc.password = {session_cache.password}\n"
-                f"jdbc.driver = org.postgresql.Driver\n\n"
-                # f"repo.type = rdf4j\n"
-                # f"repo.url = {graphdb_url}\n"
-                # f"repo.id = {repo}"
-                )
+        f.write(
+            f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
+            f"jdbc.user = {session_cache.username}\n"
+            f"jdbc.password = {session_cache.password}\n"
+            f"jdbc.driver = org.postgresql.Driver\n\n"
+            # f"repo.type = rdf4j\n"
+            # f"repo.url = {graphdb_url}\n"
+            # f"repo.id = {repo}"
+        )
 
 
 def insert_equivalencies(descriptive_info, variable):
@@ -1584,7 +1860,7 @@ def insert_equivalencies(descriptive_info, variable):
 
     Parameters:
     descriptive_info (dict): A dictionary containing descriptive information about the variables.
-                             The keys are the variable names and the values are dictionaries containing
+                             The keys are the variable names, and the values are dictionaries containing
                              the type, description, comments, and categories of the variables.
     variable (str): The name of the variable for which the equivalency is to be inserted.
 
@@ -1612,14 +1888,18 @@ def insert_equivalencies(descriptive_info, variable):
     var_info = descriptive_info[variable]
 
     # Get the three main fields
-    type_value = var_info.get('type', '')
-    description_value = var_info.get('description', '')
-    comments_value = var_info.get('comments', '')
+    type_value = var_info.get("type", "")
+    description_value = var_info.get("description", "")
+    comments_value = var_info.get("comments", "")
 
     # Check if any of these fields has meaningful content
-    has_type = type_value not in ['', 'Variable type: ', 'Variable type: None']
-    has_description = description_value not in ['', 'Variable description: ', 'Variable description: None']
-    has_comments = comments_value not in ['', 'Variable comment: No comment provided']
+    has_type = type_value not in ["", "Variable type: ", "Variable type: None"]
+    has_description = description_value not in [
+        "",
+        "Variable description: ",
+        "Variable description: None",
+    ]
+    has_comments = comments_value not in ["", "Variable comment: No comment provided"]
 
     # Skip if none of the fields has meaningful content
     if not (has_type or has_description or has_comments):
@@ -1670,11 +1950,11 @@ def get_column_class_uri(table_name, column_name):
             print(f"Empty result set for column {table_name}.{column_name}")
             return None
 
-        if 'uri' not in column_info.columns:
-            print(f"Query result format error: no 'uri' column found")
+        if "uri" not in column_info.columns:
+            print("Query result format error: no 'uri' column found")
             return None
 
-        return column_info['uri'].iloc[0]
+        return column_info["uri"].iloc[0]
 
     except Exception as e:
         print(f"Error fetching column URI for {table_name}.{column_name}: {e}")
@@ -1714,49 +1994,55 @@ def process_pk_fk_relationships():
         session_cache.pk_fk_status = "processing"
 
         # Create mapping of files with their PK/FK info
-        file_map = {rel['fileName']: rel for rel in session_cache.pk_fk_data}
+        file_map = {rel["fileName"]: rel for rel in session_cache.pk_fk_data}
 
         # Process each relationship
         for rel in session_cache.pk_fk_data:
-            if not all([rel.get('foreignKey'), rel.get('foreignKeyTable'),
-                        rel.get('foreignKeyColumn')]):
+            if not all(
+                [
+                    rel.get("foreignKey"),
+                    rel.get("foreignKeyTable"),
+                    rel.get("foreignKeyColumn"),
+                ]
+            ):
                 continue
 
             # Find the target table's PK info
-            target_file = rel['foreignKeyTable']
+            target_file = rel["foreignKeyTable"]
             target_rel = file_map.get(target_file)
 
-            if not target_rel or not target_rel.get('primaryKey'):
+            if not target_rel or not target_rel.get("primaryKey"):
                 continue
 
             # Generate FK configuration
             fk_config = {
-                'foreignKeyTable': rel['fileName'].replace('.csv', ''),
-                'foreignKeyColumn': rel['foreignKey'],
-                'primaryKeyTable': target_file.replace('.csv', ''),
-                'primaryKeyColumn': target_rel['primaryKey']
+                "foreignKeyTable": rel["fileName"].replace(".csv", ""),
+                "foreignKeyColumn": rel["foreignKey"],
+                "primaryKeyTable": target_file.replace(".csv", ""),
+                "primaryKeyColumn": target_rel["primaryKey"],
             }
 
             source_uri = get_column_class_uri(
-                fk_config['foreignKeyTable'],
-                fk_config['foreignKeyColumn']
+                fk_config["foreignKeyTable"], fk_config["foreignKeyColumn"]
             )
 
             target_uri = get_column_class_uri(
-                fk_config['primaryKeyTable'],
-                fk_config['primaryKeyColumn']
+                fk_config["primaryKeyTable"], fk_config["primaryKeyColumn"]
             )
 
             if not source_uri or not target_uri:
                 print(f"Could not find URIs for FK relationship: {fk_config}")
                 continue
 
-            fk_predicate = f"http://um-cds/ontologies/databaseontology/fk_refers_to"
+            fk_predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
 
             # Insert the relationship
             insert_fk_relation(fk_predicate, source_uri, target_uri)
             print(
-                f"Created FK relationship: {fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> {fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}")
+                f"Created FK relationship: "
+                f"{fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> "
+                f"{fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}"
+            )
 
         session_cache.pk_fk_status = "success"
         print("PK/FK relationship processing completed successfully.")
@@ -1779,7 +2065,7 @@ def background_pk_fk_processing():
         session_cache.pk_fk_status = "failed"
 
 
-@app.route('/get-existing-graph-structure', methods=['GET'])
+@app.route("/get-existing-graph-structure", methods=["GET"])
 def get_existing_graph_structure():
     """
     Get the structure of existing graph data for linking purposes
@@ -1805,22 +2091,25 @@ def get_existing_graph_structure():
         if structure_info.empty:
             return {"tables": [], "tableColumns": {}}
 
-        # Extract table names from URIs and organize by table
-        structure_info['table'] = structure_info['uri'].str.extract(r'.*/(.*?)\.', expand=False).fillna('unknown')
+        # Extract table names from URIs and organise by table
+        structure_info["table"] = (
+            structure_info["uri"]
+            .str.extract(r".*/(.*?)\.", expand=False)
+            .fillna("unknown")
+        )
 
         # Get unique tables
-        tables = structure_info['table'].unique().tolist()
+        tables = structure_info["table"].unique().tolist()
 
         # Create table-column mapping
         table_columns = {}
         for table in tables:
-            columns = structure_info[structure_info['table'] == table]['column'].tolist()
+            columns = structure_info[structure_info["table"] == table][
+                "column"
+            ].tolist()
             table_columns[table] = columns
 
-        return jsonify({
-            "tables": tables,
-            "tableColumns": table_columns
-        })
+        return jsonify({"tables": tables, "tableColumns": table_columns})
 
     except Exception as e:
         print(f"Error getting existing graph structure: {e}")
@@ -1849,10 +2138,10 @@ def get_existing_column_class_uri(table_name, column_name):
 
         column_info = pd.read_csv(StringIO(query_result))
 
-        if column_info.empty or 'uri' not in column_info.columns:
+        if column_info.empty or "uri" not in column_info.columns:
             return None
 
-        return column_info['uri'].iloc[0]
+        return column_info["uri"].iloc[0]
 
     except Exception as e:
         print(f"Error fetching existing column URI for {table_name}.{column_name}: {e}")
@@ -1895,13 +2184,11 @@ def process_cross_graph_relationships():
 
         # Get URIs for new and existing columns
         new_column_uri = get_column_class_uri(
-            link_data['newTableName'],
-            link_data['newColumnName']
+            link_data["newTableName"], link_data["newColumnName"]
         )
 
         existing_column_uri = get_existing_column_class_uri(
-            link_data['existingTableName'],
-            link_data['existingColumnName']
+            link_data["existingTableName"], link_data["existingColumnName"]
         )
 
         if not new_column_uri or not existing_column_uri:
@@ -1909,13 +2196,16 @@ def process_cross_graph_relationships():
             session_cache.cross_graph_link_status = "failed"
             return False
 
-        predicate = f"http://um-cds/ontologies/databaseontology/fk_refers_to"
+        predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
 
         # Insert the relationship
         insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)
 
         print(
-            f"Created cross-graph relationship: {link_data['newTableName']}.{link_data['newColumnName']} -> {link_data['existingTableName']}.{link_data['existingColumnName']}")
+            f"Created cross-graph relationship: "
+            f"{link_data['newTableName']}.{link_data['newColumnName']} -> "
+            f"{link_data['existingTableName']}.{link_data['existingColumnName']}"
+        )
 
         session_cache.cross_graph_link_status = "success"
         print("Cross-graph relationship processing completed successfully.")
@@ -1944,45 +2234,51 @@ def run_triplifier(properties_file=None):
     Uses gevent subprocess for better integration with gevent worker.
     """
     try:
-        if properties_file == 'triplifierCSV.properties':
-            if not os.access(app.config['UPLOAD_FOLDER'], os.W_OK):
-                return False, "Unable to temporarily save the CSV file: no write access to the application folder."
+        if properties_file == "triplifierCSV.properties":
+            if not os.access(app.config["UPLOAD_FOLDER"], os.W_OK):
+                return (
+                    False,
+                    "Unable to temporarily save the CSV file: no write access to the application folder.",
+                )
 
             # Allow easier debugging outside Docker
-            if len(root_dir) == 0 and child_dir == '.':
+            if len(root_dir) == 0 and child_dir == ".":
                 # Read the properties file and replace the jdbc.url line
-                with open('triplifierCSV.properties', "r") as f:
+                with open("triplifierCSV.properties", "r") as f:
                     lines = f.readlines()
 
                 modified_lines = [
                     line.replace(
                         "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv",
-                        "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv"
-                    ) for line in lines
+                        "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv",
+                    )
+                    for line in lines
                 ]
 
                 # Write the modified content back to the properties file
-                with open('triplifierCSV.properties', "w") as f:
+                with open("triplifierCSV.properties", "w") as f:
                     f.writelines(modified_lines)
 
             for i, csv_data in enumerate(session_cache.csvData):
                 csv_path = session_cache.csvPath[i]
-                csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
+                csv_data.to_csv(
+                    csv_path, index=False, sep=",", decimal=".", encoding="utf-8"
+                )
 
-        # Get JAVA_OPTS from environment or use default
-        java_opts = os.getenv('JAVA_OPTS', '-Xms2g -Xmx8g')
+        # Get JAVA_OPTS from the environment or use default
+        java_opts = os.getenv("JAVA_OPTS", "-Xms2g -Xmx8g")
 
         # Use gevent subprocess for better integration with gevent worker
-        command = f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar -p {root_dir}{child_dir}/{properties_file}"
+        command = (
+            f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar "
+            f"-p {root_dir}{child_dir}/{properties_file}"
+        )
 
         # Use gevent.subprocess.check_output instead of Popen to avoid threading issues
         try:
-            # Create process with gevent subprocess
+            # Create the process with the gevent subprocess
             output = gevent.subprocess.check_output(
-                command,
-                shell=True,
-                stderr=gevent.subprocess.STDOUT,
-                text=True
+                command, shell=True, stderr=gevent.subprocess.STDOUT, text=True
             )
             print(output)
             return_code = 0
@@ -1991,55 +2287,76 @@ def run_triplifier(properties_file=None):
             return_code = e.returncode
             print(f"Process failed with return code {return_code}: {output}")
 
-        if properties_file == 'triplifierCSV.properties':
+        if properties_file == "triplifierCSV.properties":
             # Allow easier debugging outside Docker
-            if len(root_dir) == 0 and child_dir == '.':
+            if len(root_dir) == 0 and child_dir == ".":
                 # Read the properties file and replace the jdbc.url line
-                with open('triplifierCSV.properties', "r") as f:
+                with open("triplifierCSV.properties", "r") as f:
                     lines = f.readlines()
 
                 modified_lines = [
                     line.replace(
                         "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv",
-                        "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv"
-                    ) for line in lines
+                        "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv",
+                    )
+                    for line in lines
                 ]
 
                 # Write the modified content back to the properties file
-                with open('triplifierCSV.properties', "w") as f:
+                with open("triplifierCSV.properties", "w") as f:
                     f.writelines(modified_lines)
 
         if return_code == 0:
             # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
-            if properties_file == 'triplifierCSV.properties' and session_cache.pk_fk_data:
+            if (
+                properties_file == "triplifierCSV.properties"
+                and session_cache.pk_fk_data
+            ):
                 print("Triplifier successful. Starting background PK/FK processing...")
                 gevent.spawn(background_pk_fk_processing)
 
             # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Use gevent spawn
-            if properties_file == 'triplifierCSV.properties' and session_cache.cross_graph_link_data:
-                print("Triplifier successful. Starting background cross-graph processing...")
+            if (
+                properties_file == "triplifierCSV.properties"
+                and session_cache.cross_graph_link_data
+            ):
+                print(
+                    "Triplifier successful. Starting background cross-graph processing..."
+                )
                 gevent.spawn(background_cross_graph_processing)
 
-            return True, Markup("The data you have submitted was triplified successfully and "
-                                "is now available in GraphDB."
-                                "<br>"
-                                "You can now proceed to describe your data, "
-                                "but please note that this requires in-depth knowledge of the data."
-                                "<br><br>"
-                                "<i>In case you do not yet wish to describe your data, "
-                                "or you would like to add more data, "
-                                "please return to the ingest page.</i>"
-                                "<br>"
-                                "<i>You can always return to Flyover to "
-                                "describe the data that is present in GraphDB.</i>")
+            return True, Markup(
+                "The data you have submitted was triplified successfully and "
+                "is now available in GraphDB."
+                "<br>"
+                "You can now proceed to describe your data, "
+                "but please note that this requires in-depth knowledge of the data."
+                "<br><br>"
+                "<i>In case you do not yet wish to describe your data, "
+                "or you would like to add more data, "
+                "please return to the ingest page.</i>"
+                "<br>"
+                "<i>You can always return to Flyover to "
+                "describe the data that is present in GraphDB.</i>"
+            )
         else:
             return False, output
 
     except OSError as e:
-        return False, f'Unexpected error attempting to create the upload folder, error: {e}'
+        return (
+            False,
+            f"Unexpected error attempting to create the upload folder, error: {e}",
+        )
     except Exception as e:
-        return False, f'Unexpected error attempting to run the Triplifier, error: {e}'
+        return False, f"Unexpected error attempting to run the Triplifier, error: {e}"
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    # Use 0.0.0.0 in Docker (safe within container network), 127.0.0.1 for local dev
+    is_docker = os.getenv("FLYOVER_GRAPHDB_URL") is not None
+    default_host = "0.0.0.0" if is_docker else "127.0.0.1"
+
+    host = os.getenv("FLASK_HOST", default_host)
+    port = int(os.getenv("FLASK_PORT", "5000"))
+
+    app.run(host=host, port=port)
