@@ -101,7 +101,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔒 Safety - Dependency Vulnerabilities (HIGH SEVERITY)" >> $GITHUB_STEP_SUMMARY
         echo "Checking dependencies for known security vulnerabilities..."
-        safety check
+        safety check -r triplifier/requirements.txt
         echo "✅ No high-severity vulnerabilities found" >> $GITHUB_STEP_SUMMARY
       continue-on-error: false
 
@@ -110,10 +110,10 @@ jobs:
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔒 Safety - All Vulnerabilities (INFORMATIONAL)" >> $GITHUB_STEP_SUMMARY
-        safety check --json > safety-report.json || true
+        safety check -r triplifier/requirements.txt --json > safety-report.json || true
         if [ -s safety-report.json ] && [ "$(cat safety-report.json)" != "[]" ]; then
           echo "⚠️ **WARNING: Some vulnerabilities detected. Review the report below.**" >> $GITHUB_STEP_SUMMARY
-          safety check || true
+          safety check -r triplifier/requirements.txt || true
         else
           echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
         fi
