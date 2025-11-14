@@ -112,13 +112,14 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔒 Safety - All Vulnerabilities (INFORMATIONAL)" >> $GITHUB_STEP_SUMMARY
         safety check -r triplifier/requirements.txt > safety-report.txt 2>&1 || true
-        # Check for actual vulnerability reports in the output
-        if grep -q "vulnerabilities reported" safety-report.txt && ! grep -q "0 vulnerabilities reported" safety-report.txt; then
+        # Strip ANSI color codes and check for actual vulnerabilities
+        sed 's/\x1b\[[0-9;]*m//g' safety-report.txt > safety-clean.txt
+        if grep -qE "[1-9][0-9]* vulnerabilities reported" safety-clean.txt; then
           echo "⚠️ **WARNING: Some vulnerabilities detected. Review the report below.**" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          cat safety-report.txt >> $GITHUB_STEP_SUMMARY
+          cat safety-clean.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          cat safety-report.txt
+          cat safety-clean.txt
         else
           echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
         fi
