@@ -67,8 +67,9 @@ jobs:
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 📋 Flake8 - Style Warnings" >> $GITHUB_STEP_SUMMARY
-        flake8 . --count --max-complexity=10 --max-line-length=120 --statistics --extend-ignore=C901,E203,E402,W291,W503 > flake8-report.txt || true
-        if [ -s flake8-report.txt ]; then
+        flake8 . --count --max-complexity=10 --max-line-length=120 --statistics --extend-ignore=C901,E203,E402,W291,W503 > flake8-report.txt 2>&1 || true
+        # Check if there are actual issues (more than just the count "0")
+        if [ -s flake8-report.txt ] && grep -qv "^0$" flake8-report.txt && grep -qE "^[^0]|:[0-9]+:[0-9]+:" flake8-report.txt; then
           echo "⚠️ **WARNING: Style issues found. Please review and fix.**" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat flake8-report.txt >> $GITHUB_STEP_SUMMARY
@@ -110,10 +111,14 @@ jobs:
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔒 Safety - All Vulnerabilities (INFORMATIONAL)" >> $GITHUB_STEP_SUMMARY
-        safety check -r triplifier/requirements.txt --json > safety-report.json || true
-        if [ -s safety-report.json ] && [ "$(cat safety-report.json)" != "[]" ]; then
+        safety check -r triplifier/requirements.txt > safety-report.txt 2>&1 || true
+        # Check for actual vulnerability reports in the output
+        if grep -q "vulnerabilities reported" safety-report.txt && ! grep -q "0 vulnerabilities reported" safety-report.txt; then
           echo "⚠️ **WARNING: Some vulnerabilities detected. Review the report below.**" >> $GITHUB_STEP_SUMMARY
-          safety check -r triplifier/requirements.txt || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat safety-report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat safety-report.txt
         else
           echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
         fi
@@ -159,7 +164,7 @@ jobs:
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "---" >> $GITHUB_STEP_SUMMARY
-        echo "## 📊 Python Quality Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Python Quality Summary Lingo" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### ✅ Auto-Applied" >> $GITHUB_STEP_SUMMARY
         echo "- **Black**: Auto-formatting applied and committed" >> $GITHUB_STEP_SUMMARY
