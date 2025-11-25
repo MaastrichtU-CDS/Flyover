@@ -1,15 +1,12 @@
 import os
-import tempfile
 import sqlite3
 import yaml
 import socket
-from typing import Tuple, Union
-from io import StringIO
-from markupsafe import Markup
-
-import pandas as pd
-
+import time
+import gc
 import logging
+from typing import Tuple, Union
+from markupsafe import Markup
 
 logger = logging.getLogger(__name__)
 
@@ -48,24 +45,27 @@ class PythonTriplifierIntegration:
             
             # Create SQLite connection and load CSV data
             conn = sqlite3.connect(temp_db_path)
-            
-            for i, (csv_data, csv_path) in enumerate(zip(csv_data_list, csv_paths)):
-                # Derive table name from CSV filename
-                table_name = os.path.splitext(os.path.basename(csv_path))[0]
-                # Clean table name to be SQLite compatible
-                table_name = table_name.replace('-', '_').replace(' ', '_')
-                
-                # Write DataFrame to SQLite
-                csv_data.to_sql(table_name, conn, if_exists='replace', index=False)
-                logger.info(f"Loaded CSV data into SQLite table: {table_name}")
-            
-            conn.close()
-            
+
+            try:
+                for i, (csv_data, csv_path) in enumerate(zip(csv_data_list, csv_paths)):
+                    # Derive table name from CSV filename
+                    table_name = os.path.splitext(os.path.basename(csv_path))[0]
+                    # Clean table name to be SQLite compatible
+                    table_name = table_name.replace('-', '_').replace(' ', '_')
+
+                    # Write DataFrame to SQLite
+                    csv_data.to_sql(table_name, conn, if_exists='replace', index=False)
+                    logger.info(f"Loaded CSV data into SQLite table: {table_name}")
+
+            finally:
+                conn.close()
+
             # Create YAML configuration
             config = {
                 'db': {
                     'url': f'sqlite:///{temp_db_path}'
-                }
+                },
+                'repo.dataUri': base_uri if base_uri else f'http://{self.hostname}/rdf/data/'
             }
             
             config_path = os.path.join(self.root_dir, self.child_dir, 'triplifier_csv_config.yaml')
@@ -75,7 +75,7 @@ class PythonTriplifierIntegration:
             # Set up file paths - output to root_dir for upload_ontology_then_data compatibility
             ontology_path = os.path.join(self.root_dir, 'ontology.owl')
             output_path = os.path.join(self.root_dir, 'output.ttl')
-            base_uri = base_uri or f"http://{self.hostname}/"
+            base_uri = base_uri or f"http://{self.hostname}/rdf/ontology/"
             
             # Create arguments object for the triplifier
             class Args:
@@ -98,8 +98,15 @@ class PythonTriplifierIntegration:
             if os.path.exists(config_path):
                 os.remove(config_path)
             if os.path.exists(temp_db_path):
-                os.remove(temp_db_path)
-            
+                gc.collect()  # Force garbage collection
+                time.sleep(0.5)  # Wait for file handles to close
+
+                try:
+                    os.remove(temp_db_path)
+                except PermissionError as pe:
+                    logger.warning(f"Could not delete temp database (will be cleaned up on next run): {pe}")
+                    # Not critical - file will be overwritten on next run
+
             return True, "CSV data triplified successfully using Python Triplifier."
             
         except Exception as e:
@@ -137,7 +144,8 @@ class PythonTriplifierIntegration:
             config = {
                 'db': {
                     'url': db_url
-                }
+                },
+                'repo.dataUri': base_uri if base_uri else f'http://{self.hostname}/rdf/data/'
             }
             
             # Add user and password if they're not in the URL
@@ -153,7 +161,7 @@ class PythonTriplifierIntegration:
             # Set up file paths - output to root_dir for upload_ontology_then_data compatibility
             ontology_path = os.path.join(self.root_dir, 'ontology.owl')
             output_path = os.path.join(self.root_dir, 'output.ttl')
-            base_uri = base_uri or f"http://{self.hostname}/"
+            base_uri = base_uri or f"http://{self.hostname}/rdf/ontology/"
             
             # Create arguments object for the triplifier
             class Args:
