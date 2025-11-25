@@ -78,6 +78,16 @@ app.config["UPLOAD_FOLDER"] = os.path.join(child_dir, "static", "files")
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
 
+# Constants for SPARQL queries and regex patterns
+COLUMN_INFO_QUERY = """
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+    SELECT ?uri ?column 
+    WHERE {
+    ?uri dbo:column ?column .
+    }
+"""
+DATABASE_NAME_PATTERN = r".*/(.*?)\."
+
 
 class Cache:
     def __init__(self):
@@ -428,17 +438,9 @@ def ensure_databases_initialized():
         return True
 
     try:
-        # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
-        column_query = """
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            SELECT ?uri ?column 
-            WHERE {
-            ?uri dbo:column ?column .
-            }
-        """
         # Execute the query and read the results into a pandas DataFrame
         column_info = pd.read_csv(
-            StringIO(execute_query(session_cache.repo, column_query))
+            StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY))
         )
 
         # Check if we have valid results
@@ -448,7 +450,7 @@ def ensure_databases_initialized():
 
         # Extract the database name from the URI and add it as a new column in the DataFrame
         column_info["database"] = column_info["uri"].str.extract(
-            r".*/(.*?)\.", expand=False
+            DATABASE_NAME_PATTERN, expand=False
         )
 
         # Get unique values in the 'database' column and store them in the session cache
@@ -488,19 +490,13 @@ def describe_variables():
         it renders the 'describe_variables.html' template
         with the dictionary of dataframes and the global variable names.
     """
-    # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
-    column_query = """
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        SELECT ?uri ?column 
-        WHERE {
-        ?uri dbo:column ?column .
-        }
-    """
     # Execute the query and read the results into a pandas DataFrame
-    column_info = pd.read_csv(StringIO(execute_query(session_cache.repo, column_query)))
+    column_info = pd.read_csv(
+        StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY))
+    )
     # Extract the database name from the URI and add it as a new column in the DataFrame
     column_info["database"] = column_info["uri"].str.extract(
-        r".*/(.*?)\.", expand=False
+        DATABASE_NAME_PATTERN, expand=False
     )
 
     # Drop the 'uri' column from the DataFrame
