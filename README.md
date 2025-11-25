@@ -4,7 +4,7 @@
 <a href="https://opensource.org/licenses/Apache-2.0"><img alt="Licence: Apache 2.0" src="https://img.shields.io/badge/Licence-Apache%202.0-blue.svg"></a>
 <br>
 <a href="https://www.ontotext.com/products/graphdb/"><img alt="Ontotext GraphDB 10.8.5" src="https://img.shields.io/badge/Ontotext%20GraphDB-v10.8.5-002b4f.svg"></a>
-<a href="https://github.com/MaastrichtU-CDS/Triplifier"><img alt="Triplifier version 1.2.0" src="https://img.shields.io/badge/Triplifier%20Version-v1.2.0-purple"></a>
+<a href="https://github.com/MaastrichtU-CDS/Triplifier"><img alt="Triplifier version 2.0.0" src="https://img.shields.io/badge/Triplifier%20Version-v1.2.0-purple"></a>
 <br>
 <a href="https://www.python.org/downloads/"><img alt="Python 3.13+" src="https://img.shields.io/badge/python-3.13+-blue.svg"></a>
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>

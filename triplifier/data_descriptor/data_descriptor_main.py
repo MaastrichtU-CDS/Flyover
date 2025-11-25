@@ -2230,10 +2230,14 @@ def background_cross_graph_processing():
 
 def run_triplifier(properties_file=None):
     """
-    This function runs the triplifier and checks if it ran successfully.
-    Uses gevent subprocess for better integration with gevent worker.
+    This function runs the Python Triplifier and checks if it ran successfully.
+    Wrapper function that calls the actual implementation in python_triplifier_integration.py
     """
     try:
+        from utils.python_triplifier_integration import (
+            run_triplifier as run_triplifier_impl,
+        )
+
         if properties_file == "triplifierCSV.properties":
             if not os.access(app.config["UPLOAD_FOLDER"], os.W_OK):
                 return (
@@ -2241,72 +2245,31 @@ def run_triplifier(properties_file=None):
                     "Unable to temporarily save the CSV file: no write access to the application folder.",
                 )
 
-            # Allow easier debugging outside Docker
-            if len(root_dir) == 0 and child_dir == ".":
-                # Read the properties file and replace the jdbc.url line
-                with open("triplifierCSV.properties", "r") as f:
-                    lines = f.readlines()
-
-                modified_lines = [
-                    line.replace(
-                        "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv",
-                        "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv",
-                    )
-                    for line in lines
-                ]
-
-                # Write the modified content back to the properties file
-                with open("triplifierCSV.properties", "w") as f:
-                    f.writelines(modified_lines)
-
+            # Save CSV data to files for processing
             for i, csv_data in enumerate(session_cache.csvData):
                 csv_path = session_cache.csvPath[i]
                 csv_data.to_csv(
                     csv_path, index=False, sep=",", decimal=".", encoding="utf-8"
                 )
 
-        # Get JAVA_OPTS from the environment or use default
-        java_opts = os.getenv("JAVA_OPTS", "-Xms2g -Xmx8g")
-
-        # Use gevent subprocess for better integration with gevent worker
-        command = (
-            f"java {java_opts} -jar {root_dir}{child_dir}/javaTool/triplifier.jar "
-            f"-p {root_dir}{child_dir}/{properties_file}"
-        )
-
-        # Use gevent.subprocess.check_output instead of Popen to avoid threading issues
-        try:
-            # Create the process with the gevent subprocess
-            output = gevent.subprocess.check_output(
-                command, shell=True, stderr=gevent.subprocess.STDOUT, text=True
+            # Use Python Triplifier for CSV processing
+            success, message = run_triplifier_impl(
+                properties_file=properties_file,
+                root_dir=root_dir,
+                child_dir=child_dir,
+                csv_data_list=session_cache.csvData,
+                csv_paths=session_cache.csvPath,
             )
-            print(output)
-            return_code = 0
-        except gevent.subprocess.CalledProcessError as e:
-            output = e.output
-            return_code = e.returncode
-            print(f"Process failed with return code {return_code}: {output}")
 
-        if properties_file == "triplifierCSV.properties":
-            # Allow easier debugging outside Docker
-            if len(root_dir) == 0 and child_dir == ".":
-                # Read the properties file and replace the jdbc.url line
-                with open("triplifierCSV.properties", "r") as f:
-                    lines = f.readlines()
+        elif properties_file == "triplifierSQL.properties":
+            # Use Python Triplifier for PostgreSQL processing
+            success, message = run_triplifier_impl(
+                properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
+            )
+        else:
+            return False, f"Unknown properties file: {properties_file}"
 
-                modified_lines = [
-                    line.replace(
-                        "jdbc.url = jdbc:relique:csv:./static/files?fileExtension=.csv",
-                        "jdbc.url = jdbc:relique:csv:/app/data_descriptor/static/files?fileExtension=.csv",
-                    )
-                    for line in lines
-                ]
-
-                # Write the modified content back to the properties file
-                with open("triplifierCSV.properties", "w") as f:
-                    f.writelines(modified_lines)
-
-        if return_code == 0:
+        if success:
             # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
             if (
                 properties_file == "triplifierCSV.properties"
@@ -2340,14 +2303,13 @@ def run_triplifier(properties_file=None):
                 "describe the data that is present in GraphDB.</i>"
             )
         else:
-            return False, output
+            return False, message
 
-    except OSError as e:
-        return (
-            False,
-            f"Unexpected error attempting to create the upload folder, error: {e}",
-        )
     except Exception as e:
+        logger.error(f"Unexpected error attempting to run the Python Triplifier: {e}")
+        import traceback
+
+        traceback.print_exc()
         return False, f"Unexpected error attempting to run the Triplifier, error: {e}"
 
 
