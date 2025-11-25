@@ -434,14 +434,13 @@ def ensure_databases_initialized():
         bool: True if databases are available (or were successfully loaded), False otherwise.
     """
     # If databases is already populated with data, no need to fetch again
-    if session_cache.databases is not None and len(session_cache.databases) > 0:
+    if session_cache.databases is not None and len(session_cache.databases):
         return True
 
     try:
         # Execute the query and read the results into a pandas DataFrame
-        column_info = pd.read_csv(
-            StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY))
-        )
+        query_result = execute_query(session_cache.repo, COLUMN_INFO_QUERY)
+        column_info = pd.read_csv(StringIO(query_result))
 
         # Check if we have valid results
         if column_info.empty or "uri" not in column_info.columns:
@@ -453,15 +452,22 @@ def ensure_databases_initialized():
             DATABASE_NAME_PATTERN, expand=False
         )
 
-        # Get unique values in the 'database' column and store them in the session cache
-        unique_values = column_info["database"].unique()
+        # Filter out None/NaN values from the extracted database names
+        unique_values = column_info["database"].dropna().unique()
+        if len(unique_values) == 0:
+            logger.warning("No valid database names could be extracted from URIs")
+            return False
+
         session_cache.databases = unique_values
 
         logger.info(
             f"Initialized session_cache.databases with {len(unique_values)} database(s)"
         )
-        return len(unique_values) > 0
+        return True
 
+    except pd.errors.ParserError as e:
+        logger.error(f"Failed to parse SPARQL query result as CSV: {e}")
+        return False
     except Exception as e:
         logger.error(f"Error initializing databases from RDF store: {e}")
         return False
