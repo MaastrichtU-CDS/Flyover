@@ -694,7 +694,7 @@ def describe_variable_details():
                     else:
                         # Iterate over the categories
                         for category in categories:
-                            # Add a row to the dataframe for each category with a
+                            # Add a row to the dataframe for each category with
                             # the column name as the variable name and the value as the category
                             rows.append({"column": var_name, "value": category})
 
