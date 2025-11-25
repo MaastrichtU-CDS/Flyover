@@ -411,6 +411,60 @@ def describe_landing():
         return render_template("describe_landing.html", message=Markup(message))
 
 
+def ensure_databases_initialized():
+    """
+    Ensure that session_cache.databases is populated from the RDF store.
+
+    This function checks if session_cache.databases is not initialized (None or empty),
+    and if so, fetches the database information from the GraphDB repository. This allows
+    users to navigate directly to the annotation section without first going through
+    the describe step, as long as data exists in the RDF store.
+
+    Returns:
+        bool: True if databases are available (or were successfully loaded), False otherwise.
+    """
+    # If databases is already populated with data, no need to fetch again
+    if session_cache.databases is not None and len(session_cache.databases) > 0:
+        return True
+
+    try:
+        # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
+        column_query = """
+        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            SELECT ?uri ?column 
+            WHERE {
+            ?uri dbo:column ?column .
+            }
+        """
+        # Execute the query and read the results into a pandas DataFrame
+        column_info = pd.read_csv(
+            StringIO(execute_query(session_cache.repo, column_query))
+        )
+
+        # Check if we have valid results
+        if column_info.empty or "uri" not in column_info.columns:
+            logger.warning("No column information found in the RDF store")
+            return False
+
+        # Extract the database name from the URI and add it as a new column in the DataFrame
+        column_info["database"] = column_info["uri"].str.extract(
+            r".*/(.*?)\.", expand=False
+        )
+
+        # Get unique values in the 'database' column and store them in the session cache
+        unique_values = column_info["database"].unique()
+        session_cache.databases = unique_values
+
+        logger.info(
+            f"Initialized session_cache.databases with {len(unique_values)} database(s)"
+        )
+        return len(unique_values) > 0
+
+    except Exception as e:
+        logger.error(f"Error initializing databases from RDF store: {e}")
+        return False
+
+
 @app.route("/describe_variables", methods=["GET", "POST"])
 def describe_variables():
     """
@@ -1064,7 +1118,8 @@ def annotation_review():
         )
         return redirect(url_for("annotation_landing"))
 
-    if not session_cache.databases.any():
+    # Ensure databases are initialized from RDF store if not already populated
+    if not ensure_databases_initialized():
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
 
@@ -1128,7 +1183,8 @@ def start_annotation():
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({"success": False, "error": "No semantic map available"})
 
-        if not session_cache.databases.any():
+        # Ensure databases are initialized from RDF store if not already populated
+        if not ensure_databases_initialized():
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
             )
@@ -1250,7 +1306,8 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for("describe_downloads"))
 
-    if not session_cache.databases.any():
+    # Ensure databases are initialized from RDF store if not already populated
+    if not ensure_databases_initialized():
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
 
