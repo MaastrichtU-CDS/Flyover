@@ -663,20 +663,19 @@
         });
     });
 
-    // Loading animation and progress tracking functions
+    // Loading animation functions
     let loadingInterval;
-    let progressCheckInterval;
 
-    function startLoadingAnimationWithProgress(buttonSelector) {
+    function startLoadingAnimation(buttonSelector) {
         const button = $(buttonSelector);
         const originalText = button.html();
 
         // Disable button to prevent multiple submissions
         button.prop('disabled', true);
 
-        // Start with cookie icon and "Processing..." text
+        // Start with cookie icon
         let isCookieBite = false;
-        button.html('<i class="fas fa-cookie loading-icon"></i> <span class="progress-text">Preparing...</span>');
+        button.html('<i class="fas fa-cookie loading-icon"></i> Processing...');
 
         // Alternate between cookie and cookie-bite every 1 second with smooth transition
         loadingInterval = setInterval(function() {
@@ -704,89 +703,17 @@
 
         }, 1000);
 
-        // Start checking progress every 2 seconds
-        progressCheckInterval = setInterval(function() {
-            checkTriplifierProgress(buttonSelector);
-        }, 2000);
-
         // Store original text for potential restoration
         button.data('original-text', originalText);
-    }
-
-    function checkTriplifierProgress(buttonSelector) {
-        $.ajax({
-            url: '/api/triplifier-progress',
-            method: 'GET',
-            success: function(response) {
-                if (response.status === 'active' && response.progress) {
-                    updateProgressDisplay(buttonSelector, response.progress);
-                } else if (response.status === 'no_task' || response.status === 'not_found') {
-                    // Task not found or not started yet - keep showing generic "Processing..."
-                    updateProgressDisplay(buttonSelector, null);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Error checking progress:', error);
-                // Continue showing loading animation on error
-            }
-        });
-    }
-
-    function updateProgressDisplay(buttonSelector, progress) {
-        const button = $(buttonSelector);
-        const progressText = button.find('.progress-text');
-        
-        if (progress) {
-            const percentage = Math.round(progress.percentage);
-            let statusText = '';
-            
-            switch(progress.status) {
-                case 'preparing_database':
-                    statusText = 'Preparing database...';
-                    break;
-                case 'loading_data':
-                    statusText = `Loading data... ${percentage}%`;
-                    break;
-                case 'triplifying':
-                    statusText = `Triplifying data... ${percentage}%`;
-                    break;
-                case 'completed':
-                    statusText = 'Completed!';
-                    break;
-                case 'failed':
-                    statusText = 'Failed';
-                    break;
-                default:
-                    statusText = `Processing... ${percentage}%`;
-            }
-            
-            // Add row information if available
-            if (progress.current_row && progress.total_rows) {
-                statusText += ` (${progress.current_row.toLocaleString()} / ${progress.total_rows.toLocaleString()} rows)`;
-            }
-            
-            progressText.text(statusText);
-        } else {
-            progressText.text('Processing...');
-        }
-    }
-
-    function startLoadingAnimation(buttonSelector) {
-        // Wrapper for backward compatibility
-        startLoadingAnimationWithProgress(buttonSelector);
     }
 
     function stopLoadingAnimation(buttonSelector) {
         const button = $(buttonSelector);
 
-        // Clear the intervals
+        // Clear the interval
         if (loadingInterval) {
             clearInterval(loadingInterval);
             loadingInterval = null;
-        }
-        if (progressCheckInterval) {
-            clearInterval(progressCheckInterval);
-            progressCheckInterval = null;
         }
 
         // Restore original button state

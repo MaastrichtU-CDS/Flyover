@@ -96,7 +96,6 @@ class Cache:
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
         self.annotation_json_path = None  # Store path to uploaded JSON file
-        self.current_task_id = None  # Store current triplification task ID for progress tracking
 
 
 session_cache = Cache()
@@ -1283,44 +1282,6 @@ def api_check_graph_exists():
         return jsonify({'exists': False, 'error': str(e)})
 
 
-@app.route('/api/triplifier-progress', methods=['GET'])
-def api_triplifier_progress():
-    """
-    API endpoint to check the progress of the current triplification task.
-    
-    Returns:
-        flask.jsonify: JSON response with progress information
-    """
-    try:
-        from utils.progress_tracker import progress_tracker
-        
-        task_id = session_cache.current_task_id
-        if not task_id:
-            return jsonify({
-                'status': 'no_task',
-                'message': 'No active triplification task'
-            })
-        
-        progress = progress_tracker.get_progress(task_id)
-        if progress:
-            return jsonify({
-                'status': 'active',
-                'progress': progress
-            })
-        else:
-            return jsonify({
-                'status': 'not_found',
-                'message': 'Task not found or already completed'
-            })
-            
-    except Exception as e:
-        logger.error(f"Error fetching triplifier progress: {e}")
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-
-
 def check_graph_exists(repo, graph_uri):
     """
     This function checks if a graph exists in a GraphDB repository.
@@ -1995,7 +1956,7 @@ def run_triplifier(properties_file=None):
                 csv_data.to_csv(csv_path, index=False, sep=',', decimal='.', encoding='utf-8')
 
             # Use Python Triplifier for CSV processing
-            success, message, task_id = run_triplifier_impl(
+            success, message = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir,
@@ -2003,17 +1964,13 @@ def run_triplifier(properties_file=None):
                 csv_paths=session_cache.csvPath
             )
             
-            # Store task ID for progress tracking
-            session_cache.current_task_id = task_id
-            
         elif properties_file == 'triplifierSQL.properties':
             # Use Python Triplifier for PostgreSQL processing
-            success, message, task_id = run_triplifier_impl(
+            success, message = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir
             )
-            session_cache.current_task_id = task_id
         else:
             return False, f"Unknown properties file: {properties_file}"
 

@@ -3,7 +3,6 @@ import tempfile
 import sqlite3
 import yaml
 import socket
-import uuid
 from typing import Tuple, Union
 from io import StringIO
 from markupsafe import Markup
@@ -11,8 +10,6 @@ from markupsafe import Markup
 import pandas as pd
 
 import logging
-
-from .progress_tracker import progress_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +22,7 @@ class PythonTriplifierIntegration:
         self.child_dir = child_dir
         self.hostname = socket.gethostname()
     
-    def run_triplifier_csv(self, csv_data_list, csv_paths, base_uri=None, task_id=None):
+    def run_triplifier_csv(self, csv_data_list, csv_paths, base_uri=None):
         """
         Process CSV data using Python Triplifier API directly.
         
@@ -33,20 +30,11 @@ class PythonTriplifierIntegration:
             csv_data_list: List of pandas DataFrames
             csv_paths: List of CSV file paths
             base_uri: Base URI for RDF generation
-            task_id: Optional task ID for progress tracking
             
         Returns:
-            Tuple[bool, str, str]: (success, message/error, task_id)
+            Tuple[bool, str]: (success, message/error)
         """
-        # Generate task ID if not provided
-        if task_id is None:
-            task_id = str(uuid.uuid4())
-        
         try:
-            # Calculate total rows across all tables for progress tracking
-            total_rows = sum(len(df) for df in csv_data_list)
-            progress_tracker.start_task(task_id, "all_tables", total_rows)
-            
             # Import triplifier modules
             from pythonTool.main_app import run_triplifier
             
@@ -58,13 +46,9 @@ class PythonTriplifierIntegration:
             if os.path.exists(temp_db_path):
                 os.remove(temp_db_path)
             
-            # Update progress: database preparation
-            progress_tracker.update_progress(task_id, 0, 'preparing_database')
-            
             # Create SQLite connection and load CSV data
             conn = sqlite3.connect(temp_db_path)
             
-            rows_loaded = 0
             for i, (csv_data, csv_path) in enumerate(zip(csv_data_list, csv_paths)):
                 # Derive table name from CSV filename
                 table_name = os.path.splitext(os.path.basename(csv_path))[0]
@@ -74,10 +58,6 @@ class PythonTriplifierIntegration:
                 # Write DataFrame to SQLite
                 csv_data.to_sql(table_name, conn, if_exists='replace', index=False)
                 logger.info(f"Loaded CSV data into SQLite table: {table_name}")
-                
-                # Update progress after loading each table
-                rows_loaded += len(csv_data)
-                progress_tracker.update_progress(task_id, rows_loaded, 'loading_data')
             
             conn.close()
             
@@ -97,9 +77,6 @@ class PythonTriplifierIntegration:
             output_path = os.path.join(self.root_dir, 'output.ttl')
             base_uri = base_uri or f"http://{self.hostname}/"
             
-            # Update progress: starting triplification
-            progress_tracker.update_progress(task_id, total_rows, 'triplifying')
-            
             # Create arguments object for the triplifier
             class Args:
                 def __init__(self):
@@ -117,26 +94,19 @@ class PythonTriplifierIntegration:
             logger.info(f"Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
             
-            # Update progress: completed
-            progress_tracker.complete_task(task_id, success=True)
-            
             # Clean up temporary files
             if os.path.exists(config_path):
                 os.remove(config_path)
             if os.path.exists(temp_db_path):
                 os.remove(temp_db_path)
             
-            return True, "CSV data triplified successfully using Python Triplifier.", task_id
+            return True, "CSV data triplified successfully using Python Triplifier."
             
         except Exception as e:
             logger.error(f"Error in CSV triplification: {e}")
             import traceback
             traceback.print_exc()
-            
-            # Mark task as failed
-            progress_tracker.complete_task(task_id, success=False)
-            
-            return False, f"Error processing CSV data: {str(e)}", task_id
+            return False, f"Error processing CSV data: {str(e)}"
     
     def run_triplifier_sql(self, base_uri=None, db_url=None, db_user=None, db_password=None):
         """
@@ -215,7 +185,7 @@ class PythonTriplifierIntegration:
             return False, f"Error processing PostgreSQL data: {str(e)}"
 
 
-def run_triplifier(properties_file=None, root_dir='', child_dir='.', csv_data_list=None, csv_paths=None, task_id=None):
+def run_triplifier(properties_file=None, root_dir='', child_dir='.', csv_data_list=None, csv_paths=None):
     """
     Run the Python Triplifier for CSV or SQL data.
     This function is the main entry point for triplification.
@@ -226,10 +196,9 @@ def run_triplifier(properties_file=None, root_dir='', child_dir='.', csv_data_li
         child_dir: Child directory for file operations
         csv_data_list: List of pandas DataFrames (for CSV mode)
         csv_paths: List of CSV file paths (for CSV mode)
-        task_id: Optional task ID for progress tracking
         
     Returns:
-        Tuple[bool, Union[str, Markup], str]: (success, message, task_id)
+        Tuple[bool, Union[str, Markup]]: (success, message)
     """
     try:
         # Initialize Python Triplifier integration
@@ -237,24 +206,21 @@ def run_triplifier(properties_file=None, root_dir='', child_dir='.', csv_data_li
         
         if properties_file == 'triplifierCSV.properties':
             # Use Python Triplifier for CSV processing
-            success, message, task_id = triplifier.run_triplifier_csv(
+            success, message = triplifier.run_triplifier_csv(
                 csv_data_list, 
-                csv_paths,
-                task_id=task_id
+                csv_paths
             )
             
         elif properties_file == 'triplifierSQL.properties':
             # Use Python Triplifier for PostgreSQL processing
             success, message = triplifier.run_triplifier_sql()
-            # For SQL, we return None as task_id since tracking isn't implemented yet
-            task_id = None
         else:
-            return False, f"Unknown properties file: {properties_file}", None
+            return False, f"Unknown properties file: {properties_file}"
 
-        return success, message, task_id
+        return success, message
             
     except Exception as e:
         logger.error(f'Unexpected error attempting to run the Python Triplifier: {e}')
         import traceback
         traceback.print_exc()
-        return False, f'Unexpected error attempting to run the Triplifier, error: {e}', None
+        return False, f'Unexpected error attempting to run the Triplifier, error: {e}'
