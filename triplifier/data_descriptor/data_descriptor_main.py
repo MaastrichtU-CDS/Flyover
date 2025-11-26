@@ -1743,6 +1743,18 @@ def formulate_local_semantic_map(database):
     # Process local definitions and update the existing semantic map
     used_global_variables = {}  # Track usage for duplicate handling
 
+    # Check if descriptive_info exists and has data for this database
+    # If not, return the modified semantic map with all local_definitions as null
+    if (
+        session_cache.descriptive_info is None
+        or database not in session_cache.descriptive_info
+    ):
+        logger.warning(
+            f"No descriptive info available for database '{database}'. "
+            "Returning semantic map without local mappings."
+        )
+        return modified_semantic_map
+
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         # Skip if no description is provided (empty field in UI)
         if "description" not in local_value or not local_value["description"]:
