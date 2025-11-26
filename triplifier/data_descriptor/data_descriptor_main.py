@@ -1749,7 +1749,7 @@ def formulate_local_semantic_map(database):
         session_cache.descriptive_info is None
         or database not in session_cache.descriptive_info
     ):
-        logger.warning(
+        logger.info(
             f"No descriptive info available for database '{database}'. "
             "Returning semantic map without local mappings."
         )
