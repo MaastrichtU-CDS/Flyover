@@ -1141,23 +1141,60 @@ def annotation_review():
 
         # Process variables from the local semantic map
         for var_name, var_data in variable_info.items():
-            # Create a copy of the variable data
-            var_copy = dict(var_data)
+            # Create a deep copy of the variable data to avoid reference issues
+            var_copy = copy.deepcopy(var_data)
 
             # Validate required fields
             if not var_copy.get("predicate"):
-                logger.warning(f"Variable {var_name} in {database} missing predicate")
+                unannotated_variables.append(
+                    f"{database}.{var_name} (missing predicate)"
+                )
                 continue
 
             if not var_copy.get("class"):
-                logger.warning(f"Variable {var_name} in {database} missing class")
+                unannotated_variables.append(f"{database}.{var_name} (missing class)")
                 continue
 
-            # Check if this variable has a local definition (from the local semantic map)
-            if var_copy.get("local_definition"):
+            # Check if this variable has a local definition
+            # Accept local definitions from either the formulated map OR the uploaded JSON
+            has_local_def = var_copy.get("local_definition") is not None
+
+            # If no local definition from formulated map, check the original uploaded JSON
+            # This handles the case when user uploads JSON directly for annotation
+            if not has_local_def and isinstance(
+                session_cache.global_semantic_map, dict
+            ):
+                original_var_info = session_cache.global_semantic_map.get(
+                    "variable_info", {}
+                ).get(var_name, {})
+                if original_var_info.get("local_definition"):
+                    var_copy["local_definition"] = original_var_info["local_definition"]
+                    has_local_def = True
+
+                    # Also copy value mappings if they exist in the original JSON
+                    # Only copy if the current var_copy doesn't have local_term values already
+                    if "value_mapping" in original_var_info:
+                        # Check if formulated map already has local_term values (from describe step)
+                        current_value_mapping = var_copy.get("value_mapping", {})
+                        has_local_terms = False
+                        if current_value_mapping.get("terms"):
+                            for term_data in current_value_mapping["terms"].values():
+                                if term_data.get("local_term") is not None:
+                                    has_local_terms = True
+                                    break
+
+                        # Only overwrite if no local_terms exist yet
+                        if not has_local_terms:
+                            var_copy["value_mapping"] = original_var_info[
+                                "value_mapping"
+                            ]
+
+            if has_local_def:
                 annotation_data[database][var_name] = var_copy
             else:
-                unannotated_variables.append(f"{database}.{var_name}")
+                unannotated_variables.append(
+                    f"{database}.{var_name} (no local definition)"
+                )
 
     # Check if we have any variables to annotate
     total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
@@ -1222,11 +1259,52 @@ def start_annotation():
             )
 
             # Filter only variables that have local definitions
-            annotated_variables = {
-                var_name: var_data
-                for var_name, var_data in variable_info.items()
-                if var_data.get("local_definition")
-            }
+            # Check both the formulated map and the original uploaded JSON
+            annotated_variables = {}
+            for var_name, var_data in variable_info.items():
+                # Create a deep copy of the variable data to avoid reference issues
+                var_copy = copy.deepcopy(var_data)
+
+                # Check if this variable has a local definition
+                has_local_def = var_copy.get("local_definition") is not None
+
+                # If no local definition from formulated map, check the original uploaded JSON
+                # This handles the case when user uploads JSON directly for annotation
+                if not has_local_def and isinstance(
+                    session_cache.global_semantic_map, dict
+                ):
+                    original_var_info = session_cache.global_semantic_map.get(
+                        "variable_info", {}
+                    ).get(var_name, {})
+                    if original_var_info.get("local_definition"):
+                        var_copy["local_definition"] = original_var_info[
+                            "local_definition"
+                        ]
+                        has_local_def = True
+
+                        # Also copy value mappings if they exist in the original JSON
+                        # Only copy if the current var_copy doesn't have local_term values already
+                        if "value_mapping" in original_var_info:
+                            # Check if formulated map already has local_term values (from describe step)
+                            current_value_mapping = var_copy.get("value_mapping", {})
+                            has_local_terms = False
+                            if current_value_mapping.get("terms"):
+                                for term_data in current_value_mapping[
+                                    "terms"
+                                ].values():
+                                    if term_data.get("local_term") is not None:
+                                        has_local_terms = True
+                                        break
+
+                            # Only overwrite if no local_terms exist yet
+                            if not has_local_terms:
+                                var_copy["value_mapping"] = original_var_info[
+                                    "value_mapping"
+                                ]
+
+                # Only add variables with local definitions
+                if has_local_def:
+                    annotated_variables[var_name] = var_copy
 
             if not annotated_variables:
                 logger.info(
@@ -1326,11 +1404,46 @@ def annotation_verify():
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Check if this variable has a local definition (from the local semantic map)
-            if var_data.get("local_definition"):
+            # Create a deep copy of the variable data to avoid reference issues
+            var_copy = copy.deepcopy(var_data)
+
+            # Check if this variable has a local definition
+            has_local_def = var_copy.get("local_definition") is not None
+
+            # If no local definition from formulated map, check the original uploaded JSON
+            # This handles the case when user uploads JSON directly for annotation
+            if not has_local_def and isinstance(
+                session_cache.global_semantic_map, dict
+            ):
+                original_var_info = session_cache.global_semantic_map.get(
+                    "variable_info", {}
+                ).get(var_name, {})
+                if original_var_info.get("local_definition"):
+                    var_copy["local_definition"] = original_var_info["local_definition"]
+                    has_local_def = True
+
+                    # Also copy value mappings if they exist in the original JSON
+                    # Only copy if the current var_copy doesn't have local_term values already
+                    if "value_mapping" in original_var_info:
+                        # Check if formulated map already has local_term values (from describe step)
+                        current_value_mapping = var_copy.get("value_mapping", {})
+                        has_local_terms = False
+                        if current_value_mapping.get("terms"):
+                            for term_data in current_value_mapping["terms"].values():
+                                if term_data.get("local_term") is not None:
+                                    has_local_terms = True
+                                    break
+
+                        # Only overwrite if no local_terms exist yet
+                        if not has_local_terms:
+                            var_copy["value_mapping"] = original_var_info[
+                                "value_mapping"
+                            ]
+
+            if has_local_def:
                 annotated_variables.append(full_var_name)
                 variable_data[full_var_name] = {
-                    **var_data,
+                    **var_copy,
                     "database": database,
                     "prefixes": local_semantic_map.get("prefixes", ""),
                 }
@@ -1393,9 +1506,39 @@ def verify_annotation_ask():
         if not var_data:
             return jsonify({"success": False, "error": "Variable not found"})
 
-        # Get variable information
-        local_definition = var_data.get("local_definition")
-        var_class = var_data.get("class")
+        # Create a deep copy of the variable data to avoid reference issues
+        var_copy = copy.deepcopy(var_data)
+
+        # Check if this variable has a local definition
+        local_definition = var_copy.get("local_definition")
+
+        # If no local definition from formulated map, check the original uploaded JSON
+        # This handles the case when user uploads JSON directly for annotation
+        if not local_definition and isinstance(session_cache.global_semantic_map, dict):
+            original_var_info = session_cache.global_semantic_map.get(
+                "variable_info", {}
+            ).get(var_name, {})
+            if original_var_info.get("local_definition"):
+                local_definition = original_var_info["local_definition"]
+                var_copy["local_definition"] = local_definition
+
+                # Also copy value mappings if they exist in the original JSON
+                # Only copy if the current var_copy doesn't have local_term values already
+                if "value_mapping" in original_var_info:
+                    # Check if formulated map already has local_term values (from describe step)
+                    current_value_mapping = var_copy.get("value_mapping", {})
+                    has_local_terms = False
+                    if current_value_mapping.get("terms"):
+                        for term_data in current_value_mapping["terms"].values():
+                            if term_data.get("local_term") is not None:
+                                has_local_terms = True
+                                break
+
+                    # Only overwrite if no local_terms exist yet
+                    if not has_local_terms:
+                        var_copy["value_mapping"] = original_var_info["value_mapping"]
+
+        var_class = var_copy.get("class")
 
         if not local_definition:
             return jsonify(
@@ -1429,7 +1572,7 @@ def verify_annotation_ask():
         )
 
         # Check for value mappings and add target_class subClassOf statements
-        value_mapping = var_data.get("value_mapping", {})
+        value_mapping = var_copy.get("value_mapping", {})
         if value_mapping and value_mapping.get("terms"):
             for term, term_info in value_mapping["terms"].items():
                 if term_info.get("local_term") and term_info.get("target_class"):
@@ -1748,6 +1891,7 @@ def formulate_local_semantic_map(database):
     if (
         session_cache.descriptive_info is None
         or database not in session_cache.descriptive_info
+        or session_cache.descriptive_info[database] is None
     ):
         logger.info(
             f"No descriptive info available for database '{database}'. "
