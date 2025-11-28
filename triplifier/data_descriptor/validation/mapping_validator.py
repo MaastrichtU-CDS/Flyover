@@ -475,8 +475,12 @@ class MappingValidator:
 
                     # Check localMappings keys against schema terms
                     local_mappings = col_data.get("localMappings", {})
-                    if local_mappings and col_key in schema_vars:
-                        schema_var = data["schema"]["variables"].get(col_key, {})
+                    # Extract variable key from mapsTo to check schema terms
+                    var_key_match = re.match(r"schema:variable/(.+)$", maps_to) if maps_to else None
+                    var_key = var_key_match.group(1) if var_key_match else None
+
+                    if local_mappings and var_key and var_key in schema_vars:
+                        schema_var = data["schema"]["variables"].get(var_key, {})
                         schema_terms = set()
                         if (
                             "valueMapping" in schema_var

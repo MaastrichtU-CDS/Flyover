@@ -690,7 +690,7 @@ Examples:
     # Determine output path
     output_path = args.output
     if not output_path:
-        output_path = args.input_file.with_suffix(". converted.jsonld")
+        output_path = args.input_file.with_suffix(".converted.jsonld")
 
     # Write output
     try:
