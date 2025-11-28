@@ -13,6 +13,7 @@ Examples:
     python validate_mapping.py my_mapping.jsonld --schema custom_schema.json
     python validate_mapping.py --check-references my_mapping.jsonld
 """
+
 import argparse
 import json
 import re
@@ -52,9 +53,11 @@ DEFAULT_SCHEMA_PATH = Path(__file__).parent / "mapping_schema. json"
 # Data Classes
 # ============================================================================
 
+
 @dataclass
 class ValidationIssue:
     """Represents a single validation issue with context."""
+
     severity: str  # "error", "warning", "info"
     path: str
     message: str
@@ -67,6 +70,7 @@ class ValidationIssue:
 @dataclass
 class ValidationResult:
     """Complete validation result with all issues."""
+
     is_valid: bool
     file_path: str
     issues: list = field(default_factory=list)
@@ -78,6 +82,7 @@ class ValidationResult:
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 def colorize(text: str, color: str, bold: bool = False) -> str:
     """Apply ANSI color codes to text."""
@@ -185,6 +190,7 @@ def get_field_documentation(path: list) -> str:
 # Validation Logic
 # ============================================================================
 
+
 def load_json_file(file_path: Path) -> tuple[Optional[dict], Optional[str]]:
     """Load and parse a JSON file, returning (data, error_message)."""
     try:
@@ -252,40 +258,45 @@ def check_cross_references(data: dict) -> list[ValidationIssue]:
                         var_name = match.group(1)
                         if var_name not in schema_vars:
                             path = f"databases. {db_key}. tables.{table_key}.columns.{col_key}. mapsTo"
-                            issues.append(ValidationIssue(
-                                severity="warning",
-                                path=path,
-                                message=f"References undefined schema variable: '{var_name}'",
-                                value=maps_to,
-                                suggestion=f"Available variables: {', '.join(sorted(schema_vars)[:5])}{'...' if len(schema_vars) > 5 else ''}"
-                            ))
+                            issues.append(
+                                ValidationIssue(
+                                    severity="warning",
+                                    path=path,
+                                    message=f"References undefined schema variable: '{var_name}'",
+                                    value=maps_to,
+                                    suggestion=f"Available variables: {', '.join(sorted(schema_vars)[:5])}{'...' if len(schema_vars) > 5 else ''}",
+                                )
+                            )
 
                 # Check localMappings keys against schema terms
                 local_mappings = col_data.get("localMappings", {})
                 if local_mappings and col_key in schema_vars:
                     schema_var = data["schema"]["variables"].get(col_key, {})
                     schema_terms = set()
-                    if "valueMapping" in schema_var and "terms" in schema_var["valueMapping"]:
+                    if (
+                        "valueMapping" in schema_var
+                        and "terms" in schema_var["valueMapping"]
+                    ):
                         schema_terms = set(schema_var["valueMapping"]["terms"].keys())
 
                     if schema_terms:
                         for local_term in local_mappings.keys():
                             if local_term not in schema_terms:
                                 path = f"databases.{db_key}.tables.{table_key}.columns.{col_key}.localMappings.{local_term}"
-                                issues.append(ValidationIssue(
-                                    severity="info",
-                                    path=path,
-                                    message=f"Local mapping key '{local_term}' not in schema terms",
-                                    suggestion=f"Schema terms: {', '.join(sorted(schema_terms)[:5])}{'...' if len(schema_terms) > 5 else ''}"
-                                ))
+                                issues.append(
+                                    ValidationIssue(
+                                        severity="info",
+                                        path=path,
+                                        message=f"Local mapping key '{local_term}' not in schema terms",
+                                        suggestion=f"Schema terms: {', '.join(sorted(schema_terms)[:5])}{'...' if len(schema_terms) > 5 else ''}",
+                                    )
+                                )
 
     return issues
 
 
 def validate_mapping(
-        mapping_data: dict,
-        schema_data: dict,
-        check_references: bool = True
+    mapping_data: dict, schema_data: dict, check_references: bool = True
 ) -> ValidationResult:
     """Validate a mapping file against the schema."""
     result = ValidationResult(
@@ -298,14 +309,16 @@ def validate_mapping(
             "tables": 0,
             "columns": 0,
             "variables": 0,
-        }
+        },
     )
 
     # Create validator
     validator = Draft7Validator(schema_data)
 
     # Collect all errors
-    errors = sorted(validator.iter_errors(mapping_data), key=lambda e: str(list(e.absolute_path)))
+    errors = sorted(
+        validator.iter_errors(mapping_data), key=lambda e: str(list(e.absolute_path))
+    )
 
     for error in errors:
         path = format_path(list(error.absolute_path))
@@ -316,14 +329,24 @@ def validate_mapping(
             severity="error",
             path=path,
             message=error.message,
-            value=error.instance if not isinstance(error.instance, (dict, list)) else None,
-            expected=error.validator_value if error.validator in ["type", "enum", "pattern"] else None,
+            value=(
+                error.instance if not isinstance(error.instance, (dict, list)) else None
+            ),
+            expected=(
+                error.validator_value
+                if error.validator in ["type", "enum", "pattern"]
+                else None
+            ),
             suggestion=suggestion,
             schema_path=format_path(list(error.absolute_schema_path)),
         )
 
         if field_doc:
-            issue.suggestion = f"{suggestion}\n         Field: {field_doc}" if suggestion else f"Field: {field_doc}"
+            issue.suggestion = (
+                f"{suggestion}\n         Field: {field_doc}"
+                if suggestion
+                else f"Field: {field_doc}"
+            )
 
         result.issues.append(issue)
         result.is_valid = False
@@ -360,11 +383,12 @@ def validate_mapping(
 # Output Formatting
 # ============================================================================
 
+
 def print_header(text: str) -> None:
     """Print a formatted header."""
     print(f"\n{colorize('═' * 70, 'blue')}")
     print(colorize(f"  {text}", "blue", bold=True))
-    print(colorize('═' * 70, 'blue'))
+    print(colorize("═" * 70, "blue"))
 
 
 def print_issue(issue: ValidationIssue, index: int) -> None:
@@ -390,7 +414,9 @@ def print_issue(issue: ValidationIssue, index: int) -> None:
 
     # Current value
     if issue.value is not None:
-        print(f"  {colorize('Value:', 'bold')}    {colorize(get_value_preview(issue.value), 'yellow')}")
+        print(
+            f"  {colorize('Value:', 'bold')}    {colorize(get_value_preview(issue.value), 'yellow')}"
+        )
 
     # Expected value
     if issue.expected is not None:
@@ -399,7 +425,9 @@ def print_issue(issue: ValidationIssue, index: int) -> None:
             expected_str = ", ".join(repr(v) for v in expected_str[:5])
             if len(issue.expected) > 5:
                 expected_str += ", ..."
-        print(f"  {colorize('Expected:', 'bold')} {colorize(str(expected_str), 'green')}")
+        print(
+            f"  {colorize('Expected:', 'bold')} {colorize(str(expected_str), 'green')}"
+        )
 
     # Suggestion
     if issue.suggestion:
@@ -413,12 +441,15 @@ def print_result(result: ValidationResult) -> None:
 
     if result.is_valid and not result.warnings:
         print_header("Validation Successful")
-        print(f"\n{colorize('✓', 'green', bold=True)} {colorize('All checks passed! ', 'green', bold=True)}")
+        print(
+            f"\n{colorize('✓', 'green', bold=True)} {colorize('All checks passed! ', 'green', bold=True)}"
+        )
     else:
         if result.issues:
             print_header("Validation Failed")
             print(
-                f"\n{colorize('Found', 'red')} {colorize(str(len(result.issues)), 'red', bold=True)} {colorize('error(s)', 'red')}")
+                f"\n{colorize('Found', 'red')} {colorize(str(len(result.issues)), 'red', bold=True)} {colorize('error(s)', 'red')}"
+            )
 
             for i, issue in enumerate(result.issues, 1):
                 print_issue(issue, i)
@@ -427,14 +458,17 @@ def print_result(result: ValidationResult) -> None:
             if result.issues:
                 print()
             print(
-                f"\n{colorize('⚠', 'yellow', bold=True)} {colorize(f'Found {len(result.warnings)} warning(s)', 'yellow')}")
+                f"\n{colorize('⚠', 'yellow', bold=True)} {colorize(f'Found {len(result.warnings)} warning(s)', 'yellow')}"
+            )
 
             for i, warning in enumerate(result.warnings, 1):
                 print_issue(warning, i)
 
     # Print info items
     if result.info:
-        print(f"\n{colorize('ℹ', 'cyan')} {colorize(f'Additional notes ({len(result.info)}):', 'cyan')}")
+        print(
+            f"\n{colorize('ℹ', 'cyan')} {colorize(f'Additional notes ({len(result.info)}):', 'cyan')}"
+        )
         for info in result.info[:5]:  # Limit to first 5
             print(f"  • {info.path}: {info.message}")
         if len(result.info) > 5:
@@ -451,16 +485,23 @@ def print_result(result: ValidationResult) -> None:
     print()
     if result.is_valid:
         if result.warnings:
-            print(f"{colorize('⚠', 'yellow', bold=True)} {colorize('Valid with warnings', 'yellow', bold=True)}")
+            print(
+                f"{colorize('⚠', 'yellow', bold=True)} {colorize('Valid with warnings', 'yellow', bold=True)}"
+            )
         else:
-            print(f"{colorize('✓', 'green', bold=True)} {colorize('Valid', 'green', bold=True)}")
+            print(
+                f"{colorize('✓', 'green', bold=True)} {colorize('Valid', 'green', bold=True)}"
+            )
     else:
-        print(f"{colorize('✗', 'red', bold=True)} {colorize('Invalid', 'red', bold=True)}")
+        print(
+            f"{colorize('✗', 'red', bold=True)} {colorize('Invalid', 'red', bold=True)}"
+        )
 
 
 # ============================================================================
 # Main Entry Point
 # ============================================================================
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -472,39 +513,33 @@ Examples:
   %(prog)s my_mapping.jsonld --schema custom_schema.json
   %(prog)s my_mapping.jsonld --no-references
   %(prog)s my_mapping. jsonld --quiet
-        """
+        """,
     )
 
     parser.add_argument(
-        "mapping_file",
-        type=Path,
-        help="Path to the mapping file to validate"
+        "mapping_file", type=Path, help="Path to the mapping file to validate"
     )
 
     parser.add_argument(
-        "-s", "--schema",
+        "-s",
+        "--schema",
         type=Path,
         default=None,
-        help="Path to the JSON Schema file (default: mapping_schema.json in same directory)"
+        help="Path to the JSON Schema file (default: mapping_schema.json in same directory)",
     )
 
     parser.add_argument(
-        "--no-references",
-        action="store_true",
-        help="Skip cross-reference validation"
+        "--no-references", action="store_true", help="Skip cross-reference validation"
     )
 
     parser.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
-        help="Only output errors, no decorative formatting"
+        help="Only output errors, no decorative formatting",
     )
 
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results as JSON"
-    )
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
 
     args = parser.parse_args()
 
@@ -524,7 +559,9 @@ Examples:
 
     if not schema_path or not schema_path.exists():
         print(colorize("ERROR: Schema file not found.", "red", bold=True))
-        print("Please provide a schema file with --schema or place 'mapping_schema. json' in the current directory.")
+        print(
+            "Please provide a schema file with --schema or place 'mapping_schema. json' in the current directory."
+        )
         sys.exit(1)
 
     # Load schema
@@ -551,9 +588,7 @@ Examples:
 
     # Validate
     result = validate_mapping(
-        mapping_data,
-        schema_data,
-        check_references=not args.no_references
+        mapping_data, schema_data, check_references=not args.no_references
     )
     result.file_path = str(args.mapping_file)
 

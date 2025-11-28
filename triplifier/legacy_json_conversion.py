@@ -58,21 +58,21 @@ DEFAULT_CONTEXT = {
     "mesh": "http://id.nlm.nih. gov/mesh/",
     "roo": "http://www.cancerdata.org/roo/",
     "xsd": "http://www.w3.org/2001/XMLSchema#",
-
     "schema": "schema/",
     "mapping": "mapping/",
-
     "variables": {"@id": "schema:hasVariable", "@container": "@index"},
-    "schemaReconstruction": {"@id": "schema:hasSchemaReconstruction", "@container": "@list"},
+    "schemaReconstruction": {
+        "@id": "schema:hasSchemaReconstruction",
+        "@container": "@list",
+    },
     "valueMapping": {"@id": "schema:hasValueMapping"},
     "terms": {"@id": "schema:hasTerms", "@container": "@index"},
     "targetClass": {"@id": "schema:mapsToClass", "@type": "@id"},
-
     "databases": {"@id": "mapping:hasDatabase", "@container": "@index"},
     "tables": {"@id": "mapping:hasTable", "@container": "@index"},
     "columns": {"@id": "mapping:hasColumn", "@container": "@index"},
     "localMappings": {"@id": "mapping:hasLocalMappings", "@container": "@index"},
-    "mapsTo": {"@id": "mapping:mapsToVariable", "@type": "@id"}
+    "mapsTo": {"@id": "mapping:mapsToVariable", "@type": "@id"},
 }
 
 # Mapping from old data_type values to new @type values
@@ -97,6 +97,7 @@ RECONSTRUCTION_TYPE_MAP = {
 # Helper Functions
 # ============================================================================
 
+
 def colorise(text: str, color: str, bold: bool = False) -> str:
     """Apply ANSI color codes to text."""
     if not sys.stdout.isatty():
@@ -109,7 +110,7 @@ def print_header(text: str) -> None:
     """Print a formatted header."""
     print(f"\n{colorise('═' * 70, 'blue')}")
     print(colorise(f"  {text}", "blue", bold=True))
-    print(colorise('═' * 70, 'blue'))
+    print(colorise("═" * 70, "blue"))
 
 
 def print_success(text: str) -> None:
@@ -135,11 +136,11 @@ def print_info(text: str) -> None:
 def sanitise_key(key: str) -> str:
     """Sanitise a string to be used as a JSON key/identifier."""
     # Replace spaces and special chars with underscores
-    sanitised = re.sub(r'[^a-zA-Z0-9_]', '_', key)
+    sanitised = re.sub(r"[^a-zA-Z0-9_]", "_", key)
     # Remove consecutive underscores
-    sanitised = re.sub(r'_+', '_', sanitised)
+    sanitised = re.sub(r"_+", "_", sanitised)
     # Remove leading/trailing underscores
-    sanitised = sanitised.strip('_')
+    sanitised = sanitised.strip("_")
     return sanitised.lower() if sanitised else "unnamed"
 
 
@@ -166,9 +167,11 @@ def extract_table_name(legacy_data: dict) -> str:
 # Conversion Logic
 # ============================================================================
 
+
 @dataclass
 class ConversionResult:
     """Result of a conversion operation."""
+
     success: bool
     output: Optional[dict] = None
     errors: list = field(default_factory=list)
@@ -261,7 +264,9 @@ def convert_variable_to_schema(var_key: str, legacy_var: dict) -> dict:
     if "schema_reconstruction" in legacy_var:
         reconstruction = legacy_var["schema_reconstruction"]
         if isinstance(reconstruction, list) and reconstruction:
-            new_var["schemaReconstruction"] = convert_schema_reconstruction(reconstruction)
+            new_var["schemaReconstruction"] = convert_schema_reconstruction(
+                reconstruction
+            )
 
     # Convert value_mapping if present
     if "value_mapping" in legacy_var:
@@ -291,12 +296,12 @@ def convert_variable_to_column_mapping(var_key: str, legacy_var: dict) -> dict:
 
 
 def convert_legacy_mapping(
-        legacy_data: dict,
-        mapping_name: Optional[str] = None,
-        mapping_id: Optional[str] = None,
-        schema_id: Optional[str] = None,
-        database_name: Optional[str] = None,
-        table_name: Optional[str] = None,
+    legacy_data: dict,
+    mapping_name: Optional[str] = None,
+    mapping_id: Optional[str] = None,
+    schema_id: Optional[str] = None,
+    database_name: Optional[str] = None,
+    table_name: Optional[str] = None,
 ) -> ConversionResult:
     """
     Convert a legacy Flyover mapping to the new JSON-LD format.
@@ -342,7 +347,9 @@ def convert_legacy_mapping(
         mapping_name = f"Converted Mapping - {db_name}"
 
     if not mapping_id:
-        mapping_id = f"https://flyover.maastrichtuniversity.nl/mapping/{sanitise_key(db_name)}"
+        mapping_id = (
+            f"https://flyover.maastrichtuniversity.nl/mapping/{sanitise_key(db_name)}"
+        )
 
     if not schema_id:
         schema_id = "schema:clinical-oncology/v1"
@@ -368,7 +375,9 @@ def convert_legacy_mapping(
 
     for var_key, var_data in variable_info.items():
         if not isinstance(var_data, dict):
-            result.warnings.append(f"Skipping invalid variable '{var_key}': not an object")
+            result.warnings.append(
+                f"Skipping invalid variable '{var_key}': not an object"
+            )
             continue
 
         # Convert to schema variable
@@ -378,10 +387,14 @@ def convert_legacy_mapping(
             result.statistics["variables_converted"] += 1
 
             if "schemaReconstruction" in schema_var:
-                result.statistics["schema_reconstructions"] += len(schema_var["schemaReconstruction"])
+                result.statistics["schema_reconstructions"] += len(
+                    schema_var["schemaReconstruction"]
+                )
 
             if "valueMapping" in schema_var:
-                result.statistics["value_mappings"] += len(schema_var["valueMapping"].get("terms", {}))
+                result.statistics["value_mappings"] += len(
+                    schema_var["valueMapping"].get("terms", {})
+                )
         except Exception as e:
             result.warnings.append(f"Error converting schema for '{var_key}': {e}")
             continue
@@ -394,7 +407,9 @@ def convert_legacy_mapping(
             if "localMappings" in col_mapping:
                 result.statistics["local_mappings"] += len(col_mapping["localMappings"])
         except Exception as e:
-            result.warnings.append(f"Error converting column mapping for '{var_key}': {e}")
+            result.warnings.append(
+                f"Error converting column mapping for '{var_key}': {e}"
+            )
 
     if not schema_variables:
         result.errors.append("No variables could be converted")
@@ -411,15 +426,15 @@ def convert_legacy_mapping(
             "mesh": "http://id.nlm. nih.gov/mesh/",
             "sio": "http://semanticscience. org/resource/",
             "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
-            "roo": "http://www.cancerdata. org/roo/"
+            "roo": "http://www.cancerdata. org/roo/",
         },
-        "variables": schema_variables
+        "variables": schema_variables,
     }
 
     # Extract prefixes from legacy format if available
     if "prefixes" in legacy_data and isinstance(legacy_data["prefixes"], str):
         # Parse PREFIX declarations
-        prefix_pattern = r'PREFIX\s+(\w+):\s*<([^>]+)>'
+        prefix_pattern = r"PREFIX\s+(\w+):\s*<([^>]+)>"
         for match in re.finditer(prefix_pattern, legacy_data["prefixes"]):
             prefix_name = match.group(1)
             prefix_uri = match.group(2)
@@ -439,10 +454,14 @@ def convert_legacy_mapping(
                     "@id": f"mapping:table/{tbl_name}",
                     "@type": "mapping:Table",
                     "sourceFile": source_file if source_file else "",
-                    "description": f"Table converted from {source_file}" if source_file else "Converted table",
-                    "columns": column_mappings
+                    "description": (
+                        f"Table converted from {source_file}"
+                        if source_file
+                        else "Converted table"
+                    ),
+                    "columns": column_mappings,
                 }
-            }
+            },
         }
     }
 
@@ -455,7 +474,10 @@ def convert_legacy_mapping(
 # Validation (Optional)
 # ============================================================================
 
-def validate_output(converted_data: dict, schema_path: Optional[Path] = None) -> tuple[bool, list]:
+
+def validate_output(
+    converted_data: dict, schema_path: Optional[Path] = None
+) -> tuple[bool, list]:
     """
     Validate the converted output against the JSON-LD schema.
 
@@ -502,6 +524,7 @@ def validate_output(converted_data: dict, schema_path: Optional[Path] = None) ->
 # Main Entry Point
 # ============================================================================
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Convert legacy Flyover mapping files to JSON-LD format",
@@ -512,80 +535,65 @@ Examples:
   %(prog)s old_mapping.json -o new_mapping. jsonld
   %(prog)s old_mapping.json --database-name hospital_a --table-name patients
   %(prog)s old_mapping. json --dry-run --validate
-        """
+        """,
     )
 
     parser.add_argument(
-        "input_file",
+        "input_file", type=Path, help="Path to the legacy mapping file (JSON)"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
         type=Path,
-        help="Path to the legacy mapping file (JSON)"
+        help="Output file path (default: <input>_converted.jsonld)",
     )
 
     parser.add_argument(
-        "-o", "--output",
-        type=Path,
-        help="Output file path (default: <input>_converted.jsonld)"
+        "--database-name", type=str, help="Name for the database in the new format"
     )
 
     parser.add_argument(
-        "--database-name",
-        type=str,
-        help="Name for the database in the new format"
+        "--table-name", type=str, help="Name for the table in the new format"
     )
 
     parser.add_argument(
-        "--table-name",
-        type=str,
-        help="Name for the table in the new format"
+        "--mapping-name", type=str, help="Human-readable name for the mapping"
     )
 
-    parser.add_argument(
-        "--mapping-name",
-        type=str,
-        help="Human-readable name for the mapping"
-    )
+    parser.add_argument("--mapping-id", type=str, help="URI identifier for the mapping")
 
-    parser.add_argument(
-        "--mapping-id",
-        type=str,
-        help="URI identifier for the mapping"
-    )
-
-    parser.add_argument(
-        "--schema-id",
-        type=str,
-        help="URI identifier for the schema"
-    )
+    parser.add_argument("--schema-id", type=str, help="URI identifier for the schema")
 
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show conversion result without writing file"
+        help="Show conversion result without writing file",
     )
 
     parser.add_argument(
         "--validate",
         action="store_true",
-        help="Validate output against schema after conversion"
+        help="Validate output against schema after conversion",
     )
 
     parser.add_argument(
         "--schema-file",
         type=Path,
-        help="Path to validation schema file (for --validate)"
+        help="Path to validation schema file (for --validate)",
     )
 
     parser.add_argument(
         "--pretty",
         action="store_true",
         default=True,
-        help="Pretty-print JSON output (default: True)"
+        help="Pretty-print JSON output (default: True)",
     )
 
     parser.add_argument(
         "--compact",
         action="store_true",
-        help="Output compact JSON (overrides --pretty)"
+        help="Output compact JSON (overrides --pretty)",
     )
 
     args = parser.parse_args()
