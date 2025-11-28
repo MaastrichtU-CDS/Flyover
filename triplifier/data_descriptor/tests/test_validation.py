@@ -33,7 +33,7 @@ class TestValidationIssue(unittest.TestCase):
             path="schema.variables.test",
             message="Missing required field",
             value=None,
-            suggestion="Add the required field"
+            suggestion="Add the required field",
         )
         self.assertEqual(issue.severity, "error")
         self.assertEqual(issue.path, "schema.variables.test")
@@ -45,7 +45,7 @@ class TestValidationIssue(unittest.TestCase):
             severity="warning",
             path="databases.db1.tables.t1.mapsTo",
             message="References undefined variable",
-            value="schema:variable/undefined"
+            value="schema:variable/undefined",
         )
         self.assertEqual(issue.severity, "warning")
         self.assertIn("undefined", issue.message)
@@ -67,11 +67,9 @@ class TestValidationResult(unittest.TestCase):
             is_valid=False,
             issues=[
                 ValidationIssue(
-                    severity="error",
-                    path="@context",
-                    message="Missing @context"
+                    severity="error", path="@context", message="Missing @context"
                 )
-            ]
+            ],
         )
         self.assertFalse(result.is_valid)
         self.assertEqual(len(result.issues), 1)
@@ -86,9 +84,7 @@ class TestMappingValidator(unittest.TestCase):
 
         # Minimal valid mapping
         self.valid_mapping = {
-            "@context": {
-                "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"
-            },
+            "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
             "@type": "mapping:DataMapping",
             "name": "Test Mapping",
             "schema": {
@@ -98,9 +94,9 @@ class TestMappingValidator(unittest.TestCase):
                         "@type": "schema:IdentifierVariable",
                         "dataType": "identifier",
                         "predicate": "sio:SIO_000673",
-                        "class": "ncit:C25364"
+                        "class": "ncit:C25364",
                     }
-                }
+                },
             },
             "databases": {
                 "test_db": {
@@ -112,13 +108,13 @@ class TestMappingValidator(unittest.TestCase):
                             "columns": {
                                 "identifier": {
                                     "mapsTo": "schema:variable/identifier",
-                                    "localColumn": "id"
+                                    "localColumn": "id",
                                 }
-                            }
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
 
     def test_validate_valid_mapping(self):
@@ -129,11 +125,17 @@ class TestMappingValidator(unittest.TestCase):
 
     def test_validate_missing_context(self):
         """Test validation fails when @context is missing."""
-        invalid_mapping = {k: v for k, v in self.valid_mapping.items() if k != "@context"}
+        invalid_mapping = {
+            k: v for k, v in self.valid_mapping.items() if k != "@context"
+        }
         result = self.validator.validate(invalid_mapping)
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("@context" in issue.message or "@context" in issue.path
-                           for issue in result.issues))
+        self.assertTrue(
+            any(
+                "@context" in issue.message or "@context" in issue.path
+                for issue in result.issues
+            )
+        )
 
     def test_validate_missing_schema(self):
         """Test validation fails when schema is missing."""
@@ -143,7 +145,9 @@ class TestMappingValidator(unittest.TestCase):
 
     def test_validate_missing_databases(self):
         """Test validation fails when databases is missing."""
-        invalid_mapping = {k: v for k, v in self.valid_mapping.items() if k != "databases"}
+        invalid_mapping = {
+            k: v for k, v in self.valid_mapping.items() if k != "databases"
+        }
         result = self.validator.validate(invalid_mapping)
         self.assertFalse(result.is_valid)
 
@@ -166,10 +170,9 @@ class TestMappingValidator(unittest.TestCase):
     def test_cross_reference_warning(self):
         """Test warning for mapsTo referencing undefined variable."""
         mapping = dict(self.valid_mapping)
-        mapping["databases"]["test_db"]["tables"]["test_table"]["columns"]["bad_ref"] = {
-            "mapsTo": "schema:variable/undefined_var",
-            "localColumn": "bad_col"
-        }
+        mapping["databases"]["test_db"]["tables"]["test_table"]["columns"][
+            "bad_ref"
+        ] = {"mapsTo": "schema:variable/undefined_var", "localColumn": "bad_col"}
         result = self.validator.validate(mapping, check_references=True)
         # Should still be valid but have warnings
         self.assertTrue(len(result.warnings) > 0 or not result.is_valid)
@@ -178,12 +181,13 @@ class TestMappingValidator(unittest.TestCase):
         """Test validation returns error for non-existent file."""
         result = self.validator.validate_file("/non/existent/file.jsonld")
         self.assertFalse(result.is_valid)
-        self.assertTrue(any("not found" in issue.message.lower()
-                           for issue in result.issues))
+        self.assertTrue(
+            any("not found" in issue.message.lower() for issue in result.issues)
+        )
 
     def test_validate_file_json_syntax_error(self):
         """Test validation handles JSON syntax errors."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonld', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonld", delete=False) as f:
             f.write('{"invalid": json,}')
             f.flush()
             temp_path = f.name
@@ -191,8 +195,12 @@ class TestMappingValidator(unittest.TestCase):
         try:
             result = self.validator.validate_file(temp_path)
             self.assertFalse(result.is_valid)
-            self.assertTrue(any("syntax" in issue.message.lower() or "json" in issue.message.lower()
-                               for issue in result.issues))
+            self.assertTrue(
+                any(
+                    "syntax" in issue.message.lower() or "json" in issue.message.lower()
+                    for issue in result.issues
+                )
+            )
         finally:
             os.unlink(temp_path)
 
@@ -205,16 +213,16 @@ class TestMappingValidator(unittest.TestCase):
                     severity="error",
                     path="@context",
                     message="Missing @context",
-                    suggestion="Add a @context object"
+                    suggestion="Add a @context object",
                 )
             ],
             warnings=[
                 ValidationIssue(
                     severity="warning",
                     path="databases.db.tables.t.columns.c.mapsTo",
-                    message="References undefined variable"
+                    message="References undefined variable",
                 )
-            ]
+            ],
         )
 
         formatted = self.validator.format_errors_for_ui(result)
@@ -245,7 +253,9 @@ class TestMappingValidatorWithRealFiles(unittest.TestCase):
         file_path = self.example_dir / "centre_a_english" / "mapping_centre_a.jsonld"
         if file_path.exists():
             result = self.validator.validate_file(file_path)
-            self.assertTrue(result.is_valid, f"Errors: {[i.message for i in result.issues]}")
+            self.assertTrue(
+                result.is_valid, f"Errors: {[i.message for i in result.issues]}"
+            )
             self.assertEqual(result.statistics["variables"], 11)
 
     def test_validate_centre_b_mapping(self):
@@ -253,14 +263,18 @@ class TestMappingValidatorWithRealFiles(unittest.TestCase):
         file_path = self.example_dir / "centre_b_dutch" / "mapping_centre_b.jsonld"
         if file_path.exists():
             result = self.validator.validate_file(file_path)
-            self.assertTrue(result.is_valid, f"Errors: {[i.message for i in result.issues]}")
+            self.assertTrue(
+                result.is_valid, f"Errors: {[i.message for i in result.issues]}"
+            )
 
     def test_validate_template_mapping(self):
         """Test validation of template mapping."""
         file_path = self.example_dir / "mapping_template.jsonld"
         if file_path.exists():
             result = self.validator.validate_file(file_path)
-            self.assertTrue(result.is_valid, f"Errors: {[i.message for i in result.issues]}")
+            self.assertTrue(
+                result.is_valid, f"Errors: {[i.message for i in result.issues]}"
+            )
 
 
 if __name__ == "__main__":

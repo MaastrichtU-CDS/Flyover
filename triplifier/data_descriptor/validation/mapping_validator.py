@@ -215,7 +215,9 @@ class MappingValidator:
         self.schema_path = self._resolve_schema_path(schema_path)
         self.schema_data = self._load_schema()
 
-    def _resolve_schema_path(self, custom_path: Optional[Union[str, Path]] = None) -> Path:
+    def _resolve_schema_path(
+        self, custom_path: Optional[Union[str, Path]] = None
+    ) -> Path:
         """Resolve the schema path, using default if not provided."""
         if custom_path:
             return Path(custom_path)
@@ -246,9 +248,7 @@ class MappingValidator:
             return None
 
     def validate(
-        self,
-        mapping_data: dict,
-        check_references: bool = True
+        self, mapping_data: dict, check_references: bool = True
     ) -> ValidationResult:
         """
         Validate a mapping dictionary against the JSON-LD schema.
@@ -301,7 +301,7 @@ class MappingValidator:
         validator = Draft7Validator(self.schema_data)
         errors = sorted(
             validator.iter_errors(mapping_data),
-            key=lambda e: str(list(e.absolute_path))
+            key=lambda e: str(list(e.absolute_path)),
         )
 
         for error in errors:
@@ -356,9 +356,7 @@ class MappingValidator:
         return result
 
     def validate_file(
-        self,
-        file_path: Union[str, Path],
-        check_references: bool = True
+        self, file_path: Union[str, Path], check_references: bool = True
     ) -> ValidationResult:
         """
         Validate a JSON-LD mapping file.
@@ -476,7 +474,9 @@ class MappingValidator:
                     # Check localMappings keys against schema terms
                     local_mappings = col_data.get("localMappings", {})
                     # Extract variable key from mapsTo to check schema terms
-                    var_key_match = re.match(r"schema:variable/(.+)$", maps_to) if maps_to else None
+                    var_key_match = (
+                        re.match(r"schema:variable/(.+)$", maps_to) if maps_to else None
+                    )
                     var_key = var_key_match.group(1) if var_key_match else None
 
                     if local_mappings and var_key and var_key in schema_vars:
@@ -486,7 +486,9 @@ class MappingValidator:
                             "valueMapping" in schema_var
                             and "terms" in schema_var["valueMapping"]
                         ):
-                            schema_terms = set(schema_var["valueMapping"]["terms"].keys())
+                            schema_terms = set(
+                                schema_var["valueMapping"]["terms"].keys()
+                            )
 
                         if schema_terms:
                             for local_term in local_mappings.keys():
@@ -538,21 +540,33 @@ class MappingValidator:
         errors = []
 
         for issue in result.issues:
-            errors.append({
-                "path": issue.path,
-                "severity": issue.severity,
-                "message": issue.message,
-                "suggestion": issue.suggestion,
-                "value": _get_value_preview(issue.value) if issue.value is not None else None,
-            })
+            errors.append(
+                {
+                    "path": issue.path,
+                    "severity": issue.severity,
+                    "message": issue.message,
+                    "suggestion": issue.suggestion,
+                    "value": (
+                        _get_value_preview(issue.value)
+                        if issue.value is not None
+                        else None
+                    ),
+                }
+            )
 
         for warning in result.warnings:
-            errors.append({
-                "path": warning.path,
-                "severity": warning.severity,
-                "message": warning.message,
-                "suggestion": warning.suggestion,
-                "value": _get_value_preview(warning.value) if warning.value is not None else None,
-            })
+            errors.append(
+                {
+                    "path": warning.path,
+                    "severity": warning.severity,
+                    "message": warning.message,
+                    "suggestion": warning.suggestion,
+                    "value": (
+                        _get_value_preview(warning.value)
+                        if warning.value is not None
+                        else None
+                    ),
+                }
+            )
 
         return errors

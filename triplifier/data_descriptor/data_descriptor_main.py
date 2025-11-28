@@ -60,6 +60,7 @@ from annotation_helper.src.miscellaneous import add_annotation
 try:
     from validation import MappingValidator
     from loaders import JSONLDMapping
+
     JSONLD_SUPPORT = True
 except ImportError:
     JSONLD_SUPPORT = False
@@ -186,7 +187,9 @@ def upload_semantic_map():
     if not allowed_file(semantic_map_file.filename, {"json", "jsonld"}):
         return (
             jsonify(
-                {"error": "Please upload a valid .json or .jsonld file for the semantic map"}
+                {
+                    "error": "Please upload a valid .json or .jsonld file for the semantic map"
+                }
             ),
             400,
         )
@@ -198,15 +201,22 @@ def upload_semantic_map():
         try:
             mapping_data = json.loads(file_content)
         except json.JSONDecodeError as e:
-            return jsonify({
-                "error": f"Invalid JSON syntax at line {e.lineno}, column {e.colno}: {e.msg}",
-                "validation_errors": [{
-                    "path": f"(line {e.lineno}, column {e.colno})",
-                    "severity": "error",
-                    "message": f"JSON syntax error: {e.msg}",
-                    "suggestion": "Check for missing commas, brackets, or quotes"
-                }]
-            }), 400
+            return (
+                jsonify(
+                    {
+                        "error": f"Invalid JSON syntax at line {e.lineno}, column {e.colno}: {e.msg}",
+                        "validation_errors": [
+                            {
+                                "path": f"(line {e.lineno}, column {e.colno})",
+                                "severity": "error",
+                                "message": f"JSON syntax error: {e.msg}",
+                                "suggestion": "Check for missing commas, brackets, or quotes",
+                            }
+                        ],
+                    }
+                ),
+                400,
+            )
 
         # Detect format: JSON-LD has @context, legacy has variable_info
         is_jsonld_format = "@context" in mapping_data and "schema" in mapping_data
@@ -218,10 +228,15 @@ def upload_semantic_map():
 
             if not result.is_valid:
                 errors = validator.format_errors_for_ui(result)
-                return jsonify({
-                    "error": "Mapping file validation failed",
-                    "validation_errors": errors
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "error": "Mapping file validation failed",
+                            "validation_errors": errors,
+                        }
+                    ),
+                    400,
+                )
 
             # Load the JSON-LD mapping
             jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
@@ -234,47 +249,55 @@ def upload_semantic_map():
             if jsonld_mapping.databases:
                 session_cache.databases = list(jsonld_mapping.databases.keys())
 
-            return jsonify({
-                "success": True,
-                "message": "JSON-LD semantic mapping uploaded and validated successfully",
-                "format": "jsonld",
-                "statistics": result.statistics
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "JSON-LD semantic mapping uploaded and validated successfully",
+                    "format": "jsonld",
+                    "statistics": result.statistics,
+                }
+            )
 
         else:
             # Legacy JSON format validation
             if not isinstance(mapping_data.get("variable_info"), dict):
                 return (
-                    jsonify({
-                        "error": "Invalid semantic map format. "
-                        'Please ensure the JSON file contains a "variable_info" '
-                        "field with semantic variable definitions, or use the new JSON-LD format.",
-                        "validation_errors": [{
-                            "path": "(root)",
-                            "severity": "error",
-                            "message": "Missing required field 'variable_info'",
-                            "suggestion": "Add a 'variable_info' object with variable definitions, "
-                            "or use the JSON-LD format with '@context' and 'schema' fields"
-                        }]
-                    }),
+                    jsonify(
+                        {
+                            "error": "Invalid semantic map format. "
+                            'Please ensure the JSON file contains a "variable_info" '
+                            "field with semantic variable definitions, or use the new JSON-LD format.",
+                            "validation_errors": [
+                                {
+                                    "path": "(root)",
+                                    "severity": "error",
+                                    "message": "Missing required field 'variable_info'",
+                                    "suggestion": "Add a 'variable_info' object with variable definitions, "
+                                    "or use the JSON-LD format with '@context' and 'schema' fields",
+                                }
+                            ],
+                        }
+                    ),
                     400,
                 )
 
             session_cache.global_semantic_map = mapping_data
             session_cache.jsonld_mapping = None  # Clear any previous JSON-LD mapping
 
-            return jsonify({
-                "success": True,
-                "message": "Legacy semantic map uploaded successfully and ready for semantic mapping",
-                "format": "legacy"
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "Legacy semantic map uploaded successfully and ready for semantic mapping",
+                    "format": "legacy",
+                }
+            )
 
     except Exception as e:
         logger.error(f"Error processing semantic map upload: {str(e)}")
         return (
-            jsonify({
-                "error": f"Unexpected error processing the semantic map: {str(e)}"
-            }),
+            jsonify(
+                {"error": f"Unexpected error processing the semantic map: {str(e)}"}
+            ),
             400,
         )
 

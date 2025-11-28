@@ -516,7 +516,7 @@ class JSONLDMapping:
         self,
         variable_key: str,
         database_key: Optional[str] = None,
-        table_key: Optional[str] = None
+        table_key: Optional[str] = None,
     ) -> Optional[ColumnMapping]:
         """
         Get the column mapping for a specific variable.
@@ -556,7 +556,7 @@ class JSONLDMapping:
         variable_key: str,
         schema_term: str,
         database_key: Optional[str] = None,
-        table_key: Optional[str] = None
+        table_key: Optional[str] = None,
     ) -> Optional[str]:
         """
         Get the local term for a schema term.
@@ -595,7 +595,7 @@ class JSONLDMapping:
         self,
         variable_key: str,
         database_key: Optional[str] = None,
-        table_key: Optional[str] = None
+        table_key: Optional[str] = None,
     ) -> Optional[str]:
         """
         Get the local column name for a variable.
@@ -641,9 +641,7 @@ class JSONLDMapping:
                     key: var.to_dict() for key, var in self.variables.items()
                 },
             },
-            "databases": {
-                key: db.to_dict() for key, db in self.databases.items()
-            },
+            "databases": {key: db.to_dict() for key, db in self.databases.items()},
         }
 
     def to_legacy_format(self, database_key: Optional[str] = None) -> dict:
@@ -690,11 +688,14 @@ class JSONLDMapping:
 
                             # Merge local_terms into value_mapping
                             if "value_mapping" in var_dict and column.local_mappings:
-                                for term_key, local_value in column.local_mappings.items():
+                                for (
+                                    term_key,
+                                    local_value,
+                                ) in column.local_mappings.items():
                                     if term_key in var_dict["value_mapping"]["terms"]:
-                                        var_dict["value_mapping"]["terms"][term_key]["local_term"] = (
-                                            local_value if local_value else None
-                                        )
+                                        var_dict["value_mapping"]["terms"][term_key][
+                                            "local_term"
+                                        ] = (local_value if local_value else None)
                             break
 
             variable_info[var_key] = var_dict

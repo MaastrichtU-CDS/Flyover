@@ -40,7 +40,7 @@ class TestSchemaReconstructionNode(unittest.TestCase):
             "predicate": "sio:SIO_000235",
             "class": "mesh:D000091569",
             "classLabel": "demographicClass",
-            "aestheticLabel": "Demographic"
+            "aestheticLabel": "Demographic",
         }
         node = SchemaReconstructionNode.from_dict(data)
         self.assertEqual(node.node_type, "schema:ClassNode")
@@ -55,7 +55,7 @@ class TestSchemaReconstructionNode(unittest.TestCase):
             "predicate": "sio:SIO_000221",
             "class": "ncit:C29848",
             "nodeLabel": "years",
-            "aestheticLabel": "Years"
+            "aestheticLabel": "Years",
         }
         node = SchemaReconstructionNode.from_dict(data)
         self.assertEqual(node.node_type, "schema:UnitNode")
@@ -67,7 +67,7 @@ class TestSchemaReconstructionNode(unittest.TestCase):
             node_type="schema:ClassNode",
             predicate="sio:SIO_000235",
             class_uri="mesh:D000091569",
-            class_label="testLabel"
+            class_label="testLabel",
         )
         result = node.to_dict()
         self.assertEqual(result["@type"], "schema:ClassNode")
@@ -80,7 +80,7 @@ class TestSchemaReconstructionNode(unittest.TestCase):
             node_type="schema:ClassNode",
             predicate="sio:SIO_000235",
             class_uri="mesh:D000091569",
-            class_label="testLabel"
+            class_label="testLabel",
         )
         result = node.to_legacy_dict()
         self.assertEqual(result["type"], "class")
@@ -97,7 +97,7 @@ class TestSchemaVariable(unittest.TestCase):
             "@type": "schema:IdentifierVariable",
             "dataType": "identifier",
             "predicate": "sio:SIO_000673",
-            "class": "ncit:C25364"
+            "class": "ncit:C25364",
         }
         var = SchemaVariable.from_dict("identifier", data)
         self.assertEqual(var.key, "identifier")
@@ -115,9 +115,9 @@ class TestSchemaVariable(unittest.TestCase):
             "valueMapping": {
                 "terms": {
                     "male": {"targetClass": "ncit:C20197"},
-                    "female": {"targetClass": "ncit:C16576"}
+                    "female": {"targetClass": "ncit:C16576"},
                 }
-            }
+            },
         }
         var = SchemaVariable.from_dict("biological_sex", data)
         self.assertEqual(len(var.value_mappings), 2)
@@ -135,9 +135,9 @@ class TestSchemaVariable(unittest.TestCase):
                 {
                     "@type": "schema:ClassNode",
                     "predicate": "sio:SIO_000235",
-                    "class": "mesh:D000091569"
+                    "class": "mesh:D000091569",
                 }
-            ]
+            ],
         }
         var = SchemaVariable.from_dict("test_var", data)
         self.assertEqual(len(var.schema_reconstruction), 1)
@@ -152,7 +152,7 @@ class TestSchemaVariable(unittest.TestCase):
             data_type="categorical",
             predicate="sio:SIO_000008",
             class_uri="ncit:C28421",
-            value_mappings={"male": "ncit:C20197"}
+            value_mappings={"male": "ncit:C20197"},
         )
         result = var.to_legacy_dict()
         self.assertEqual(result["data_type"], "categorical")
@@ -160,8 +160,7 @@ class TestSchemaVariable(unittest.TestCase):
         self.assertEqual(result["class"], "ncit:C28421")
         self.assertIn("value_mapping", result)
         self.assertEqual(
-            result["value_mapping"]["terms"]["male"]["target_class"],
-            "ncit:C20197"
+            result["value_mapping"]["terms"]["male"]["target_class"], "ncit:C20197"
         )
 
 
@@ -170,10 +169,7 @@ class TestColumnMapping(unittest.TestCase):
 
     def test_from_dict_simple(self):
         """Test creating a simple column mapping."""
-        data = {
-            "mapsTo": "schema:variable/identifier",
-            "localColumn": "id"
-        }
+        data = {"mapsTo": "schema:variable/identifier", "localColumn": "id"}
         col = ColumnMapping.from_dict("identifier", data)
         self.assertEqual(col.maps_to, "schema:variable/identifier")
         self.assertEqual(col.local_column, "id")
@@ -183,10 +179,7 @@ class TestColumnMapping(unittest.TestCase):
         data = {
             "mapsTo": "schema:variable/biological_sex",
             "localColumn": "sex",
-            "localMappings": {
-                "male": "M",
-                "female": "F"
-            }
+            "localMappings": {"male": "M", "female": "F"},
         }
         col = ColumnMapping.from_dict("biological_sex", data)
         self.assertEqual(col.local_mappings["male"], "M")
@@ -195,9 +188,7 @@ class TestColumnMapping(unittest.TestCase):
     def test_get_variable_key(self):
         """Test extracting variable key from mapsTo."""
         col = ColumnMapping(
-            key="test",
-            maps_to="schema:variable/biological_sex",
-            local_column="sex"
+            key="test", maps_to="schema:variable/biological_sex", local_column="sex"
         )
         self.assertEqual(col.get_variable_key(), "biological_sex")
 
@@ -208,9 +199,7 @@ class TestJSONLDMapping(unittest.TestCase):
     def setUp(self):
         """Set up test mapping data."""
         self.mapping_data = {
-            "@context": {
-                "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"
-            },
+            "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
             "@id": "mapping:test",
             "@type": "mapping:DataMapping",
             "name": "Test Mapping",
@@ -223,16 +212,14 @@ class TestJSONLDMapping(unittest.TestCase):
                 "@type": "schema:SemanticSchema",
                 "name": "Test Schema",
                 "version": "1.0.0",
-                "prefixes": {
-                    "sio": "http://semanticscience.org/resource/"
-                },
+                "prefixes": {"sio": "http://semanticscience.org/resource/"},
                 "variables": {
                     "identifier": {
                         "@id": "schema:variable/identifier",
                         "@type": "schema:IdentifierVariable",
                         "dataType": "identifier",
                         "predicate": "sio:SIO_000673",
-                        "class": "ncit:C25364"
+                        "class": "ncit:C25364",
                     },
                     "biological_sex": {
                         "@id": "schema:variable/biological_sex",
@@ -243,11 +230,11 @@ class TestJSONLDMapping(unittest.TestCase):
                         "valueMapping": {
                             "terms": {
                                 "male": {"targetClass": "ncit:C20197"},
-                                "female": {"targetClass": "ncit:C16576"}
+                                "female": {"targetClass": "ncit:C16576"},
                             }
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             },
             "databases": {
                 "test_db": {
@@ -264,21 +251,18 @@ class TestJSONLDMapping(unittest.TestCase):
                             "columns": {
                                 "identifier": {
                                     "mapsTo": "schema:variable/identifier",
-                                    "localColumn": "id"
+                                    "localColumn": "id",
                                 },
                                 "biological_sex": {
                                     "mapsTo": "schema:variable/biological_sex",
                                     "localColumn": "sex",
-                                    "localMappings": {
-                                        "male": "M",
-                                        "female": "F"
-                                    }
-                                }
-                            }
+                                    "localMappings": {"male": "M", "female": "F"},
+                                },
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
         }
 
     def test_from_dict(self):
@@ -358,7 +342,7 @@ class TestJSONLDMapping(unittest.TestCase):
 
     def test_from_file(self):
         """Test loading from file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonld', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonld", delete=False) as f:
             json.dump(self.mapping_data, f)
             temp_path = f.name
 
@@ -372,14 +356,14 @@ class TestJSONLDMapping(unittest.TestCase):
         """Test saving to file."""
         mapping = JSONLDMapping.from_dict(self.mapping_data)
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonld', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonld", delete=False) as f:
             temp_path = f.name
 
         try:
             mapping.save(temp_path)
 
             # Verify saved file
-            with open(temp_path, 'r') as f:
+            with open(temp_path, "r") as f:
                 saved_data = json.load(f)
 
             self.assertEqual(saved_data["name"], "Test Mapping")
