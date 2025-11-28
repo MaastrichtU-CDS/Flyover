@@ -52,10 +52,10 @@ COLORS = {
 
 # Default JSON-LD context for new format
 DEFAULT_CONTEXT = {
-    "@vocab": "https://flyover.maastrichtuniversity.nl/",
+    "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/",
     "sio": "http://semanticscience.org/resource/",
-    "ncit": "http://ncicb.nci. nih.gov/xml/owl/EVS/Thesaurus.owl#",
-    "mesh": "http://id.nlm.nih. gov/mesh/",
+    "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+    "mesh": "http://id.nlm.nih.gov/mesh/",
     "roo": "http://www.cancerdata.org/roo/",
     "xsd": "http://www.w3.org/2001/XMLSchema#",
     "schema": "schema/",
@@ -423,10 +423,10 @@ def convert_legacy_mapping(
         "version": "1.0.0",
         "description": "Semantic schema extracted from legacy mapping",
         "prefixes": {
-            "mesh": "http://id.nlm. nih.gov/mesh/",
-            "sio": "http://semanticscience. org/resource/",
+            "mesh": "http://id.nlm.nih.gov/mesh/",
+            "sio": "http://semanticscience.org/resource/",
             "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
-            "roo": "http://www.cancerdata. org/roo/",
+            "roo": "http://www.cancerdata.org/roo/",
         },
         "variables": schema_variables,
     }

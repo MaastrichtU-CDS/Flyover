@@ -35,7 +35,7 @@
     "@type": {
       "description": "Type of this document",
       "type": "string",
-      "pattern": "^(mapping:)? DataMapping$"
+      "pattern": "^(mapping:)?DataMapping$"
     },
 
     "name": {
@@ -288,7 +288,7 @@
         },
         "@type": {
           "type": "string",
-          "pattern": "^(mapping:)? Table$"
+          "pattern": "^(mapping:)?Table$"
         },
         "sourceFile": {
           "description": "Source file name or path",
@@ -317,7 +317,7 @@
         "mapsTo": {
           "description": "Reference to schema variable (e.g., schema:variable/biological_sex)",
           "type": "string",
-          "pattern": "^schema:variable/. +$"
+          "pattern": "^schema:variable/.+$"
         },
         "localColumn": {
           "description": "Local column name in source data",
