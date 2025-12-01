@@ -54,6 +54,12 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
+from utils.session_helpers import (
+    fetch_databases_from_rdf,
+    process_variable_for_annotation,
+    COLUMN_INFO_QUERY,
+    DATABASE_NAME_PATTERN,
+)
 from annotation_helper.src.miscellaneous import add_annotation
 
 app = Flask(__name__)
@@ -77,16 +83,6 @@ app.secret_key = "secret_key"
 app.config["UPLOAD_FOLDER"] = os.path.join(child_dir, "static", "files")
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
     os.makedirs(app.config["UPLOAD_FOLDER"])
-
-# Constants for SPARQL queries and regex patterns
-COLUMN_INFO_QUERY = """
-PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    SELECT ?uri ?column 
-    WHERE {
-    ?uri dbo:column ?column .
-    }
-"""
-DATABASE_NAME_PATTERN = r".*/(.*?)\."
 
 
 class Cache:
@@ -425,52 +421,24 @@ def ensure_databases_initialized():
     """
     Ensure that session_cache.databases is populated from the RDF store.
 
-    This function checks if session_cache.databases is not initialized (None or empty),
-    and if so, fetches the database information from the GraphDB repository. This allows
-    users to navigate directly to the annotation section without first going through
-    the describe step, as long as data exists in the RDF store.
+    This function always fetches the database information from the GraphDB repository
+    to ensure we have the latest data. This prevents stale database names from being
+    used if users delete/modify data in GraphDB between UI interactions.
+
+    TODO: Remove this function once we migrate to JSON-LD, as the session state
+    management will be handled differently.
 
     Returns:
         bool: True if databases are available (or were successfully loaded), False otherwise.
     """
-    # If databases is already populated with data, no need to fetch again
-    if session_cache.databases is not None and len(session_cache.databases):
-        return True
+    # Always fetch fresh data from RDF store to ensure we have the latest database names
+    databases = fetch_databases_from_rdf(session_cache.repo, execute_query)
 
-    try:
-        # Execute the query and read the results into a pandas DataFrame
-        query_result = execute_query(session_cache.repo, COLUMN_INFO_QUERY)
-        column_info = pd.read_csv(StringIO(query_result))
-
-        # Check if we have valid results
-        if column_info.empty or "uri" not in column_info.columns:
-            logger.warning("No column information found in the RDF store")
-            return False
-
-        # Extract the database name from the URI and add it as a new column in the DataFrame
-        column_info["database"] = column_info["uri"].str.extract(
-            DATABASE_NAME_PATTERN, expand=False
-        )
-
-        # Filter out None/NaN values from the extracted database names
-        unique_values = column_info["database"].dropna().unique()
-        if len(unique_values) == 0:
-            logger.warning("No valid database names could be extracted from URIs")
-            return False
-
-        session_cache.databases = unique_values
-
-        logger.info(
-            f"Initialized session_cache.databases with {len(unique_values)} database(s)"
-        )
-        return True
-
-    except pd.errors.ParserError as e:
-        logger.error(f"Failed to parse SPARQL query result as CSV: {e}")
+    if databases is None or len(databases) == 0:
         return False
-    except Exception as e:
-        logger.error(f"Error initializing databases from RDF store: {e}")
-        return False
+
+    session_cache.databases = databases
+    return True
 
 
 @app.route("/describe_variables", methods=["GET", "POST"])
@@ -1140,54 +1108,23 @@ def annotation_review():
         annotation_data[database] = {}
 
         # Process variables from the local semantic map
+        # TODO: Remove this processing logic once we migrate to JSON-LD
         for var_name, var_data in variable_info.items():
-            # Create a deep copy of the variable data to avoid reference issues
-            var_copy = copy.deepcopy(var_data)
-
-            # Validate required fields
-            if not var_copy.get("predicate"):
+            # Validate required fields first (before processing)
+            if not var_data.get("predicate"):
                 unannotated_variables.append(
                     f"{database}.{var_name} (missing predicate)"
                 )
                 continue
 
-            if not var_copy.get("class"):
+            if not var_data.get("class"):
                 unannotated_variables.append(f"{database}.{var_name} (missing class)")
                 continue
 
-            # Check if this variable has a local definition
-            # Accept local definitions from either the formulated map OR the uploaded JSON
-            has_local_def = var_copy.get("local_definition") is not None
-
-            # If no local definition from formulated map, check the original uploaded JSON
-            # This handles the case when user uploads JSON directly for annotation
-            if not has_local_def and isinstance(
-                session_cache.global_semantic_map, dict
-            ):
-                original_var_info = session_cache.global_semantic_map.get(
-                    "variable_info", {}
-                ).get(var_name, {})
-                if original_var_info.get("local_definition"):
-                    var_copy["local_definition"] = original_var_info["local_definition"]
-                    has_local_def = True
-
-                    # Also copy value mappings if they exist in the original JSON
-                    # Only copy if the current var_copy doesn't have local_term values already
-                    if "value_mapping" in original_var_info:
-                        # Check if formulated map already has local_term values (from describe step)
-                        current_value_mapping = var_copy.get("value_mapping", {})
-                        has_local_terms = False
-                        if current_value_mapping.get("terms"):
-                            for term_data in current_value_mapping["terms"].values():
-                                if term_data.get("local_term") is not None:
-                                    has_local_terms = True
-                                    break
-
-                        # Only overwrite if no local_terms exist yet
-                        if not has_local_terms:
-                            var_copy["value_mapping"] = original_var_info[
-                                "value_mapping"
-                            ]
+            # Use shared helper to process variable and check for local definitions
+            var_copy, has_local_def = process_variable_for_annotation(
+                var_name, var_data, session_cache.global_semantic_map
+            )
 
             if has_local_def:
                 annotation_data[database][var_name] = var_copy
@@ -1259,48 +1196,13 @@ def start_annotation():
             )
 
             # Filter only variables that have local definitions
-            # Check both the formulated map and the original uploaded JSON
+            # TODO: Remove this processing logic once we migrate to JSON-LD
             annotated_variables = {}
             for var_name, var_data in variable_info.items():
-                # Create a deep copy of the variable data to avoid reference issues
-                var_copy = copy.deepcopy(var_data)
-
-                # Check if this variable has a local definition
-                has_local_def = var_copy.get("local_definition") is not None
-
-                # If no local definition from formulated map, check the original uploaded JSON
-                # This handles the case when user uploads JSON directly for annotation
-                if not has_local_def and isinstance(
-                    session_cache.global_semantic_map, dict
-                ):
-                    original_var_info = session_cache.global_semantic_map.get(
-                        "variable_info", {}
-                    ).get(var_name, {})
-                    if original_var_info.get("local_definition"):
-                        var_copy["local_definition"] = original_var_info[
-                            "local_definition"
-                        ]
-                        has_local_def = True
-
-                        # Also copy value mappings if they exist in the original JSON
-                        # Only copy if the current var_copy doesn't have local_term values already
-                        if "value_mapping" in original_var_info:
-                            # Check if formulated map already has local_term values (from describe step)
-                            current_value_mapping = var_copy.get("value_mapping", {})
-                            has_local_terms = False
-                            if current_value_mapping.get("terms"):
-                                for term_data in current_value_mapping[
-                                    "terms"
-                                ].values():
-                                    if term_data.get("local_term") is not None:
-                                        has_local_terms = True
-                                        break
-
-                            # Only overwrite if no local_terms exist yet
-                            if not has_local_terms:
-                                var_copy["value_mapping"] = original_var_info[
-                                    "value_mapping"
-                                ]
+                # Use shared helper to process variable and check for local definitions
+                var_copy, has_local_def = process_variable_for_annotation(
+                    var_name, var_data, session_cache.global_semantic_map
+                )
 
                 # Only add variables with local definitions
                 if has_local_def:
@@ -1401,44 +1303,14 @@ def annotation_verify():
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get("variable_info", {})
 
+        # TODO: Remove this processing logic once we migrate to JSON-LD
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Create a deep copy of the variable data to avoid reference issues
-            var_copy = copy.deepcopy(var_data)
-
-            # Check if this variable has a local definition
-            has_local_def = var_copy.get("local_definition") is not None
-
-            # If no local definition from formulated map, check the original uploaded JSON
-            # This handles the case when user uploads JSON directly for annotation
-            if not has_local_def and isinstance(
-                session_cache.global_semantic_map, dict
-            ):
-                original_var_info = session_cache.global_semantic_map.get(
-                    "variable_info", {}
-                ).get(var_name, {})
-                if original_var_info.get("local_definition"):
-                    var_copy["local_definition"] = original_var_info["local_definition"]
-                    has_local_def = True
-
-                    # Also copy value mappings if they exist in the original JSON
-                    # Only copy if the current var_copy doesn't have local_term values already
-                    if "value_mapping" in original_var_info:
-                        # Check if formulated map already has local_term values (from describe step)
-                        current_value_mapping = var_copy.get("value_mapping", {})
-                        has_local_terms = False
-                        if current_value_mapping.get("terms"):
-                            for term_data in current_value_mapping["terms"].values():
-                                if term_data.get("local_term") is not None:
-                                    has_local_terms = True
-                                    break
-
-                        # Only overwrite if no local_terms exist yet
-                        if not has_local_terms:
-                            var_copy["value_mapping"] = original_var_info[
-                                "value_mapping"
-                            ]
+            # Use shared helper to process variable and check for local definitions
+            var_copy, has_local_def = process_variable_for_annotation(
+                var_name, var_data, session_cache.global_semantic_map
+            )
 
             if has_local_def:
                 annotated_variables.append(full_var_name)
