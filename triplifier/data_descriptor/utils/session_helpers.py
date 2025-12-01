@@ -63,9 +63,7 @@ def fetch_databases_from_rdf(repo, execute_query_func):
             logger.warning("No valid database names could be extracted from URIs")
             return None
 
-        logger.info(
-            f"Fetched {len(unique_values)} database(s) from RDF store"
-        )
+        logger.info(f"Fetched {len(unique_values)} database(s) from RDF store")
         return unique_values
 
     except pd.errors.ParserError as e:
@@ -105,9 +103,9 @@ def process_variable_for_annotation(var_name, var_data, global_semantic_map):
     # If no local definition from formulated map, check the original uploaded JSON
     # This handles the case when user uploads JSON directly for annotation
     if not has_local_def and isinstance(global_semantic_map, dict):
-        original_var_info = global_semantic_map.get(
-            "variable_info", {}
-        ).get(var_name, {})
+        original_var_info = global_semantic_map.get("variable_info", {}).get(
+            var_name, {}
+        )
         if original_var_info.get("local_definition"):
             var_copy["local_definition"] = original_var_info["local_definition"]
             has_local_def = True
