@@ -55,6 +55,7 @@ logger = logging.getLogger(__name__)
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
 from utils.session_helpers import (
+    check_graph_exists,
     ensure_databases_initialised,
     process_variable_for_annotation,
     COLUMN_INFO_QUERY,
@@ -146,7 +147,7 @@ def index():
     """
     # Check whether a data graph already exists
     try:
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
             return render_template(
@@ -380,7 +381,7 @@ def describe_landing():
     """
     try:
         # Check if the graph exists first
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template("describe_landing.html", message=Markup(message))
@@ -987,7 +988,9 @@ def annotation_landing():
     """
     try:
         # Check if the graph exists
-        data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
+        data_exists = check_graph_exists(
+            session_cache.repo, "http://data.local/", graphdb_url
+        )
         session_cache.existing_graph = data_exists
 
         message = None
@@ -1534,7 +1537,7 @@ def api_check_graph_exists():
 
         # Check if the main data graph exists
         graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri)
+        exists = check_graph_exists(session_cache.repo, graph_uri, graphdb_url)
 
         return jsonify({"exists": exists})
     except Exception as e:

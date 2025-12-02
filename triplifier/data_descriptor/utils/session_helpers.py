@@ -8,6 +8,7 @@ particularly for database information that needs to be fetched from the RDF stor
 import copy
 import logging
 import numpy
+import requests
 
 import pandas as pd
 
@@ -25,6 +26,40 @@ PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
     }
 """
 DATABASE_NAME_PATTERN = r".*/(.*?)\."
+
+
+def check_graph_exists(repo: str, graph_uri: str, graphdb_url: str) -> bool:
+    """
+    This function checks if a graph exists in a GraphDB repository.
+
+    Args:
+        repo: The name of the repository in GraphDB.
+        graph_uri: The URI of the graph to check.
+        graphdb_url: The base URL of the GraphDB instance.
+
+    Returns:
+        bool: True if the graph exists, False otherwise.
+
+    Raises:
+        Exception: If the request to the GraphDB instance fails,
+        an exception is raised with the status code of the failed request.
+    """
+    # Construct the SPARQL query
+    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
+
+    # Send a GET request to the GraphDB instance
+    response = requests.get(
+        f"{graphdb_url}/repositories/{repo}",
+        params={"query": query},
+        headers={"Accept": "application/sparql-results+json"},
+    )
+
+    # If the request is successful, return the result of the ASK query
+    if response.status_code == 200:
+        return response.json()["boolean"]
+    # If the request fails, raise an exception with the status code
+    else:
+        raise Exception(f"Query failed with status code {response.status_code}")
 
 
 def ensure_databases_initialised(
