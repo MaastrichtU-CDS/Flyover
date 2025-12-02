@@ -1,22 +1,22 @@
 """
 Session helper functions for the Flyover data descriptor application.
 
-This module contains utility functions for initializing and managing session state,
+This module contains utility functions for initialising and managing session state,
 particularly for database information that needs to be fetched from the RDF store.
-
-TODO: These functions should be removed once we migrate to JSON-LD, as the session
-state management will be handled differently.
 """
 
 import copy
 import logging
+import numpy
 
 import pandas as pd
+
 from io import StringIO
+from typing import Any, Callable, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Constants for SPARQL queries and regex patterns used in database initialization
+# Constants for SPARQL queries and regex patterns used in database initialisation
 COLUMN_INFO_QUERY = """
 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
     SELECT ?uri ?column 
@@ -27,13 +27,37 @@ PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
 DATABASE_NAME_PATTERN = r".*/(.*?)\."
 
 
-def fetch_databases_from_rdf(repo, execute_query_func):
+def ensure_databases_initialised(
+    session_cache, execute_query_func: Callable[[str, str], str]
+) -> bool:
     """
-    Fetch database names from the RDF store.
+    Ensure that session_cache.databases is populated from the RDF-store.
+
+    Args:
+        session_cache: The session cache object
+        execute_query_func: The function to execute SPARQL queries
+
+    Returns:
+        bool: True if databases are available, False otherwise
+    """
+    databases = fetch_databases_from_rdf(session_cache.repo, execute_query_func)
+
+    if databases is None or len(databases) == 0:
+        return False
+
+    session_cache.databases = databases
+    return True
+
+
+def fetch_databases_from_rdf(
+    repo: str, execute_query_func: Callable[[str, str], str]
+) -> Optional[numpy.ndarray]:
+    """
+    Fetch database names from the RDF-store.
 
     This function queries the GraphDB repository to get column information and extracts
     the unique database names from the URIs. This is useful when users navigate directly
-    to annotation routes without going through the describe step.
+    to annotation routes without going through the 'describe' step.
 
     Args:
         repo: The repository name to query
@@ -44,7 +68,9 @@ def fetch_databases_from_rdf(repo, execute_query_func):
     """
     try:
         # Execute the query and read the results into a pandas DataFrame
-        query_result = execute_query_func(repo, COLUMN_INFO_QUERY)
+        query_result = execute_query_func(
+            repo, COLUMN_INFO_QUERY
+        )  # TODO simplify this query and make solely for database retrieval
         column_info = pd.read_csv(StringIO(query_result))
 
         # Check if we have valid results
@@ -74,7 +100,11 @@ def fetch_databases_from_rdf(repo, execute_query_func):
         return None
 
 
-def process_variable_for_annotation(var_name, var_data, global_semantic_map):
+def process_variable_for_annotation(
+    var_name: str,
+    var_data: Dict[str, Any],
+    global_semantic_map: Optional[Dict[str, Any]],
+) -> Tuple[Dict[str, Any], bool]:
     """
     Process a variable for annotation by checking and enriching local definitions.
 
@@ -100,8 +130,8 @@ def process_variable_for_annotation(var_name, var_data, global_semantic_map):
     # Check if this variable has a local definition
     has_local_def = var_copy.get("local_definition") is not None
 
-    # If no local definition from formulated map, check the original uploaded JSON
-    # This handles the case when user uploads JSON directly for annotation
+    # If no local definition from the formulated map, check the original uploaded JSON
+    # This handles the case when a user uploads JSON directly for annotation
     if not has_local_def and isinstance(global_semantic_map, dict):
         original_var_info = global_semantic_map.get("variable_info", {}).get(
             var_name, {}
@@ -113,7 +143,7 @@ def process_variable_for_annotation(var_name, var_data, global_semantic_map):
             # Also copy value mappings if they exist in the original JSON
             # Only copy if the current var_copy doesn't have local_term values already
             if "value_mapping" in original_var_info:
-                # Check if formulated map already has local_term values (from describe step)
+                # Check if the formulated map already has local_term values (from the 'describe' step)
                 current_value_mapping = var_copy.get("value_mapping", {})
                 has_local_terms = False
                 if current_value_mapping.get("terms"):

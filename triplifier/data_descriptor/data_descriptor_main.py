@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
 from utils.session_helpers import (
-    fetch_databases_from_rdf,
+    ensure_databases_initialised,
     process_variable_for_annotation,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
@@ -415,30 +415,6 @@ def describe_landing():
         </div>
         """
         return render_template("describe_landing.html", message=Markup(message))
-
-
-def ensure_databases_initialized():
-    """
-    Ensure that session_cache.databases is populated from the RDF store.
-
-    This function always fetches the database information from the GraphDB repository
-    to ensure we have the latest data. This prevents stale database names from being
-    used if users delete/modify data in GraphDB between UI interactions.
-
-    TODO: Remove this function once we migrate to JSON-LD, as the session state
-    management will be handled differently.
-
-    Returns:
-        bool: True if databases are available (or were successfully loaded), False otherwise.
-    """
-    # Always fetch fresh data from RDF store to ensure we have the latest database names
-    databases = fetch_databases_from_rdf(session_cache.repo, execute_query)
-
-    if databases is None or len(databases) == 0:
-        return False
-
-    session_cache.databases = databases
-    return True
 
 
 @app.route("/describe_variables", methods=["GET", "POST"])
@@ -1088,8 +1064,8 @@ def annotation_review():
         )
         return redirect(url_for("annotation_landing"))
 
-    # Ensure databases are initialized from RDF store if not already populated
-    if not ensure_databases_initialized():
+    # Ensure databases are initialised from the RDF-store if not already populated
+    if not ensure_databases_initialised(session_cache, execute_query):
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
 
@@ -1121,7 +1097,7 @@ def annotation_review():
                 unannotated_variables.append(f"{database}.{var_name} (missing class)")
                 continue
 
-            # Use shared helper to process variable and check for local definitions
+            # Use the shared helper to process variable and check for local definitions
             var_copy, has_local_def = process_variable_for_annotation(
                 var_name, var_data, session_cache.global_semantic_map
             )
@@ -1159,8 +1135,8 @@ def start_annotation():
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({"success": False, "error": "No semantic map available"})
 
-        # Ensure databases are initialized from RDF store if not already populated
-        if not ensure_databases_initialized():
+        # Ensure databases are initialised from the RDF-store if not already populated
+        if not ensure_databases_initialised(session_cache, execute_query):
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
             )
@@ -1199,7 +1175,7 @@ def start_annotation():
             # TODO: Remove this processing logic once we migrate to JSON-LD
             annotated_variables = {}
             for var_name, var_data in variable_info.items():
-                # Use shared helper to process variable and check for local definitions
+                # Use the shared helper to process variable and check for local definitions
                 var_copy, has_local_def = process_variable_for_annotation(
                     var_name, var_data, session_cache.global_semantic_map
                 )
@@ -1288,8 +1264,8 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for("describe_downloads"))
 
-    # Ensure databases are initialized from RDF store if not already populated
-    if not ensure_databases_initialized():
+    # Ensure databases are initialised from the RDF-store if not already populated
+    if not ensure_databases_initialised(session_cache, execute_query):
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
 
@@ -1307,7 +1283,7 @@ def annotation_verify():
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Use shared helper to process variable and check for local definitions
+            # Use the shared helper to process variable and check for local definitions
             var_copy, has_local_def = process_variable_for_annotation(
                 var_name, var_data, session_cache.global_semantic_map
             )
@@ -1384,8 +1360,8 @@ def verify_annotation_ask():
         # Check if this variable has a local definition
         local_definition = var_copy.get("local_definition")
 
-        # If no local definition from formulated map, check the original uploaded JSON
-        # This handles the case when user uploads JSON directly for annotation
+        # If no local definition from the formulated map, check the original uploaded JSON
+        # This handles the case when a user uploads JSON directly for annotation
         if not local_definition and isinstance(session_cache.global_semantic_map, dict):
             original_var_info = session_cache.global_semantic_map.get(
                 "variable_info", {}
@@ -1397,7 +1373,7 @@ def verify_annotation_ask():
                 # Also copy value mappings if they exist in the original JSON
                 # Only copy if the current var_copy doesn't have local_term values already
                 if "value_mapping" in original_var_info:
-                    # Check if formulated map already has local_term values (from describe step)
+                    # Check if the formulated map already has local_term values (from the 'describe' step)
                     current_value_mapping = var_copy.get("value_mapping", {})
                     has_local_terms = False
                     if current_value_mapping.get("terms"):
@@ -1563,39 +1539,6 @@ def api_check_graph_exists():
         return jsonify({"exists": exists})
     except Exception as e:
         return jsonify({"exists": False, "error": str(e)})
-
-
-def check_graph_exists(repo, graph_uri):
-    """
-    This function checks if a graph exists in a GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the repository in GraphDB.
-    graph_uri (str): The URI of the graph to check.
-
-    Returns:
-    bool: True if the graph exists, False otherwise.
-
-    Raises:
-    Exception: If the request to the GraphDB instance fails,
-    an exception is raised with the status code of the failed request.
-    """
-    # Construct the SPARQL query
-    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
-
-    # Send a GET request to the GraphDB instance
-    response = requests.get(
-        f"{graphdb_url}/repositories/{repo}",
-        params={"query": query},
-        headers={"Accept": "application/sparql-results+json"},
-    )
-
-    # If the request is successful, return the result of the ASK query
-    if response.status_code == 200:
-        return response.json()["boolean"]
-    # If the request fails, raise an exception with the status code
-    else:
-        raise Exception(f"Query failed with status code {response.status_code}")
 
 
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
