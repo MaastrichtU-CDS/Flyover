@@ -27,6 +27,16 @@ PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
 """
 DATABASE_NAME_PATTERN = r".*/(.*?)\."
 
+# Query to fetch unique database names
+DATABASE_NAME_QUERY = """
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+select ?db where {
+    ?s dbo:table ?db.
+    ?s rdfs:subClassOf dbo:TableRow.
+} limit 100
+"""
+
 
 def check_graph_exists(repo: str, graph_uri: str, graphdb_url: str) -> bool:
     """
@@ -103,23 +113,16 @@ def fetch_databases_from_rdf(
     """
     try:
         # Execute the query and read the results into a pandas DataFrame
-        query_result = execute_query_func(
-            repo, COLUMN_INFO_QUERY
-        )  # TODO simplify this query and make solely for database retrieval
-        column_info = pd.read_csv(StringIO(query_result))
+        query_result = execute_query_func(repo, DATABASE_NAME_QUERY)
+        database_info = pd.read_csv(StringIO(query_result))
 
         # Check if we have valid results
-        if column_info.empty or "uri" not in column_info.columns:
+        if database_info.empty or "db" not in database_info.columns:
             logger.warning("No column information found in the RDF store")
             return None
 
-        # Extract the database name from the URI
-        column_info["database"] = column_info["uri"].str.extract(
-            DATABASE_NAME_PATTERN, expand=False
-        )
-
         # Filter out None/NaN values from the extracted database names
-        unique_values = column_info["database"].dropna().unique()
+        unique_values = database_info["db"].dropna().unique()
         if len(unique_values) == 0:
             logger.warning("No valid database names could be extracted from URIs")
             return None
