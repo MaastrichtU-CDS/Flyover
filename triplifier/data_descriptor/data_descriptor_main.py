@@ -54,6 +54,13 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
+from utils.session_helpers import (
+    check_graph_exists,
+    ensure_databases_initialised,
+    process_variable_for_annotation,
+    COLUMN_INFO_QUERY,
+    DATABASE_NAME_PATTERN,
+)
 from annotation_helper.src.miscellaneous import add_annotation
 
 app = Flask(__name__)
@@ -140,7 +147,7 @@ def index():
     """
     # Check whether a data graph already exists
     try:
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
             return render_template(
@@ -374,7 +381,7 @@ def describe_landing():
     """
     try:
         # Check if the graph exists first
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template("describe_landing.html", message=Markup(message))
@@ -434,19 +441,13 @@ def describe_variables():
         it renders the 'describe_variables.html' template
         with the dictionary of dataframes and the global variable names.
     """
-    # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
-    column_query = """
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        SELECT ?uri ?column 
-        WHERE {
-        ?uri dbo:column ?column .
-        }
-    """
     # Execute the query and read the results into a pandas DataFrame
-    column_info = pd.read_csv(StringIO(execute_query(session_cache.repo, column_query)))
+    column_info = pd.read_csv(
+        StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY))
+    )
     # Extract the database name from the URI and add it as a new column in the DataFrame
     column_info["database"] = column_info["uri"].str.extract(
-        r".*/(.*?)\.", expand=False
+        DATABASE_NAME_PATTERN, expand=False
     )
 
     # Drop the 'uri' column from the DataFrame
@@ -987,7 +988,9 @@ def annotation_landing():
     """
     try:
         # Check if the graph exists
-        data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
+        data_exists = check_graph_exists(
+            session_cache.repo, "http://data.local/", graphdb_url
+        )
         session_cache.existing_graph = data_exists
 
         message = None
@@ -1064,7 +1067,8 @@ def annotation_review():
         )
         return redirect(url_for("annotation_landing"))
 
-    if not session_cache.databases.any():
+    # Ensure databases are initialised from the RDF-store if not already populated
+    if not ensure_databases_initialised(session_cache, execute_query):
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
 
@@ -1083,24 +1087,30 @@ def annotation_review():
         annotation_data[database] = {}
 
         # Process variables from the local semantic map
+        # TODO: Remove this processing logic once we migrate to JSON-LD
         for var_name, var_data in variable_info.items():
-            # Create a copy of the variable data
-            var_copy = dict(var_data)
-
-            # Validate required fields
-            if not var_copy.get("predicate"):
-                logger.warning(f"Variable {var_name} in {database} missing predicate")
+            # Validate required fields first (before processing)
+            if not var_data.get("predicate"):
+                unannotated_variables.append(
+                    f"{database}.{var_name} (missing predicate)"
+                )
                 continue
 
-            if not var_copy.get("class"):
-                logger.warning(f"Variable {var_name} in {database} missing class")
+            if not var_data.get("class"):
+                unannotated_variables.append(f"{database}.{var_name} (missing class)")
                 continue
 
-            # Check if this variable has a local definition (from the local semantic map)
-            if var_copy.get("local_definition"):
+            # Use the shared helper to process variable and check for local definitions
+            var_copy, has_local_def = process_variable_for_annotation(
+                var_name, var_data, session_cache.global_semantic_map
+            )
+
+            if has_local_def:
                 annotation_data[database][var_name] = var_copy
             else:
-                unannotated_variables.append(f"{database}.{var_name}")
+                unannotated_variables.append(
+                    f"{database}.{var_name} (no local definition)"
+                )
 
     # Check if we have any variables to annotate
     total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
@@ -1128,7 +1138,8 @@ def start_annotation():
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({"success": False, "error": "No semantic map available"})
 
-        if not session_cache.databases.any():
+        # Ensure databases are initialised from the RDF-store if not already populated
+        if not ensure_databases_initialised(session_cache, execute_query):
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
             )
@@ -1164,11 +1175,17 @@ def start_annotation():
             )
 
             # Filter only variables that have local definitions
-            annotated_variables = {
-                var_name: var_data
-                for var_name, var_data in variable_info.items()
-                if var_data.get("local_definition")
-            }
+            # TODO: Remove this processing logic once we migrate to JSON-LD
+            annotated_variables = {}
+            for var_name, var_data in variable_info.items():
+                # Use the shared helper to process variable and check for local definitions
+                var_copy, has_local_def = process_variable_for_annotation(
+                    var_name, var_data, session_cache.global_semantic_map
+                )
+
+                # Only add variables with local definitions
+                if has_local_def:
+                    annotated_variables[var_name] = var_copy
 
             if not annotated_variables:
                 logger.info(
@@ -1250,7 +1267,8 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for("describe_downloads"))
 
-    if not session_cache.databases.any():
+    # Ensure databases are initialised from the RDF-store if not already populated
+    if not ensure_databases_initialised(session_cache, execute_query):
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
 
@@ -1264,14 +1282,19 @@ def annotation_verify():
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get("variable_info", {})
 
+        # TODO: Remove this processing logic once we migrate to JSON-LD
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Check if this variable has a local definition (from the local semantic map)
-            if var_data.get("local_definition"):
+            # Use the shared helper to process variable and check for local definitions
+            var_copy, has_local_def = process_variable_for_annotation(
+                var_name, var_data, session_cache.global_semantic_map
+            )
+
+            if has_local_def:
                 annotated_variables.append(full_var_name)
                 variable_data[full_var_name] = {
-                    **var_data,
+                    **var_copy,
                     "database": database,
                     "prefixes": local_semantic_map.get("prefixes", ""),
                 }
@@ -1334,9 +1357,39 @@ def verify_annotation_ask():
         if not var_data:
             return jsonify({"success": False, "error": "Variable not found"})
 
-        # Get variable information
-        local_definition = var_data.get("local_definition")
-        var_class = var_data.get("class")
+        # Create a deep copy of the variable data to avoid reference issues
+        var_copy = copy.deepcopy(var_data)
+
+        # Check if this variable has a local definition
+        local_definition = var_copy.get("local_definition")
+
+        # If no local definition from the formulated map, check the original uploaded JSON
+        # This handles the case when a user uploads JSON directly for annotation
+        if not local_definition and isinstance(session_cache.global_semantic_map, dict):
+            original_var_info = session_cache.global_semantic_map.get(
+                "variable_info", {}
+            ).get(var_name, {})
+            if original_var_info.get("local_definition"):
+                local_definition = original_var_info["local_definition"]
+                var_copy["local_definition"] = local_definition
+
+                # Also copy value mappings if they exist in the original JSON
+                # Only copy if the current var_copy doesn't have local_term values already
+                if "value_mapping" in original_var_info:
+                    # Check if the formulated map already has local_term values (from the 'describe' step)
+                    current_value_mapping = var_copy.get("value_mapping", {})
+                    has_local_terms = False
+                    if current_value_mapping.get("terms"):
+                        for term_data in current_value_mapping["terms"].values():
+                            if term_data.get("local_term") is not None:
+                                has_local_terms = True
+                                break
+
+                    # Only overwrite if no local_terms exist yet
+                    if not has_local_terms:
+                        var_copy["value_mapping"] = original_var_info["value_mapping"]
+
+        var_class = var_copy.get("class")
 
         if not local_definition:
             return jsonify(
@@ -1370,7 +1423,7 @@ def verify_annotation_ask():
         )
 
         # Check for value mappings and add target_class subClassOf statements
-        value_mapping = var_data.get("value_mapping", {})
+        value_mapping = var_copy.get("value_mapping", {})
         if value_mapping and value_mapping.get("terms"):
             for term, term_info in value_mapping["terms"].items():
                 if term_info.get("local_term") and term_info.get("target_class"):
@@ -1484,44 +1537,11 @@ def api_check_graph_exists():
 
         # Check if the main data graph exists
         graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri)
+        exists = check_graph_exists(session_cache.repo, graph_uri, graphdb_url)
 
         return jsonify({"exists": exists})
     except Exception as e:
         return jsonify({"exists": False, "error": str(e)})
-
-
-def check_graph_exists(repo, graph_uri):
-    """
-    This function checks if a graph exists in a GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the repository in GraphDB.
-    graph_uri (str): The URI of the graph to check.
-
-    Returns:
-    bool: True if the graph exists, False otherwise.
-
-    Raises:
-    Exception: If the request to the GraphDB instance fails,
-    an exception is raised with the status code of the failed request.
-    """
-    # Construct the SPARQL query
-    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
-
-    # Send a GET request to the GraphDB instance
-    response = requests.get(
-        f"{graphdb_url}/repositories/{repo}",
-        params={"query": query},
-        headers={"Accept": "application/sparql-results+json"},
-    )
-
-    # If the request is successful, return the result of the ASK query
-    if response.status_code == 200:
-        return response.json()["boolean"]
-    # If the request fails, raise an exception with the status code
-    else:
-        raise Exception(f"Query failed with status code {response.status_code}")
 
 
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
@@ -1683,6 +1703,19 @@ def formulate_local_semantic_map(database):
     # Process only the variables that are filled in the UI
     # Process local definitions and update the existing semantic map
     used_global_variables = {}  # Track usage for duplicate handling
+
+    # Check if descriptive_info exists and has data for this database
+    # If not, return the modified semantic map with all local_definitions as null
+    if (
+        session_cache.descriptive_info is None
+        or database not in session_cache.descriptive_info
+        or session_cache.descriptive_info[database] is None
+    ):
+        logger.info(
+            f"No descriptive info available for database '{database}'. "
+            "Returning semantic map without local mappings."
+        )
+        return modified_semantic_map
 
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         # Skip if no description is provided (empty field in UI)
