@@ -3,7 +3,7 @@ chardet==5.2.0
 Flask==3.1.1
 Flask-Compress==1.17
 Flask-SQLAlchemy==3.1.1
-gevent==25.5.1
+gevent==25.9.1
 gunicorn==23.0.0
 numpy==2.2.6
 pandas==2.2.3
@@ -12,3 +12,4 @@ python-dateutil==2.9.0.post0
 pytz==2025.2
 requests==2.32.5
 six==1.17.0
+triplifier>=2.2.0

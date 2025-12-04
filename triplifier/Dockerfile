@@ -1,37 +1,30 @@
-FROM python:3.13-slim
-
+FROM python:3.13-alpine
 WORKDIR /app
 
-# Copy only the requirements file first to leverage Docker cache
-COPY requirements.txt /app/
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
 
-# Install dependencies in a single layer
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-    wget \
+# Install build dependencies, Python packages, and clean up
+RUN apk add --no-cache --virtual .build-deps \
+    gcc \
+    python3-dev \
+    musl-dev \
+    postgresql-dev \
+    && apk add --no-cache \
+    libpq \
+    ca-certificates \
     curl \
-    default-jre-headless \
-    libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && apk del .build-deps \
+    && rm -rf /var/cache/apk/* /root/.cache
 
-# Set Java environment variables
-ENV JAVA_HOME /usr/lib/jvm/default-java
-ENV PATH $PATH:$JAVA_HOME/bin
-
-# Set default JAVA_OPTS (can be overridden via environment)
-ENV JAVA_OPTS="-Xms2g -Xmx8g"
-
-# Download PostgreSQL JDBC driver
-ENV POST_URL https://jdbc.postgresql.org/download/postgresql-42.2.5.jar
-RUN wget ${POST_URL} && \
-    rm -rf /root/.cache /tmp/*
-
-# Now copy the application code
+# Copy the entire application code
 COPY data_descriptor/ /app/data_descriptor/
 
-# Use Gunicorn as the WSGI server
+# Ensure the working directory is set correctly
+WORKDIR /app
+
+# Run Gunicorn
 CMD ["gunicorn", \
     "--workers", "1", \
     "--worker-class", "gevent", \
