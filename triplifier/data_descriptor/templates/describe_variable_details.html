@@ -488,7 +488,7 @@
             $('.category-select').on('change', function () {
                 var commentId = $(this).data('comment-id');
                 var commentInput = $('#' + commentId);
-                if ($(this).find("option:selected").val() === "Other") {
+                if ($(this).val() === "Other") {
                     commentInput.removeAttr("disabled");
                 } else {
                     commentInput.attr("disabled", "disabled");
