@@ -1072,24 +1072,39 @@ def upload_annotation_json():
                     400,
                 )
 
-            # If the map has a specific database_name, validate it matches an available database
-            if map_database_name is not None and map_database_name != "":
-                matching_db = graph_database_find_matching(
-                    map_database_name, session_cache.databases
+            # Check if database_name is null or empty - require it to be specified
+            if map_database_name is None or map_database_name == "":
+                os.remove(filepath)  # Clean up file
+                return (
+                    jsonify(
+                        {
+                            "error": "The uploaded semantic map does not have a 'database_name' specified.<br>"
+                            "Please either: (1) Edit your JSON file to add a valid 'database_name' field, or "
+                            "(2) Use the <a href='/describe_landing'>Describe</a> "
+                            "workflow to create mappings for your data.",
+                            "error_type": "missing_database_name",
+                        }
+                    ),
+                    400,
                 )
-                if matching_db is None:
-                    available_dbs = ", ".join(str(db) for db in session_cache.databases)
-                    os.remove(filepath)  # Clean up file
-                    return (
-                        jsonify(
-                            {
-                                "error": f"The uploaded semantic map is for database '{map_database_name}', "
-                                f"which does not match any available database. "
-                                f"Available databases: {available_dbs}"
-                            }
-                        ),
-                        400,
-                    )
+
+            # If the map has a specific database_name, validate it matches an available database
+            matching_db = graph_database_find_matching(
+                map_database_name, session_cache.databases
+            )
+            if matching_db is None:
+                available_dbs = ", ".join(str(db) for db in session_cache.databases)
+                os.remove(filepath)  # Clean up file
+                return (
+                    jsonify(
+                        {
+                            "error": f"The uploaded semantic map is for database '{map_database_name}', "
+                            f"which does not match any available database.<br>"
+                            f"Available databases: {available_dbs}"
+                        }
+                    ),
+                    400,
+                )
 
             # Store the JSON data for use in annotation
             session_cache.global_semantic_map = json_data
@@ -1124,20 +1139,32 @@ def annotation_review():
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
 
-    # Validate that the semantic map's database_name matches at least one available database
+    # Validate that the semantic map's database_name is specified and matches
     map_database_name = session_cache.global_semantic_map.get("database_name")
-    if map_database_name is not None and map_database_name != "":
-        matching_db = graph_database_find_matching(
-            map_database_name, session_cache.databases
-        )
-        if matching_db is None:
-            available_dbs = ", ".join(str(db) for db in session_cache.databases)
-            flash(
-                f"The semantic map is for database '{map_database_name}', "
-                f"which does not match any available database. "
-                f"Available databases: {available_dbs}"
+
+    # Check if database_name is null or empty
+    if map_database_name is None or map_database_name == "":
+        flash(
+            Markup(
+                "The semantic map does not have a 'database_name' specified. <br>"
+                "Please either edit your JSON file to add a valid 'database_name' field, or "
+                "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
             )
-            return redirect(url_for("annotation_landing"))
+        )
+        return redirect(url_for("annotation_landing"))
+
+    # Validate that database_name matches at least one available database
+    matching_db = graph_database_find_matching(
+        map_database_name, session_cache.databases
+    )
+    if matching_db is None:
+        available_dbs = ", ".join(str(db) for db in session_cache.databases)
+        flash(
+            f"The semantic map is for database '{map_database_name}', "
+            f"which does not match any available database. "
+            f"Available databases: {available_dbs}"
+        )
+        return redirect(url_for("annotation_landing"))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
