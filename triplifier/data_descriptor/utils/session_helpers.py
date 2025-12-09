@@ -34,7 +34,7 @@ PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 select ?db where {
     ?s dbo:table ?db.
     ?s rdfs:subClassOf dbo:TableRow.
-} limit 100
+}
 """
 
 
@@ -72,7 +72,7 @@ def check_graph_exists(repo: str, graph_uri: str, graphdb_url: str) -> bool:
         raise Exception(f"Query failed with status code {response.status_code}")
 
 
-def ensure_databases_initialised(
+def graph_database_ensure_backend_initialisation(
     session_cache, execute_query_func: Callable[[str, str], str]
 ) -> bool:
     """
@@ -85,7 +85,7 @@ def ensure_databases_initialised(
     Returns:
         bool: True if databases are available, False otherwise
     """
-    databases = fetch_databases_from_rdf(session_cache.repo, execute_query_func)
+    databases = graph_database_fetch_from_rdf(session_cache.repo, execute_query_func)
 
     if databases is None or len(databases) == 0:
         return False
@@ -94,7 +94,7 @@ def ensure_databases_initialised(
     return True
 
 
-def fetch_databases_from_rdf(
+def graph_database_fetch_from_rdf(
     repo: str, execute_query_func: Callable[[str, str], str]
 ) -> Optional[numpy.ndarray]:
     """
@@ -136,6 +136,80 @@ def fetch_databases_from_rdf(
     except Exception as e:
         logger.error(f"Error fetching databases from RDF store: {e}")
         return None
+
+
+def graph_database_find_name_match(
+    map_database_name: Optional[str], target_database: str
+) -> bool:
+    """
+    Check if a semantic map's database_name matches a target database.
+
+    This function implements strict matching with a fallback for .csv extension handling.
+    If map_database_name is None or empty, the map is considered a global template
+    and applies to all databases.
+
+    Args:
+        map_database_name: The database_name field from the semantic map JSON (can be None)
+        target_database: The database name to match against
+
+    Returns:
+        bool: True if the map should apply to this database, False otherwise
+    """
+    # If map_database_name is None or empty, it's a global template - applies to all
+    if map_database_name is None or map_database_name == "":
+        return True
+
+    # Strict exact match first
+    if map_database_name == target_database:
+        return True
+
+    # Fallback: try matching with/without .csv extension
+    map_name_no_ext = (
+        map_database_name.rstrip(".csv")
+        if map_database_name.endswith(".csv")
+        else map_database_name
+    )
+    target_no_ext = (
+        target_database.rstrip(".csv")
+        if target_database.endswith(".csv")
+        else target_database
+    )
+
+    if map_name_no_ext == target_no_ext:
+        logger.debug(
+            f"Database name matched with .csv extension fallback: "
+            f"'{map_database_name}' matches '{target_database}'"
+        )
+        return True
+
+    return False
+
+
+def graph_database_find_matching(
+    map_database_name: Optional[str], available_databases
+) -> Optional[str]:
+    """
+    Find a matching database from the available databases for a given map database name.
+
+    Args:
+        map_database_name: The database_name field from the semantic map JSON
+        available_databases: Array/list of available database names
+
+    Returns:
+        str or None: The matching database name, or None if no match was found
+    """
+    if available_databases is None or len(available_databases) == 0:
+        return None
+
+    # If map_database_name is None, it's a global template - return the first database as an indication it applies
+    if map_database_name is None or map_database_name == "":
+        return str(available_databases[0]) if len(available_databases) > 0 else None
+
+    for db in available_databases:
+        if graph_database_find_name_match(map_database_name, str(db)):
+            return str(db)
+
+    return None
 
 
 def process_variable_for_annotation(

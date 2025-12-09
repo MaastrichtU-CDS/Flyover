@@ -11,7 +11,11 @@ from .data_preprocessing import (
 from .data_ingest import upload_file_to_graphdb, upload_ontology_then_data
 
 from .session_helpers import (
-    fetch_databases_from_rdf,
+    check_graph_exists,
+    graph_database_ensure_backend_initialisation,
+    graph_database_fetch_from_rdf,
+    graph_database_find_name_match,
+    graph_database_find_matching,
     process_variable_for_annotation,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
@@ -23,7 +27,11 @@ __all__ = [
     "get_original_column_name",
     "upload_file_to_graphdb",
     "upload_ontology_then_data",
-    "fetch_databases_from_rdf",
+    "check_graph_exists",
+    "graph_database_ensure_backend_initialisation",
+    "graph_database_fetch_from_rdf",
+    "graph_database_find_name_match",
+    "graph_database_find_matching",
     "process_variable_for_annotation",
     "COLUMN_INFO_QUERY",
     "DATABASE_NAME_PATTERN",

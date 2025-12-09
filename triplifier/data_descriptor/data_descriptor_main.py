@@ -56,7 +56,9 @@ from utils.data_preprocessing import preprocess_dataframe
 from utils.data_ingest import upload_ontology_then_data
 from utils.session_helpers import (
     check_graph_exists,
-    ensure_databases_initialised,
+    graph_database_ensure_backend_initialisation,
+    graph_database_find_name_match,
+    graph_database_find_matching,
     process_variable_for_annotation,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
@@ -477,6 +479,9 @@ def describe_variables():
         isinstance(session_cache.global_semantic_map, dict)
         and "variable_info" in session_cache.global_semantic_map
     ):
+        # Get the database_name from the semantic map for filtering
+        map_database_name = session_cache.global_semantic_map.get("database_name")
+
         for var_name, var_info in session_cache.global_semantic_map[
             "variable_info"
         ].items():
@@ -489,6 +494,10 @@ def describe_variables():
                 description_to_datatype[description_display] = datatype_display
 
             for db in unique_values:  # For each database
+                # Only apply mappings if the database name matches or if the map is a global template
+                if not graph_database_find_name_match(map_database_name, db):
+                    continue
+
                 # Match by local_definition if available
                 local_def = var_info.get("local_definition", var_name)
                 key = f"{db}_{local_def}"
@@ -642,6 +651,11 @@ def describe_variable_details():
     dataframes = {}
     preselected_values = {}
 
+    # Get the database_name from the semantic map for filtering
+    map_database_name = None
+    if isinstance(session_cache.global_semantic_map, dict):
+        map_database_name = session_cache.global_semantic_map.get("database_name")
+
     # Iterate over the items in the dictionary
     for database, variables in session_cache.DescriptiveInfoDetails.items():
         # Initialise an empty list to hold the rows of the dataframe
@@ -657,8 +671,10 @@ def describe_variable_details():
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
-                    # If this variable exists in the global semantic map
-                    if isinstance(session_cache.global_semantic_map, dict):
+                    # If this variable exists in the global semantic map and database matches
+                    if isinstance(
+                        session_cache.global_semantic_map, dict
+                    ) and graph_database_find_name_match(map_database_name, database):
                         # Get global variable name (removing the local name in parentheses)
                         global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
 
@@ -1039,6 +1055,42 @@ def upload_annotation_json():
             with open(filepath, "r") as f:
                 json_data = json.load(f)
 
+            # Validate database_name against available databases
+            map_database_name = json_data.get("database_name")
+
+            # Ensure databases are initialised from RDF-store
+            if not graph_database_ensure_backend_initialisation(
+                session_cache, execute_query
+            ):
+                os.remove(filepath)  # Clean up file
+                return (
+                    jsonify(
+                        {
+                            "error": "No databases found in the data store. Please complete the Ingest step first."
+                        }
+                    ),
+                    400,
+                )
+
+            # If the map has a specific database_name, validate it matches an available database
+            if map_database_name is not None and map_database_name != "":
+                matching_db = graph_database_find_matching(
+                    map_database_name, session_cache.databases
+                )
+                if matching_db is None:
+                    available_dbs = ", ".join(str(db) for db in session_cache.databases)
+                    os.remove(filepath)  # Clean up file
+                    return (
+                        jsonify(
+                            {
+                                "error": f"The uploaded semantic map is for database '{map_database_name}', "
+                                f"which does not match any available database. "
+                                f"Available databases: {available_dbs}"
+                            }
+                        ),
+                        400,
+                    )
+
             # Store the JSON data for use in annotation
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
@@ -1068,15 +1120,36 @@ def annotation_review():
         return redirect(url_for("annotation_landing"))
 
     # Ensure databases are initialised from the RDF-store if not already populated
-    if not ensure_databases_initialised(session_cache, execute_query):
+    if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
+
+    # Validate that the semantic map's database_name matches at least one available database
+    map_database_name = session_cache.global_semantic_map.get("database_name")
+    if map_database_name is not None and map_database_name != "":
+        matching_db = graph_database_find_matching(
+            map_database_name, session_cache.databases
+        )
+        if matching_db is None:
+            available_dbs = ", ".join(str(db) for db in session_cache.databases)
+            flash(
+                f"The semantic map is for database '{map_database_name}', "
+                f"which does not match any available database. "
+                f"Available databases: {available_dbs}"
+            )
+            return redirect(url_for("annotation_landing"))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
     unannotated_variables = []
+    non_matching_databases = []  # Track databases that don't match the semantic map
 
     for database in session_cache.databases:
+        # Check if this database matches the semantic map's database_name
+        if not graph_database_find_name_match(map_database_name, database):
+            non_matching_databases.append(database)
+            continue
+
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get("variable_info", {})
@@ -1126,6 +1199,8 @@ def annotation_review():
         "annotation_review.html",
         annotation_data=annotation_data,
         unannotated_variables=unannotated_variables,
+        non_matching_databases=non_matching_databases,
+        map_database_name=map_database_name,
     )
 
 
@@ -1139,7 +1214,9 @@ def start_annotation():
             return jsonify({"success": False, "error": "No semantic map available"})
 
         # Ensure databases are initialised from the RDF-store if not already populated
-        if not ensure_databases_initialised(session_cache, execute_query):
+        if not graph_database_ensure_backend_initialisation(
+            session_cache, execute_query
+        ):
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
             )
@@ -1156,8 +1233,18 @@ def start_annotation():
 
         total_annotated_vars = 0
 
+        # Get the database_name filter from the semantic map
+        map_database_name = session_cache.global_semantic_map.get("database_name")
+
         # Process each database separately using its local semantic map
         for database in session_cache.databases:
+            # Skip databases that don't match the semantic map's database_name
+            if not graph_database_find_name_match(map_database_name, database):
+                logger.info(
+                    f"Skipping database {database} - does not match semantic map database_name '{map_database_name}'"
+                )
+                continue
+
             logger.info(f"Processing annotation for database: {database}")
 
             # Get the local semantic map for this specific database
@@ -1268,9 +1355,12 @@ def annotation_verify():
         return redirect(url_for("describe_downloads"))
 
     # Ensure databases are initialised from the RDF-store if not already populated
-    if not ensure_databases_initialised(session_cache, execute_query):
+    if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
+
+    # Get the database_name filter from the semantic map
+    map_database_name = session_cache.global_semantic_map.get("database_name")
 
     # Get annotated variables from all databases using local semantic maps
     annotated_variables = []
@@ -1278,6 +1368,10 @@ def annotation_verify():
     variable_data = {}
 
     for database in session_cache.databases:
+        # Skip databases that don't match the semantic map's database_name
+        if not graph_database_find_name_match(map_database_name, database):
+            continue
+
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get("variable_info", {})
