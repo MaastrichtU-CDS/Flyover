@@ -257,6 +257,27 @@
 {#            <br>#}
 {#        {% endif %}#}
 
+        {% if non_matching_databases %}
+            <div class="alert alert-warning" style="border-left: 4px solid #ffc107;">
+                <h5><i class="fas fa-info-circle"></i> Databases without corresponding mapping detected</h5>
+                <p style="margin-bottom: 10px;">
+                    The uploaded semantic map
+                    {% if map_database_name %}
+                        (for database <strong>"{{ map_database_name }}"</strong>)
+                    {% endif %}
+                    does not apply to the following databases. These databases will not be annotated:
+                </p>
+                <ul style="margin-bottom: 0;">
+                    {% for db in non_matching_databases %}
+                        <li><i class="fas fa-database"></i> {{ db }}</li>
+                    {% endfor %}
+                </ul>
+                <p class="mt-2 mb-0" style="font-size: 0.9em; color: #856404;">
+                    <i class="fas fa-lightbulb"></i> To annotate these databases, upload a semantic map with a matching <code>database_name</code> field.
+                </p>
+            </div>
+        {% endif %}
+
         <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process
         </button>
