@@ -40,10 +40,44 @@ class PythonTriplifierIntegration:
         self.child_dir = child_dir
         self.hostname = socket.gethostname()
 
+    def _normalize_name(self, name: str) -> str:
+        """
+        Normalize a table or column name for use in URIs.
+
+        Replaces special characters (spaces, hyphens, .csv extension) with
+        underscores to create valid URI components.
+
+        Args:
+            name: The table or column name to normalize
+
+        Returns:
+            Normalized name suitable for URI construction
+        """
+        # Remove .csv extension if present
+        if name.lower().endswith(".csv"):
+            name = name[:-4]
+        # Replace special characters with underscores
+        return name.replace(" ", "_").replace("-", "_")
+
     def _get_column_iri(self, base_uri: str, table_name: str, column_name: str) -> URIRef:
-        """Generate the IRI for a column class in the ontology."""
-        table_uri = table_name.replace(" ", "_").replace("-", "_")
-        column_uri = column_name.replace(" ", "_").replace("-", "_")
+        """
+        Generate the IRI for a column class in the ontology.
+
+        Args:
+            base_uri: The base URI for the ontology
+            table_name: Name of the table (will be normalized)
+            column_name: Name of the column (will be normalized)
+
+        Returns:
+            URIRef for the column class
+        """
+        from urllib.parse import quote
+
+        table_uri = self._normalize_name(table_name)
+        column_uri = self._normalize_name(column_name)
+        # URL-encode to handle any remaining special characters
+        table_uri = quote(table_uri, safe="")
+        column_uri = quote(column_uri, safe="")
         return URIRef(f"{base_uri}{table_uri}.{column_uri}")
 
     def _insert_pk_fk_statements(
@@ -89,8 +123,8 @@ class PythonTriplifierIntegration:
                 # Get primary key info
                 pk_column = rel.get("primaryKey")
                 if pk_column:
-                    # Get table name from filename (remove .csv extension)
-                    table_name = rel["fileName"].replace(".csv", "").replace("-", "_").replace(" ", "_")
+                    # Get table name from filename using normalized helper
+                    table_name = self._normalize_name(rel["fileName"])
                     pk_iri = self._get_column_iri(base_uri, table_name, pk_column)
 
                     # Insert: ?pk_iri rdfs:subClassOf dbo:PrimaryKey
@@ -107,8 +141,8 @@ class PythonTriplifierIntegration:
                 fk_ref_column = rel.get("foreignKeyColumn")
 
                 if fk_column and fk_table:
-                    # Get source (FK) IRI
-                    source_table = rel["fileName"].replace(".csv", "").replace("-", "_").replace(" ", "_")
+                    # Get source (FK) IRI using normalized helper
+                    source_table = self._normalize_name(rel["fileName"])
                     fk_iri = self._get_column_iri(base_uri, source_table, fk_column)
 
                     # Insert: ?fk_iri rdfs:subClassOf dbo:ForeignKey
@@ -122,7 +156,7 @@ class PythonTriplifierIntegration:
                     # Find the target table's PK info
                     target_rel = file_map.get(fk_table)
                     if target_rel and target_rel.get("primaryKey"):
-                        target_table = fk_table.replace(".csv", "").replace("-", "_").replace(" ", "_")
+                        target_table = self._normalize_name(fk_table)
                         target_pk_column = target_rel["primaryKey"]
                         target_iri = self._get_column_iri(base_uri, target_table, target_pk_column)
 
@@ -209,7 +243,7 @@ class PythonTriplifierIntegration:
                 # Verify primary key
                 pk_column = rel.get("primaryKey")
                 if pk_column:
-                    table_name = rel["fileName"].replace(".csv", "").replace("-", "_").replace(" ", "_")
+                    table_name = self._normalize_name(rel["fileName"])
                     pk_iri = self._get_column_iri(base_uri, table_name, pk_column)
 
                     # Check if PK statement exists
@@ -230,7 +264,7 @@ class PythonTriplifierIntegration:
                 fk_table = rel.get("foreignKeyTable")
 
                 if fk_column and fk_table:
-                    source_table = rel["fileName"].replace(".csv", "").replace("-", "_").replace(" ", "_")
+                    source_table = self._normalize_name(rel["fileName"])
                     fk_iri = self._get_column_iri(base_uri, source_table, fk_column)
 
                     # Check FK subclass
@@ -249,7 +283,7 @@ class PythonTriplifierIntegration:
                     # Check has_target_column relationship
                     target_rel = file_map.get(fk_table)
                     if target_rel and target_rel.get("primaryKey"):
-                        target_table = fk_table.replace(".csv", "").replace("-", "_").replace(" ", "_")
+                        target_table = self._normalize_name(fk_table)
                         target_pk_column = target_rel["primaryKey"]
                         target_iri = self._get_column_iri(base_uri, target_table, target_pk_column)
 
