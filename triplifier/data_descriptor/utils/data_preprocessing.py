@@ -200,8 +200,7 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     column_mapping = dict(zip(original_columns, cleaned_columns))
     processed_df = df.rename(column_mapping)
 
-    # Store original column names for later reference using a global registry
-    # (Polars doesn't have .attrs like pandas)
+    # Store original column names for later reference using a global registry (Polars doesn't have .attrs like pandas)
     _column_mapping_registry[id(processed_df)] = {
         "original_columns": original_columns,
         "column_mapping": dict(zip(cleaned_columns, original_columns)),
@@ -213,7 +212,7 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     return processed_df
 
 
-# Global registry for column mappings (since polars doesn't have .attrs)
+# Global registry for column mappings (since polars does not have .attrs)
 _column_mapping_registry: Dict[int, Dict] = {}
 
 

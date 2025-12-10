@@ -5,8 +5,8 @@ import socket
 import time
 import gc
 import logging
+
 from typing import Tuple, Union
-from markupsafe import Markup
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class PythonTriplifierIntegration:
             # Run Python Triplifier directly using the API
             run_triplifier(args)
 
-            logger.info(f"Python Triplifier executed successfully")
+            logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
 
             # Clean up temporary files
@@ -194,7 +194,7 @@ class PythonTriplifierIntegration:
             # Run Python Triplifier directly using the API
             run_triplifier(args)
 
-            logger.info(f"Python Triplifier executed successfully")
+            logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
 
             # Clean up temporary config file
@@ -222,17 +222,18 @@ def run_triplifier(
     This function is the main entry point for triplification.
 
     Args:
-        properties_file: Legacy parameter for backwards compatibility ('triplifierCSV.properties' or 'triplifierSQL.properties')
+        properties_file: Legacy parameter for backwards compatibility
+        ('triplifierCSV.properties' or 'triplifierSQL.properties')
         root_dir: Root directory for file operations
         child_dir: Child directory for file operations
         csv_data_list: List of polars DataFrames (for CSV mode)
         csv_paths: List of CSV file paths (for CSV mode)
 
     Returns:
-        Tuple[bool, Union[str, Markup]]: (success, message)
+        Tuple[bool, Union[str]]: (success, message)
     """
     try:
-        # Initialize Python Triplifier integration
+        # Initialise Python Triplifier integration
         triplifier = PythonTriplifierIntegration(root_dir, child_dir)
 
         if properties_file == "triplifierCSV.properties":
