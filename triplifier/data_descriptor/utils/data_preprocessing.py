@@ -5,7 +5,7 @@ Data preprocessing utilities for cleaning and preparing data for the Flyover app
 import polars as pl
 import re
 import logging
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -274,7 +274,7 @@ def get_column_mapping(df: pl.DataFrame) -> Dict[str, str]:
     return {}
 
 
-def dataframe_to_template_data(df: pl.DataFrame) -> Dict:
+def dataframe_to_template_data(df: pl.DataFrame) -> "TemplateDataFrame":
     """
     Convert a polars DataFrame to a template-friendly dictionary structure.
 
@@ -301,12 +301,13 @@ class TemplateDataFrame:
     def __init__(self, dataframe: pl.DataFrame):
         self._df = dataframe
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[str, "TemplateFilter", int]) -> Any:
         """
         Support df['column'] and df[condition] syntax.
 
         For string keys, returns a TemplateColumn.
         For TemplateFilter objects (from comparisons), returns filtered data.
+        For integer keys, returns row dict at that index.
         """
         if isinstance(key, str):
             return TemplateColumn(self._df, key)
@@ -314,7 +315,9 @@ class TemplateDataFrame:
             # Apply the filter and return a new TemplateDataFrame
             filtered_df = self._df.filter(key.expression)
             return TemplateDataFrame(filtered_df)
-        return self._df.to_dicts()[key]
+        elif isinstance(key, int):
+            return self._df.to_dicts()[key]
+        raise TypeError(f"Unsupported key type: {type(key).__name__}")
 
     def __iter__(self):
         """Support iteration over rows as dicts."""
@@ -357,10 +360,10 @@ class TemplateColumn:
 class TemplateUniqueValues:
     """Wrapper for unique column values."""
 
-    def __init__(self, unique_values: List):
+    def __init__(self, unique_values: List[Any]):
         self._unique_values = unique_values
 
-    def tolist(self):
+    def tolist(self) -> List[Any]:
         """Return unique values as list."""
         return self._unique_values
 
