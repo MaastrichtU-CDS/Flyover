@@ -2139,7 +2139,23 @@ def insert_fk_relation(fk_predicate, column_class_uri, target_class_uri):
 
 
 def process_pk_fk_relationships():
-    """Process all PK/FK relationships after successful triplification"""
+    """
+    DEPRECATED: PK/FK relationships are now integrated during the triplification process.
+
+    This function is kept for backward compatibility but is no longer called.
+    PK/FK statements are now inserted directly into the ontology file during
+    the triplification workflow in python_triplifier_integration.py.
+
+    See: PythonTriplifierIntegration._insert_pk_fk_statements()
+    """
+    import warnings
+    warnings.warn(
+        "process_pk_fk_relationships is deprecated. PK/FK handling is now "
+        "integrated into the triplification process.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     if not session_cache.pk_fk_data:
         return True
 
@@ -2209,7 +2225,20 @@ def process_pk_fk_relationships():
 
 
 def background_pk_fk_processing():
-    """Background function to process PK/FK relationships"""
+    """
+    DEPRECATED: Background PK/FK processing is no longer needed.
+
+    PK/FK relationships are now integrated during the triplification process.
+    This function is kept for backward compatibility but is no longer called.
+    """
+    import warnings
+    warnings.warn(
+        "background_pk_fk_processing is deprecated. PK/FK handling is now "
+        "integrated into the triplification process.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     try:
         # Small delay to ensure GraphDB has processed the uploaded data
         time.sleep(3)
@@ -2386,6 +2415,9 @@ def run_triplifier(properties_file=None):
     """
     This function runs the Python Triplifier and checks if it ran successfully.
     Wrapper function that calls the actual implementation in python_triplifier_integration.py
+
+    PK/FK relationships are now handled during the triplification process itself,
+    by first generating the ontology, inserting PK/FK statements, then generating data.
     """
     try:
         from utils.python_triplifier_integration import (
@@ -2406,13 +2438,14 @@ def run_triplifier(properties_file=None):
                     csv_path, index=False, sep=",", decimal=".", encoding="utf-8"
                 )
 
-            # Use Python Triplifier for CSV processing
+            # Use Python Triplifier for CSV processing with integrated PK/FK handling
             success, message = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir,
                 csv_data_list=session_cache.csvData,
                 csv_paths=session_cache.csvPath,
+                pk_fk_data=session_cache.pk_fk_data,  # Pass PK/FK data for integration during triplification
             )
 
         elif properties_file == "triplifierSQL.properties":
@@ -2424,13 +2457,8 @@ def run_triplifier(properties_file=None):
             return False, f"Unknown properties file: {properties_file}"
 
         if success:
-            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
-            if (
-                properties_file == "triplifierCSV.properties"
-                and session_cache.pk_fk_data
-            ):
-                print("Triplifier successful. Starting background PK/FK processing...")
-                gevent.spawn(background_pk_fk_processing)
+            # Note: PK/FK processing is now integrated into the triplification process
+            # and no longer needs to run as a separate background task.
 
             # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Use gevent spawn
             if (

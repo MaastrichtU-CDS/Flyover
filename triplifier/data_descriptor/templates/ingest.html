@@ -2,8 +2,13 @@
 <html lang="en" xmlns="http://www.w3.org/1999/html">
 <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+<!-- Select2 CSS for searchable dropdowns -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 <script src="{{ url_for('custom_static', filename='js/jquery-3.5.1.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<!-- Select2 JS for searchable dropdowns -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -376,7 +381,7 @@
                                     <label for="pk_${index}" class="font-weight-bold">
                                         <i class="fas fa-key text-warning"></i> Primary Key:
                                     </label>
-                                    <select class="form-control" id="pk_${index}" name="pk_${index}">
+                                    <select class="form-control pk-fk-select" id="pk_${index}" name="pk_${index}" data-placeholder="Search for a column...">
                                         <option value="">-- No Primary Key --</option>
                                         ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
                                     </select>
@@ -390,7 +395,7 @@
                                     <label for="fk_${index}" class="font-weight-bold">
                                         <i class="fas fa-link text-info"></i> Foreign Key:
                                     </label>
-                                    <select class="form-control" id="fk_${index}" name="fk_${index}">
+                                    <select class="form-control pk-fk-select" id="fk_${index}" name="fk_${index}" data-placeholder="Search for a column...">
                                         <option value="">-- No Foreign Key --</option>
                                         ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
                                     </select>
@@ -406,7 +411,7 @@
                                     <label for="fkTable_${index}" class="font-weight-bold">
                                         <i class="fas fa-arrow-right text-success"></i> References Table:
                                     </label>
-                                    <select class="form-control" id="fkTable_${index}" name="fkTable_${index}">
+                                    <select class="form-control pk-fk-select" id="fkTable_${index}" name="fkTable_${index}" data-placeholder="Search for a table...">
                                         <option value="">-- Select Referenced Table --</option>
                                         ${csvFiles.map(f => f.name !== fileName ? `<option value="${f.name}">${f.name}</option>` : '').join('')}
                                     </select>
@@ -417,7 +422,7 @@
                                     <label for="fkColumn_${index}" class="font-weight-bold">
                                         <i class="fas fa-arrow-right text-success"></i> References Column:
                                     </label>
-                                    <select class="form-control" id="fkColumn_${index}" name="fkColumn_${index}">
+                                    <select class="form-control pk-fk-select" id="fkColumn_${index}" name="fkColumn_${index}" data-placeholder="Search for a column...">
                                         <option value="">-- Select Referenced Column --</option>
                                     </select>
                                 </div>
@@ -437,30 +442,67 @@
                     <li><strong>Foreign Key:</strong> A column that references a primary key in another table (e.g., PatientID in data_table_b referencing ID in data_table_a)</li>
                     <li>Leave fields empty if no relationships exist</li>
                     <li>These relationships will be used to create connections in your knowledge graph</li>
+                    <li><strong>Tip:</strong> Use the search box to quickly find columns in large datasets</li>
                 </ul>
             </div>
         `;
 
         document.getElementById('pkFkContent').innerHTML = content;
 
+        // Initialize Select2 for searchable dropdowns (removes token limits)
+        initializeSelect2();
+
         // Add event listeners for FK changes
         csvFiles.forEach((file, index) => {
-            $(`#fk_${index}`).change(function() {
+            $(`#fk_${index}`).on('change', function() {
                 if ($(this).val()) {
-                    $(`#fkDetails_${index}`).slideDown();
+                    $(`#fkDetails_${index}`).slideDown(function() {
+                        // Re-initialize Select2 on newly visible dropdowns
+                        $(`#fkTable_${index}, #fkColumn_${index}`).select2({
+                            theme: 'bootstrap-5',
+                            width: '100%',
+                            allowClear: true,
+                            placeholder: $(this).data('placeholder') || 'Search...'
+                        });
+                    });
                 } else {
                     $(`#fkDetails_${index}`).slideUp();
                 }
             });
 
-            $(`#fkTable_${index}`).change(function() {
+            $(`#fkTable_${index}`).on('change', function() {
                 const selectedTable = $(this).val();
                 const targetColumns = csvColumns[selectedTable] || [];
+
+                // Destroy existing Select2 instance before modifying options
+                if ($(`#fkColumn_${index}`).hasClass('select2-hidden-accessible')) {
+                    $(`#fkColumn_${index}`).select2('destroy');
+                }
 
                 $(`#fkColumn_${index}`).html(
                     '<option value="">-- Select Referenced Column --</option>' +
                     targetColumns.map(col => `<option value="${col}">${col}</option>`).join('')
                 );
+
+                // Re-initialize Select2
+                $(`#fkColumn_${index}`).select2({
+                    theme: 'bootstrap-5',
+                    width: '100%',
+                    allowClear: true,
+                    placeholder: 'Search for a column...'
+                });
+            });
+        });
+    }
+
+    // Initialize Select2 for all PK/FK dropdowns
+    function initializeSelect2() {
+        $('.pk-fk-select').each(function() {
+            $(this).select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                allowClear: true,
+                placeholder: $(this).data('placeholder') || 'Search...'
             });
         });
     }
@@ -759,6 +801,33 @@
 
     .fas {
         margin-right: 5px;
+    }
+
+    /* Select2 custom styling for searchable PK/FK dropdowns */
+    .select2-container--bootstrap-5 .select2-selection {
+        min-height: 38px;
+    }
+
+    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+        line-height: 36px;
+    }
+
+    .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+        padding: 8px 12px;
+    }
+
+    .select2-container--bootstrap-5 .select2-results__option {
+        padding: 8px 12px;
+    }
+
+    .select2-container--bootstrap-5 .select2-results__option--highlighted {
+        background-color: #007bff;
+    }
+
+    /* Make Select2 dropdown scrollable for large datasets */
+    .select2-results__options {
+        max-height: 300px;
+        overflow-y: auto;
     }
 
     /* Smooth loading animation styles */
