@@ -216,6 +216,7 @@
     <form class="form-horizontal" method="POST" action="end">
         <hr>
         {% for database, df in dataframes.items() %}
+            {% set db_idx = loop.index %}
             <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
             <button class="toggle-button" type="button">
                 <span class="toggle-text">Show more</span>
@@ -225,6 +226,7 @@
             </button>
             <div class="content hidden">
                 {% for item in df['column'].unique().tolist() %}
+                    {% set item_idx = loop.index %}
                     {% set local_variable_name = item.split('"')[1].split('"')[0].strip() %}
                     {% set global_variable_name = item.split("(")[0].strip().lower().replace(' ', '_') %}
 
@@ -256,6 +258,7 @@
                     {% if df[df['column'] == item]['value'].values[0] is not none %}
                         <div class="toggle-content hidden categorical-section">
                             {% for value_dict in df[df['column'] == item]['value'].tolist() %}
+                                {% set value_idx = loop.index %}
                                 {% set value = value_dict.get('value') if value_dict is mapping else value_dict %}
                                 {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
 
@@ -269,9 +272,11 @@
                                     </div>
 
                                     <div class="category-controls">
-                                        <select id="{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                        <select id="select_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
                                                 name='{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
-                                                class="selectpicker form-control" data-live-search="true">
+                                                class="selectpicker form-control category-select"
+                                                data-comment-id="comment_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
+                                                data-live-search="true">
                                             {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
                                             {% if item_info and 'value_mapping' in item_info %}
                                                 <option value="">Description</option>
@@ -296,7 +301,7 @@
                                         </select>
 
                                         <input class="form-control" type="text"
-                                               id="comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                               id="comment_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
                                                name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
                                                placeholder="If other, please specify"
                                                disabled='disabled'
@@ -305,23 +310,10 @@
                                 </div>
 
                                 <input type="hidden"
-                                       id="count_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}"
+                                       id="count_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
                                        name='count_{{ database }}_{{ local_variable_name }}_category_"{{ value_dict['value'] }}"'
                                        value="{{ value_dict['count'] }}"/>
                             {% endfor %}
-                            <script>
-                                $(document).ready(function () {
-                                    {% for value_dict in df[df['column'] == item]['value'].tolist() %}
-                                        $("#{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}").change(function () {
-                                            if ($(this).find("option:selected").val() == "Other") {
-                                                $("#comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}").removeAttr("disabled");
-                                            } else {
-                                                $("#comment_{{ database }}_{{ local_variable_name }}_{{ value_dict['value'] }}").attr("disabled", "disabled");
-                                            }
-                                        });
-                                    {% endfor %}
-                                });
-                            </script>
                         </div>
                     {% endif %}
                 {% endfor %}
@@ -489,6 +481,18 @@
                 var toggleContent = $(this).closest('.toggle-content');
                 toggleContent.height('auto');
                 toggleContent.css('overflow-y', 'auto');
+            });
+
+            // Handle category select change to enable/disable comment field
+            // Uses class-based selection and data attributes to avoid issues with special characters in IDs
+            $('.category-select').on('change', function () {
+                var commentId = $(this).data('comment-id');
+                var commentInput = $('[id="' + commentId + '"]');
+                if ($(this).val() === "Other") {
+                    commentInput.removeAttr("disabled");
+                } else {
+                    commentInput.attr("disabled", "disabled");
+                }
             });
         });
     </script>
