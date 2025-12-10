@@ -1,0 +1,25 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting triplifier
+  Downloading triplifier-2.2.0-py3-none-any.whl.metadata (15 kB)
+Collecting rdflib>=6.0.0 (from triplifier)
+  Downloading rdflib-7.5.0-py3-none-any.whl.metadata (12 kB)
+Requirement already satisfied: PyYAML>=5.3 in /usr/lib/python3/dist-packages (from triplifier) (6.0.1)
+Collecting SQLAlchemy>=1.4 (from triplifier)
+  Downloading sqlalchemy-2.0.45-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (9.5 kB)
+Collecting psycopg2-binary>=2.8 (from triplifier)
+  Downloading psycopg2_binary-2.9.11-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (4.9 kB)
+Requirement already satisfied: pyparsing<4,>=2.1.0 in /usr/lib/python3/dist-packages (from rdflib>=6.0.0->triplifier) (3.1.1)
+Collecting greenlet>=1 (from SQLAlchemy>=1.4->triplifier)
+  Downloading greenlet-3.3.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (4.1 kB)
+Requirement already satisfied: typing-extensions>=4.6.0 in /usr/lib/python3/dist-packages (from SQLAlchemy>=1.4->triplifier) (4.10.0)
+Downloading triplifier-2.2.0-py3-none-any.whl (18 kB)
+Downloading psycopg2_binary-2.9.11-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (4.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.2/4.2 MB 23.4 MB/s eta 0:00:00
+Downloading rdflib-7.5.0-py3-none-any.whl (587 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 587.2/587.2 kB 112.7 MB/s eta 0:00:00
+Downloading sqlalchemy-2.0.45-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 77.9 MB/s eta 0:00:00
+Downloading greenlet-3.3.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (609 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 609.9/609.9 kB 105.4 MB/s eta 0:00:00
+Installing collected packages: rdflib, psycopg2-binary, greenlet, SQLAlchemy, triplifier
+Successfully installed SQLAlchemy-2.0.45 greenlet-3.3.0 psycopg2-binary-2.9.11 rdflib-7.5.0 triplifier-2.2.0
