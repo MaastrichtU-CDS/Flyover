@@ -225,7 +225,7 @@ def run_triplifier(
         properties_file: Legacy parameter for backwards compatibility ('triplifierCSV.properties' or 'triplifierSQL.properties')
         root_dir: Root directory for file operations
         child_dir: Child directory for file operations
-        csv_data_list: List of pandas DataFrames (for CSV mode)
+        csv_data_list: List of polars DataFrames (for CSV mode)
         csv_paths: List of CSV file paths (for CSV mode)
 
     Returns:

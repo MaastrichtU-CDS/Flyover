@@ -445,7 +445,7 @@ def describe_variables():
 
     The function performs the following steps:
     1. Executes a SPARQL query to fetch the URI and column name of each column in the GraphDB repository.
-    2. Reads the query results into a pandas DataFrame.
+    2. Reads the query results into a polars DataFrame.
     3. Extracts the database name from the URI and adds it as a new column in the DataFrame.
     4. Drops the 'uri' column from the DataFrame.
     5. Gets the unique values in the 'database' column and stores them in the session cache.
