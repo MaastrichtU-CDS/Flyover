@@ -52,7 +52,7 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
-from utils.data_preprocessing import preprocess_dataframe
+from utils.data_preprocessing import preprocess_dataframe, dataframe_to_template_data
 from utils.data_ingest import upload_ontology_then_data
 from utils.session_helpers import (
     check_graph_exists,
@@ -286,11 +286,14 @@ def upload_file():
                     null_values=[],  # Don't infer nulls
                     try_parse_dates=False,  # Don't auto-parse dates
                 )
-                # Handle decimal conversion as string operation if needed.
-                # Since all columns are read as strings (infer_schema_length=0),
-                # this replacement is safe for all columns - numeric values like
-                # "1,5" become "1.5" while non-numeric text is unaffected as it
-                # wouldn't contain the decimal separator in a meaningful way.
+                # Handle decimal conversion: normalize user-specified decimal separator to standard "."
+                # Note: This replaces the decimal_sign character in ALL string columns. For CSV data
+                # where the user specifies a decimal separator (e.g., "," for European formats),
+                # this ensures consistent numeric representation. Free text fields with the same
+                # character will also be affected, but this is acceptable since:
+                # 1. The user explicitly specifies this is their decimal separator
+                # 2. The original file is preserved - this is an internal representation
+                # 3. Downstream processing (triplification) expects standard "." decimals
                 if decimal_sign != ".":
                     df = df.with_columns(
                         [
@@ -549,9 +552,13 @@ def describe_variables():
                         )
 
     # Render the 'describe_variables.html' template with all the necessary data
+    # Wrap dataframes for template compatibility (provides pandas-like access patterns)
+    template_dataframes = {
+        db: dataframe_to_template_data(df) for db, df in dataframes.items()
+    }
     return render_template(
         "describe_variables.html",
-        dataframes=dataframes,
+        dataframes=template_dataframes,
         global_variable_names=global_names,
         preselected_descriptions=preselected_descriptions,
         preselected_datatypes=preselected_datatypes,
@@ -754,9 +761,13 @@ def describe_variable_details():
     else:
         variable_info = {}
 
+    # Wrap dataframes for template compatibility (provides pandas-like access patterns)
+    template_dataframes = {
+        db: dataframe_to_template_data(df) for db, df in dataframes.items()
+    }
     return render_template(
         "describe_variable_details.html",
-        dataframes=dataframes,
+        dataframes=template_dataframes,
         global_variable_info=variable_info,
         preselected_values=preselected_values,
     )
@@ -2446,6 +2457,9 @@ def run_triplifier(properties_file=None):
                 )
 
             # Save CSV data to files for processing using polars
+            # write_csv uses standard "," separator ensuring consistent format regardless
+            # of the original input format. Decimal separators were already normalized to "."
+            # during ingestion, so output files are in standard CSV format.
             for i, csv_data in enumerate(session_cache.csvData):
                 csv_path = session_cache.csvPath[i]
                 csv_data.write_csv(csv_path, separator=",")

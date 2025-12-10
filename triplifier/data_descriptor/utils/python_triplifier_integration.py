@@ -23,9 +23,14 @@ class PythonTriplifierIntegration:
         """
         Process CSV data using Python Triplifier API directly.
 
+        Note: CSV paths are used for deriving table names. The actual CSV files
+        saved in data_descriptor_main.py are kept as intermediate artifacts but
+        could be removed in a future refactor since this function loads DataFrames
+        directly into SQLite.
+
         Args:
             csv_data_list: List of polars DataFrames
-            csv_paths: List of CSV file paths
+            csv_paths: List of CSV file paths (used for table naming)
             base_uri: Base URI for RDF generation
 
         Returns:
