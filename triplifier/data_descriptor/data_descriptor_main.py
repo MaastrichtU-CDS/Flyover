@@ -286,7 +286,11 @@ def upload_file():
                     null_values=[],  # Don't infer nulls
                     try_parse_dates=False,  # Don't auto-parse dates
                 )
-                # Handle decimal conversion as string operation if needed
+                # Handle decimal conversion as string operation if needed.
+                # Since all columns are read as strings (infer_schema_length=0),
+                # this replacement is safe for all columns - numeric values like
+                # "1,5" become "1.5" while non-numeric text is unaffected as it
+                # wouldn't contain the decimal separator in a meaningful way.
                 if decimal_sign != ".":
                     df = df.with_columns(
                         [
@@ -738,7 +742,8 @@ def describe_variable_details():
                             rows.append({"column": var_name, "value": category})
 
         # Convert the list of rows to a dataframe using polars
-        # Note: polars doesn't handle mixed types well in columns, so we keep "value" as object-like
+        # The "value" column contains mixed types (None for continuous, dict for categorical)
+        # which polars handles using its Object dtype
         df = pl.DataFrame(rows)
 
         # Add the dataframe to the result dictionary with the database name as the key

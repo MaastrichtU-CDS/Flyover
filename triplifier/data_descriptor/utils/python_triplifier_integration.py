@@ -60,8 +60,8 @@ class PythonTriplifierIntegration:
                     conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
                     conn.execute(f'CREATE TABLE "{table_name}" ({col_defs})')
                     insert_sql = f'INSERT INTO "{table_name}" VALUES ({", ".join(["?" for _ in csv_data.columns])})'
-                    for row in csv_data.iter_rows():
-                        conn.execute(insert_sql, row)
+                    # Use executemany for efficient batch insertion
+                    conn.executemany(insert_sql, csv_data.iter_rows())
                     conn.commit()
                     logger.info(f"Loaded CSV data into SQLite table: {table_name}")
 

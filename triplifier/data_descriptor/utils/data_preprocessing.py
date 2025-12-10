@@ -184,6 +184,11 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
 
     Returns:
         DataFrame with cleaned column names and original names stored in metadata
+
+    Note:
+        Column mappings are stored in a global registry keyed by DataFrame id().
+        Call clear_column_mapping_registry() when DataFrames are no longer needed
+        to free memory.
     """
     logger.info(
         f"Starting DataFrame preprocessing: {df.height} rows, {df.width} columns"
@@ -195,8 +200,8 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     column_mapping = dict(zip(original_columns, cleaned_columns))
     processed_df = df.rename(column_mapping)
 
-    # Store original column names for later reference using a custom attribute
-    # Polars doesn't have .attrs, so we'll store this as a global registry
+    # Store original column names for later reference using a global registry
+    # (Polars doesn't have .attrs like pandas)
     _column_mapping_registry[id(processed_df)] = {
         "original_columns": original_columns,
         "column_mapping": dict(zip(cleaned_columns, original_columns)),
@@ -210,6 +215,16 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
 
 # Global registry for column mappings (since polars doesn't have .attrs)
 _column_mapping_registry: Dict[int, Dict] = {}
+
+
+def clear_column_mapping_registry() -> None:
+    """
+    Clear all stored column mappings from the global registry.
+
+    Call this function when DataFrames are no longer needed to free memory.
+    """
+    _column_mapping_registry.clear()
+    logger.debug("Column mapping registry cleared")
 
 
 def get_original_column_name(df: pl.DataFrame, cleaned_name: str) -> str:

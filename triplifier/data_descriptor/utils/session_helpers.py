@@ -137,6 +137,9 @@ def graph_database_fetch_from_rdf(
         logger.info(f"Fetched {len(unique_values)} database(s) from RDF store")
         return unique_values
 
+    except pl.exceptions.ComputeError as e:
+        logger.error(f"Failed to parse SPARQL query result as CSV: {e}")
+        return None
     except Exception as e:
         logger.error(f"Error fetching databases from RDF store: {e}")
         return None
