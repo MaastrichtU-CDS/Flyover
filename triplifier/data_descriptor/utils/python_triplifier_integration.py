@@ -16,6 +16,46 @@ logger = logging.getLogger(__name__)
 DBO = Namespace("http://um-cds/ontologies/databaseontology/")
 
 
+def _patch_triplifier_columnreference():
+    """
+    Monkey-patch the triplifier package to fix missing COLUMNREFERENCE constant.
+
+    The triplifier package's ontology_factory.py references COLUMNREFERENCE on line 64
+    in the load_ontology() method, but this constant is never imported from the dbo module.
+
+    This patch adds the missing constant to the ontology_factory module before it's used.
+    The COLUMNREFERENCE should be DBO.ColumnReference based on the usage context
+    (finding foreign key predicates via RDFS.subPropertyOf).
+
+    This is a temporary workaround until the upstream triplifier package is fixed.
+    See: https://github.com/MaastrichtU-CDS/triplifier/blob/release/2.0/pythonTool/rdf/ontology_factory.py
+    """
+    try:
+        # Import the dbo module to get the DBO namespace
+        from pythonTool.rdf.ontology.dbo import DBO as TRIPLIFIER_DBO
+
+        # Import the ontology_factory module
+        import pythonTool.rdf.ontology_factory as ontology_factory_module
+
+        # Define COLUMNREFERENCE as DBO.ColumnReference
+        # This is the property that FK predicates are subPropertyOf
+        COLUMNREFERENCE = TRIPLIFIER_DBO.ColumnReference
+
+        # Inject the missing constant into the ontology_factory module
+        if not hasattr(ontology_factory_module, "COLUMNREFERENCE"):
+            ontology_factory_module.COLUMNREFERENCE = COLUMNREFERENCE
+            logger.info(
+                "Applied monkey-patch: Added COLUMNREFERENCE to ontology_factory module"
+            )
+        else:
+            logger.debug("COLUMNREFERENCE already exists in ontology_factory module")
+
+    except ImportError as e:
+        logger.warning(f"Could not apply triplifier monkey-patch: {e}")
+    except Exception as e:
+        logger.error(f"Error applying triplifier monkey-patch: {e}")
+
+
 class PkFkVerificationResult:
     """Result of PK/FK verification with debug information."""
 
@@ -371,6 +411,10 @@ class PythonTriplifierIntegration:
         pk_fk_verification_result = None
 
         try:
+            # Apply monkey-patch to fix missing COLUMNREFERENCE constant in triplifier
+            # This must be called before importing triplifier modules
+            _patch_triplifier_columnreference()
+
             # Import triplifier modules
             from pythonTool.main_app import run_triplifier
 
