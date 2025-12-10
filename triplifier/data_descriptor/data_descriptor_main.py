@@ -990,7 +990,10 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         an HTTP response with a status code of 500 (Internal Server Error)
                          is returned along with a message describing the error.
     """
-    if session_cache.csvTableNames is not None and session_cache.existing_graph is False:
+    if (
+        session_cache.csvTableNames is not None
+        and session_cache.existing_graph is False
+    ):
         if len(session_cache.csvTableNames) == 1:
             database_name = session_cache.csvTableNames[0]
         else:

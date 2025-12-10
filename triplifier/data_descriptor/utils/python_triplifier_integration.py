@@ -216,7 +216,11 @@ class PythonTriplifierIntegration:
 
 
 def run_triplifier(
-    properties_file=None, root_dir="", child_dir=".", csv_data_list=None, csv_table_names=None
+    properties_file=None,
+    root_dir="",
+    child_dir=".",
+    csv_data_list=None,
+    csv_table_names=None,
 ):
     """
     Run the Python Triplifier for CSV or SQL data.
@@ -239,7 +243,9 @@ def run_triplifier(
 
         if properties_file == "triplifierCSV.properties":
             # Use Python Triplifier for CSV processing
-            success, message = triplifier.run_triplifier_csv(csv_data_list, csv_table_names)
+            success, message = triplifier.run_triplifier_csv(
+                csv_data_list, csv_table_names
+            )
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing

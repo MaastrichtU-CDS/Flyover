@@ -291,12 +291,12 @@ def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
         - 'by_column': dict mapping column names to their rows for easy filtering
     """
     rows = df.to_dicts()
-    
+
     # Get unique column values if 'column' exists in dataframe
     columns = []
     if "column" in df.columns:
         columns = df.get_column("column").unique().to_list()
-    
+
     # Create a mapping of column name to rows for easy filtering in templates
     by_column: Dict[str, List[Dict]] = {}
     for row in rows:
@@ -304,7 +304,7 @@ def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
         if col_name not in by_column:
             by_column[col_name] = []
         by_column[col_name].append(row)
-    
+
     return {
         "columns": columns,
         "rows": rows,
