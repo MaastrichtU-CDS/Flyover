@@ -6,7 +6,10 @@ import time
 import gc
 import logging
 
-from typing import Tuple, Union
+import polars as pl
+
+from pythonTool.main_app import run_triplifier as triplifier_run
+from typing import List, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,12 @@ class PythonTriplifierIntegration:
         self.child_dir = child_dir
         self.hostname = socket.gethostname()
 
-    def run_triplifier_csv(self, csv_data_list, csv_table_names, base_uri=None):
+    def run_triplifier_csv(
+        self,
+        csv_data_list: List[pl.DataFrame],
+        csv_table_names: List[str],
+        base_uri: str | None = None,
+    ) -> Tuple[bool, str]:
         """
         Process CSV data using Python Triplifier API directly.
 
@@ -35,9 +43,6 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Import triplifier modules
-            from pythonTool.main_app import run_triplifier
-
             # Create a temporary SQLite database
             temp_db_path = os.path.join(
                 self.root_dir, self.child_dir, "static", "files", "temp_triplifier.db"
@@ -100,7 +105,7 @@ class PythonTriplifierIntegration:
             args = Args()
 
             # Run Python Triplifier directly using the API
-            run_triplifier(args)
+            triplifier_run(args)
 
             logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
@@ -118,7 +123,7 @@ class PythonTriplifierIntegration:
                     logger.warning(
                         f"Could not delete temp database (will be cleaned up on next run): {pe}"
                     )
-                    # Not critical - file will be overwritten on next run
+                    # Not critical - file will be overwritten on the next run
 
             return True, "CSV data triplified successfully using Python Triplifier."
 
@@ -130,8 +135,12 @@ class PythonTriplifierIntegration:
             return False, f"Error processing CSV data: {str(e)}"
 
     def run_triplifier_sql(
-        self, base_uri=None, db_url=None, db_user=None, db_password=None
-    ):
+        self,
+        base_uri: str | None = None,
+        db_url: str | None = None,
+        db_user: str | None = None,
+        db_password: str | None = None,
+    ) -> Tuple[bool, str]:
         """
         Process PostgreSQL data using Python Triplifier API directly.
 
@@ -145,9 +154,6 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Import triplifier modules
-            from pythonTool.main_app import run_triplifier
-
             # Get database configuration from environment variables if not provided
             if db_url is None:
                 db_url = os.getenv("TRIPLIFIER_DB_URL", "postgresql://postgres/opc")
@@ -193,7 +199,7 @@ class PythonTriplifierIntegration:
             args = Args()
 
             # Run Python Triplifier directly using the API
-            run_triplifier(args)
+            triplifier_run(args)
 
             logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
@@ -216,12 +222,12 @@ class PythonTriplifierIntegration:
 
 
 def run_triplifier(
-    properties_file=None,
-    root_dir="",
-    child_dir=".",
-    csv_data_list=None,
-    csv_table_names=None,
-):
+    properties_file=None,  # TODO remove?
+    root_dir: str = "",
+    child_dir: str = ".",
+    csv_data_list: List[pl.DataFrame] | None = None,
+    csv_table_names: List[str] | None = None,
+) -> Tuple[bool, Union[str]]:
     """
     Run the Python Triplifier for CSV or SQL data.
     This function is the main entry point for triplification.

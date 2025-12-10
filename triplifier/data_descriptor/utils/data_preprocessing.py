@@ -106,7 +106,7 @@ def _sanitise_column_name(col_name: str) -> str:
         "[": "_",
         "]": "_",
         "/": "_slash_",
-        "\\": "_backslash_",
+        r"\\": "_backslash_",
         "&": "_and_",
         "%": "_percent_",
         "#": "_hash_",

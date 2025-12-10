@@ -100,7 +100,7 @@ class Cache:
         self.conn = None
         self.col_cursor = None
         self.csvData = None
-        self.csvTableNames = None  # Store table names derived from CSV filenames
+        self.csvTableNames = None
         self.uploaded_file = None
         self.global_semantic_map = None
         self.existing_graph = False
@@ -286,6 +286,9 @@ def upload_file():
                     null_values=[],  # Don't infer nulls
                     try_parse_dates=False,  # Don't auto-parse dates
                 )
+                # TODO improve this approach,
+                #  if data conversion is done in the end,
+                #  we can use data descriptions to infer datatype and set them properly
                 # Handle decimal conversion: normalize user-specified decimal separator to standard "."
                 # Note: This replaces the decimal_sign character in ALL string columns. For CSV data
                 # where the user specifies a decimal separator (e.g., "," for European formats),
@@ -546,7 +549,7 @@ def describe_variables():
                         )
 
     # Render the 'describe_variables.html' template with all the necessary data
-    # Wrap dataframes for template compatibility (provides pandas-like access patterns)
+    # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
     template_dataframes = {
         db: dataframe_to_template_data(df) for db, df in dataframes.items()
     }
@@ -755,7 +758,7 @@ def describe_variable_details():
     else:
         variable_info = {}
 
-    # Wrap dataframes for template compatibility (provides pandas-like access patterns)
+    # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
     template_dataframes = {
         db: dataframe_to_template_data(df) for db, df in dataframes.items()
     }
