@@ -19,18 +19,16 @@ class PythonTriplifierIntegration:
         self.child_dir = child_dir
         self.hostname = socket.gethostname()
 
-    def run_triplifier_csv(self, csv_data_list, csv_paths, base_uri=None):
+    def run_triplifier_csv(self, csv_data_list, csv_table_names, base_uri=None):
         """
         Process CSV data using Python Triplifier API directly.
 
-        Note: CSV paths are used for deriving table names. The actual CSV files
-        saved in data_descriptor_main.py are kept as intermediate artifacts but
-        could be removed in a future refactor since this function loads DataFrames
-        directly into SQLite.
+        DataFrames are loaded directly into SQLite for triplification - no
+        intermediate CSV files are needed.
 
         Args:
             csv_data_list: List of polars DataFrames
-            csv_paths: List of CSV file paths (used for table naming)
+            csv_table_names: List of table names (derived from original filenames)
             base_uri: Base URI for RDF generation
 
         Returns:
@@ -54,9 +52,7 @@ class PythonTriplifierIntegration:
             conn = sqlite3.connect(temp_db_path)
 
             try:
-                for i, (csv_data, csv_path) in enumerate(zip(csv_data_list, csv_paths)):
-                    # Derive table name from CSV filename
-                    table_name = os.path.splitext(os.path.basename(csv_path))[0]
+                for csv_data, table_name in zip(csv_data_list, csv_table_names):
                     # Clean table name to be SQLite compatible
                     table_name = table_name.replace("-", "_").replace(" ", "_")
 
@@ -220,7 +216,7 @@ class PythonTriplifierIntegration:
 
 
 def run_triplifier(
-    properties_file=None, root_dir="", child_dir=".", csv_data_list=None, csv_paths=None
+    properties_file=None, root_dir="", child_dir=".", csv_data_list=None, csv_table_names=None
 ):
     """
     Run the Python Triplifier for CSV or SQL data.
@@ -232,7 +228,7 @@ def run_triplifier(
         root_dir: Root directory for file operations
         child_dir: Child directory for file operations
         csv_data_list: List of polars DataFrames (for CSV mode)
-        csv_paths: List of CSV file paths (for CSV mode)
+        csv_table_names: List of table names derived from CSV filenames (for CSV mode)
 
     Returns:
         Tuple[bool, Union[str]]: (success, message)
@@ -243,7 +239,7 @@ def run_triplifier(
 
         if properties_file == "triplifierCSV.properties":
             # Use Python Triplifier for CSV processing
-            success, message = triplifier.run_triplifier_csv(csv_data_list, csv_paths)
+            success, message = triplifier.run_triplifier_csv(csv_data_list, csv_table_names)
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing

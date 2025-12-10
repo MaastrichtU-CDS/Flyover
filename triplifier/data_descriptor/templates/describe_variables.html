@@ -211,7 +211,7 @@
                 </svg>
             </button>
             <div class="content hidden">
-                {% set columns = df['column'].tolist() %}
+                {% set columns = df.columns %}
                 {% set total_groups = ((columns|length + 9) // 10)|int %}
 
                 {% for group_index in range(total_groups) %}

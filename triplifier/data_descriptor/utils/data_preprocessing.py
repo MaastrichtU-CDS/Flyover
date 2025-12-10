@@ -5,7 +5,7 @@ Data preprocessing utilities for cleaning and preparing data for the Flyover app
 import polars as pl
 import re
 import logging
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -274,105 +274,39 @@ def get_column_mapping(df: pl.DataFrame) -> Dict[str, str]:
     return {}
 
 
-def dataframe_to_template_data(df: pl.DataFrame) -> "TemplateDataFrame":
+def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
     """
     Convert a polars DataFrame to a template-friendly dictionary structure.
 
-    This provides a pandas-like interface for Jinja templates by wrapping the
-    polars DataFrame in a class that supports common pandas access patterns.
+    Instead of wrapping DataFrames, this converts them to plain Python data
+    structures that Jinja templates can work with directly.
 
     Args:
         df: polars DataFrame to convert
 
     Returns:
-        TemplateDataFrame wrapper that supports pandas-like access patterns
+        Dictionary containing:
+        - 'columns': list of unique column values (from 'column' field)
+        - 'rows': list of row dicts
+        - 'by_column': dict mapping column names to their rows for easy filtering
     """
-    return TemplateDataFrame(df)
-
-
-class TemplateDataFrame:
-    """
-    Wrapper class that provides pandas-like access patterns for Jinja templates.
-
-    This class wraps a polars DataFrame and provides methods that mimic pandas
-    DataFrame operations commonly used in Jinja templates.
-    """
-
-    def __init__(self, dataframe: pl.DataFrame):
-        self._df = dataframe
-
-    def __getitem__(self, key: Union[str, "TemplateFilter", int]) -> Any:
-        """
-        Support df['column'] and df[condition] syntax.
-
-        For string keys, returns a TemplateColumn.
-        For TemplateFilter objects (from comparisons), returns filtered data.
-        For integer keys, returns row dict at that index.
-        """
-        if isinstance(key, str):
-            return TemplateColumn(self._df, key)
-        elif isinstance(key, TemplateFilter):
-            # Apply the filter and return a new TemplateDataFrame
-            filtered_df = self._df.filter(key.expression)
-            return TemplateDataFrame(filtered_df)
-        elif isinstance(key, int):
-            return self._df.to_dicts()[key]
-        raise TypeError(f"Unsupported key type: {type(key).__name__}")
-
-    def __iter__(self):
-        """Support iteration over rows as dicts."""
-        return iter(self._df.to_dicts())
-
-    def __len__(self):
-        return self._df.height
-
-
-class TemplateColumn:
-    """Wrapper for column operations that mimics pandas Series."""
-
-    def __init__(self, dataframe: pl.DataFrame, column_name: str):
-        self._df = dataframe
-        self._column_name = column_name
-
-    def tolist(self):
-        """Return column values as list."""
-        return self._df.get_column(self._column_name).to_list()
-
-    def unique(self):
-        """Return unique values wrapper."""
-        return TemplateUniqueValues(
-            self._df.get_column(self._column_name).unique().to_list()
-        )
-
-    @property
-    def values(self):
-        """Return values as list (for .values[0] access)."""
-        return self._df.get_column(self._column_name).to_list()
-
-    def __eq__(self, other):
-        """Support df['column'] == value comparison for filtering."""
-        return TemplateFilter(pl.col(self._column_name) == other)
-
-    def __iter__(self):
-        return iter(self._df.get_column(self._column_name).to_list())
-
-
-class TemplateUniqueValues:
-    """Wrapper for unique column values."""
-
-    def __init__(self, unique_values: List[Any]):
-        self._unique_values = unique_values
-
-    def tolist(self) -> List[Any]:
-        """Return unique values as list."""
-        return self._unique_values
-
-    def __iter__(self):
-        return iter(self._unique_values)
-
-
-class TemplateFilter:
-    """Wrapper for filter expressions."""
-
-    def __init__(self, expression):
-        self.expression = expression
+    rows = df.to_dicts()
+    
+    # Get unique column values if 'column' exists in dataframe
+    columns = []
+    if "column" in df.columns:
+        columns = df.get_column("column").unique().to_list()
+    
+    # Create a mapping of column name to rows for easy filtering in templates
+    by_column: Dict[str, List[Dict]] = {}
+    for row in rows:
+        col_name = row.get("column", "")
+        if col_name not in by_column:
+            by_column[col_name] = []
+        by_column[col_name].append(row)
+    
+    return {
+        "columns": columns,
+        "rows": rows,
+        "by_column": by_column,
+    }

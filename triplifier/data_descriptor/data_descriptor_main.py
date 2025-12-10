@@ -100,7 +100,7 @@ class Cache:
         self.conn = None
         self.col_cursor = None
         self.csvData = None
-        self.csvPath = None
+        self.csvTableNames = None  # Store table names derived from CSV filenames
         self.uploaded_file = None
         self.global_semantic_map = None
         self.existing_graph = False
@@ -307,18 +307,12 @@ def upload_file():
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
             return render_template("ingest.html", error=True)
 
-        session_cache.csvPath = [
-            os.path.join(
-                app.config["UPLOAD_FOLDER"], secure_filename(csv_file.filename)
-            )
+        # Store table names derived from CSV filenames (no need to save CSV files)
+        session_cache.csvTableNames = [
+            os.path.splitext(secure_filename(csv_file.filename))[0]
             for csv_file in csv_files
         ]
-        try:
-            success, message = run_triplifier("triplifierCSV.properties")
-        finally:
-            for path in session_cache.csvPath:
-                if os.path.exists(path):
-                    os.remove(path)
+        success, message = run_triplifier("triplifierCSV.properties")
 
     elif file_type == "Postgres":
         handle_postgres_data(
@@ -996,12 +990,9 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         an HTTP response with a status code of 500 (Internal Server Error)
                          is returned along with a message describing the error.
     """
-    if session_cache.csvPath is not None and session_cache.existing_graph is False:
-        if len(session_cache.csvPath) == 1:
-            database_name = session_cache.csvPath[0][
-                session_cache.csvPath[0].rfind(os.path.sep)
-                + 1 : session_cache.csvPath[0].rfind(".")
-            ]
+    if session_cache.csvTableNames is not None and session_cache.existing_graph is False:
+        if len(session_cache.csvTableNames) == 1:
+            database_name = session_cache.csvTableNames[0]
         else:
             database_name = "for_multiple_databases"
     else:
@@ -2450,27 +2441,14 @@ def run_triplifier(properties_file=None):
         )
 
         if properties_file == "triplifierCSV.properties":
-            if not os.access(app.config["UPLOAD_FOLDER"], os.W_OK):
-                return (
-                    False,
-                    "Unable to temporarily save the CSV file: no write access to the application folder.",
-                )
-
-            # Save CSV data to files for processing using polars
-            # write_csv uses standard "," separator ensuring consistent format regardless
-            # of the original input format. Decimal separators were already normalized to "."
-            # during ingestion, so output files are in standard CSV format.
-            for i, csv_data in enumerate(session_cache.csvData):
-                csv_path = session_cache.csvPath[i]
-                csv_data.write_csv(csv_path, separator=",")
-
             # Use Python Triplifier for CSV processing
+            # DataFrames are loaded directly into SQLite, no need to save CSV files
             success, message = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir,
                 csv_data_list=session_cache.csvData,
-                csv_paths=session_cache.csvPath,
+                csv_table_names=session_cache.csvTableNames,
             )
 
         elif properties_file == "triplifierSQL.properties":
