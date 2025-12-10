@@ -59,7 +59,9 @@ class PythonTriplifierIntegration:
         # Replace special characters with underscores
         return name.replace(" ", "_").replace("-", "_")
 
-    def _get_column_iri(self, base_uri: str, table_name: str, column_name: str) -> URIRef:
+    def _get_column_iri(
+        self, base_uri: str, table_name: str, column_name: str
+    ) -> URIRef:
         """
         Generate the IRI for a column class in the ontology.
 
@@ -158,7 +160,9 @@ class PythonTriplifierIntegration:
                     if target_rel and target_rel.get("primaryKey"):
                         target_table = self._normalize_name(fk_table)
                         target_pk_column = target_rel["primaryKey"]
-                        target_iri = self._get_column_iri(base_uri, target_table, target_pk_column)
+                        target_iri = self._get_column_iri(
+                            base_uri, target_table, target_pk_column
+                        )
 
                         # Insert: ?fk_iri dbo:has_target_column ?target_iri
                         has_target_triple = (fk_iri, DBO.has_target_column, target_iri)
@@ -166,7 +170,9 @@ class PythonTriplifierIntegration:
                         queries_used.append(
                             f"INSERT {{ <{fk_iri}> dbo:has_target_column <{target_iri}> }}"
                         )
-                        logger.info(f"Added has_target_column: {fk_iri} -> {target_iri}")
+                        logger.info(
+                            f"Added has_target_column: {fk_iri} -> {target_iri}"
+                        )
                         inserted_count += 1
                     else:
                         # Log warning but don't fail - referenced table may not have PK selected
@@ -174,15 +180,19 @@ class PythonTriplifierIntegration:
                             f"FK relationship incomplete: {rel['fileName']} references {fk_table}, "
                             f"but {fk_table} has no primary key selected"
                         )
-                        failed_relationships.append({
-                            "source": rel["fileName"],
-                            "target": fk_table,
-                            "reason": "Referenced table has no primary key selected",
-                        })
+                        failed_relationships.append(
+                            {
+                                "source": rel["fileName"],
+                                "target": fk_table,
+                                "reason": "Referenced table has no primary key selected",
+                            }
+                        )
 
             # Save the modified ontology
             graph.serialize(destination=ontology_path, format="xml")
-            logger.info(f"Updated ontology saved with {inserted_count} PK/FK relationships")
+            logger.info(
+                f"Updated ontology saved with {inserted_count} PK/FK relationships"
+            )
 
             if failed_relationships:
                 return PkFkVerificationResult(
@@ -201,6 +211,7 @@ class PythonTriplifierIntegration:
         except Exception as e:
             logger.error(f"Error inserting PK/FK statements: {e}")
             import traceback
+
             traceback.print_exc()
             return PkFkVerificationResult(
                 success=False,
@@ -252,12 +263,14 @@ class PythonTriplifierIntegration:
 
                     pk_triple = (pk_iri, RDFS.subClassOf, DBO.PrimaryKey)
                     if pk_triple not in graph:
-                        failed_relationships.append({
-                            "type": "PrimaryKey",
-                            "iri": str(pk_iri),
-                            "query": ask_query,
-                            "reason": "PrimaryKey subclass statement not found",
-                        })
+                        failed_relationships.append(
+                            {
+                                "type": "PrimaryKey",
+                                "iri": str(pk_iri),
+                                "query": ask_query,
+                                "reason": "PrimaryKey subclass statement not found",
+                            }
+                        )
 
                 # Verify foreign key and relationship
                 fk_column = rel.get("foreignKey")
@@ -273,32 +286,40 @@ class PythonTriplifierIntegration:
 
                     fk_triple = (fk_iri, RDFS.subClassOf, DBO.ForeignKey)
                     if fk_triple not in graph:
-                        failed_relationships.append({
-                            "type": "ForeignKey",
-                            "iri": str(fk_iri),
-                            "query": ask_query,
-                            "reason": "ForeignKey subclass statement not found",
-                        })
+                        failed_relationships.append(
+                            {
+                                "type": "ForeignKey",
+                                "iri": str(fk_iri),
+                                "query": ask_query,
+                                "reason": "ForeignKey subclass statement not found",
+                            }
+                        )
 
                     # Check has_target_column relationship
                     target_rel = file_map.get(fk_table)
                     if target_rel and target_rel.get("primaryKey"):
                         target_table = self._normalize_name(fk_table)
                         target_pk_column = target_rel["primaryKey"]
-                        target_iri = self._get_column_iri(base_uri, target_table, target_pk_column)
+                        target_iri = self._get_column_iri(
+                            base_uri, target_table, target_pk_column
+                        )
 
-                        ask_query = f"ASK {{ <{fk_iri}> dbo:has_target_column <{target_iri}> }}"
+                        ask_query = (
+                            f"ASK {{ <{fk_iri}> dbo:has_target_column <{target_iri}> }}"
+                        )
                         queries_used.append(ask_query)
 
                         has_target_triple = (fk_iri, DBO.has_target_column, target_iri)
                         if has_target_triple not in graph:
-                            failed_relationships.append({
-                                "type": "has_target_column",
-                                "source": str(fk_iri),
-                                "target": str(target_iri),
-                                "query": ask_query,
-                                "reason": "has_target_column relationship not found",
-                            })
+                            failed_relationships.append(
+                                {
+                                    "type": "has_target_column",
+                                    "source": str(fk_iri),
+                                    "target": str(target_iri),
+                                    "query": ask_query,
+                                    "reason": "has_target_column relationship not found",
+                                }
+                            )
 
             if failed_relationships:
                 return PkFkVerificationResult(
@@ -401,8 +422,7 @@ class PythonTriplifierIntegration:
 
             # Check if we have PK/FK data to process
             has_pk_fk = pk_fk_data and any(
-                rel.get("primaryKey") or rel.get("foreignKey")
-                for rel in pk_fk_data
+                rel.get("primaryKey") or rel.get("foreignKey") for rel in pk_fk_data
             )
 
             if has_pk_fk:
@@ -462,7 +482,9 @@ class PythonTriplifierIntegration:
                 logger.info(f"Data generated: {output_path}")
             else:
                 # No PK/FK data - use original single-pass approach
-                logger.info("No PK/FK data provided, using single-pass triplification...")
+                logger.info(
+                    "No PK/FK data provided, using single-pass triplification..."
+                )
 
                 class Args:
                     def __init__(self):

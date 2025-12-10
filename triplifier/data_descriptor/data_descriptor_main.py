@@ -2149,6 +2149,7 @@ def process_pk_fk_relationships():
     See: PythonTriplifierIntegration._insert_pk_fk_statements()
     """
     import warnings
+
     warnings.warn(
         "process_pk_fk_relationships is deprecated. PK/FK handling is now "
         "integrated into the triplification process.",
@@ -2232,6 +2233,7 @@ def background_pk_fk_processing():
     This function is kept for backward compatibility but is no longer called.
     """
     import warnings
+
     warnings.warn(
         "background_pk_fk_processing is deprecated. PK/FK handling is now "
         "integrated into the triplification process.",
