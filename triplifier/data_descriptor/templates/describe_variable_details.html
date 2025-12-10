@@ -259,24 +259,24 @@
 
                     {% if first_value is not none %}
                         <div class="toggle-content hidden categorical-section">
-                            {% for value_dict in item_rows %}
-                                {% set item_value = value_dict.get('value') %}
+                            {% for row_data in item_rows %}
+                                {% set category_info = row_data.get('value') %}
                                 {% set value_idx = loop.index %}
-                                {% set value = item_value.get('value') if item_value is mapping else item_value %}
-                                {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (value|string) + '"') %}
+                                {% set category_value = category_info.get('value') if category_info is mapping else category_info %}
+                                {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (category_value|string) + '"') %}
 
                                 <div class="category-item">
                                     <div class="category-label">
-                                        {% if item_value['value'] is not none and item_value['value'] != '' %}
-                                            {{ item_value['value'] }} (counted: {{ item_value['count'] }})
+                                        {% if category_info['value'] is not none and category_info['value'] != '' %}
+                                            {{ category_info['value'] }} (counted: {{ category_info['count'] }})
                                         {% else %}
-                                            Empty cells (counted: {{ item_value['count'] }})
+                                            Empty cells (counted: {{ category_info['count'] }})
                                         {% endif %}
                                     </div>
 
                                     <div class="category-controls">
                                         <select id="select_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                                name='{{ database }}_{{ local_variable_name }}_category_"{{ item_value['value'] }}"'
+                                                name='{{ database }}_{{ local_variable_name }}_category_"{{ category_info['value'] }}"'
                                                 class="selectpicker form-control category-select"
                                                 data-comment-id="comment_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
                                                 data-live-search="true">
@@ -305,7 +305,7 @@
 
                                         <input class="form-control" type="text"
                                                id="comment_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                               name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ item_value['value'] }}"'
+                                               name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ category_info['value'] }}"'
                                                placeholder="If other, please specify"
                                                disabled='disabled'
                                                style="width: 200px;"/>
@@ -314,8 +314,8 @@
 
                                 <input type="hidden"
                                        id="count_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                       name='count_{{ database }}_{{ local_variable_name }}_category_"{{ item_value['value'] }}"'
-                                       value="{{ item_value['count'] }}"/>
+                                       name='count_{{ database }}_{{ local_variable_name }}_category_"{{ category_info['value'] }}"'
+                                       value="{{ category_info['count'] }}"/>
                             {% endfor %}
                         </div>
                     {% endif %}
