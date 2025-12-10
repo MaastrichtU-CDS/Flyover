@@ -288,10 +288,12 @@ def upload_file():
                 )
                 # Handle decimal conversion as string operation if needed
                 if decimal_sign != ".":
-                    df = df.with_columns([
-                        pl.col(c).str.replace_all(decimal_sign, ".")
-                        for c in df.columns
-                    ])
+                    df = df.with_columns(
+                        [
+                            pl.col(c).str.replace_all(decimal_sign, ".")
+                            for c in df.columns
+                        ]
+                    )
                 session_cache.csvData.append(preprocess_dataframe(df))
 
         except Exception as e:
@@ -474,7 +476,8 @@ def describe_variables():
 
     # Create a dictionary of dataframes, where the key is the database name, and the value is a corresponding dataframe
     dataframes = {
-        value: column_info.filter(pl.col("database") == value) for value in unique_values
+        value: column_info.filter(pl.col("database") == value)
+        for value in unique_values
     }
 
     # Get the global variable names to use in the description drop-down menu

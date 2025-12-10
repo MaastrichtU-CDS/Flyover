@@ -126,12 +126,7 @@ def graph_database_fetch_from_rdf(
             return None
 
         # Filter out None/null values and get unique database names
-        unique_values = (
-            database_info.get_column("db")
-            .drop_nulls()
-            .unique()
-            .to_list()
-        )
+        unique_values = database_info.get_column("db").drop_nulls().unique().to_list()
         # Filter out empty strings
         unique_values = [v for v in unique_values if v and str(v).strip()]
 

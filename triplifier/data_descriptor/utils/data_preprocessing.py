@@ -203,9 +203,7 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     }
 
     logger.info("DataFrame preprocessing completed successfully")
-    logger.debug(
-        f"Column mapping created: {len(column_mapping)} entries"
-    )
+    logger.debug(f"Column mapping created: {len(column_mapping)} entries")
 
     return processed_df
 
@@ -226,8 +224,13 @@ def get_original_column_name(df: pl.DataFrame, cleaned_name: str) -> str:
         Original column name if found, otherwise the cleaned name
     """
     df_id = id(df)
-    if df_id in _column_mapping_registry and "column_mapping" in _column_mapping_registry[df_id]:
-        original_name = _column_mapping_registry[df_id]["column_mapping"].get(cleaned_name, cleaned_name)
+    if (
+        df_id in _column_mapping_registry
+        and "column_mapping" in _column_mapping_registry[df_id]
+    ):
+        original_name = _column_mapping_registry[df_id]["column_mapping"].get(
+            cleaned_name, cleaned_name
+        )
         if original_name != cleaned_name:
             logger.debug(
                 f"Retrieved original column name: '{cleaned_name}' -> '{original_name}'"
@@ -249,6 +252,9 @@ def get_column_mapping(df: pl.DataFrame) -> Dict[str, str]:
         Dictionary mapping cleaned column names to original column names
     """
     df_id = id(df)
-    if df_id in _column_mapping_registry and "column_mapping" in _column_mapping_registry[df_id]:
+    if (
+        df_id in _column_mapping_registry
+        and "column_mapping" in _column_mapping_registry[df_id]
+    ):
         return _column_mapping_registry[df_id]["column_mapping"]
     return {}
