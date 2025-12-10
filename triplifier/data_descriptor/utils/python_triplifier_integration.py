@@ -24,7 +24,7 @@ class PythonTriplifierIntegration:
         Process CSV data using Python Triplifier API directly.
 
         Args:
-            csv_data_list: List of pandas DataFrames
+            csv_data_list: List of polars DataFrames
             csv_paths: List of CSV file paths
             base_uri: Base URI for RDF generation
 
@@ -55,8 +55,14 @@ class PythonTriplifierIntegration:
                     # Clean table name to be SQLite compatible
                     table_name = table_name.replace("-", "_").replace(" ", "_")
 
-                    # Write DataFrame to SQLite
-                    csv_data.to_sql(table_name, conn, if_exists="replace", index=False)
+                    # Write polars DataFrame to SQLite using bulk insertion
+                    col_defs = ", ".join([f'"{col}" TEXT' for col in csv_data.columns])
+                    conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    conn.execute(f'CREATE TABLE "{table_name}" ({col_defs})')
+                    insert_sql = f'INSERT INTO "{table_name}" VALUES ({", ".join(["?" for _ in csv_data.columns])})'
+                    for row in csv_data.iter_rows():
+                        conn.execute(insert_sql, row)
+                    conn.commit()
                     logger.info(f"Loaded CSV data into SQLite table: {table_name}")
 
             finally:

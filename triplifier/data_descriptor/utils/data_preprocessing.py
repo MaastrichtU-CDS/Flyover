@@ -2,7 +2,7 @@
 Data preprocessing utilities for cleaning and preparing data for the Flyover application.
 """
 
-import pandas as pd
+import polars as pl
 import re
 import logging
 from typing import Dict, List, Tuple
@@ -11,12 +11,12 @@ from typing import Dict, List, Tuple
 logger = logging.getLogger(__name__)
 
 
-def clean_column_names(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
+def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
     """
     Clean column names to make them HTML/JavaScript safe and meaningful.
 
     Args:
-        df: pandas DataFrame with potentially problematic column names
+        df: polars DataFrame with potentially problematic column names
 
     Returns:
         Tuple of (cleaned_columns, original_columns)
@@ -25,14 +25,14 @@ def clean_column_names(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
         f"Starting column name cleaning for DataFrame with {len(df.columns)} columns"
     )
 
-    original_columns = df.columns.tolist()
+    original_columns = df.columns
     cleaned_columns = []
     problematic_count = 0
 
     for i, col in enumerate(original_columns):
-        # Handle empty, NaN, or pandas "Unnamed" column names
+        # Handle empty, None, or problematic column names
         if (
-            pd.isna(col)
+            col is None
             or str(col).strip() == ""
             or str(col) == "nan"
             or str(col).startswith("Unnamed:")
@@ -175,7 +175,7 @@ def _handle_duplicate_columns(columns: List[str]) -> List[str]:
     return final_columns
 
 
-def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     """
     Preprocess a DataFrame by cleaning column names and preparing it for HTML rendering.
 
@@ -183,43 +183,51 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df: Original DataFrame
 
     Returns:
-        DataFrame with cleaned column names and original names stored in attrs
+        DataFrame with cleaned column names and original names stored in metadata
     """
     logger.info(
-        f"Starting DataFrame preprocessing: {df.shape[0]} rows, {df.shape[1]} columns"
+        f"Starting DataFrame preprocessing: {df.height} rows, {df.width} columns"
     )
 
     cleaned_columns, original_columns = clean_column_names(df)
 
-    # Create a copy to avoid modifying the original
-    processed_df = df.copy()
-    processed_df.columns = cleaned_columns
+    # Rename columns using polars rename
+    column_mapping = dict(zip(original_columns, cleaned_columns))
+    processed_df = df.rename(column_mapping)
 
-    # Store original column names for later reference
-    processed_df.attrs["original_columns"] = original_columns
-    processed_df.attrs["column_mapping"] = dict(zip(cleaned_columns, original_columns))
+    # Store original column names for later reference using a custom attribute
+    # Polars doesn't have .attrs, so we'll store this as a global registry
+    _column_mapping_registry[id(processed_df)] = {
+        "original_columns": original_columns,
+        "column_mapping": dict(zip(cleaned_columns, original_columns)),
+    }
 
     logger.info("DataFrame preprocessing completed successfully")
     logger.debug(
-        f"Column mapping created: {len(processed_df.attrs['column_mapping'])} entries"
+        f"Column mapping created: {len(column_mapping)} entries"
     )
 
     return processed_df
 
 
-def get_original_column_name(df: pd.DataFrame, cleaned_name: str) -> str:
+# Global registry for column mappings (since polars doesn't have .attrs)
+_column_mapping_registry: Dict[int, Dict] = {}
+
+
+def get_original_column_name(df: pl.DataFrame, cleaned_name: str) -> str:
     """
     Get the original column name from a cleaned column name.
 
     Args:
-        df: DataFrame with column mapping in attrs
+        df: DataFrame with column mapping in registry
         cleaned_name: Cleaned column name
 
     Returns:
         Original column name if found, otherwise the cleaned name
     """
-    if hasattr(df, "attrs") and "column_mapping" in df.attrs:
-        original_name = df.attrs["column_mapping"].get(cleaned_name, cleaned_name)
+    df_id = id(df)
+    if df_id in _column_mapping_registry and "column_mapping" in _column_mapping_registry[df_id]:
+        original_name = _column_mapping_registry[df_id]["column_mapping"].get(cleaned_name, cleaned_name)
         if original_name != cleaned_name:
             logger.debug(
                 f"Retrieved original column name: '{cleaned_name}' -> '{original_name}'"
@@ -228,3 +236,19 @@ def get_original_column_name(df: pd.DataFrame, cleaned_name: str) -> str:
 
     logger.debug(f"No column mapping found, returning cleaned name: '{cleaned_name}'")
     return cleaned_name
+
+
+def get_column_mapping(df: pl.DataFrame) -> Dict[str, str]:
+    """
+    Get the column mapping for a preprocessed DataFrame.
+
+    Args:
+        df: DataFrame with column mapping in registry
+
+    Returns:
+        Dictionary mapping cleaned column names to original column names
+    """
+    df_id = id(df)
+    if df_id in _column_mapping_registry and "column_mapping" in _column_mapping_registry[df_id]:
+        return _column_mapping_registry[df_id]["column_mapping"]
+    return {}

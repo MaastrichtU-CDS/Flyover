@@ -14,7 +14,7 @@ import sys
 import logging
 import requests
 
-import pandas as pd
+import polars as pl
 
 from io import StringIO
 from markupsafe import Markup
@@ -278,11 +278,21 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                session_cache.csvData.append(
-                    preprocess_dataframe(
-                        pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)
-                    )
+                # Use polars to read CSV with minimal inference
+                df = pl.read_csv(
+                    csv_file,
+                    separator=separator_sign,
+                    infer_schema_length=0,  # Treat everything as strings
+                    null_values=[],  # Don't infer nulls
+                    try_parse_dates=False,  # Don't auto-parse dates
                 )
+                # Handle decimal conversion as string operation if needed
+                if decimal_sign != ".":
+                    df = df.with_columns([
+                        pl.col(c).str.replace_all(decimal_sign, ".")
+                        for c in df.columns
+                    ])
+                session_cache.csvData.append(preprocess_dataframe(df))
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
@@ -443,25 +453,28 @@ def describe_variables():
         it renders the 'describe_variables.html' template
         with the dictionary of dataframes and the global variable names.
     """
-    # Execute the query and read the results into a pandas DataFrame
-    column_info = pd.read_csv(
-        StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY))
+    # Execute the query and read the results into a polars DataFrame
+    column_info = pl.read_csv(
+        StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY)),
+        infer_schema_length=0,
+        null_values=[],
+        try_parse_dates=False,
     )
     # Extract the database name from the URI and add it as a new column in the DataFrame
-    column_info["database"] = column_info["uri"].str.extract(
-        DATABASE_NAME_PATTERN, expand=False
+    column_info = column_info.with_columns(
+        pl.col("uri").str.extract(DATABASE_NAME_PATTERN, 1).alias("database")
     )
 
     # Drop the 'uri' column from the DataFrame
-    column_info = column_info.drop(columns=["uri"])
+    column_info = column_info.drop("uri")
 
     # Get unique values in the 'database' column and store them in the session cache
-    unique_values = column_info["database"].unique()
+    unique_values = column_info.get_column("database").unique().to_list()
     session_cache.databases = unique_values
 
     # Create a dictionary of dataframes, where the key is the database name, and the value is a corresponding dataframe
     dataframes = {
-        value: column_info[column_info["database"] == value] for value in unique_values
+        value: column_info.filter(pl.col("database") == value) for value in unique_values
     }
 
     # Get the global variable names to use in the description drop-down menu
@@ -597,7 +610,13 @@ def retrieve_descriptive_info():
                 # retrieve the categories for the local variable and store them in the session cache
                 if data_type == "Categorical":
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
-                    df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
+                    df = pl.read_csv(
+                        StringIO(cat),
+                        separator=",",
+                        infer_schema_length=0,
+                        null_values=[],
+                        try_parse_dates=False,
+                    )
                     # Check if the description is missing and format display name accordingly
                     if not global_variable_name or global_variable_name.strip() == "":
                         display_name = (
@@ -608,7 +627,7 @@ def retrieve_descriptive_info():
                             f'{global_variable_name} (or "{local_variable_name}")'
                         )
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {display_name: df.to_dict("records")}
+                        {display_name: df.to_dicts()}
                     )
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
@@ -665,7 +684,7 @@ def describe_variable_details():
         for variable in variables:
             # Check if the variable is a string (continuous variable)
             if isinstance(variable, str):
-                # Add a row to the dataframe with the column name as the variable name and the value as pd.NA
+                # Add a row to the dataframe with the column name as the variable name and the value as None
                 rows.append({"column": variable, "value": None})
             # Check if the variable is a dictionary (categorical variable)
             elif isinstance(variable, dict):
@@ -715,8 +734,9 @@ def describe_variable_details():
                             # the column name as the variable name and the value as the category
                             rows.append({"column": var_name, "value": category})
 
-        # Convert the list of rows to a dataframe
-        df = pd.DataFrame(rows)
+        # Convert the list of rows to a dataframe using polars
+        # Note: polars doesn't handle mixed types well in columns, so we keep "value" as object-like
+        df = pl.DataFrame(rows)
 
         # Add the dataframe to the result dictionary with the database name as the key
         dataframes[database] = df
@@ -2098,9 +2118,14 @@ def get_column_class_uri(table_name, column_name):
             print(f"No results found for column {table_name}.{column_name}")
             return None
 
-        column_info = pd.read_csv(StringIO(query_result))
+        column_info = pl.read_csv(
+            StringIO(query_result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
-        if column_info.empty:
+        if column_info.is_empty():
             print(f"Empty result set for column {table_name}.{column_name}")
             return None
 
@@ -2108,7 +2133,7 @@ def get_column_class_uri(table_name, column_name):
             print("Query result format error: no 'uri' column found")
             return None
 
-        return column_info["uri"].iloc[0]
+        return column_info.get_column("uri")[0]
 
     except Exception as e:
         print(f"Error fetching column URI for {table_name}.{column_name}: {e}")
@@ -2239,28 +2264,36 @@ def get_existing_graph_structure():
         if not result or result.strip() == "":
             return {"tables": [], "tableColumns": {}}
 
-        # Parse the result
-        structure_info = pd.read_csv(StringIO(result))
+        # Parse the result using polars
+        structure_info = pl.read_csv(
+            StringIO(result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
-        if structure_info.empty:
+        if structure_info.is_empty():
             return {"tables": [], "tableColumns": {}}
 
         # Extract table names from URIs and organise by table
-        structure_info["table"] = (
-            structure_info["uri"]
-            .str.extract(r".*/(.*?)\.", expand=False)
-            .fillna("unknown")
+        structure_info = structure_info.with_columns(
+            pl.col("uri")
+            .str.extract(r".*/(.*?)\.", 1)
+            .fill_null("unknown")
+            .alias("table")
         )
 
         # Get unique tables
-        tables = structure_info["table"].unique().tolist()
+        tables = structure_info.get_column("table").unique().to_list()
 
         # Create table-column mapping
         table_columns = {}
         for table in tables:
-            columns = structure_info[structure_info["table"] == table][
-                "column"
-            ].tolist()
+            columns = (
+                structure_info.filter(pl.col("table") == table)
+                .get_column("column")
+                .to_list()
+            )
             table_columns[table] = columns
 
         return jsonify({"tables": tables, "tableColumns": table_columns})
@@ -2290,12 +2323,17 @@ def get_existing_column_class_uri(table_name, column_name):
             print(f"No existing results found for column {table_name}.{column_name}")
             return None
 
-        column_info = pd.read_csv(StringIO(query_result))
+        column_info = pl.read_csv(
+            StringIO(query_result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
-        if column_info.empty or "uri" not in column_info.columns:
+        if column_info.is_empty() or "uri" not in column_info.columns:
             return None
 
-        return column_info["uri"].iloc[0]
+        return column_info.get_column("uri")[0]
 
     except Exception as e:
         print(f"Error fetching existing column URI for {table_name}.{column_name}: {e}")
@@ -2399,12 +2437,10 @@ def run_triplifier(properties_file=None):
                     "Unable to temporarily save the CSV file: no write access to the application folder.",
                 )
 
-            # Save CSV data to files for processing
+            # Save CSV data to files for processing using polars
             for i, csv_data in enumerate(session_cache.csvData):
                 csv_path = session_cache.csvPath[i]
-                csv_data.to_csv(
-                    csv_path, index=False, sep=",", decimal=".", encoding="utf-8"
-                )
+                csv_data.write_csv(csv_path, separator=",")
 
             # Use Python Triplifier for CSV processing
             success, message = run_triplifier_impl(
