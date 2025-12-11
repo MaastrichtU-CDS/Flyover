@@ -148,6 +148,36 @@ def _sanitise_column_name(col_name: str) -> str:
     return col_name
 
 
+def sanitise_table_name(table_name: str) -> str:
+    """
+    Sanitise a table name using the same logic as column names.
+
+    This ensures table names in SQLite match what's used in PK/FK relationships.
+
+    Args:
+        table_name: Original table name (typically CSV filename without extension)
+
+    Returns:
+        Sanitised table name safe for database use
+    """
+    # Remove . csv extension if present
+    if table_name.lower().endswith('.csv'):
+        table_name = table_name[:-4]
+
+    # Reuse the same sanitisation logic as column names
+    sanitised = _sanitise_column_name(table_name)
+
+    # Ensure it starts with a letter (required for SQL identifiers)
+    if sanitised and not sanitised[0].isalpha():
+        sanitised = "tbl_" + sanitised
+
+    # Handle empty result
+    if not sanitised:
+        sanitised = "table_unnamed"
+
+    return sanitised
+
+
 def _handle_duplicate_columns(columns: List[str]) -> List[str]:
     """
     Handle duplicate column names by adding suffixes.
