@@ -1187,7 +1187,8 @@ def annotation_review():
     # In this case, the semantic map acts as a global template for all databases
     if map_database_name is None or map_database_name == "":
         # Check if user came from Describe workflow
-        # descriptive_info being a dict indicates they went through the describe workflow
+        # descriptive_info being a dict (even if empty) indicates the describe workflow
+        # was initiated, as it's set to {} at the start of retrieve_descriptive_info()
         came_from_describe = (
             session_cache.descriptive_info is not None
             and isinstance(session_cache.descriptive_info, dict)
