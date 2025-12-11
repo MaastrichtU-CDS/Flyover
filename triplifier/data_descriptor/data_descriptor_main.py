@@ -1212,17 +1212,19 @@ def annotation_review():
         )
 
     # Validate that database_name matches at least one available database
-    matching_db = graph_database_find_matching(
-        map_database_name, session_cache.databases
-    )
-    if matching_db is None:
-        available_dbs = ", ".join(str(db) for db in session_cache.databases)
-        flash(
-            f"The semantic map is for database '{map_database_name}', "
-            f"which does not match any available database. "
-            f"Available databases: {available_dbs}"
+    # Skip this validation if database_name is empty (global template)
+    if map_database_name and map_database_name != "":
+        matching_db = graph_database_find_matching(
+            map_database_name, session_cache.databases
         )
-        return redirect(url_for("annotation_landing"))
+        if matching_db is None:
+            available_dbs = ", ".join(str(db) for db in session_cache.databases)
+            flash(
+                f"The semantic map is for database '{map_database_name}', "
+                f"which does not match any available database. "
+                f"Available databases: {available_dbs}"
+            )
+            return redirect(url_for("annotation_landing"))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
