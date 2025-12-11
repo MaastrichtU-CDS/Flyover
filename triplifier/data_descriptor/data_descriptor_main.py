@@ -14,7 +14,7 @@ import sys
 import logging
 import requests
 
-import pandas as pd
+import polars as pl
 
 from io import StringIO
 from markupsafe import Markup
@@ -52,8 +52,21 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
-from utils.data_preprocessing import preprocess_dataframe
+from utils.data_preprocessing import (
+    preprocess_dataframe,
+    dataframe_to_template_data,
+    sanitise_table_name,
+)
 from utils.data_ingest import upload_ontology_then_data
+from utils.session_helpers import (
+    check_graph_exists,
+    graph_database_ensure_backend_initialisation,
+    graph_database_find_name_match,
+    graph_database_find_matching,
+    process_variable_for_annotation,
+    COLUMN_INFO_QUERY,
+    DATABASE_NAME_PATTERN,
+)
 from annotation_helper.src.miscellaneous import add_annotation
 
 # Import JSON-LD validation and loading modules
@@ -102,7 +115,7 @@ class Cache:
         self.conn = None
         self.col_cursor = None
         self.csvData = None
-        self.csvPath = None
+        self.csvTableNames = None
         self.uploaded_file = None
         self.global_semantic_map = None
         self.jsonld_mapping = None  # Store JSONLDMapping object for JSON-LD format
@@ -152,7 +165,7 @@ def index():
     """
     # Check whether a data graph already exists
     try:
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
             return render_template(
@@ -360,28 +373,44 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                session_cache.csvData.append(
-                    preprocess_dataframe(
-                        pd.read_csv(csv_file, sep=separator_sign, decimal=decimal_sign)
-                    )
+                # Use polars to read CSV with minimal inference
+                df = pl.read_csv(
+                    csv_file,
+                    separator=separator_sign,
+                    infer_schema_length=0,  # Treat everything as strings
+                    null_values=[],  # Don't infer nulls
+                    try_parse_dates=False,  # Don't auto-parse dates
                 )
+                # TODO improve this approach,
+                #  if data conversion is done in the end,
+                #  we can use data descriptions to infer datatype and set them properly
+                # Handle decimal conversion: normalize user-specified decimal separator to standard "."
+                # Note: This replaces the decimal_sign character in ALL string columns. For CSV data
+                # where the user specifies a decimal separator (e.g., "," for European formats),
+                # this ensures consistent numeric representation. Free text fields with the same
+                # character will also be affected, but this is acceptable since:
+                # 1. The user explicitly specifies this is their decimal separator
+                # 2. The original file is preserved - this is an internal representation
+                # 3. Downstream processing (triplification) expects standard "." decimals
+                if decimal_sign != ".":
+                    df = df.with_columns(
+                        [
+                            pl.col(c).str.replace_all(decimal_sign, ".")
+                            for c in df.columns
+                        ]
+                    )
+                session_cache.csvData.append(preprocess_dataframe(df))
 
         except Exception as e:
             flash(f"Unexpected error attempting to cache the CSV data, error: {e}")
             return render_template("ingest.html", error=True)
 
-        session_cache.csvPath = [
-            os.path.join(
-                app.config["UPLOAD_FOLDER"], secure_filename(csv_file.filename)
-            )
+        # Store table names derived from CSV filenames (no need to save CSV files)
+        session_cache.csvTableNames = [
+            os.path.splitext(secure_filename(csv_file.filename))[0]
             for csv_file in csv_files
         ]
-        try:
-            success, message = run_triplifier("triplifierCSV.properties")
-        finally:
-            for path in session_cache.csvPath:
-                if os.path.exists(path):
-                    os.remove(path)
+        success, message = run_triplifier("triplifierCSV.properties")
 
     elif file_type == "Postgres":
         handle_postgres_data(
@@ -465,7 +494,7 @@ def describe_landing():
     """
     try:
         # Check if the graph exists first
-        if check_graph_exists(session_cache.repo, "http://data.local/"):
+        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template("describe_landing.html", message=Markup(message))
@@ -511,7 +540,7 @@ def describe_variables():
 
     The function performs the following steps:
     1. Executes a SPARQL query to fetch the URI and column name of each column in the GraphDB repository.
-    2. Reads the query results into a pandas DataFrame.
+    2. Reads the query results into a polars DataFrame.
     3. Extracts the database name from the URI and adds it as a new column in the DataFrame.
     4. Drops the 'uri' column from the DataFrame.
     5. Gets the unique values in the 'database' column and stores them in the session cache.
@@ -525,31 +554,29 @@ def describe_variables():
         it renders the 'describe_variables.html' template
         with the dictionary of dataframes and the global variable names.
     """
-    # SPARQL query to fetch the URI and column name of each column in the GraphDB repository
-    column_query = """
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        SELECT ?uri ?column 
-        WHERE {
-        ?uri dbo:column ?column .
-        }
-    """
-    # Execute the query and read the results into a pandas DataFrame
-    column_info = pd.read_csv(StringIO(execute_query(session_cache.repo, column_query)))
+    # Execute the query and read the results into a polars DataFrame
+    column_info = pl.read_csv(
+        StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY)),
+        infer_schema_length=0,
+        null_values=[],
+        try_parse_dates=False,
+    )
     # Extract the database name from the URI and add it as a new column in the DataFrame
-    column_info["database"] = column_info["uri"].str.extract(
-        r".*/(.*?)\.", expand=False
+    column_info = column_info.with_columns(
+        pl.col("uri").str.extract(DATABASE_NAME_PATTERN, 1).alias("database")
     )
 
     # Drop the 'uri' column from the DataFrame
-    column_info = column_info.drop(columns=["uri"])
+    column_info = column_info.drop("uri")
 
     # Get unique values in the 'database' column and store them in the session cache
-    unique_values = column_info["database"].unique()
+    unique_values = column_info.get_column("database").unique().to_list()
     session_cache.databases = unique_values
 
     # Create a dictionary of dataframes, where the key is the database name, and the value is a corresponding dataframe
     dataframes = {
-        value: column_info[column_info["database"] == value] for value in unique_values
+        value: column_info.filter(pl.col("database") == value)
+        for value in unique_values
     }
 
     # Get the global variable names to use in the description drop-down menu
@@ -567,6 +594,9 @@ def describe_variables():
         isinstance(session_cache.global_semantic_map, dict)
         and "variable_info" in session_cache.global_semantic_map
     ):
+        # Get the database_name from the semantic map for filtering
+        map_database_name = session_cache.global_semantic_map.get("database_name")
+
         for var_name, var_info in session_cache.global_semantic_map[
             "variable_info"
         ].items():
@@ -579,6 +609,10 @@ def describe_variables():
                 description_to_datatype[description_display] = datatype_display
 
             for db in unique_values:  # For each database
+                # Only apply mappings if the database name matches or if the map is a global template
+                if not graph_database_find_name_match(map_database_name, db):
+                    continue
+
                 # Match by local_definition if available
                 local_def = var_info.get("local_definition", var_name)
                 key = f"{db}_{local_def}"
@@ -610,9 +644,13 @@ def describe_variables():
                         )
 
     # Render the 'describe_variables.html' template with all the necessary data
+    # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
+    template_dataframes = {
+        db: dataframe_to_template_data(df) for db, df in dataframes.items()
+    }
     return render_template(
         "describe_variables.html",
-        dataframes=dataframes,
+        dataframes=template_dataframes,
         global_variable_names=global_names,
         preselected_descriptions=preselected_descriptions,
         preselected_datatypes=preselected_datatypes,
@@ -678,7 +716,13 @@ def retrieve_descriptive_info():
                 # retrieve the categories for the local variable and store them in the session cache
                 if data_type == "Categorical":
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
-                    df = pd.read_csv(StringIO(cat), sep=",", na_filter=False)
+                    df = pl.read_csv(
+                        StringIO(cat),
+                        separator=",",
+                        infer_schema_length=0,
+                        null_values=[],
+                        try_parse_dates=False,
+                    )
                     # Check if the description is missing and format display name accordingly
                     if not global_variable_name or global_variable_name.strip() == "":
                         display_name = (
@@ -689,7 +733,7 @@ def retrieve_descriptive_info():
                             f'{global_variable_name} (or "{local_variable_name}")'
                         )
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {display_name: df.to_dict("records")}
+                        {display_name: df.to_dicts()}
                     )
                 # If the data type of the local variable is 'Continuous',
                 # add the local variable to a list of variables to further specify
@@ -732,6 +776,11 @@ def describe_variable_details():
     dataframes = {}
     preselected_values = {}
 
+    # Get the database_name from the semantic map for filtering
+    map_database_name = None
+    if isinstance(session_cache.global_semantic_map, dict):
+        map_database_name = session_cache.global_semantic_map.get("database_name")
+
     # Iterate over the items in the dictionary
     for database, variables in session_cache.DescriptiveInfoDetails.items():
         # Initialise an empty list to hold the rows of the dataframe
@@ -741,14 +790,16 @@ def describe_variable_details():
         for variable in variables:
             # Check if the variable is a string (continuous variable)
             if isinstance(variable, str):
-                # Add a row to the dataframe with the column name as the variable name and the value as pd.NA
+                # Add a row to the dataframe with the column name as the variable name and the value as None
                 rows.append({"column": variable, "value": None})
             # Check if the variable is a dictionary (categorical variable)
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
-                    # If this variable exists in the global semantic map
-                    if isinstance(session_cache.global_semantic_map, dict):
+                    # If this variable exists in the global semantic map and database matches
+                    if isinstance(
+                        session_cache.global_semantic_map, dict
+                    ) and graph_database_find_name_match(map_database_name, database):
                         # Get global variable name (removing the local name in parentheses)
                         global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
 
@@ -789,8 +840,10 @@ def describe_variable_details():
                             # the column name as the variable name and the value as the category
                             rows.append({"column": var_name, "value": category})
 
-        # Convert the list of rows to a dataframe
-        df = pd.DataFrame(rows)
+        # Convert the list of rows to a dataframe using polars
+        # The "value" column contains mixed types (None for continuous, dict for categorical)
+        # which polars handles using its Object dtype
+        df = pl.DataFrame(rows)
 
         # Add the dataframe to the result dictionary with the database name as the key
         dataframes[database] = df
@@ -800,9 +853,13 @@ def describe_variable_details():
     else:
         variable_info = {}
 
+    # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
+    template_dataframes = {
+        db: dataframe_to_template_data(df) for db, df in dataframes.items()
+    }
     return render_template(
         "describe_variable_details.html",
-        dataframes=dataframes,
+        dataframes=template_dataframes,
         global_variable_info=variable_info,
         preselected_values=preselected_values,
     )
@@ -1031,12 +1088,12 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         an HTTP response with a status code of 500 (Internal Server Error)
                          is returned along with a message describing the error.
     """
-    if session_cache.csvPath is not None and session_cache.existing_graph is False:
-        if len(session_cache.csvPath) == 1:
-            database_name = session_cache.csvPath[0][
-                session_cache.csvPath[0].rfind(os.path.sep)
-                + 1 : session_cache.csvPath[0].rfind(".")
-            ]
+    if (
+        session_cache.csvTableNames is not None
+        and session_cache.existing_graph is False
+    ):
+        if len(session_cache.csvTableNames) == 1:
+            database_name = session_cache.csvTableNames[0]
         else:
             database_name = "for_multiple_databases"
     else:
@@ -1078,7 +1135,9 @@ def annotation_landing():
     """
     try:
         # Check if the graph exists
-        data_exists = check_graph_exists(session_cache.repo, "http://data.local/")
+        data_exists = check_graph_exists(
+            session_cache.repo, "http://data.local/", graphdb_url
+        )
         session_cache.existing_graph = data_exists
 
         message = None
@@ -1127,6 +1186,57 @@ def upload_annotation_json():
             with open(filepath, "r") as f:
                 json_data = json.load(f)
 
+            # Validate database_name against available databases
+            map_database_name = json_data.get("database_name")
+
+            # Ensure databases are initialised from RDF-store
+            if not graph_database_ensure_backend_initialisation(
+                session_cache, execute_query
+            ):
+                os.remove(filepath)  # Clean up file
+                return (
+                    jsonify(
+                        {
+                            "error": "No databases found in the data store. Please complete the Ingest step first."
+                        }
+                    ),
+                    400,
+                )
+
+            # Check if database_name is null or empty - require it to be specified
+            if map_database_name is None or map_database_name == "":
+                os.remove(filepath)  # Clean up file
+                return (
+                    jsonify(
+                        {
+                            "error": "The uploaded semantic map does not have a 'database_name' specified.<br>"
+                            "Please either: (1) Edit your JSON file to add a valid 'database_name' field, or "
+                            "(2) Use the <a href='/describe_landing'>Describe</a> "
+                            "workflow to create mappings for your data.",
+                            "error_type": "missing_database_name",
+                        }
+                    ),
+                    400,
+                )
+
+            # If the map has a specific database_name, validate it matches an available database
+            matching_db = graph_database_find_matching(
+                map_database_name, session_cache.databases
+            )
+            if matching_db is None:
+                available_dbs = ", ".join(str(db) for db in session_cache.databases)
+                os.remove(filepath)  # Clean up file
+                return (
+                    jsonify(
+                        {
+                            "error": f"The uploaded semantic map is for database '{map_database_name}', "
+                            f"which does not match any available database.<br>"
+                            f"Available databases: {available_dbs}"
+                        }
+                    ),
+                    400,
+                )
+
             # Store the JSON data for use in annotation
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
@@ -1155,15 +1265,49 @@ def annotation_review():
         )
         return redirect(url_for("annotation_landing"))
 
-    if not session_cache.databases.any():
+    # Ensure databases are initialised from the RDF-store if not already populated
+    if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
+
+    # Validate that the semantic map's database_name is specified and matches
+    map_database_name = session_cache.global_semantic_map.get("database_name")
+
+    # Check if database_name is null or empty
+    if map_database_name is None or map_database_name == "":
+        flash(
+            Markup(
+                "The semantic map does not have a 'database_name' specified. <br>"
+                "Please either edit your JSON file to add a valid 'database_name' field, or "
+                "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
+            )
+        )
+        return redirect(url_for("annotation_landing"))
+
+    # Validate that database_name matches at least one available database
+    matching_db = graph_database_find_matching(
+        map_database_name, session_cache.databases
+    )
+    if matching_db is None:
+        available_dbs = ", ".join(str(db) for db in session_cache.databases)
+        flash(
+            f"The semantic map is for database '{map_database_name}', "
+            f"which does not match any available database. "
+            f"Available databases: {available_dbs}"
+        )
+        return redirect(url_for("annotation_landing"))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
     unannotated_variables = []
+    non_matching_databases = []  # Track databases that don't match the semantic map
 
     for database in session_cache.databases:
+        # Check if this database matches the semantic map's database_name
+        if not graph_database_find_name_match(map_database_name, database):
+            non_matching_databases.append(database)
+            continue
+
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get("variable_info", {})
@@ -1174,24 +1318,30 @@ def annotation_review():
         annotation_data[database] = {}
 
         # Process variables from the local semantic map
+        # TODO: Remove this processing logic once we migrate to JSON-LD
         for var_name, var_data in variable_info.items():
-            # Create a copy of the variable data
-            var_copy = dict(var_data)
-
-            # Validate required fields
-            if not var_copy.get("predicate"):
-                logger.warning(f"Variable {var_name} in {database} missing predicate")
+            # Validate required fields first (before processing)
+            if not var_data.get("predicate"):
+                unannotated_variables.append(
+                    f"{database}.{var_name} (missing predicate)"
+                )
                 continue
 
-            if not var_copy.get("class"):
-                logger.warning(f"Variable {var_name} in {database} missing class")
+            if not var_data.get("class"):
+                unannotated_variables.append(f"{database}.{var_name} (missing class)")
                 continue
 
-            # Check if this variable has a local definition (from the local semantic map)
-            if var_copy.get("local_definition"):
+            # Use the shared helper to process variable and check for local definitions
+            var_copy, has_local_def = process_variable_for_annotation(
+                var_name, var_data, session_cache.global_semantic_map
+            )
+
+            if has_local_def:
                 annotation_data[database][var_name] = var_copy
             else:
-                unannotated_variables.append(f"{database}.{var_name}")
+                unannotated_variables.append(
+                    f"{database}.{var_name} (no local definition)"
+                )
 
     # Check if we have any variables to annotate
     total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
@@ -1207,6 +1357,8 @@ def annotation_review():
         "annotation_review.html",
         annotation_data=annotation_data,
         unannotated_variables=unannotated_variables,
+        non_matching_databases=non_matching_databases,
+        map_database_name=map_database_name,
     )
 
 
@@ -1219,7 +1371,10 @@ def start_annotation():
         if not isinstance(session_cache.global_semantic_map, dict):
             return jsonify({"success": False, "error": "No semantic map available"})
 
-        if not session_cache.databases.any():
+        # Ensure databases are initialised from the RDF-store if not already populated
+        if not graph_database_ensure_backend_initialisation(
+            session_cache, execute_query
+        ):
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
             )
@@ -1236,8 +1391,18 @@ def start_annotation():
 
         total_annotated_vars = 0
 
+        # Get the database_name filter from the semantic map
+        map_database_name = session_cache.global_semantic_map.get("database_name")
+
         # Process each database separately using its local semantic map
         for database in session_cache.databases:
+            # Skip databases that don't match the semantic map's database_name
+            if not graph_database_find_name_match(map_database_name, database):
+                logger.info(
+                    f"Skipping database {database} - does not match semantic map database_name '{map_database_name}'"
+                )
+                continue
+
             logger.info(f"Processing annotation for database: {database}")
 
             # Get the local semantic map for this specific database
@@ -1255,11 +1420,17 @@ def start_annotation():
             )
 
             # Filter only variables that have local definitions
-            annotated_variables = {
-                var_name: var_data
-                for var_name, var_data in variable_info.items()
-                if var_data.get("local_definition")
-            }
+            # TODO: Remove this processing logic once we migrate to JSON-LD
+            annotated_variables = {}
+            for var_name, var_data in variable_info.items():
+                # Use the shared helper to process variable and check for local definitions
+                var_copy, has_local_def = process_variable_for_annotation(
+                    var_name, var_data, session_cache.global_semantic_map
+                )
+
+                # Only add variables with local definitions
+                if has_local_def:
+                    annotated_variables[var_name] = var_copy
 
             if not annotated_variables:
                 logger.info(
@@ -1341,9 +1512,13 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for("describe_downloads"))
 
-    if not session_cache.databases.any():
+    # Ensure databases are initialised from the RDF-store if not already populated
+    if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
+
+    # Get the database_name filter from the semantic map
+    map_database_name = session_cache.global_semantic_map.get("database_name")
 
     # Get annotated variables from all databases using local semantic maps
     annotated_variables = []
@@ -1351,18 +1526,27 @@ def annotation_verify():
     variable_data = {}
 
     for database in session_cache.databases:
+        # Skip databases that don't match the semantic map's database_name
+        if not graph_database_find_name_match(map_database_name, database):
+            continue
+
         # Get the local semantic map for this specific database
         local_semantic_map = formulate_local_semantic_map(database)
         variable_info = local_semantic_map.get("variable_info", {})
 
+        # TODO: Remove this processing logic once we migrate to JSON-LD
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Check if this variable has a local definition (from the local semantic map)
-            if var_data.get("local_definition"):
+            # Use the shared helper to process variable and check for local definitions
+            var_copy, has_local_def = process_variable_for_annotation(
+                var_name, var_data, session_cache.global_semantic_map
+            )
+
+            if has_local_def:
                 annotated_variables.append(full_var_name)
                 variable_data[full_var_name] = {
-                    **var_data,
+                    **var_copy,
                     "database": database,
                     "prefixes": local_semantic_map.get("prefixes", ""),
                 }
@@ -1425,9 +1609,39 @@ def verify_annotation_ask():
         if not var_data:
             return jsonify({"success": False, "error": "Variable not found"})
 
-        # Get variable information
-        local_definition = var_data.get("local_definition")
-        var_class = var_data.get("class")
+        # Create a deep copy of the variable data to avoid reference issues
+        var_copy = copy.deepcopy(var_data)
+
+        # Check if this variable has a local definition
+        local_definition = var_copy.get("local_definition")
+
+        # If no local definition from the formulated map, check the original uploaded JSON
+        # This handles the case when a user uploads JSON directly for annotation
+        if not local_definition and isinstance(session_cache.global_semantic_map, dict):
+            original_var_info = session_cache.global_semantic_map.get(
+                "variable_info", {}
+            ).get(var_name, {})
+            if original_var_info.get("local_definition"):
+                local_definition = original_var_info["local_definition"]
+                var_copy["local_definition"] = local_definition
+
+                # Also copy value mappings if they exist in the original JSON
+                # Only copy if the current var_copy doesn't have local_term values already
+                if "value_mapping" in original_var_info:
+                    # Check if the formulated map already has local_term values (from the 'describe' step)
+                    current_value_mapping = var_copy.get("value_mapping", {})
+                    has_local_terms = False
+                    if current_value_mapping.get("terms"):
+                        for term_data in current_value_mapping["terms"].values():
+                            if term_data.get("local_term") is not None:
+                                has_local_terms = True
+                                break
+
+                    # Only overwrite if no local_terms exist yet
+                    if not has_local_terms:
+                        var_copy["value_mapping"] = original_var_info["value_mapping"]
+
+        var_class = var_copy.get("class")
 
         if not local_definition:
             return jsonify(
@@ -1461,7 +1675,7 @@ def verify_annotation_ask():
         )
 
         # Check for value mappings and add target_class subClassOf statements
-        value_mapping = var_data.get("value_mapping", {})
+        value_mapping = var_copy.get("value_mapping", {})
         if value_mapping and value_mapping.get("terms"):
             for term, term_info in value_mapping["terms"].items():
                 if term_info.get("local_term") and term_info.get("target_class"):
@@ -1575,44 +1789,11 @@ def api_check_graph_exists():
 
         # Check if the main data graph exists
         graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri)
+        exists = check_graph_exists(session_cache.repo, graph_uri, graphdb_url)
 
         return jsonify({"exists": exists})
     except Exception as e:
         return jsonify({"exists": False, "error": str(e)})
-
-
-def check_graph_exists(repo, graph_uri):
-    """
-    This function checks if a graph exists in a GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the repository in GraphDB.
-    graph_uri (str): The URI of the graph to check.
-
-    Returns:
-    bool: True if the graph exists, False otherwise.
-
-    Raises:
-    Exception: If the request to the GraphDB instance fails,
-    an exception is raised with the status code of the failed request.
-    """
-    # Construct the SPARQL query
-    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
-
-    # Send a GET request to the GraphDB instance
-    response = requests.get(
-        f"{graphdb_url}/repositories/{repo}",
-        params={"query": query},
-        headers={"Accept": "application/sparql-results+json"},
-    )
-
-    # If the request is successful, return the result of the ASK query
-    if response.status_code == 200:
-        return response.json()["boolean"]
-    # If the request fails, raise an exception with the status code
-    else:
-        raise Exception(f"Query failed with status code {response.status_code}")
 
 
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
@@ -1774,6 +1955,19 @@ def formulate_local_semantic_map(database):
     # Process only the variables that are filled in the UI
     # Process local definitions and update the existing semantic map
     used_global_variables = {}  # Track usage for duplicate handling
+
+    # Check if descriptive_info exists and has data for this database
+    # If not, return the modified semantic map with all local_definitions as null
+    if (
+        session_cache.descriptive_info is None
+        or database not in session_cache.descriptive_info
+        or session_cache.descriptive_info[database] is None
+    ):
+        logger.info(
+            f"No descriptive info available for database '{database}'. "
+            "Returning semantic map without local mappings."
+        )
+        return modified_semantic_map
 
     for local_variable, local_value in session_cache.descriptive_info[database].items():
         # Skip if no description is provided (empty field in UI)
@@ -2035,9 +2229,14 @@ def get_column_class_uri(table_name, column_name):
             print(f"No results found for column {table_name}.{column_name}")
             return None
 
-        column_info = pd.read_csv(StringIO(query_result))
+        column_info = pl.read_csv(
+            StringIO(query_result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
-        if column_info.empty:
+        if column_info.is_empty():
             print(f"Empty result set for column {table_name}.{column_name}")
             return None
 
@@ -2045,7 +2244,7 @@ def get_column_class_uri(table_name, column_name):
             print("Query result format error: no 'uri' column found")
             return None
 
-        return column_info["uri"].iloc[0]
+        return column_info.get_column("uri")[0]
 
     except Exception as e:
         print(f"Error fetching column URI for {table_name}.{column_name}: {e}")
@@ -2105,11 +2304,11 @@ def process_pk_fk_relationships():
             if not target_rel or not target_rel.get("primaryKey"):
                 continue
 
-            # Generate FK configuration
+            # Generate FK configuration - sanitise table name before handling
             fk_config = {
-                "foreignKeyTable": rel["fileName"].replace(".csv", ""),
+                "foreignKeyTable": sanitise_table_name(rel["fileName"]),
                 "foreignKeyColumn": rel["foreignKey"],
-                "primaryKeyTable": target_file.replace(".csv", ""),
+                "primaryKeyTable": sanitise_table_name(target_file),
                 "primaryKeyColumn": target_rel["primaryKey"],
             }
 
@@ -2176,28 +2375,36 @@ def get_existing_graph_structure():
         if not result or result.strip() == "":
             return {"tables": [], "tableColumns": {}}
 
-        # Parse the result
-        structure_info = pd.read_csv(StringIO(result))
+        # Parse the result using polars
+        structure_info = pl.read_csv(
+            StringIO(result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
-        if structure_info.empty:
+        if structure_info.is_empty():
             return {"tables": [], "tableColumns": {}}
 
         # Extract table names from URIs and organise by table
-        structure_info["table"] = (
-            structure_info["uri"]
-            .str.extract(r".*/(.*?)\.", expand=False)
-            .fillna("unknown")
+        structure_info = structure_info.with_columns(
+            pl.col("uri")
+            .str.extract(r".*/(.*?)\.", 1)
+            .fill_null("unknown")
+            .alias("table")
         )
 
         # Get unique tables
-        tables = structure_info["table"].unique().tolist()
+        tables = structure_info.get_column("table").unique().to_list()
 
         # Create table-column mapping
         table_columns = {}
         for table in tables:
-            columns = structure_info[structure_info["table"] == table][
-                "column"
-            ].tolist()
+            columns = (
+                structure_info.filter(pl.col("table") == table)
+                .get_column("column")
+                .to_list()
+            )
             table_columns[table] = columns
 
         return jsonify({"tables": tables, "tableColumns": table_columns})
@@ -2227,12 +2434,17 @@ def get_existing_column_class_uri(table_name, column_name):
             print(f"No existing results found for column {table_name}.{column_name}")
             return None
 
-        column_info = pd.read_csv(StringIO(query_result))
+        column_info = pl.read_csv(
+            StringIO(query_result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
-        if column_info.empty or "uri" not in column_info.columns:
+        if column_info.is_empty() or "uri" not in column_info.columns:
             return None
 
-        return column_info["uri"].iloc[0]
+        return column_info.get_column("uri")[0]
 
     except Exception as e:
         print(f"Error fetching existing column URI for {table_name}.{column_name}: {e}")
@@ -2275,11 +2487,12 @@ def process_cross_graph_relationships():
 
         # Get URIs for new and existing columns
         new_column_uri = get_column_class_uri(
-            link_data["newTableName"], link_data["newColumnName"]
+            sanitise_table_name(link_data["newTableName"]), link_data["newColumnName"]
         )
 
         existing_column_uri = get_existing_column_class_uri(
-            link_data["existingTableName"], link_data["existingColumnName"]
+            sanitise_table_name(link_data["existingTableName"]),
+            link_data["existingColumnName"],
         )
 
         if not new_column_uri or not existing_column_uri:
@@ -2330,26 +2543,14 @@ def run_triplifier(properties_file=None):
         )
 
         if properties_file == "triplifierCSV.properties":
-            if not os.access(app.config["UPLOAD_FOLDER"], os.W_OK):
-                return (
-                    False,
-                    "Unable to temporarily save the CSV file: no write access to the application folder.",
-                )
-
-            # Save CSV data to files for processing
-            for i, csv_data in enumerate(session_cache.csvData):
-                csv_path = session_cache.csvPath[i]
-                csv_data.to_csv(
-                    csv_path, index=False, sep=",", decimal=".", encoding="utf-8"
-                )
-
             # Use Python Triplifier for CSV processing
+            # DataFrames are loaded directly into SQLite, no need to save CSV files
             success, message = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir,
                 csv_data_list=session_cache.csvData,
-                csv_paths=session_cache.csvPath,
+                csv_table_names=session_cache.csvTableNames,
             )
 
         elif properties_file == "triplifierSQL.properties":

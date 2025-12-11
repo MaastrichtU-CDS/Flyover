@@ -5,8 +5,11 @@ import socket
 import time
 import gc
 import logging
-from typing import Tuple, Union
-from markupsafe import Markup
+
+import polars as pl
+
+from pythonTool.main_app import run_triplifier as triplifier_run
+from typing import List, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -19,22 +22,27 @@ class PythonTriplifierIntegration:
         self.child_dir = child_dir
         self.hostname = socket.gethostname()
 
-    def run_triplifier_csv(self, csv_data_list, csv_paths, base_uri=None):
+    def run_triplifier_csv(
+        self,
+        csv_data_list: List[pl.DataFrame],
+        csv_table_names: List[str],
+        base_uri: str | None = None,
+    ) -> Tuple[bool, str]:
         """
         Process CSV data using Python Triplifier API directly.
 
+        DataFrames are loaded directly into SQLite for triplification - no
+        intermediate CSV files are needed.
+
         Args:
-            csv_data_list: List of pandas DataFrames
-            csv_paths: List of CSV file paths
+            csv_data_list: List of polars DataFrames
+            csv_table_names: List of table names (derived from original filenames)
             base_uri: Base URI for RDF generation
 
         Returns:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Import triplifier modules
-            from pythonTool.main_app import run_triplifier
-
             # Create a temporary SQLite database
             temp_db_path = os.path.join(
                 self.root_dir, self.child_dir, "static", "files", "temp_triplifier.db"
@@ -49,14 +57,18 @@ class PythonTriplifierIntegration:
             conn = sqlite3.connect(temp_db_path)
 
             try:
-                for i, (csv_data, csv_path) in enumerate(zip(csv_data_list, csv_paths)):
-                    # Derive table name from CSV filename
-                    table_name = os.path.splitext(os.path.basename(csv_path))[0]
+                for csv_data, table_name in zip(csv_data_list, csv_table_names):
                     # Clean table name to be SQLite compatible
                     table_name = table_name.replace("-", "_").replace(" ", "_")
 
-                    # Write DataFrame to SQLite
-                    csv_data.to_sql(table_name, conn, if_exists="replace", index=False)
+                    # Write polars DataFrame to SQLite using bulk insertion
+                    col_defs = ", ".join([f'"{col}" TEXT' for col in csv_data.columns])
+                    conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+                    conn.execute(f'CREATE TABLE "{table_name}" ({col_defs})')
+                    insert_sql = f'INSERT INTO "{table_name}" VALUES ({", ".join(["?" for _ in csv_data.columns])})'
+                    # Use executemany for efficient batch insertion
+                    conn.executemany(insert_sql, csv_data.iter_rows())
+                    conn.commit()
                     logger.info(f"Loaded CSV data into SQLite table: {table_name}")
 
             finally:
@@ -93,9 +105,9 @@ class PythonTriplifierIntegration:
             args = Args()
 
             # Run Python Triplifier directly using the API
-            run_triplifier(args)
+            triplifier_run(args)
 
-            logger.info(f"Python Triplifier executed successfully")
+            logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
 
             # Clean up temporary files
@@ -111,7 +123,7 @@ class PythonTriplifierIntegration:
                     logger.warning(
                         f"Could not delete temp database (will be cleaned up on next run): {pe}"
                     )
-                    # Not critical - file will be overwritten on next run
+                    # Not critical - file will be overwritten on the next run
 
             return True, "CSV data triplified successfully using Python Triplifier."
 
@@ -123,8 +135,12 @@ class PythonTriplifierIntegration:
             return False, f"Error processing CSV data: {str(e)}"
 
     def run_triplifier_sql(
-        self, base_uri=None, db_url=None, db_user=None, db_password=None
-    ):
+        self,
+        base_uri: str | None = None,
+        db_url: str | None = None,
+        db_user: str | None = None,
+        db_password: str | None = None,
+    ) -> Tuple[bool, str]:
         """
         Process PostgreSQL data using Python Triplifier API directly.
 
@@ -138,9 +154,6 @@ class PythonTriplifierIntegration:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Import triplifier modules
-            from pythonTool.main_app import run_triplifier
-
             # Get database configuration from environment variables if not provided
             if db_url is None:
                 db_url = os.getenv("TRIPLIFIER_DB_URL", "postgresql://postgres/opc")
@@ -186,9 +199,9 @@ class PythonTriplifierIntegration:
             args = Args()
 
             # Run Python Triplifier directly using the API
-            run_triplifier(args)
+            triplifier_run(args)
 
-            logger.info(f"Python Triplifier executed successfully")
+            logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
 
             # Clean up temporary config file
@@ -209,29 +222,36 @@ class PythonTriplifierIntegration:
 
 
 def run_triplifier(
-    properties_file=None, root_dir="", child_dir=".", csv_data_list=None, csv_paths=None
-):
+    properties_file=None,  # TODO remove?
+    root_dir: str = "",
+    child_dir: str = ".",
+    csv_data_list: List[pl.DataFrame] | None = None,
+    csv_table_names: List[str] | None = None,
+) -> Tuple[bool, Union[str]]:
     """
     Run the Python Triplifier for CSV or SQL data.
     This function is the main entry point for triplification.
 
     Args:
-        properties_file: Legacy parameter for backwards compatibility ('triplifierCSV.properties' or 'triplifierSQL.properties')
+        properties_file: Legacy parameter for backwards compatibility
+        ('triplifierCSV.properties' or 'triplifierSQL.properties')
         root_dir: Root directory for file operations
         child_dir: Child directory for file operations
-        csv_data_list: List of pandas DataFrames (for CSV mode)
-        csv_paths: List of CSV file paths (for CSV mode)
+        csv_data_list: List of polars DataFrames (for CSV mode)
+        csv_table_names: List of table names derived from CSV filenames (for CSV mode)
 
     Returns:
-        Tuple[bool, Union[str, Markup]]: (success, message)
+        Tuple[bool, Union[str]]: (success, message)
     """
     try:
-        # Initialize Python Triplifier integration
+        # Initialise Python Triplifier integration
         triplifier = PythonTriplifierIntegration(root_dir, child_dir)
 
         if properties_file == "triplifierCSV.properties":
             # Use Python Triplifier for CSV processing
-            success, message = triplifier.run_triplifier_csv(csv_data_list, csv_paths)
+            success, message = triplifier.run_triplifier_csv(
+                csv_data_list, csv_table_names
+            )
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
