@@ -7,13 +7,12 @@ particularly for database information that needs to be fetched from the RDF stor
 
 import copy
 import logging
-import numpy
 import requests
 
-import pandas as pd
+import polars as pl
 
 from io import StringIO
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +95,7 @@ def graph_database_ensure_backend_initialisation(
 
 def graph_database_fetch_from_rdf(
     repo: str, execute_query_func: Callable[[str, str], str]
-) -> Optional[numpy.ndarray]:
+) -> Optional[List[str]]:
     """
     Fetch database names from the RDF-store.
 
@@ -109,20 +108,28 @@ def graph_database_fetch_from_rdf(
         execute_query_func: The function to execute SPARQL queries
 
     Returns:
-        numpy.ndarray or None: Array of unique database names, or None if fetching fails
+        List[str] or None: List of unique database names, or None if fetching fails
     """
     try:
-        # Execute the query and read the results into a pandas DataFrame
+        # Execute the query and read the results into a polars DataFrame
         query_result = execute_query_func(repo, DATABASE_NAME_QUERY)
-        database_info = pd.read_csv(StringIO(query_result))
+        database_info = pl.read_csv(
+            StringIO(query_result),
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
 
         # Check if we have valid results
-        if database_info.empty or "db" not in database_info.columns:
+        if database_info.is_empty() or "db" not in database_info.columns:
             logger.warning("No column information found in the RDF store")
             return None
 
-        # Filter out None/NaN values from the extracted database names
-        unique_values = database_info["db"].dropna().unique()
+        # Filter out None/null values and get unique database names
+        unique_values = database_info.get_column("db").drop_nulls().unique().to_list()
+        # Filter out empty strings
+        unique_values = [v for v in unique_values if v and str(v).strip()]
+
         if len(unique_values) == 0:
             logger.warning("No valid database names could be extracted from URIs")
             return None
@@ -130,7 +137,7 @@ def graph_database_fetch_from_rdf(
         logger.info(f"Fetched {len(unique_values)} database(s) from RDF store")
         return unique_values
 
-    except pd.errors.ParserError as e:
+    except pl.exceptions.ComputeError as e:
         logger.error(f"Failed to parse SPARQL query result as CSV: {e}")
         return None
     except Exception as e:
