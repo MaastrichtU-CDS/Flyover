@@ -52,7 +52,11 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
-from utils.data_preprocessing import preprocess_dataframe, dataframe_to_template_data, sanitise_table_name
+from utils.data_preprocessing import (
+    preprocess_dataframe,
+    dataframe_to_template_data,
+    sanitise_table_name,
+)
 from utils.data_ingest import upload_ontology_then_data
 from utils.session_helpers import (
     check_graph_exists,
@@ -2396,7 +2400,8 @@ def process_cross_graph_relationships():
         )
 
         existing_column_uri = get_existing_column_class_uri(
-            sanitise_table_name(link_data["existingTableName"]), link_data["existingColumnName"]
+            sanitise_table_name(link_data["existingTableName"]),
+            link_data["existingColumnName"],
         )
 
         if not new_column_uri or not existing_column_uri:

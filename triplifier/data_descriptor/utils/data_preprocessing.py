@@ -161,7 +161,7 @@ def sanitise_table_name(table_name: str) -> str:
         Sanitised table name safe for database use
     """
     # Remove . csv extension if present
-    if table_name.lower().endswith('.csv'):
+    if table_name.lower().endswith(".csv"):
         table_name = table_name[:-4]
 
     # Reuse the same sanitisation logic as column names
