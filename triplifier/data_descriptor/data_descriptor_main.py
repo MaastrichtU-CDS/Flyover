@@ -1183,15 +1183,33 @@ def annotation_review():
     map_database_name = session_cache.global_semantic_map.get("database_name")
 
     # Check if database_name is null or empty
+    # Allow empty database_name if coming from Describe workflow (descriptive_info populated)
+    # In this case, the semantic map acts as a global template for all databases
     if map_database_name is None or map_database_name == "":
-        flash(
-            Markup(
-                "The semantic map does not have a 'database_name' specified. <br>"
-                "Please either edit your JSON file to add a valid 'database_name' field, or "
-                "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
-            )
+        # Check if user came from Describe workflow
+        came_from_describe = (
+            session_cache.descriptive_info is not None
+            and isinstance(session_cache.descriptive_info, dict)
+            and len(session_cache.descriptive_info) > 0
         )
-        return redirect(url_for("annotation_landing"))
+        
+        if not came_from_describe:
+            # Direct JSON upload without database_name - require it to be specified
+            flash(
+                Markup(
+                    "The semantic map does not have a 'database_name' specified. <br>"
+                    "Please either edit your JSON file to add a valid 'database_name' field, or "
+                    "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
+                )
+            )
+            return redirect(url_for("annotation_landing"))
+        
+        # If came from Describe workflow, empty database_name is allowed
+        # It will be treated as a global template applying to all databases
+        logger.info(
+            "Proceeding with empty database_name from Describe workflow. "
+            "Semantic map will be applied as a global template to all databases."
+        )
 
     # Validate that database_name matches at least one available database
     matching_db = graph_database_find_matching(
