@@ -247,7 +247,9 @@ def upload_semantic_map():
     except Exception as e:
         logger.error(f"Error processing semantic map upload: {str(e)}")
         return (
-            jsonify({"error": f"Unexpected error processing the semantic map: {str(e)}"}),
+            jsonify(
+                {"error": f"Unexpected error processing the semantic map: {str(e)}"}
+            ),
             400,
         )
 

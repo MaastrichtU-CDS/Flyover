@@ -75,7 +75,6 @@ class TestSchemaReconstructionNode(unittest.TestCase):
         self.assertEqual(result["classLabel"], "testLabel")
 
 
-
 class TestSchemaVariable(unittest.TestCase):
     """Test the SchemaVariable dataclass."""
 
