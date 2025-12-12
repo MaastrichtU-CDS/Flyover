@@ -74,17 +74,6 @@ class TestSchemaReconstructionNode(unittest.TestCase):
         self.assertEqual(result["predicate"], "sio:SIO_000235")
         self.assertEqual(result["classLabel"], "testLabel")
 
-    def test_to_legacy_dict(self):
-        """Test converting node to legacy format."""
-        node = SchemaReconstructionNode(
-            node_type="schema:ClassNode",
-            predicate="sio:SIO_000235",
-            class_uri="mesh:D000091569",
-            class_label="testLabel",
-        )
-        result = node.to_legacy_dict()
-        self.assertEqual(result["type"], "class")
-        self.assertEqual(result["class_label"], "testLabel")
 
 
 class TestSchemaVariable(unittest.TestCase):
@@ -142,26 +131,6 @@ class TestSchemaVariable(unittest.TestCase):
         var = SchemaVariable.from_dict("test_var", data)
         self.assertEqual(len(var.schema_reconstruction), 1)
         self.assertEqual(var.schema_reconstruction[0].class_uri, "mesh:D000091569")
-
-    def test_to_legacy_dict(self):
-        """Test converting variable to legacy format."""
-        var = SchemaVariable(
-            key="test",
-            var_id="schema:variable/test",
-            var_type="schema:CategoricalVariable",
-            data_type="categorical",
-            predicate="sio:SIO_000008",
-            class_uri="ncit:C28421",
-            value_mappings={"male": "ncit:C20197"},
-        )
-        result = var.to_legacy_dict()
-        self.assertEqual(result["data_type"], "categorical")
-        self.assertEqual(result["predicate"], "sio:SIO_000008")
-        self.assertEqual(result["class"], "ncit:C28421")
-        self.assertIn("value_mapping", result)
-        self.assertEqual(
-            result["value_mapping"]["terms"]["male"]["target_class"], "ncit:C20197"
-        )
 
 
 class TestColumnMapping(unittest.TestCase):
@@ -319,27 +288,6 @@ class TestJSONLDMapping(unittest.TestCase):
         local_col = mapping.get_local_column("biological_sex")
         self.assertEqual(local_col, "sex")
 
-    def test_to_legacy_format(self):
-        """Test converting to legacy format."""
-        mapping = JSONLDMapping.from_dict(self.mapping_data)
-        legacy = mapping.to_legacy_format()
-
-        self.assertIn("variable_info", legacy)
-        self.assertIn("endpoint", legacy)
-        self.assertIn("database_name", legacy)
-        self.assertIn("prefixes", legacy)
-
-        # Check variable_info structure
-        var_info = legacy["variable_info"]
-        self.assertIn("biological_sex", var_info)
-        self.assertEqual(var_info["biological_sex"]["data_type"], "categorical")
-        self.assertEqual(var_info["biological_sex"]["local_definition"], "sex")
-
-        # Check value_mapping in legacy format
-        terms = var_info["biological_sex"]["value_mapping"]["terms"]
-        self.assertEqual(terms["male"]["target_class"], "ncit:C20197")
-        self.assertEqual(terms["male"]["local_term"], "M")
-
     def test_from_file(self):
         """Test loading from file."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonld", delete=False) as f:
@@ -414,25 +362,27 @@ class TestJSONLDMappingWithRealFiles(unittest.TestCase):
             local_term = mapping.get_local_term("biological_sex", "female")
             self.assertEqual(local_term, "vrouw")
 
-    def test_legacy_conversion_preserves_data(self):
-        """Test that legacy conversion preserves all necessary data."""
+            # Test locale field
+            db = mapping.get_database("centre_b_ehr")
+            self.assertIsNotNone(db)
+            self.assertEqual(db.locale, "nl_NL")
+
+    def test_locale_field(self):
+        """Test that locale field is properly loaded and saved."""
         file_path = self.example_dir / "centre_a_english" / "mapping_centre_a.jsonld"
         if file_path.exists():
             mapping = JSONLDMapping.from_file(file_path)
-            legacy = mapping.to_legacy_format()
 
-            # Verify all variables are present
-            self.assertEqual(len(legacy["variable_info"]), 11)
+            # Test locale field in Centre A
+            db = mapping.get_database("centre_a_ehr")
+            self.assertIsNotNone(db)
+            self.assertEqual(db.locale, "en_GB")
 
-            # Verify structure of a categorical variable
-            bio_sex = legacy["variable_info"]["biological_sex"]
-            self.assertIn("data_type", bio_sex)
-            self.assertIn("predicate", bio_sex)
-            self.assertIn("class", bio_sex)
-            self.assertIn("value_mapping", bio_sex)
-
-            # Verify local definitions are set
-            self.assertIsNotNone(bio_sex["local_definition"])
+            # Test that locale is preserved in to_dict
+            mapping_dict = mapping.to_dict()
+            self.assertEqual(
+                mapping_dict["databases"]["centre_a_ehr"]["locale"], "en_GB"
+            )
 
 
 if __name__ == "__main__":

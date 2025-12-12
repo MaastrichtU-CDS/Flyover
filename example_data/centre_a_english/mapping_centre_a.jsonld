@@ -446,6 +446,7 @@
       "@type": "mapping:Database",
       "name": "Centre A Electronic Health Records",
       "description": "Main EHR database for Centre A (English)",
+      "locale": "en_GB",
 
       "tables": {
         "synthetic_english_150": {

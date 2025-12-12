@@ -86,29 +86,6 @@ class SchemaReconstructionNode:
             result["aestheticLabel"] = self.aesthetic_label
         return result
 
-    def to_legacy_dict(self) -> dict:
-        """Convert to legacy format dictionary."""
-        # Map @type to legacy type
-        type_map = {
-            "schema:ClassNode": "class",
-            "schema:UnitNode": "node",
-            "schema:PropertyNode": "property",
-        }
-        result = {
-            "type": type_map.get(self.node_type, "class"),
-            "predicate": self.predicate,
-            "class": self.class_uri,
-        }
-        if self.placement:
-            result["placement"] = self.placement
-        if self.class_label:
-            result["class_label"] = self.class_label
-        if self.node_label:
-            result["node_label"] = self.node_label
-        if self.aesthetic_label:
-            result["aesthetic_label"] = self.aesthetic_label
-        return result
-
 
 @dataclass
 class SchemaVariable:
@@ -181,30 +158,6 @@ class SchemaVariable:
             result["valueMapping"] = {
                 "terms": {
                     term: {"targetClass": target}
-                    for term, target in self.value_mappings.items()
-                }
-            }
-
-        return result
-
-    def to_legacy_dict(self) -> dict:
-        """Convert to legacy format dictionary."""
-        result = {
-            "data_type": self.data_type,
-            "predicate": self.predicate,
-            "class": self.class_uri,
-            "local_definition": None,  # Will be filled from column mapping
-        }
-
-        if self.schema_reconstruction:
-            result["schema_reconstruction"] = [
-                node.to_legacy_dict() for node in self.schema_reconstruction
-            ]
-
-        if self.value_mappings:
-            result["value_mapping"] = {
-                "terms": {
-                    term: {"local_term": None, "target_class": target}
                     for term, target in self.value_mappings.items()
                 }
             }
@@ -320,6 +273,7 @@ class Database:
         db_type: Type declaration for this database.
         name: Human-readable name for this database.
         description: Description of this database.
+        locale: Locale code for this database (e.g., en_GB, nl_NL).
         endpoint: Optional database-specific endpoint override.
         tables: Dict of table key to Table.
     """
@@ -329,6 +283,7 @@ class Database:
     db_type: str
     name: str
     description: str
+    locale: Optional[str] = None
     endpoint: Optional[str] = None
     tables: Dict[str, Table] = field(default_factory=dict)
 
@@ -345,6 +300,7 @@ class Database:
             db_type=data.get("@type", "mapping:Database"),
             name=data.get("name", key),
             description=data.get("description", ""),
+            locale=data.get("locale"),
             endpoint=data.get("endpoint"),
             tables=tables,
         )
@@ -358,6 +314,8 @@ class Database:
             "description": self.description,
             "tables": {key: table.to_dict() for key, table in self.tables.items()},
         }
+        if self.locale:
+            result["locale"] = self.locale
         if self.endpoint:
             result["endpoint"] = self.endpoint
         return result
@@ -642,77 +600,6 @@ class JSONLDMapping:
                 },
             },
             "databases": {key: db.to_dict() for key, db in self.databases.items()},
-        }
-
-    def to_legacy_format(self, database_key: Optional[str] = None) -> dict:
-        """
-        Convert to legacy Flyover JSON format for backwards compatibility.
-
-        This method generates the old-style format with variable_info containing
-        both schema definitions and local mappings merged together.
-
-        Args:
-            database_key: Optional database to use for local mappings.
-                         If not provided, uses the first database found.
-
-        Returns:
-            Legacy format dictionary with variable_info structure.
-        """
-        # Determine which database to use
-        if database_key and database_key in self.databases:
-            db = self.databases[database_key]
-        elif self.databases:
-            db = list(self.databases.values())[0]
-        else:
-            db = None
-
-        # Build prefixes string
-        prefix_lines = []
-        for prefix, uri in self.prefixes.items():
-            prefix_lines.append(f"PREFIX {prefix}: <{uri}>")
-        prefixes_str = "\n".join(prefix_lines)
-
-        # Build variable_info
-        variable_info = {}
-
-        for var_key, variable in self.variables.items():
-            var_dict = variable.to_legacy_dict()
-
-            # Find and merge local mapping data
-            if db:
-                for table in db.tables.values():
-                    for col_key, column in table.columns.items():
-                        if column.get_variable_key() == var_key:
-                            # Set local_definition
-                            var_dict["local_definition"] = column.local_column or None
-
-                            # Merge local_terms into value_mapping
-                            if "value_mapping" in var_dict and column.local_mappings:
-                                for (
-                                    term_key,
-                                    local_value,
-                                ) in column.local_mappings.items():
-                                    if term_key in var_dict["value_mapping"]["terms"]:
-                                        var_dict["value_mapping"]["terms"][term_key][
-                                            "local_term"
-                                        ] = (local_value if local_value else None)
-                            break
-
-            variable_info[var_key] = var_dict
-
-        # Get database name from first table's source file
-        database_name = None
-        if db:
-            for table in db.tables.values():
-                if table.source_file:
-                    database_name = table.source_file
-                    break
-
-        return {
-            "endpoint": self.endpoint,
-            "database_name": database_name,
-            "prefixes": prefixes_str,
-            "variable_info": variable_info,
         }
 
     def save(self, file_path: Union[str, Path], indent: int = 2) -> None:

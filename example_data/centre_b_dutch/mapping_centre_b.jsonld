@@ -530,6 +530,7 @@
       "@type": "mapping:Database",
       "name": "Centre B Electronic Health Records",
       "description": "Main EHR database for Centre B (Dutch)",
+      "locale": "nl_NL",
       "tables": {
         "synthetic_dutch_150": {
           "@id": "mapping:table/synthetic_dutch_150",

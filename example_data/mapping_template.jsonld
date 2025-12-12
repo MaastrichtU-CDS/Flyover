@@ -530,6 +530,7 @@
       "@type": "mapping:Database",
       "name": "REPLACE_WITH_DATABASE_NAME",
       "description": "",
+      "locale": "en_GB",
       "tables": {
         "your_table": {
           "@id": "mapping:table/your_table",

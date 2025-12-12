@@ -262,6 +262,11 @@
         "description": {
           "type": "string"
         },
+        "locale": {
+          "description": "Locale code for this database (e.g., en_GB, nl_NL, en_US)",
+          "type": "string",
+          "pattern": "^[a-z]{2}_[A-Z]{2}$"
+        },
         "endpoint": {
           "description": "Optional database-specific endpoint override",
           "type": "string"
