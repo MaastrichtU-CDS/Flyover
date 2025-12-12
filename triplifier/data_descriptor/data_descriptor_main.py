@@ -68,8 +68,6 @@ from utils.session_helpers import (
     DATABASE_NAME_PATTERN,
 )
 from annotation_helper.src.miscellaneous import add_annotation
-
-# Import JSON-LD validation and loading modules
 from validation import MappingValidator
 from loaders import JSONLDMapping
 
@@ -217,7 +215,6 @@ def upload_semantic_map():
                 400,
             )
 
-        # Validate JSON-LD format
         validator = MappingValidator()
         result = validator.validate(mapping_data)
 
@@ -233,13 +230,9 @@ def upload_semantic_map():
                 400,
             )
 
-        # Load the JSON-LD mapping
         jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
-
-        # Store the JSON-LD mapping
         session_cache.jsonld_mapping = jsonld_mapping
 
-        # Store database information
         if jsonld_mapping.databases:
             session_cache.databases = list(jsonld_mapping.databases.keys())
 
