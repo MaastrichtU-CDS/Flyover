@@ -27,11 +27,12 @@ build/
 # GraphDB data and logs (generated files)
 graphdb/data/
 
-# Test and demo files
+# Test and demo files (but keep actual test suites)
 test_annotation_ui.py
 setup_test_data.py
 annotation_ui_demo.html
-test_*.py
+# test_*.py in root directory - keep test suites in triplifier/data_descriptor/tests/
+!/triplifier/data_descriptor/tests/test_*.py
 
 # Temporary files
 /tmp/
