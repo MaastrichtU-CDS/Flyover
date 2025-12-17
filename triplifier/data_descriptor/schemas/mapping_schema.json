@@ -326,7 +326,10 @@
         },
         "localColumn": {
           "description": "Local column name in source data",
-          "type": "string"
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
         },
         "localMappings": {
           "description": "Local value mappings - keys are schema terms, values are local terms",

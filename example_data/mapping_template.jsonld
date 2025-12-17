@@ -540,103 +540,103 @@
           "columns": {
             "identifier": {
               "mapsTo": "schema:variable/identifier",
-              "localColumn": ""
+              "localColumn": null
             },
             "biological_sex": {
               "mapsTo": "schema:variable/biological_sex",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "male": "",
-                "female": "",
-                "missing_or_unspecified": ""
+                "male": null,
+                "female": null,
+                "missing_or_unspecified": null
               }
             },
             "age_at_diagnosis": {
               "mapsTo": "schema:variable/age_at_diagnosis",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "missing_or_unspecified": ""
+                "missing_or_unspecified": null
               }
             },
             "performance_status": {
               "mapsTo": "schema:variable/performance_status",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "0": "",
-                "1": "",
-                "2": "",
-                "3": "",
-                "4": "",
-                "5": "",
-                "missing_or_unspecified": ""
+                "0": null,
+                "1": null,
+                "2": null,
+                "3": null,
+                "4": null,
+                "5": null,
+                "missing_or_unspecified": null
               }
             },
             "hpv_status": {
               "mapsTo": "schema:variable/hpv_status",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "positive": "",
-                "negative": "",
-                "missing_or_unspecified": ""
+                "positive": null,
+                "negative": null,
+                "missing_or_unspecified": null
               }
             },
             "tumour_location": {
               "mapsTo": "schema:variable/tumour_location",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "oropharynx": "",
-                "larynx": "",
-                "missing_or_unspecified": ""
+                "oropharynx": null,
+                "larynx": null,
+                "missing_or_unspecified": null
               }
             },
             "t_stage": {
               "mapsTo": "schema:variable/t_stage",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "x": "",
-                "0": "",
-                "1": "",
-                "2": "",
-                "3": "",
-                "4": "",
-                "missing_or_unspecified": ""
+                "x": null,
+                "0": null,
+                "1": null,
+                "2": null,
+                "3": null,
+                "4": null,
+                "missing_or_unspecified": null
               }
             },
             "n_stage": {
               "mapsTo": "schema:variable/n_stage",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "x": "",
-                "0": "",
-                "1": "",
-                "2": "",
-                "3": "",
-                "missing_or_unspecified": ""
+                "x": null,
+                "0": null,
+                "1": null,
+                "2": null,
+                "3": null,
+                "missing_or_unspecified": null
               }
             },
             "m_stage": {
               "mapsTo": "schema:variable/m_stage",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "0": "",
-                "1": "",
-                "missing_or_unspecified": ""
+                "0": null,
+                "1": null,
+                "missing_or_unspecified": null
               }
             },
             "survival_status": {
               "mapsTo": "schema:variable/survival_status",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "Dead": "",
-                "Alive": "",
-                "missing_or_unspecified": ""
+                "Dead": null,
+                "Alive": null,
+                "missing_or_unspecified": null
               }
             },
             "survival_days": {
               "mapsTo": "schema:variable/survival_days",
-              "localColumn": "",
+              "localColumn": null,
               "localMappings": {
-                "missing_or_unspecified": ""
+                "missing_or_unspecified": null
               }
             }
           }
