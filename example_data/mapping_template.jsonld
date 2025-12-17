@@ -1,4 +1,19 @@
 {
+  "_documentation": {
+    "@context_explanation": {
+      "ontology_prefixes": "Prefixes like sio, ncit, mesh, roo in @context are for JSON-LD expansion. They resolve relative IRIs to full URIs (e.g., 'sio:SIO_000008' → 'http://semanticscience.org/resource/SIO_000008'). These are DIFFERENT from schema.prefixes which are used in SPARQL queries.",
+      "namespace_definitions": {
+        "schema": "Relative IRI 'schema/' combines with @vocab to create full URIs for schema-related terms (e.g., 'schema:variable/identifier' → 'https://github.com/MaastrichtU-CDS/Flyover/schema/variable/identifier')",
+        "mapping": "Relative IRI 'mapping/' combines with @vocab for mapping-related terms (e.g., 'mapping:DataMapping' → 'https://github.com/MaastrichtU-CDS/Flyover/mapping/DataMapping')"
+      },
+      "term_containers": "Definitions like 'variables', 'databases', 'tables' specify how JSON-LD processes these properties (@container directives control how arrays and objects are interpreted)"
+    },
+    "type_system_explanation": {
+      "at_type": "@type is the JSON-LD type used for RDF typing (e.g., 'schema:IdentifierVariable'). This becomes an RDF triple with rdf:type predicate.",
+      "dataType": "dataType is application-level metadata indicating how the application should process the value (e.g., 'identifier', 'categorical', 'continuous'). Both are needed for different purposes."
+    },
+    "schema_prefixes_explanation": "The prefixes in schema.prefixes are specifically for generating SPARQL queries. They are duplicated from @context because SPARQL PREFIX declarations require this format. This duplication is intentional and necessary."
+  },
   "@context": {
     "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/",
     "sio": "http://semanticscience.org/resource/",
