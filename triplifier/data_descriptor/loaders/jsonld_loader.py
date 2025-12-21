@@ -569,6 +569,39 @@ class JSONLDMapping:
         column = self.get_column_for_variable(variable_key, database_key, table_key)
         return column.local_column if column else None
 
+    def get_all_variable_keys(self) -> list:
+        """
+        Get list of all variable keys in the schema.
+        
+        Returns:
+            List of variable key strings.
+        """
+        return list(self.variables.keys())
+    
+    def has_variable(self, variable_key: str) -> bool:
+        """
+        Check if a variable exists in the schema.
+        
+        Args:
+            variable_key: The variable identifier.
+            
+        Returns:
+            True if variable exists, False otherwise.
+        """
+        return variable_key in self.variables
+    
+    def get_first_database_name(self) -> Optional[str]:
+        """
+        Get the name of the first database (for backwards compatibility).
+        
+        Returns:
+            Name of first database or None if no databases.
+        """
+        if self.databases:
+            first_db = list(self.databases.values())[0]
+            return first_db.name
+        return None
+
     # ========================================================================
     # Conversion Methods
     # ========================================================================
