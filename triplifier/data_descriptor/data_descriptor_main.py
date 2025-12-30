@@ -537,7 +537,7 @@ def describe_variables():
             var_info = session_cache.jsonld_mapping.get_variable(var_name)
             if not var_info:
                 continue
-                
+
             # Create mapping for auto-population (description -> datatype)
             description_display = var_name.capitalize().replace("_", " ")
             if var_info.data_type:
@@ -552,7 +552,9 @@ def describe_variables():
                     continue
 
                 # Match by local_definition (local column name) if available
-                local_def = session_cache.jsonld_mapping.get_local_column(var_name) or var_name
+                local_def = (
+                    session_cache.jsonld_mapping.get_local_column(var_name) or var_name
+                )
                 key = f"{db}_{local_def}"
                 preselected_descriptions[key] = description_display
                 if var_info.data_type:
@@ -735,15 +737,21 @@ def describe_variable_details():
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
                     # If this variable exists in the JSON-LD mapping and database matches
-                    if session_cache.jsonld_mapping and graph_database_find_name_match(map_database_name, database):
+                    if session_cache.jsonld_mapping and graph_database_find_name_match(
+                        map_database_name, database
+                    ):
                         # Get global variable name (removing the local name in parentheses)
                         global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
 
                         var_info = session_cache.jsonld_mapping.get_variable(global_var)
                         if var_info:
                             # Get local column for this variable
-                            local_column = session_cache.jsonld_mapping.get_local_column(global_var)
-                            
+                            local_column = (
+                                session_cache.jsonld_mapping.get_local_column(
+                                    global_var
+                                )
+                            )
+
                             # Iterate over the categories
                             for category in categories:
                                 # Find matching term in value_mapping
@@ -751,8 +759,15 @@ def describe_variable_details():
                                 category_value = category.get("value")
 
                                 # Check if this value has a local mapping
-                                for term, target_class in var_info.value_mappings.items():
-                                    local_term = session_cache.jsonld_mapping.get_local_term(global_var, term)
+                                for (
+                                    term,
+                                    target_class,
+                                ) in var_info.value_mappings.items():
+                                    local_term = (
+                                        session_cache.jsonld_mapping.get_local_term(
+                                            global_var, term
+                                        )
+                                    )
                                     # Convert both to strings for comparison
                                     if str(local_term) == str(category_value):
                                         matching_term = term.title().replace("_", " ")
