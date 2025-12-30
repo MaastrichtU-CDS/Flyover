@@ -646,3 +646,114 @@ class JSONLDMapping:
         file_path = Path(file_path)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=indent, ensure_ascii=False)
+
+    def to_legacy_format(
+        self,
+        database_key: Optional[str] = None,
+        table_key: Optional[str] = None,
+    ) -> dict:
+        """
+        Convert JSON-LD mapping to legacy format for annotation helper compatibility.
+
+        This method converts the new JSON-LD structure to the legacy format that is
+        expected by the annotation helper's add_annotation function. The legacy format
+        uses 'variable_info' with 'local_definition', 'predicate', 'class', 'data_type',
+        'schema_reconstruction', and 'value_mapping' with 'terms' containing 'local_term'
+        and 'target_class'.
+
+        NOTE: This method is transitional and scheduled for removal in a future version.
+
+        Args:
+            database_key: Optional database key to filter local mappings.
+                         If None, uses the first database.
+            table_key: Optional table key to filter local mappings.
+                      If None, searches all tables.
+
+        Returns:
+            Dictionary in legacy format compatible with annotation helper.
+        """
+        # Build prefixes string in legacy format
+        prefixes_str = ""
+        for prefix_name, prefix_uri in self.prefixes.items():
+            prefixes_str += f"PREFIX {prefix_name}: <{prefix_uri}>\n"
+
+        # Determine database name for legacy format
+        db_name = ""
+        if database_key and database_key in self.databases:
+            db_name = self.databases[database_key].name
+        elif self.databases:
+            first_db = list(self.databases.values())[0]
+            db_name = first_db.name
+
+        legacy = {
+            "endpoint": self.endpoint,
+            "database_name": db_name,
+            "prefixes": prefixes_str.strip(),
+            "variable_info": {},
+        }
+
+        # Convert each variable to legacy format
+        for var_key, var in self.variables.items():
+            var_legacy = {
+                "predicate": var.predicate,
+                "class": var.class_uri,
+                "data_type": var.data_type,
+                "local_definition": None,  # Will be populated from column mapping
+            }
+
+            # Convert schema reconstruction if present
+            if var.schema_reconstruction:
+                var_legacy["schema_reconstruction"] = []
+                for node in var.schema_reconstruction:
+                    node_legacy = {
+                        "type": "class" if "ClassNode" in node.node_type else "node",
+                        "predicate": node.predicate,
+                        "class": node.class_uri,
+                    }
+                    if node.placement:
+                        node_legacy["placement"] = node.placement
+                    if node.class_label:
+                        node_legacy["class_label"] = node.class_label
+                    if node.node_label:
+                        node_legacy["node_label"] = node.node_label
+                    if node.aesthetic_label:
+                        node_legacy["aesthetic_label"] = node.aesthetic_label
+                    var_legacy["schema_reconstruction"].append(node_legacy)
+
+            # Convert value mapping if present
+            if var.value_mappings:
+                var_legacy["value_mapping"] = {"terms": {}}
+                for term_key, target_class in var.value_mappings.items():
+                    var_legacy["value_mapping"]["terms"][term_key] = {
+                        "target_class": target_class,
+                        "local_term": None,  # Will be populated from column mapping
+                    }
+
+            # Get local column and local mappings from database/table
+            column = self.get_column_for_variable(var_key, database_key, table_key)
+            if column:
+                var_legacy["local_definition"] = column.local_column or None
+
+                # Populate local_term values from column mappings
+                if "value_mapping" in var_legacy and column.local_mappings:
+                    for term_key in var_legacy["value_mapping"]["terms"]:
+                        if term_key in column.local_mappings:
+                            var_legacy["value_mapping"]["terms"][term_key][
+                                "local_term"
+                            ] = column.local_mappings[term_key]
+
+            legacy["variable_info"][var_key] = var_legacy
+
+        return legacy
+
+    def get_prefixes_string(self) -> str:
+        """
+        Get prefixes as a SPARQL PREFIX declaration string.
+
+        Returns:
+            String with PREFIX declarations for use in SPARQL queries.
+        """
+        prefixes_str = ""
+        for prefix_name, prefix_uri in self.prefixes.items():
+            prefixes_str += f"PREFIX {prefix_name}: <{prefix_uri}>\n"
+        return prefixes_str.strip()

@@ -64,6 +64,9 @@ from utils.session_helpers import (
     graph_database_find_name_match,
     graph_database_find_matching,
     process_variable_for_annotation,
+    get_semantic_map_for_annotation,
+    has_semantic_map,
+    get_database_name_from_mapping,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
 )
@@ -921,59 +924,56 @@ def retrieve_detailed_descriptive_info():
 def describe_downloads():
     """
     This function is responsible for rendering the 'describe_downloads.html' page.
+    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
 
     Returns:
         flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
     """
-    if isinstance(session_cache.global_semantic_map, dict) and isinstance(
+    # Check if any semantic map is available and descriptive info exists
+    show_semantic_map = False
+    if has_semantic_map(session_cache) and isinstance(
         session_cache.descriptive_info, dict
     ):
-        return render_template(
-            "describe_downloads.html",
-            graphdb_location="http://localhost:7200/",
-            show_semantic_map=True,
-        )
-    else:
-        return render_template(
-            "describe_downloads.html",
-            graphdb_location="http://localhost:7200/",
-            show_semantic_map=False,
-        )
+        show_semantic_map = True
+
+    return render_template(
+        "describe_downloads.html",
+        graphdb_location="http://localhost:7200/",
+        show_semantic_map=show_semantic_map,
+    )
 
 
 @app.route("/downloadSemanticMap", methods=["GET"])
 def download_semantic_map():
     """
-    This function generates a modified version of the global semantic map by adding local definitions to it.
-    The modified semantic map is then returned as a JSON response which can be downloaded as a file.
+    Download the semantic map in JSON-LD format (preferred) or legacy JSON format (fallback).
 
-    Parameters:
-    filename (str): The name of the file to be downloaded. Defaults to 'local_semantic_map_{database_name}.json'.
+    If jsonld_mapping is available, downloads a single JSON-LD file that supports
+    multi-database natively. This deprecates the previous multi-JSON zip download approach.
+
+    For backward compatibility, if only global_semantic_map is available, falls back
+    to the legacy format using formulate_local_semantic_map.
 
     Returns:
-        flask.Response: A Flask response object containing the modified semantic map as a JSON string.
-                        If an error occurs during the processing of the semantic map,
-                        an HTTP response with a status code of 500 (Internal Server Error)
-                        is returned along with a message describing the error.
-
-    The function performs the following steps:
-    1. Checks if there are multiple databases.
-    2. If there are multiple databases, it creates a zip file named 'local_semantic maps.zip'.
-    3. It then loops through each database,
-       generates a modified version of the global semantic map by adding local definitions to it,
-       and writes the modified semantic map to the zip file.
-    4. After the request has been handled, it removes the zip file.
-    5. If there is only one database,
-       it generates a modified version of the global semantic map by adding local definitions to it
-       and returns the modified semantic map as a JSON response.
-    6. If an error occurs during the processing of the semantic map,
-       it returns an HTTP response with a status code of 500 (Internal Server Error)
-       along with a message describing the error.
+        flask.Response: A Flask response object containing the semantic map as JSON-LD or JSON.
     """
     try:
-        # Check if there are multiple databases
+        # Prefer JSON-LD format if jsonld_mapping is available
+        if session_cache.jsonld_mapping is not None:
+            # JSON-LD supports multi-database natively, so we output a single file
+            mapping_dict = session_cache.jsonld_mapping.to_dict()
+            filename = "semantic_mapping.jsonld"
+
+            return Response(
+                json.dumps(mapping_dict, indent=2, ensure_ascii=False),
+                mimetype="application/ld+json",
+                headers={"Content-Disposition": f"attachment;filename={filename}"},
+            )
+
+        # Fall back to legacy format if only global_semantic_map is available
+        # NOTE: Multi-JSON zip download is deprecated in favor of JSON-LD multi-database support
         if len(session_cache.databases) > 1:
-            _filename = "local_semantic maps.zip"
+            _filename = "local_semantic_maps.zip"
             # Loop through each database
             for database in session_cache.databases:
                 filename = f"local_semantic_map_{database}.json"
@@ -1220,8 +1220,10 @@ def annotation_review():
     """
     Display the annotation review page where users can inspect their semantic map
     before running the annotation process. Uses local semantic maps per database.
+    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
     """
-    if not isinstance(session_cache.global_semantic_map, dict):
+    # Check if any semantic map is available (jsonld_mapping or global_semantic_map)
+    if not has_semantic_map(session_cache):
         flash(
             "No semantic map available for annotation. Please upload a semantic map first."
         )
@@ -1232,15 +1234,15 @@ def annotation_review():
         flash("No databases available for annotation.")
         return redirect(url_for("ingest"))
 
-    # Validate that the semantic map's database_name is specified and matches
-    map_database_name = session_cache.global_semantic_map.get("database_name")
+    # Get the database name from the available mapping
+    map_database_name = get_database_name_from_mapping(session_cache)
 
     # Check if database_name is null or empty
     if map_database_name is None or map_database_name == "":
         flash(
             Markup(
                 "The semantic map does not have a 'database_name' specified. <br>"
-                "Please either edit your JSON file to add a valid 'database_name' field, or "
+                "Please either edit your JSON-LD file to add a valid database name, or "
                 "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
             )
         )
@@ -1270,17 +1272,25 @@ def annotation_review():
             non_matching_databases.append(database)
             continue
 
-        # Get the local semantic map for this specific database
-        local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get("variable_info", {})
+        # Get the semantic map for this database (uses jsonld_mapping if available)
+        semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
+            session_cache, database_key=None
+        )
+
+        # If using jsonld_mapping, the legacy format already has all info
+        # If using global_semantic_map, use formulate_local_semantic_map for local definitions
+        if is_jsonld:
+            variable_info = semantic_map.get("variable_info", {})
+        else:
+            local_semantic_map = formulate_local_semantic_map(database)
+            variable_info = local_semantic_map.get("variable_info", {})
 
         if not variable_info:
             continue
 
         annotation_data[database] = {}
 
-        # Process variables from the local semantic map
-        # TODO: Remove this processing logic once we migrate to JSON-LD
+        # Process variables from the semantic map
         for var_name, var_data in variable_info.items():
             # Validate required fields first (before processing)
             if not var_data.get("predicate"):
@@ -1293,10 +1303,15 @@ def annotation_review():
                 unannotated_variables.append(f"{database}.{var_name} (missing class)")
                 continue
 
-            # Use the shared helper to process variable and check for local definitions
-            var_copy, has_local_def = process_variable_for_annotation(
-                var_name, var_data, session_cache.global_semantic_map
-            )
+            # For JSON-LD, local_definition is already in var_data
+            # For legacy, use the shared helper to process variable
+            if is_jsonld:
+                has_local_def = var_data.get("local_definition") is not None
+                var_copy = copy.deepcopy(var_data)
+            else:
+                var_copy, has_local_def = process_variable_for_annotation(
+                    var_name, var_data, session_cache.global_semantic_map
+                )
 
             if has_local_def:
                 annotation_data[database][var_name] = var_copy
@@ -1327,10 +1342,12 @@ def annotation_review():
 @app.route("/start-annotation", methods=["POST"])
 def start_annotation():
     """
-    Start the annotation process using local semantic maps per database.
+    Start the annotation process using semantic maps per database.
+    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
     """
     try:
-        if not isinstance(session_cache.global_semantic_map, dict):
+        # Check if any semantic map is available
+        if not has_semantic_map(session_cache):
             return jsonify({"success": False, "error": "No semantic map available"})
 
         # Ensure databases are initialised from the RDF-store if not already populated
@@ -1353,10 +1370,10 @@ def start_annotation():
 
         total_annotated_vars = 0
 
-        # Get the database_name filter from the semantic map
-        map_database_name = session_cache.global_semantic_map.get("database_name")
+        # Get the database name from the available mapping
+        map_database_name = get_database_name_from_mapping(session_cache)
 
-        # Process each database separately using its local semantic map
+        # Process each database separately using its semantic map
         for database in session_cache.databases:
             # Skip databases that don't match the semantic map's database_name
             if not graph_database_find_name_match(map_database_name, database):
@@ -1367,28 +1384,39 @@ def start_annotation():
 
             logger.info(f"Processing annotation for database: {database}")
 
-            # Get the local semantic map for this specific database
-            local_semantic_map = formulate_local_semantic_map(database)
-            variable_info = local_semantic_map.get("variable_info", {})
-
-            # Get prefixes from the local semantic map
-            prefixes = local_semantic_map.get(
-                "prefixes",
-                "PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> "
-                "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> "
-                "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
-                "PREFIX roo: <http://www.cancerdata.org/roo/> "
-                "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+            # Get the semantic map for this database (uses jsonld_mapping if available)
+            semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
+                session_cache, database_key=None
             )
 
+            # Get variable info and prefixes based on source
+            if is_jsonld:
+                variable_info = semantic_map.get("variable_info", {})
+                prefixes = semantic_map.get("prefixes", "")
+            else:
+                local_semantic_map = formulate_local_semantic_map(database)
+                variable_info = local_semantic_map.get("variable_info", {})
+                prefixes = local_semantic_map.get(
+                    "prefixes",
+                    "PREFIX db: <http://data.local/> PREFIX dbo: <http://um-cds/ontologies/databaseontology/> "
+                    "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> "
+                    "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
+                    "PREFIX roo: <http://www.cancerdata.org/roo/> "
+                    "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+                )
+
             # Filter only variables that have local definitions
-            # TODO: Remove this processing logic once we migrate to JSON-LD
             annotated_variables = {}
             for var_name, var_data in variable_info.items():
-                # Use the shared helper to process variable and check for local definitions
-                var_copy, has_local_def = process_variable_for_annotation(
-                    var_name, var_data, session_cache.global_semantic_map
-                )
+                # For JSON-LD, local_definition is already in var_data
+                # For legacy, use the shared helper to process variable
+                if is_jsonld:
+                    has_local_def = var_data.get("local_definition") is not None
+                    var_copy = copy.deepcopy(var_data)
+                else:
+                    var_copy, has_local_def = process_variable_for_annotation(
+                        var_name, var_data, session_cache.global_semantic_map
+                    )
 
                 # Only add variables with local definitions
                 if has_local_def:
@@ -1468,9 +1496,10 @@ def start_annotation():
 def annotation_verify():
     """
     Display the annotation verification page where users can test their annotations.
-    Uses local semantic maps per database.
+    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
     """
-    if not isinstance(session_cache.global_semantic_map, dict):
+    # Check if any semantic map is available
+    if not has_semantic_map(session_cache):
         flash("No semantic map available.")
         return redirect(url_for("describe_downloads"))
 
@@ -1479,10 +1508,10 @@ def annotation_verify():
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
 
-    # Get the database_name filter from the semantic map
-    map_database_name = session_cache.global_semantic_map.get("database_name")
+    # Get the database name from the available mapping
+    map_database_name = get_database_name_from_mapping(session_cache)
 
-    # Get annotated variables from all databases using local semantic maps
+    # Get annotated variables from all databases using semantic maps
     annotated_variables = []
     unannotated_variables = []
     variable_data = {}
@@ -1492,25 +1521,39 @@ def annotation_verify():
         if not graph_database_find_name_match(map_database_name, database):
             continue
 
-        # Get the local semantic map for this specific database
-        local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get("variable_info", {})
+        # Get the semantic map for this database (uses jsonld_mapping if available)
+        semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
+            session_cache, database_key=None
+        )
 
-        # TODO: Remove this processing logic once we migrate to JSON-LD
+        # Get variable info and prefixes based on source
+        if is_jsonld:
+            variable_info = semantic_map.get("variable_info", {})
+            prefixes = semantic_map.get("prefixes", "")
+        else:
+            local_semantic_map = formulate_local_semantic_map(database)
+            variable_info = local_semantic_map.get("variable_info", {})
+            prefixes = local_semantic_map.get("prefixes", "")
+
         for var_name, var_data in variable_info.items():
             full_var_name = f"{database}.{var_name}"
 
-            # Use the shared helper to process variable and check for local definitions
-            var_copy, has_local_def = process_variable_for_annotation(
-                var_name, var_data, session_cache.global_semantic_map
-            )
+            # For JSON-LD, local_definition is already in var_data
+            # For legacy, use the shared helper to process variable
+            if is_jsonld:
+                has_local_def = var_data.get("local_definition") is not None
+                var_copy = copy.deepcopy(var_data)
+            else:
+                var_copy, has_local_def = process_variable_for_annotation(
+                    var_name, var_data, session_cache.global_semantic_map
+                )
 
             if has_local_def:
                 annotated_variables.append(full_var_name)
                 variable_data[full_var_name] = {
                     **var_copy,
                     "database": database,
-                    "prefixes": local_semantic_map.get("prefixes", ""),
+                    "prefixes": prefixes,
                 }
             else:
                 unannotated_variables.append(full_var_name)
@@ -1544,6 +1587,7 @@ def verify_annotation_ask():
     """
     Verify annotation using an ASK query for a specific variable.
     This endpoint is used for live validation on the annotation verify page.
+    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
     """
     try:
         data = request.get_json()
@@ -1563,9 +1607,18 @@ def verify_annotation_ask():
                 }
             )
 
-        # Get the local semantic map for this specific database
-        local_semantic_map = formulate_local_semantic_map(database)
-        variable_info = local_semantic_map.get("variable_info", {})
+        # Get the semantic map for this database (uses jsonld_mapping if available)
+        semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
+            session_cache, database_key=None
+        )
+
+        # Get variable info based on source
+        if is_jsonld:
+            variable_info = semantic_map.get("variable_info", {})
+        else:
+            local_semantic_map = formulate_local_semantic_map(database)
+            variable_info = local_semantic_map.get("variable_info", {})
+
         var_data = variable_info.get(var_name)
 
         if not var_data:
@@ -1577,9 +1630,12 @@ def verify_annotation_ask():
         # Check if this variable has a local definition
         local_definition = var_copy.get("local_definition")
 
-        # If no local definition from the formulated map, check the original uploaded JSON
-        # This handles the case when a user uploads JSON directly for annotation
-        if not local_definition and isinstance(session_cache.global_semantic_map, dict):
+        # For legacy format: If no local definition from the formulated map, check original JSON
+        if (
+            not local_definition
+            and not is_jsonld
+            and isinstance(session_cache.global_semantic_map, dict)
+        ):
             original_var_info = session_cache.global_semantic_map.get(
                 "variable_info", {}
             ).get(var_name, {})
@@ -1610,9 +1666,6 @@ def verify_annotation_ask():
                 {"success": False, "error": "Variable has no local definition"}
             )
 
-        # Get prefixes from the local semantic map - construct proper prefix string
-        prefixes_dict = local_semantic_map.get("prefixes", {})
-
         # Build prefixes string with required prefixes
         prefixes = """PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -1624,9 +1677,13 @@ def verify_annotation_ask():
         PREFIX sio: <http://semanticscience.org/resource/>"""
 
         # Add any additional prefixes from the semantic map
-        if isinstance(prefixes_dict, dict):
-            for prefix_key, prefix_uri in prefixes_dict.items():
+        prefixes_from_map = semantic_map.get("prefixes", {})
+        if isinstance(prefixes_from_map, dict):
+            for prefix_key, prefix_uri in prefixes_from_map.items():
                 prefixes += f"\nPREFIX {prefix_key}: <{prefix_uri}>"
+        elif isinstance(prefixes_from_map, str):
+            # Legacy format may have prefixes as a string
+            prefixes += f"\n{prefixes_from_map}"
 
         # Build the ASK query according to the specification
         ask_query_parts = []
@@ -1849,9 +1906,9 @@ def retrieve_global_names():
     """
     This function retrieves the names of global variables from the session cache.
 
-    The function first checks if the global semantic map in the session cache is a dictionary.
-    If it is not, it returns a list of default global variable names.
-    If it is a dictionary, it attempts to retrieve the keys from the 'variable_info' field of the global semantic map,
+    The function first checks if a semantic map is available (jsonld_mapping or global_semantic_map).
+    If not, it returns a list of default global variable names.
+    If a semantic map is available, it attempts to retrieve the variable keys,
     capitalise them, replace underscores with spaces, and return them as a list.
     If an error occurs during this process,
     it flashes an error message to the user and renders the 'ingest.html' template.
@@ -1861,13 +1918,27 @@ def retrieve_global_names():
         flask.render_template: A Flask function that renders a template.
         In this case, it renders the 'ingest.html' template if an error occurs.
     """
+    default_names = [
+        "Research subject identifier",
+        "Biological sex",
+        "Age at inclusion",
+        "Other",
+    ]
+
+    # Prefer jsonld_mapping when available
+    if session_cache.jsonld_mapping is not None:
+        try:
+            return [
+                name.capitalize().replace("_", " ")
+                for name in session_cache.jsonld_mapping.get_all_variable_keys()
+            ] + ["Other"]
+        except Exception as e:
+            flash(f"Failed to read the JSON-LD mapping. Error: {e}")
+            return render_template("ingest.html", error=True)
+
+    # Fall back to global_semantic_map
     if not isinstance(session_cache.global_semantic_map, dict):
-        return [
-            "Research subject identifier",
-            "Biological sex",
-            "Age at inclusion",
-            "Other",
-        ]
+        return default_names
     else:
         try:
             return [

@@ -276,3 +276,70 @@ def process_variable_for_annotation(
                     var_copy["value_mapping"] = original_var_info["value_mapping"]
 
     return var_copy, has_local_def
+
+
+def get_semantic_map_for_annotation(session_cache, database_key: Optional[str] = None):
+    """
+    Get the effective semantic map for annotation, preferring jsonld_mapping.
+
+    This function provides a unified interface for getting semantic map data,
+    automatically handling the transition from global_semantic_map to jsonld_mapping.
+
+    Args:
+        session_cache: The session cache object containing mappings
+        database_key: Optional database key to filter local mappings
+
+    Returns:
+        tuple: (semantic_map_dict, database_name, is_jsonld)
+            - semantic_map_dict: The semantic map in legacy format
+            - database_name: The database name from the mapping
+            - is_jsonld: True if source is jsonld_mapping, False if global_semantic_map
+    """
+    # Prefer jsonld_mapping when available
+    if session_cache.jsonld_mapping is not None:
+        legacy_map = session_cache.jsonld_mapping.to_legacy_format(
+            database_key=database_key
+        )
+        db_name = session_cache.jsonld_mapping.get_first_database_name()
+        return legacy_map, db_name, True
+
+    # Fall back to global_semantic_map
+    if isinstance(session_cache.global_semantic_map, dict):
+        db_name = session_cache.global_semantic_map.get("database_name")
+        return session_cache.global_semantic_map, db_name, False
+
+    return None, None, False
+
+
+def has_semantic_map(session_cache) -> bool:
+    """
+    Check if any semantic map (jsonld_mapping or global_semantic_map) is available.
+
+    Args:
+        session_cache: The session cache object
+
+    Returns:
+        bool: True if a semantic map is available, False otherwise
+    """
+    if session_cache.jsonld_mapping is not None:
+        return True
+    if isinstance(session_cache.global_semantic_map, dict):
+        return True
+    return False
+
+
+def get_database_name_from_mapping(session_cache) -> Optional[str]:
+    """
+    Get the database name from the available semantic map.
+
+    Args:
+        session_cache: The session cache object
+
+    Returns:
+        str or None: The database name, or None if not available
+    """
+    if session_cache.jsonld_mapping is not None:
+        return session_cache.jsonld_mapping.get_first_database_name()
+    if isinstance(session_cache.global_semantic_map, dict):
+        return session_cache.global_semantic_map.get("database_name")
+    return None
