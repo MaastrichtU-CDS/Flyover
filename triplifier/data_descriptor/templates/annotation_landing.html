@@ -56,31 +56,31 @@
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="fas fa-project-diagram"></i> Option 1: Upload Finalised Flyover Semantic Map for Direct Annotation
+                        <i class="fas fa-project-diagram"></i> Option 1: Upload Finalised Flyover Semantic Map (JSON-LD) for Direct Annotation
                     </h5>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        If you have a finalised semantic map JSON file with data descriptions and semantic mappings, you can
+                        If you have a finalised semantic map JSON-LD file with data descriptions and semantic mappings, you can
                         upload it directly for annotation processing.
                     </p>
 
                     <div class="alert alert-info"
                          style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
                         <i class="fas fa-info-circle"></i>
-                        <strong>What should the JSON contain?</strong><br>
-                        Your JSON file should include data variable definitions, types, and any pre-existing semantic
+                        <strong>What should the JSON-LD contain?</strong><br>
+                        Your JSON-LD file should include data variable definitions, types, and any pre-existing semantic
                         mappings that you want to enhance with additional annotations.
                     </div>
 
                     <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data"
                           id="jsonUploadForm">
                         <div class="form-group">
-                            <label for="annotationJsonPath">JSON File for Annotation:</label>
+                            <label for="annotationJsonPath">JSON-LD File for Annotation:</label>
                             <div class="input-group">
                                 <input type="text" id="annotationJsonPath" name="annotationJsonPath"
                                        class="form-control"
-                                       placeholder="Select JSON file..." readonly>
+                                       placeholder="Select JSON-LD file..." readonly>
                                 <div class="input-group-append">
                                     <button type="button" class="btn btn-outline-secondary"
                                             onclick="document.getElementById('annotationJsonFile').click();">
@@ -89,15 +89,15 @@
                                 </div>
                             </div>
                             <input type="file" id="annotationJsonFile" name="annotationJsonFile" style="display:none;"
-                                   accept=".json" onchange="updateAnnotationJsonPath(this)">
+                                   accept=".jsonld" onchange="updateAnnotationJsonPath(this)">
                             <small class="form-text text-muted">
-                                Upload a JSON file containing your data descriptions and variable mappings.
+                                Upload a JSON-LD file containing your data descriptions and variable mappings.
                             </small>
                         </div>
 
                         <div class="form-group">
                             <button type="submit" id="uploadJsonButton" class="btn btn-success" disabled>
-                                <i class="fas fa-upload"></i> Upload JSON for Annotation
+                                <i class="fas fa-upload"></i> Upload JSON-LD for Annotation
                             </button>
                         </div>
                     </form>
@@ -162,12 +162,12 @@
     }
 
     $(document).ready(function () {
-        // Handle JSON upload form submission
+        // Handle JSON-LD upload form submission
         $("#jsonUploadForm").submit(function (e) {
             e.preventDefault();
 
             if (!$("#annotationJsonFile")[0].files.length) {
-                showStatusMessage("Please select a JSON file to upload.", "error");
+                showStatusMessage("Please select a JSON-LD file to upload.", "error");
                 return;
             }
 
@@ -186,7 +186,7 @@
                 processData: false,
                 contentType: false,
                 success: function (response) {
-                    showStatusMessage("JSON file uploaded successfully! Redirecting to annotation review...", "success");
+                    showStatusMessage("JSON-LD file uploaded successfully! Redirecting to annotation review...", "success");
 
                     // Redirect to annotation review after short delay
                     setTimeout(function () {
@@ -194,12 +194,12 @@
                     }, 2000);
                 },
                 error: function (xhr, status, error) {
-                    let errorMessage = "Failed to upload JSON file.";
+                    let errorMessage = "Failed to upload JSON-LD file.";
                     if (xhr.responseJSON && xhr.responseJSON.error) {
                         errorMessage = xhr.responseJSON.error;
                     }
                     showStatusMessage(errorMessage, "error");
-                    $("#uploadJsonButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload JSON for Annotation');
+                    $("#uploadJsonButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload JSON-LD for Annotation');
                 }
             });
         });
