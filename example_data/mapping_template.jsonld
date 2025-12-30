@@ -7,49 +7,9 @@
     "roo": "http://www.cancerdata.org/roo/",
     "xsd": "http://www.w3.org/2001/XMLSchema#",
     "schema": "schema/",
-    "mapping": "mapping/",
-    "variables": {
-      "@id": "schema:hasVariable",
-      "@container": "@index"
-    },
-    "schemaReconstruction": {
-      "@id": "schema:hasSchemaReconstruction",
-      "@container": "@list"
-    },
-    "valueMapping": {
-      "@id": "schema:hasValueMapping"
-    },
-    "terms": {
-      "@id": "schema:hasTerms",
-      "@container": "@index"
-    },
-    "targetClass": {
-      "@id": "schema:mapsToClass",
-      "@type": "@id"
-    },
-    "databases": {
-      "@id": "mapping:hasDatabase",
-      "@container": "@index"
-    },
-    "tables": {
-      "@id": "mapping:hasTable",
-      "@container": "@index"
-    },
-    "columns": {
-      "@id": "mapping:hasColumn",
-      "@container": "@index"
-    },
-    "localMappings": {
-      "@id": "mapping:hasLocalMappings",
-      "@container": "@index"
-    },
-    "mapsTo": {
-      "@id": "mapping:mapsToVariable",
-      "@type": "@id"
-    }
+    "mapping": "mapping/"
   },
   "@id": "REPLACE_WITH_YOUR_MAPPING_ID",
-  "@type": "mapping:DataMapping",
   "name": "REPLACE_WITH_YOUR_MAPPING_NAME",
   "description": "",
   "version": "1.0.0",
