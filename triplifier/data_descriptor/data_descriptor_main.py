@@ -201,12 +201,12 @@ def upload_semantic_map():
             return (
                 jsonify(
                     {
-                        "error": f"Invalid JSON syntax at line {e.lineno}, column {e.colno}: {e.msg}",
+                        "error": f"Invalid JSON-LD syntax at line {e.lineno}, column {e.colno}: {e.msg}",
                         "validation_errors": [
                             {
                                 "path": f"(line {e.lineno}, column {e.colno})",
                                 "severity": "error",
-                                "message": f"JSON syntax error: {e.msg}",
+                                "message": f"JSON-LD syntax error: {e.msg}",
                                 "suggestion": "Check for missing commas, brackets, or quotes",
                             }
                         ],
@@ -528,21 +528,20 @@ def describe_variables():
     # Create mapping from description names to datatypes for auto-population
     description_to_datatype = {}
 
-    # If a global semantic map exists and contains variable_info
-    if (
-        isinstance(session_cache.global_semantic_map, dict)
-        and "variable_info" in session_cache.global_semantic_map
-    ):
-        # Get the database_name from the semantic map for filtering
-        map_database_name = session_cache.global_semantic_map.get("database_name")
+    # If a JSON-LD mapping exists
+    if session_cache.jsonld_mapping:
+        # Get the first database name for filtering (backwards compatibility)
+        map_database_name = session_cache.jsonld_mapping.get_first_database_name()
 
-        for var_name, var_info in session_cache.global_semantic_map[
-            "variable_info"
-        ].items():
+        for var_name in session_cache.jsonld_mapping.get_all_variable_keys():
+            var_info = session_cache.jsonld_mapping.get_variable(var_name)
+            if not var_info:
+                continue
+                
             # Create mapping for auto-population (description -> datatype)
             description_display = var_name.capitalize().replace("_", " ")
-            if "data_type" in var_info:
-                datatype = var_info["data_type"].lower()
+            if var_info.data_type:
+                datatype = var_info.data_type.lower()
                 words = datatype.split()
                 datatype_display = " ".join(word.capitalize() for word in words)
                 description_to_datatype[description_display] = datatype_display
@@ -552,12 +551,12 @@ def describe_variables():
                 if not graph_database_find_name_match(map_database_name, db):
                     continue
 
-                # Match by local_definition if available
-                local_def = var_info.get("local_definition", var_name)
+                # Match by local_definition (local column name) if available
+                local_def = session_cache.jsonld_mapping.get_local_column(var_name) or var_name
                 key = f"{db}_{local_def}"
                 preselected_descriptions[key] = description_display
-                if "data_type" in var_info:
-                    datatype = var_info["data_type"].lower()
+                if var_info.data_type:
+                    datatype = var_info.data_type.lower()
                     words = datatype.split()
                     preselected_datatypes[key] = " ".join(
                         word.capitalize() for word in words
@@ -574,9 +573,9 @@ def describe_variables():
                     key_variation = f"{db}_{variation}"
                     if (
                         key_variation not in preselected_descriptions
-                        and "data_type" in var_info
+                        and var_info.data_type
                     ):
-                        datatype = var_info["data_type"].lower()
+                        datatype = var_info.data_type.lower()
                         words = datatype.split()
                         preselected_datatypes[key_variation] = " ".join(
                             word.capitalize() for word in words
@@ -715,10 +714,10 @@ def describe_variable_details():
     dataframes = {}
     preselected_values = {}
 
-    # Get the database_name from the semantic map for filtering
+    # Get the database_name from the JSON-LD mapping for filtering
     map_database_name = None
-    if isinstance(session_cache.global_semantic_map, dict):
-        map_database_name = session_cache.global_semantic_map.get("database_name")
+    if session_cache.jsonld_mapping:
+        map_database_name = session_cache.jsonld_mapping.get_first_database_name()
 
     # Iterate over the items in the dictionary
     for database, variables in session_cache.DescriptiveInfoDetails.items():
@@ -735,43 +734,44 @@ def describe_variable_details():
             elif isinstance(variable, dict):
                 # Iterate over the items in the variable dictionary
                 for var_name, categories in variable.items():
-                    # If this variable exists in the global semantic map and database matches
-                    if isinstance(
-                        session_cache.global_semantic_map, dict
-                    ) and graph_database_find_name_match(map_database_name, database):
+                    # If this variable exists in the JSON-LD mapping and database matches
+                    if session_cache.jsonld_mapping and graph_database_find_name_match(map_database_name, database):
                         # Get global variable name (removing the local name in parentheses)
                         global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
 
-                        var_info = session_cache.global_semantic_map[
-                            "variable_info"
-                        ].get(global_var, {})
-                        value_mapping = var_info.get("value_mapping", {}).get(
-                            "terms", {}
-                        )
+                        var_info = session_cache.jsonld_mapping.get_variable(global_var)
+                        if var_info:
+                            # Get local column for this variable
+                            local_column = session_cache.jsonld_mapping.get_local_column(global_var)
+                            
+                            # Iterate over the categories
+                            for category in categories:
+                                # Find matching term in value_mapping
+                                matching_term = None
+                                category_value = category.get("value")
 
-                        # Iterate over the categories
-                        for category in categories:
-                            # Find matching term in value_mapping
-                            matching_term = None
-                            category_value = category.get("value")
+                                # Check if this value has a local mapping
+                                for term, target_class in var_info.value_mappings.items():
+                                    local_term = session_cache.jsonld_mapping.get_local_term(global_var, term)
+                                    # Convert both to strings for comparison
+                                    if str(local_term) == str(category_value):
+                                        matching_term = term.title().replace("_", " ")
+                                        break
 
-                            for term, term_info in value_mapping.items():
-                                local_term = term_info.get("local_term")
-                                # Convert both to strings for comparison
-                                if str(local_term) == str(category_value):
-                                    matching_term = term.title().replace("_", " ")
-                                    break
+                                # Add preselected value to dictionary
+                                if matching_term:
+                                    key = (
+                                        f"{database}_{local_column or ''}_category_"
+                                        f'"{category.get("value")}"'
+                                    )
+                                    preselected_values[key] = matching_term
 
-                            # Add preselected value to dictionary
-                            if matching_term:
-                                key = (
-                                    f"{database}_{var_info.get('local_definition', '')}_category_"
-                                    f'"{category.get("value")}"'
-                                )
-                                preselected_values[key] = matching_term
-
-                            # Add a row to the dataframe
-                            rows.append({"column": var_name, "value": category})
+                                # Add a row to the dataframe
+                                rows.append({"column": var_name, "value": category})
+                        else:
+                            # Variable not found in mapping
+                            for category in categories:
+                                rows.append({"column": var_name, "value": category})
                     else:
                         # Iterate over the categories
                         for category in categories:
@@ -787,10 +787,18 @@ def describe_variable_details():
         # Add the dataframe to the result dictionary with the database name as the key
         dataframes[database] = df
 
-    if isinstance(session_cache.global_semantic_map, dict):
-        variable_info = session_cache.global_semantic_map.get("variable_info")
-    else:
-        variable_info = {}
+    # Get all variables from JSON-LD mapping for template
+    variable_info = {}
+    if session_cache.jsonld_mapping:
+        for var_key in session_cache.jsonld_mapping.get_all_variable_keys():
+            var = session_cache.jsonld_mapping.get_variable(var_key)
+            if var:
+                # Create a dict representation for template compatibility
+                variable_info[var_key] = {
+                    "data_type": var.data_type,
+                    "predicate": var.predicate,
+                    "class": var.class_uri,
+                }
 
     # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
     template_dataframes = {
