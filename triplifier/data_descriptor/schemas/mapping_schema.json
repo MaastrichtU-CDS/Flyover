@@ -4,15 +4,19 @@
   "title": "Flyover Semantic Mapping Schema",
   "description": "JSON Schema for validating Flyover JSON-LD semantic mapping files with variable schema definitions",
   "type": "object",
-
-  "required": ["@context", "@type", "schema", "databases"],
-
+  "required": [
+    "@context",
+    "@type",
+    "schema",
+    "databases"
+  ],
   "properties": {
-
     "@context": {
       "description": "JSON-LD context defining prefixes and term mappings",
       "type": "object",
-      "required": ["@vocab"],
+      "required": [
+        "@vocab"
+      ],
       "properties": {
         "@vocab": {
           "type": "string",
@@ -21,55 +25,54 @@
       },
       "additionalProperties": {
         "oneOf": [
-          { "type": "string" },
-          { "type": "object" }
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
         ]
       }
     },
-
     "@id": {
       "description": "Unique identifier URI for this mapping",
       "type": "string"
     },
-
     "@type": {
       "description": "Type of this document",
       "type": "string",
-      "pattern": "^(mapping:)?DataMapping$"
+      "pattern": "^(mapping:)?DataMapping$",
+      "enum": [
+        "mapping:DataMapping",
+        "DataMapping"
+      ]
     },
-
     "name": {
       "description": "Human-readable name for this mapping",
       "type": "string",
       "minLength": 1
     },
-
     "description": {
       "description": "Description of this mapping",
       "type": "string"
     },
-
     "version": {
       "description": "Version of this mapping file",
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
     },
-
     "created": {
       "description": "Creation date in YYYY-MM-DD format",
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
     },
-
     "endpoint": {
       "description": "SPARQL endpoint URL",
       "type": "string"
     },
-
     "schema": {
       "$ref": "#/definitions/SemanticSchema"
     },
-
     "databases": {
       "description": "Database definitions containing tables and column mappings",
       "type": "object",
@@ -79,22 +82,26 @@
       }
     }
   },
-
   "additionalProperties": true,
-
   "definitions": {
-
     "SemanticSchema": {
       "description": "Embedded semantic schema defining variables, predicates, classes, and value mappings",
       "type": "object",
-      "required": ["@type", "variables"],
+      "required": [
+        "@type",
+        "variables"
+      ],
       "properties": {
         "@id": {
           "type": "string"
         },
         "@type": {
           "type": "string",
-          "pattern": "^(schema:)?SemanticSchema$"
+          "pattern": "^(schema:)?SemanticSchema$",
+          "enum": [
+            "schema:SemanticSchema",
+            "SemanticSchema"
+          ]
         },
         "name": {
           "type": "string",
@@ -121,7 +128,6 @@
       },
       "additionalProperties": true
     },
-
     "Prefixes": {
       "description": "Namespace prefix definitions",
       "type": "object",
@@ -130,11 +136,15 @@
         "format": "uri"
       }
     },
-
     "SchemaVariable": {
       "description": "A variable definition in the semantic schema",
       "type": "object",
-      "required": ["@type", "dataType", "predicate", "class"],
+      "required": [
+        "@type",
+        "dataType",
+        "predicate",
+        "class"
+      ],
       "properties": {
         "@id": {
           "description": "Unique identifier for this variable",
@@ -143,12 +153,27 @@
         "@type": {
           "description": "Variable type classification",
           "type": "string",
-          "pattern": "^(schema:)?(IdentifierVariable|CategoricalVariable|ContinuousVariable|OrdinalVariable|DateVariable|TextVariable)$"
+          "pattern": "^(schema:)?(IdentifierVariable|CategoricalVariable|ContinuousVariable|OrdinalVariable|DateVariable|TextVariable)$",
+          "enum": [
+            "schema:IdentifierVariable",
+            "schema:CategoricalVariable",
+            "schema:ContinuousVariable",
+            "schema:OrdinalVariable",
+            "schema:DateVariable",
+            "schema:TextVariable"
+          ]
         },
         "dataType": {
           "description": "Data type of the variable",
           "type": "string",
-          "enum": ["identifier", "categorical", "continuous", "ordinal", "date", "text"]
+          "enum": [
+            "identifier",
+            "categorical",
+            "continuous",
+            "ordinal",
+            "date",
+            "text"
+          ]
         },
         "predicate": {
           "description": "RDF predicate (property) for this variable",
@@ -174,11 +199,14 @@
       },
       "additionalProperties": true
     },
-
     "SchemaReconstructionNode": {
       "description": "A node in the schema reconstruction chain",
       "type": "object",
-      "required": ["@type", "predicate", "class"],
+      "required": [
+        "@type",
+        "predicate",
+        "class"
+      ],
       "properties": {
         "@type": {
           "type": "string",
@@ -187,7 +215,10 @@
         "placement": {
           "description": "Placement directive for this node",
           "type": "string",
-          "enum": ["before", "after"]
+          "enum": [
+            "before",
+            "after"
+          ]
         },
         "predicate": {
           "type": "string",
@@ -212,11 +243,12 @@
       },
       "additionalProperties": true
     },
-
     "SchemaValueMapping": {
       "description": "Value mapping definition containing terms",
       "type": "object",
-      "required": ["terms"],
+      "required": [
+        "terms"
+      ],
       "properties": {
         "terms": {
           "description": "Term mappings - keys are canonical term names, values define target classes",
@@ -228,11 +260,12 @@
       },
       "additionalProperties": true
     },
-
     "SchemaTermMapping": {
       "description": "A single term mapping to an ontology class",
       "type": "object",
-      "required": ["targetClass"],
+      "required": [
+        "targetClass"
+      ],
       "properties": {
         "targetClass": {
           "description": "Target ontology class for this term",
@@ -242,18 +275,24 @@
       },
       "additionalProperties": true
     },
-
     "Database": {
       "description": "A database containing one or more tables",
       "type": "object",
-      "required": ["@type", "tables"],
+      "required": [
+        "@type",
+        "tables"
+      ],
       "properties": {
         "@id": {
           "type": "string"
         },
         "@type": {
           "type": "string",
-          "pattern": "^(mapping:)?Database$"
+          "pattern": "^(mapping:)?Database$",
+          "enum": [
+            "mapping:Database",
+            "Database"
+          ]
         },
         "name": {
           "type": "string",
@@ -263,7 +302,7 @@
           "type": "string"
         },
         "locale": {
-          "description": "Locale code for this database (e.g., en_GB, nl_NL, en_US)",
+          "description": "Locale code for this database (e.g., en_GB, hi_IN, nl_NL)",
           "type": "string",
           "pattern": "^[a-z]{2}_[A-Z]{2}$"
         },
@@ -282,18 +321,24 @@
       },
       "additionalProperties": true
     },
-
     "Table": {
       "description": "A table containing column mappings",
       "type": "object",
-      "required": ["@type", "columns"],
+      "required": [
+        "@type",
+        "columns"
+      ],
       "properties": {
         "@id": {
           "type": "string"
         },
         "@type": {
           "type": "string",
-          "pattern": "^(mapping:)?Table$"
+          "pattern": "^(mapping:)?Table$",
+            "enum": [
+                "mapping:Table",
+                "Table"
+            ]
         },
         "sourceFile": {
           "description": "Source file name or path",
@@ -313,11 +358,13 @@
       },
       "additionalProperties": true
     },
-
     "ColumnMapping": {
       "description": "A column mapping linking local data to schema variables",
       "type": "object",
-      "required": ["mapsTo", "localColumn"],
+      "required": [
+        "mapsTo",
+        "localColumn"
+      ],
       "properties": {
         "mapsTo": {
           "description": "Reference to schema variable (e.g., schema:variable/biological_sex)",
@@ -327,8 +374,12 @@
         "localColumn": {
           "description": "Local column name in source data",
           "oneOf": [
-            { "type": "string" },
-            { "type": "null" }
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "localMappings": {
@@ -336,8 +387,12 @@
           "type": "object",
           "additionalProperties": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "null" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
