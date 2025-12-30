@@ -1244,8 +1244,8 @@ def annotation_review():
     if map_database_name is None or map_database_name == "":
         flash(
             Markup(
-                "The semantic map does not have a 'database_name' specified. <br>"
-                "Please either edit your JSON-LD file to add a valid database name, or "
+                "The semantic map does not have a database name specified. <br>"
+                "Please either edit your mapping file to add a valid database name, or "
                 "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
             )
         )

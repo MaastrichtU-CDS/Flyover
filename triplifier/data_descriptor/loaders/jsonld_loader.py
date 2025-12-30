@@ -661,7 +661,9 @@ class JSONLDMapping:
         'schema_reconstruction', and 'value_mapping' with 'terms' containing 'local_term'
         and 'target_class'.
 
-        NOTE: This method is transitional and scheduled for removal in a future version.
+        .. deprecated:: 3.0.0
+            This method is transitional and scheduled for removal in version 4.0.0.
+            The annotation helper will be updated to work directly with JSON-LD format.
 
         Args:
             database_key: Optional database key to filter local mappings.
@@ -705,8 +707,17 @@ class JSONLDMapping:
             if var.schema_reconstruction:
                 var_legacy["schema_reconstruction"] = []
                 for node in var.schema_reconstruction:
+                    # Determine node type from the @type field
+                    # ClassNode -> "class", UnitNode/PropertyNode -> "node"
+                    node_type_value = "class"
+                    if node.node_type in ("schema:UnitNode", "schema:PropertyNode"):
+                        node_type_value = "node"
+                    elif node.node_type != "schema:ClassNode":
+                        # For unknown types, default to "class" if class_label exists, otherwise "node"
+                        node_type_value = "class" if node.class_label else "node"
+
                     node_legacy = {
-                        "type": "class" if "ClassNode" in node.node_type else "node",
+                        "type": node_type_value,
                         "predicate": node.predicate,
                         "class": node.class_uri,
                     }
