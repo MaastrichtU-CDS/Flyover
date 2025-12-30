@@ -111,6 +111,9 @@ class Cache:
         self.csvData = None
         self.csvTableNames = None
         self.uploaded_file = None
+        # DEPRECATED: global_semantic_map is deprecated in favor of jsonld_mapping.
+        # Kept for backward compatibility with legacy JSON uploads.
+        # Scheduled for removal in a future version.
         self.global_semantic_map = None
         self.jsonld_mapping = None  # Store JSONLDMapping object for JSON-LD format
         self.existing_graph = False
