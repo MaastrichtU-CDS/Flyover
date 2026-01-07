@@ -370,6 +370,17 @@ def upload_file():
 
             for msg in upload_messages:
                 logger.info(f"📝 {msg}")
+            
+            # START BACKGROUND PK/FK AND CROSS-GRAPH PROCESSING AFTER UPLOAD
+            # This ensures data is in GraphDB before relationships are processed
+            if file_type == "CSV":
+                if session_cache.pk_fk_data:
+                    logger.info("Upload complete. Starting background PK/FK processing...")
+                    gevent.spawn(background_pk_fk_processing)
+                
+                if session_cache.cross_graph_link_data:
+                    logger.info("Upload complete. Starting background cross-graph processing...")
+                    gevent.spawn(background_cross_graph_processing)
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for("data_submission"))
@@ -2490,24 +2501,10 @@ def run_triplifier(properties_file=None):
             return False, f"Unknown properties file: {properties_file}"
 
         if success:
-            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
-            if (
-                properties_file == "triplifierCSV.properties"
-                and session_cache.pk_fk_data
-            ):
-                print("Triplifier successful. Starting background PK/FK processing...")
-                gevent.spawn(background_pk_fk_processing)
-
-            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Use gevent spawn
-            if (
-                properties_file == "triplifierCSV.properties"
-                and session_cache.cross_graph_link_data
-            ):
-                print(
-                    "Triplifier successful. Starting background cross-graph processing..."
-                )
-                gevent.spawn(background_cross_graph_processing)
-
+            # Note: Background PK/FK and cross-graph processing are now started
+            # after upload completes (in upload_file function) to ensure data
+            # is available in GraphDB before relationships are processed
+            
             return True, Markup(
                 "The data you have submitted was triplified successfully and "
                 "is now available in GraphDB."
