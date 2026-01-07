@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Constants for SPARQL queries and regex patterns used in database initialisation
 COLUMN_INFO_QUERY = """
 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    SELECT ?uri ?column 
+    SELECT ?uri ?column
     WHERE {
     ?uri dbo:column ?column .
     }
@@ -61,6 +61,7 @@ def check_graph_exists(repo: str, graph_uri: str, graphdb_url: str) -> bool:
         f"{graphdb_url}/repositories/{repo}",
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
+        timeout=30,
     )
 
     # If the request is successful, return the result of the ASK query

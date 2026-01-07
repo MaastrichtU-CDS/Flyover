@@ -10,7 +10,6 @@ Tests cover:
 - Error formatting for UI
 """
 
-import json
 import os
 import sys
 import tempfile

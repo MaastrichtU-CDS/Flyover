@@ -449,7 +449,7 @@ def describe_landing():
             <div class="alert alert-warning" role="alert">
                 <i class="fas fa-exclamation-triangle"></i>
                 <strong>No Data Found</strong><br>
-                You cannot proceed with the describe step as no data has been uploaded yet. 
+                You cannot proceed with the describe step as no data has been uploaded yet.
                 Please go back to the Ingest step to upload your data first.
                 <br><br>
                 <a href="/ingest" class="btn btn-primary">
@@ -767,7 +767,7 @@ def describe_variable_details():
                                 # Check if this value has a local mapping
                                 for (
                                     term,
-                                    target_class,
+                                    _target_class,
                                 ) in var_info.value_mappings.items():
                                     local_term = (
                                         session_cache.jsonld_mapping.get_local_term(
@@ -1072,6 +1072,7 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
             f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
             params={"graph": named_graph},
             headers={"Accept": "application/n-triples"},
+            timeout=30,
         )
 
         if response.status_code == 200:
@@ -1449,7 +1450,7 @@ def start_annotation():
 
                 # For now, we'll assume success for variables with local definitions
                 # In the future the add_annotation function should return status
-                for var_name, var_data in annotated_variables.items():
+                for var_name, _var_data in annotated_variables.items():
                     session_cache.annotation_status[f"{database}.{var_name}"] = {
                         "success": True,
                         "message": "Annotation completed successfully",
@@ -1699,14 +1700,14 @@ def verify_annotation_ask():
         # Check for value mappings and add target_class subClassOf statements
         value_mapping = var_copy.get("value_mapping", {})
         if value_mapping and value_mapping.get("terms"):
-            for term, term_info in value_mapping["terms"].items():
+            for _term, term_info in value_mapping["terms"].items():
                 if term_info.get("local_term") and term_info.get("target_class"):
                     ask_query_parts.append(
                         f"{term_info['target_class']} rdfs:subClassOf {var_class} ."
                     )
 
         ask_query = f"""
-            {prefixes}            
+            {prefixes}
             ASK {{
               {' '.join(ask_query_parts)}
             }}
@@ -1719,6 +1720,7 @@ def verify_annotation_ask():
             f"{graphdb_url}/repositories/{session_cache.repo}",
             params={"query": ask_query},
             headers={"Accept": "application/sparql-results+json"},
+            timeout=30,
         )
 
         if response.status_code == 200:
@@ -1858,6 +1860,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
             endpoint,
             data={query_type: query},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30,
         )
         # Return the result of the query execution
         return response.text
@@ -1893,13 +1896,13 @@ def retrieve_categories(repo, column_name):
         PREFIX db: <http://{repo}.local/rdf/ontology/>
         PREFIX roo: <http://www.cancerdata.org/roo/>
         SELECT ?value (COUNT(?value) as ?count)
-        WHERE 
-        {{  
+        WHERE
+        {{
            ?a a ?v.
            ?v dbo:column '{column_name}'.
            ?a dbo:has_cell ?cell.
            ?cell dbo:has_value ?value
-        }} 
+        }}
         GROUP BY (?value)
     """
     return execute_query(repo, query_categories)
@@ -2232,15 +2235,15 @@ def insert_equivalencies(descriptive_info, variable):
                 PREFIX roo: <http://www.cancerdata.org/roo/>
                 PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-                INSERT  
+                INSERT
                 {{
                     GRAPH <http://ontology.local/>
                     {{ ?s owl:equivalentClass "{list(var_info.values())}". }}
                 }}
-                WHERE 
+                WHERE
                 {{
                     ?s dbo:column '{variable}'.
-                }}        
+                }}
             """
     return execute_query(session_cache.repo, query, "update", "/statements")
 
@@ -2400,8 +2403,8 @@ def get_existing_graph_structure():
         # Query to get existing tables and their columns
         structure_query = """
         PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        SELECT ?uri ?column 
-        WHERE {             
+        SELECT ?uri ?column
+        WHERE {
                 ?uri dbo:column ?column .
             }
         """

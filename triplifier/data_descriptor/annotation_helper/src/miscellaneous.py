@@ -212,7 +212,7 @@ def add_annotation(
     necessary_classes = set()
     necessary_nodes = set()
 
-    for generic_category, variable_data in annotation_data.items():
+    for _generic_category, variable_data in annotation_data.items():
         reconstruction_data = variable_data.get("schema_reconstruction")
         if isinstance(reconstruction_data, list):
             for reconstruction in reconstruction_data:
@@ -259,7 +259,7 @@ def add_annotation(
                 database_name=database,
                 prefixes=prefixes,
                 class_label=class_label,
-                variable=generic_category,
+                variable=class_label,
                 response=construction_response,
             )
         else:
@@ -284,7 +284,7 @@ def add_annotation(
                 database_name=database,
                 prefixes=prefixes,
                 class_label=node_label,
-                variable=generic_category,
+                variable=node_label,
                 response=construction_response,
             )
         else:
@@ -1265,7 +1265,9 @@ def __post_query(endpoint, query, headers=None, data_style=None):
         data_style = "update=" + query
 
     if dry_run is False:
-        annotation_response = requests.post(endpoint, data=data_style, headers=headers)
+        annotation_response = requests.post(
+            endpoint, data=data_style, headers=headers, timeout=30
+        )
     else:
         annotation_response = "not-a-http-response"
 

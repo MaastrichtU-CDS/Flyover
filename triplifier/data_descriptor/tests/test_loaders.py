@@ -24,8 +24,6 @@ from loaders import (
     SchemaReconstructionNode,
     SchemaVariable,
     ColumnMapping,
-    Table,
-    Database,
     JSONLDMapping,
 )
 
@@ -318,7 +316,6 @@ class TestJSONLDMapping(unittest.TestCase):
             self.assertIn("databases", saved_data)
         finally:
             os.unlink(temp_path)
-
 
     def test_to_legacy_format(self):
         """Test converting JSON-LD mapping to legacy format."""

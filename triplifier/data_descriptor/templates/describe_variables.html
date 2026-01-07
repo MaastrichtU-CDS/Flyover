@@ -391,6 +391,7 @@
 <!-- Include footer -->
 {% include 'footer.html' %}
 
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 <script>
     // Global datatype mapping passed from backend
     var descriptionToDatatype = {{ description_to_datatype|tojson }};
@@ -459,6 +460,19 @@
         }
         button.prop('disabled', false).removeClass('processing');
     }
+
+    function initializeIndexedDB() {
+        if (FlyoverDB.isSupported()) {
+            FlyoverDB.initDB().then(() => {
+                console.log('Flyover: IndexedDB initialized and ready');
+            }).catch(err => {
+                console.error('Flyover: Failed to initialize IndexedDB:', err);
+            });
+        } else {
+            console.warn('Flyover: IndexedDB not supported, falling back to session storage');
+        }
+    }
+    initializeIndexedDB();
 
     $(document).ready(function () {
         $('.toggle-button').click(function () {
@@ -631,4 +645,3 @@
 
 </body>
 </html>
-
