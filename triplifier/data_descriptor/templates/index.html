@@ -159,8 +159,8 @@
         }
 
         .double-padding-lg {
-            padding-left: 16rem !important;
-            padding-right: 16rem !important;
+            padding-left: 20rem !important;
+            padding-right: 20rem !important;
         }
 
 
@@ -282,7 +282,7 @@
                 // Update card states based on data existence
                 updateCardStates(dataExists);
 
-                // Update navigation header if the function exists
+                // Update the navigation header if the function exists
                 if (window.flyoverNavigation && window.flyoverNavigation.updateStepStates) {
                     window.flyoverNavigation.updateStepStates();
                 }
@@ -320,15 +320,15 @@
 
         // Describe and Annotate cards require data
         if (!dataExists) {
-            $('#describe-card, #annotate-card', '#share-card').addClass('disabled')
+            $('#describe-card, #annotate-card, #share-card').addClass('disabled')
                     .attr('data-toggle', 'tooltip')
                     .attr('data-placement', 'top')
                     .attr('title', 'First complete the data ingest step to proceed with this step.');
 
             // Initialize tooltips for disabled cards
-            $('#describe-card, #annotate-card', '#share-card').tooltip();
+            $('#describe-card, #annotate-card, #share-card').tooltip();
         } else {
-            $('#describe-card, #annotate-card', '#share-card').removeClass('disabled')
+            $('#describe-card, #annotate-card, #share-card').removeClass('disabled')
                     .removeAttr('data-toggle data-placement title')
                     .tooltip('dispose');
         }
