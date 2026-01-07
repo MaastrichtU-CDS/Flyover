@@ -13,6 +13,20 @@ from typing import List, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
+# Import table name sanitization function to avoid duplication
+try:
+    # Try relative import first (when running as part of the package)
+    from ..data_preprocessing import sanitise_table_name
+except (ImportError, ValueError):
+    # Fallback to absolute import
+    try:
+        from utils.data_preprocessing import sanitise_table_name
+    except ImportError:
+        # If all imports fail, provide a local fallback
+        def sanitise_table_name(name: str) -> str:
+            """Fallback sanitization if import fails."""
+            return name.replace("-", "_").replace(" ", "_")
+
 
 class PythonTriplifierIntegration:
     """Integration layer for the Python Triplifier package."""
@@ -53,7 +67,7 @@ class PythonTriplifierIntegration:
             # Process each CSV table individually
             for csv_data, table_name in zip(csv_data_list, csv_table_names):
                 # Clean table name to be SQLite compatible
-                clean_table_name = table_name.replace("-", "_").replace(" ", "_")
+                clean_table_name = sanitise_table_name(table_name)
                 
                 # Create a temporary SQLite database for this table
                 temp_db_path = os.path.join(

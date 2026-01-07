@@ -57,7 +57,7 @@ from utils.data_preprocessing import (
     dataframe_to_template_data,
     sanitise_table_name,
 )
-from utils.data_ingest import upload_ontology_then_data
+from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
 from utils.session_helpers import (
     check_graph_exists,
     check_any_data_graph_exists,
@@ -356,9 +356,8 @@ def upload_file():
             logger.info("🚀 Initiating upload to GraphDB")
             
             # Use different upload strategy based on file type
-            if file_type == "CSV" and session_cache.output_files:
+            if file_type == "CSV" and session_cache.output_files is not None and len(session_cache.output_files) > 0:
                 # Upload multiple graphs for CSV files
-                from utils.data_ingest import upload_multiple_graphs
                 upload_success, upload_messages = upload_multiple_graphs(
                     root_dir, graphdb_url, repo, session_cache.output_files, 
                     data_background=False

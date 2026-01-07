@@ -9,7 +9,7 @@ from .data_preprocessing import (
     sanitise_table_name,
 )
 
-from .data_ingest import upload_file_to_graphdb, upload_ontology_then_data
+from .data_ingest import upload_file_to_graphdb, upload_ontology_then_data, upload_multiple_graphs
 
 from .session_helpers import (
     check_graph_exists,
@@ -30,6 +30,7 @@ __all__ = [
     "sanitise_table_name",
     "upload_file_to_graphdb",
     "upload_ontology_then_data",
+    "upload_multiple_graphs",
     "check_graph_exists",
     "check_any_data_graph_exists",
     "graph_database_ensure_backend_initialisation",
