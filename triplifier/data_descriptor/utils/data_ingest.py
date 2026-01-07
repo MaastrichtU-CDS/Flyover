@@ -64,6 +64,99 @@ def upload_file_to_graphdb(
     )
 
 
+def upload_multiple_graphs(
+    root_dir: str,
+    graphdb_url: str,
+    repo: str,
+    output_files: List[dict],
+    ontology_timeout: int = 300,
+    data_timeout: int = 43200,
+    data_background: bool = True,
+) -> Tuple[bool, List[str]]:
+    """
+    Upload multiple ontology and data files as separate named graphs.
+    Used for CSV files where each table gets its own named graph.
+
+    Args:
+        root_dir (str): Directory containing the files
+        graphdb_url (str): GraphDB base URL
+        repo (str): Repository name
+        output_files (List[dict]): List of dicts with keys: data_file, ontology_file, table_name
+        ontology_timeout (int): Timeout for ontology upload
+        data_timeout (int): Timeout for data upload
+        data_background (bool): Whether to upload data in background
+
+    Returns:
+        tuple: (success: bool, messages: list)
+    """
+    messages = []
+    overall_success = True
+    process_start_time = time.time()
+
+    logger.info(f"📤 Starting upload of {len(output_files)} table(s) to separate named graphs")
+
+    for idx, file_info in enumerate(output_files, 1):
+        table_name = file_info["table_name"]
+        ontology_path = file_info["ontology_file"]
+        data_path = file_info["data_file"]
+
+        logger.info(f"📋 Processing table {idx}/{len(output_files)}: {table_name}")
+
+        # Upload ontology for this table (synchronous)
+        ontology_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/{table_name}/"
+        
+        logger.info(f"  📋 Uploading ontology for {table_name} (synchronous)...")
+        success, message, method = upload_file_to_graphdb(
+            ontology_path,
+            ontology_url,
+            "application/rdf+xml",
+            wait_for_completion=True,  # ALWAYS wait for ontology
+            timeout_seconds=ontology_timeout,
+        )
+
+        messages.append(f"Ontology upload for {table_name} ({method}): {message}")
+        if not success:
+            overall_success = False
+            logger.error(f"❌ Ontology upload failed for {table_name} - skipping data upload")
+            continue
+        else:
+            logger.info(f"✅ Ontology upload completed for {table_name}")
+
+        # Upload data for this table (background/foreground configurable)
+        data_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/{table_name}/"
+        
+        upload_mode = "background" if data_background else "synchronous"
+        logger.info(f"  📊 Starting data upload for {table_name} ({upload_mode})...")
+
+        success, message, method = upload_file_to_graphdb(
+            data_path,
+            data_url,
+            "application/x-turtle",
+            wait_for_completion=not data_background,  # Configurable wait
+            timeout_seconds=data_timeout,
+        )
+
+        messages.append(f"Data upload for {table_name} ({method}): {message}")
+        if not success:
+            overall_success = False
+
+    process_elapsed = time.time() - process_start_time
+
+    if overall_success:
+        logger.info(f"🎉 Multi-graph upload process completed in {process_elapsed:.1f}s")
+        logger.info(f"   📋 {len(output_files)} ontologies: Ready for queries")
+        if data_background:
+            logger.info(f"   📊 {len(output_files)} data files: Uploading in background")
+        else:
+            logger.info(f"   📊 {len(output_files)} data files: Upload completed")
+    else:
+        logger.error(
+            f"❌ Multi-graph upload process failed after {process_elapsed:.1f}s"
+        )
+
+    return overall_success, messages
+
+
 def upload_ontology_then_data(
     root_dir: str,
     graphdb_url: str,

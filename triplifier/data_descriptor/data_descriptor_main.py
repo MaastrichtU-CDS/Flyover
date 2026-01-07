@@ -118,6 +118,7 @@ class Cache:
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
         self.annotation_json_path = None  # Store path to the uploaded JSON file
+        self.output_files = None  # Store output files list for CSV uploads
 
 
 session_cache = Cache()
@@ -351,10 +352,21 @@ def upload_file():
         session_cache.StatusToDisplay = message
 
         if upload:
-            logger.info("🚀 Initiating sequential upload to GraphDB")
-            upload_success, upload_messages = upload_ontology_then_data(
-                root_dir, graphdb_url, repo, data_background=False
-            )
+            logger.info("🚀 Initiating upload to GraphDB")
+            
+            # Use different upload strategy based on file type
+            if file_type == "CSV" and session_cache.output_files:
+                # Upload multiple graphs for CSV files
+                from utils.data_ingest import upload_multiple_graphs
+                upload_success, upload_messages = upload_multiple_graphs(
+                    root_dir, graphdb_url, repo, session_cache.output_files, 
+                    data_background=False
+                )
+            else:
+                # Use traditional single-graph upload for PostgreSQL
+                upload_success, upload_messages = upload_ontology_then_data(
+                    root_dir, graphdb_url, repo, data_background=False
+                )
 
             for msg in upload_messages:
                 logger.info(f"📝 {msg}")
@@ -2160,15 +2172,17 @@ def get_column_class_uri(table_name, column_name):
         return None
 
 
-def insert_fk_relation(fk_predicate, column_class_uri, target_class_uri):
-    """Insert PK/FK relationship into the data graph"""
+def insert_fk_relation(fk_predicate, column_class_uri, target_class_uri, relationships_graph="http://relationships.local/"):
+    """Insert PK/FK relationship into the relationships graph"""
     insert_query = f"""
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
     INSERT {{
-        ?sources <{fk_predicate}> ?targets .
+        GRAPH <{relationships_graph}> {{
+            ?sources <{fk_predicate}> ?targets .
+        }}
     }} WHERE {{
         ?sources rdf:type <{column_class_uri}> ;
                  dbo:has_cell ?sourceCell .
@@ -2360,15 +2374,17 @@ def get_existing_column_class_uri(table_name, column_name):
         return None
 
 
-def insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri):
-    """Insert cross-graph relationship into the data graph"""
+def insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri, relationships_graph="http://relationships.local/"):
+    """Insert cross-graph relationship into the relationships graph"""
     insert_query = f"""
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
     INSERT {{
-        ?newSources <{predicate}> ?existingSources .
+        GRAPH <{relationships_graph}> {{
+            ?newSources <{predicate}> ?existingSources .
+        }}
     }} WHERE {{
         ?newSources rdf:type <{new_column_uri}> ;
                     dbo:has_cell ?newCell .
@@ -2454,19 +2470,23 @@ def run_triplifier(properties_file=None):
         if properties_file == "triplifierCSV.properties":
             # Use Python Triplifier for CSV processing
             # DataFrames are loaded directly into SQLite, no need to save CSV files
-            success, message = run_triplifier_impl(
+            success, message, output_files = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir,
                 csv_data_list=session_cache.csvData,
                 csv_table_names=session_cache.csvTableNames,
             )
+            
+            # Store output files in session cache for later use
+            session_cache.output_files = output_files
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
-            success, message = run_triplifier_impl(
+            success, message, output_files = run_triplifier_impl(
                 properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
             )
+            session_cache.output_files = output_files
         else:
             return False, f"Unknown properties file: {properties_file}"
 
