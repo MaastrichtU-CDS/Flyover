@@ -43,4 +43,4 @@ annotation_ui_demo.html
 .github/instructions/codacy.instructions.md
 .pre-commit-config.yaml
 CLAUDE.md
-
+.claudeignore
