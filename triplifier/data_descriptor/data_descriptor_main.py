@@ -60,6 +60,7 @@ from utils.data_preprocessing import (
 from utils.data_ingest import upload_ontology_then_data
 from utils.session_helpers import (
     check_graph_exists,
+    check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
     graph_database_find_name_match,
     graph_database_find_matching,
@@ -154,7 +155,7 @@ def index():
     """
     # Check whether a data graph already exists
     try:
-        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
+        if check_any_data_graph_exists(session_cache.repo, graphdb_url):
             # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
             return render_template(
@@ -415,7 +416,7 @@ def describe_landing():
     """
     try:
         # Check if the graph exists first
-        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
+        if check_any_data_graph_exists(session_cache.repo, graphdb_url):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template("describe_landing.html", message=Markup(message))
@@ -1056,8 +1057,8 @@ def annotation_landing():
     """
     try:
         # Check if the graph exists
-        data_exists = check_graph_exists(
-            session_cache.repo, "http://data.local/", graphdb_url
+        data_exists = check_any_data_graph_exists(
+            session_cache.repo, graphdb_url
         )
         session_cache.existing_graph = data_exists
 
@@ -1708,9 +1709,8 @@ def api_check_graph_exists():
         if not session_cache.repo:
             return jsonify({"exists": False, "error": "No repository configured"})
 
-        # Check if the main data graph exists
-        graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri, graphdb_url)
+        # Check if any data graph exists (supports both single and multi-graph patterns)
+        exists = check_any_data_graph_exists(session_cache.repo, graphdb_url)
 
         return jsonify({"exists": exists})
     except Exception as e:

@@ -71,6 +71,49 @@ def check_graph_exists(repo: str, graph_uri: str, graphdb_url: str) -> bool:
         raise Exception(f"Query failed with status code {response.status_code}")
 
 
+def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
+    """
+    This function checks if any data graph exists in a GraphDB repository.
+    It checks for graphs matching the pattern http://data.local/* which includes
+    both the legacy single graph (http://data.local/) and new per-table graphs
+    (http://data.local/tablename/).
+
+    Args:
+        repo: The name of the repository in GraphDB.
+        graphdb_url: The base URL of the GraphDB instance.
+
+    Returns:
+        bool: True if any data graph exists, False otherwise.
+
+    Raises:
+        Exception: If the request to the GraphDB instance fails,
+        an exception is raised with the status code of the failed request.
+    """
+    # Construct a SPARQL query that checks for any graph starting with http://data.local/
+    query = """
+    ASK WHERE {
+        GRAPH ?g {
+            ?s ?p ?o
+        }
+        FILTER(STRSTARTS(STR(?g), "http://data.local/"))
+    }
+    """
+
+    # Send a GET request to the GraphDB instance
+    response = requests.get(
+        f"{graphdb_url}/repositories/{repo}",
+        params={"query": query},
+        headers={"Accept": "application/sparql-results+json"},
+    )
+
+    # If the request is successful, return the result of the ASK query
+    if response.status_code == 200:
+        return response.json()["boolean"]
+    # If the request fails, raise an exception with the status code
+    else:
+        raise Exception(f"Query failed with status code {response.status_code}")
+
+
 def graph_database_ensure_backend_initialisation(
     session_cache, execute_query_func: Callable[[str, str], str]
 ) -> bool:
