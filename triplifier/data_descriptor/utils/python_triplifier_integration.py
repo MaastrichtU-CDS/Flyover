@@ -11,21 +11,10 @@ import polars as pl
 from pythonTool.main_app import run_triplifier as triplifier_run
 from typing import List, Tuple, Union
 
-logger = logging.getLogger(__name__)
-
 # Import table name sanitization function to avoid duplication
-try:
-    # Try relative import first (when running as part of the package)
-    from ..data_preprocessing import sanitise_table_name
-except (ImportError, ValueError):
-    # Fallback to absolute import
-    try:
-        from utils.data_preprocessing import sanitise_table_name
-    except ImportError:
-        # If all imports fail, provide a local fallback
-        def sanitise_table_name(name: str) -> str:
-            """Fallback sanitization if import fails."""
-            return name.replace("-", "_").replace(" ", "_")
+from ..data_preprocessing import sanitise_table_name
+
+logger = logging.getLogger(__name__)
 
 
 class PythonTriplifierIntegration:

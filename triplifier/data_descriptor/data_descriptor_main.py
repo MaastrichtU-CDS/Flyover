@@ -356,7 +356,7 @@ def upload_file():
             logger.info("🚀 Initiating upload to GraphDB")
             
             # Use different upload strategy based on file type
-            if file_type == "CSV" and session_cache.output_files is not None and len(session_cache.output_files) > 0:
+            if file_type == "CSV" and session_cache.output_files:
                 # Upload multiple graphs for CSV files
                 upload_success, upload_messages = upload_multiple_graphs(
                     root_dir, graphdb_url, repo, session_cache.output_files, 
