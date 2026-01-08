@@ -1017,55 +1017,77 @@ def download_semantic_map():
 def download_ontology(named_graph="http://ontology.local/", filename=None):
     """
     This function downloads ontology files from GraphDB and returns them as a response.
-    For multiple CSV tables, it creates a zip file containing all table-specific ontologies.
-    For single table or PostgreSQL, it downloads a single ontology file.
+    For multiple ontologies, it creates a zip file containing all ontologies.
 
     Parameters:
-    named_graph (str): The URL of the graph from which the ontology is to be downloaded.
+    named_graph (str): The base URL of the graph from which the ontology is to be downloaded.
     Defaults to "http://ontology.local/".
     filename (str): The name of the file to be downloaded. Defaults to 'local_ontology_{database_name}.nt'.
 
     Returns:
-        flask.Response: A Flask response object containing the ontology as a string (single table)
-                        or a zip file (multiple tables) if the download is successful,
+        flask.Response: A Flask response object containing the ontology as a string (single ontology)
+                        or a zip file (multiple ontologies) if the download is successful,
                         or an error message if the download fails.
-                        If an error occurs during the processing of the request,
-                        an HTTP response with a status code of 500 (Internal Server Error)
-                        is returned along with a message describing the error.
     """
     try:
-        # Check if there are multiple CSV tables (new multi-graph structure)
-        if (
-            session_cache.csvTableNames is not None
-            and session_cache.existing_graph is False
-            and len(session_cache.csvTableNames) > 1
-        ):
-            # Multiple tables: create a zip file with all ontologies
+        # Check if we have multiple databases (either from session or need to query GraphDB)
+        databases_to_process = []
+
+        # First, try to get databases from session cache
+        if session_cache.databases and len(session_cache.databases) > 1:
+            databases_to_process = session_cache.databases
+        else:
+            # Query GraphDB to find all ontology graphs
+            query_graphs = """
+                SELECT DISTINCT ?g WHERE {
+                    GRAPH ?g {
+                        ?s ?p ?o .
+                    }
+                    FILTER(STRSTARTS(STR(?g), "http://ontology.local/"))
+                }
+            """
+            result = execute_query(session_cache.repo, query_graphs)
+
+            if result and result.strip():
+                graphs_df = pl.read_csv(
+                    StringIO(result),
+                    infer_schema_length=0,
+                    null_values=[],
+                    try_parse_dates=False,
+                )
+
+                if not graphs_df.is_empty() and "g" in graphs_df.columns:
+                    # Extract database names from graph URIs
+                    for graph_uri in graphs_df.get_column("g").to_list():
+                        # Extract database name from URI like "http://ontology.local/database_name/"
+                        db_name = graph_uri.replace(named_graph, "").rstrip("/")
+                        if db_name:
+                            databases_to_process.append(db_name)
+
+        # If we have multiple databases, create a zip file
+        if len(databases_to_process) > 1:
             _filename = "local_ontologies.zip"
-            
-            # Loop through each table
-            for table_name in session_cache.csvTableNames:
-                # Clean table name to match what was used during upload
-                from utils.data_preprocessing import sanitise_table_name
-                clean_table_name = sanitise_table_name(table_name)
-                
-                # Construct the graph URI for this table
-                table_graph = f"http://ontology.local/{clean_table_name}/"
-                ontology_filename = f"local_ontology_{clean_table_name}.nt"
-                
-                # Fetch the ontology for this table
+
+            # Loop through each database
+            for database in databases_to_process:
+                # Construct the graph URI for this database
+                table_graph = f"{named_graph}{database}/"
+                ontology_filename = f"local_ontology_{database}.nt"
+
+                # Fetch the ontology for this database
                 response = requests.get(
                     f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
                     params={"graph": table_graph},
                     headers={"Accept": "application/n-triples"},
                 )
-                
-                if response.status_code == 200:
+
+                if response.status_code == 200 and response.text.strip():
                     # Open the zip file in 'append' mode
                     with zipfile.ZipFile(_filename, "a") as zipf:
-                        # Write the ontology to the zip file
                         zipf.writestr(ontology_filename, response.text)
-            
+                else:
+                    logger.warning(f"No ontology data found for graph: {table_graph}")
+
             # Define a function to remove the zip file after the request has been handled
             @after_this_request
             def remove_file(response):
@@ -1076,7 +1098,7 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         "Error removing or closing downloaded file handle", error
                     )
                 return response
-            
+
             # Open the zip file in binary mode and return it as a response
             with open(_filename, "rb") as f:
                 return Response(
@@ -1084,46 +1106,42 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                     mimetype="application/zip",
                     headers={"Content-Disposition": f"attachment;filename={_filename}"},
                 )
-        
+
         else:
-            # Single table or PostgreSQL: download single ontology
-            if (
-                session_cache.csvTableNames is not None
-                and session_cache.existing_graph is False
-            ):
-                if len(session_cache.csvTableNames) == 1:
-                    # Single CSV table: use table-specific graph
-                    from utils.data_preprocessing import sanitise_table_name
-                    clean_table_name = sanitise_table_name(session_cache.csvTableNames[0])
-                    named_graph = f"http://ontology.local/{clean_table_name}/"
-                    database_name = session_cache.csvTableNames[0]
-                else:
-                    database_name = "for_multiple_databases"
+            # Single ontology: download directly
+            if len(databases_to_process) == 1:
+                # Use the single database name
+                database = databases_to_process[0]
+                ontology_graph = f"{named_graph}{database}/"
+                filename = f"local_ontology_{database}.nt"
             else:
-                # PostgreSQL or existing graph: use default single graph
-                database_name = "for_multiple_databases"
-                named_graph = "http://ontology.local/"
-            
-            if filename is None:
-                filename = f"local_ontology_{database_name}.nt"
-            
+                # Fallback to default graph
+                ontology_graph = named_graph
+                if filename is None:
+                    filename = "local_ontology.nt"
+
             response = requests.get(
                 f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-                params={"graph": named_graph},
+                params={"graph": ontology_graph},
                 headers={"Accept": "application/n-triples"},
             )
-            
+
             if response.status_code == 200:
                 return Response(
                     response.text,
                     mimetype="application/n-triples",
                     headers={"Content-Disposition": f"attachment;filename={filename}"},
                 )
+            else:
+                abort(
+                    500,
+                    description=f"Failed to download ontology. Status code: {response.status_code}",
+                )
 
     except Exception as e:
         abort(
             500,
-            description=f"An error occurred while processing the ontology, error: {str(e)}",
+            description=f"An error occurred while downloading the ontology, error: {str(e)}",
         )
 
 
