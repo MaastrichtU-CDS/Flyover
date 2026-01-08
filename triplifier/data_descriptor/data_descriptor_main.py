@@ -682,7 +682,7 @@ def retrieve_descriptive_info():
                     session_cache.DescriptiveInfoDetails[database].append(display_name)
                 else:
                     insert_equivalencies(
-                        session_cache.descriptive_info[database], local_variable_name
+                        session_cache.descriptive_info[database], local_variable_name, database
                     )
 
         # Remove databases that do not have any descriptive information
@@ -881,7 +881,7 @@ def retrieve_detailed_descriptive_info():
                     )
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
-            insert_equivalencies(session_cache.descriptive_info[database], variable)
+            insert_equivalencies(session_cache.descriptive_info[database], variable, database)
 
     # Redirect the user to the 'download_page' URL
     return redirect(url_for("describe_downloads"))
@@ -2070,7 +2070,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         )
 
 
-def insert_equivalencies(descriptive_info, variable):
+def insert_equivalencies(descriptive_info, variable, database):
     """
     This function inserts equivalencies into a GraphDB repository.
 
@@ -2121,6 +2121,10 @@ def insert_equivalencies(descriptive_info, variable):
     if not (has_type or has_description or has_comments):
         return None
 
+    # Construct the named graph URI for this specific database's ontology
+    ontology_graph = f"http://ontology.local/{database}/"
+
+
     query = f"""
                 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
                 PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
@@ -2129,7 +2133,7 @@ def insert_equivalencies(descriptive_info, variable):
 
                 INSERT  
                 {{
-                    GRAPH <http://ontology.local/>
+                    GRAPH <{ontology_graph}>
                     {{ ?s owl:equivalentClass "{list(var_info.values())}". }}
                 }}
                 WHERE 

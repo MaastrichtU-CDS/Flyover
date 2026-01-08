@@ -12,7 +12,7 @@ from pythonTool.main_app import run_triplifier as triplifier_run
 from typing import List, Tuple, Union
 
 # Import table name sanitization function to avoid duplication
-from ..data_preprocessing import sanitise_table_name
+from .data_preprocessing import sanitise_table_name
 
 logger = logging.getLogger(__name__)
 
