@@ -93,7 +93,9 @@ def upload_multiple_graphs(
     overall_success = True
     process_start_time = time.time()
 
-    logger.info(f"📤 Starting upload of {len(output_files)} table(s) to separate named graphs")
+    logger.info(
+        f"📤 Starting upload of {len(output_files)} table(s) to separate named graphs"
+    )
 
     for idx, file_info in enumerate(output_files, 1):
         table_name = file_info["table_name"]
@@ -104,7 +106,7 @@ def upload_multiple_graphs(
 
         # Upload ontology for this table (synchronous)
         ontology_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/{table_name}/"
-        
+
         logger.info(f"  📋 Uploading ontology for {table_name} (synchronous)...")
         success, message, method = upload_file_to_graphdb(
             ontology_path,
@@ -117,14 +119,16 @@ def upload_multiple_graphs(
         messages.append(f"Ontology upload for {table_name} ({method}): {message}")
         if not success:
             overall_success = False
-            logger.error(f"❌ Ontology upload failed for {table_name} - skipping data upload")
+            logger.error(
+                f"❌ Ontology upload failed for {table_name} - skipping data upload"
+            )
             continue
         else:
             logger.info(f"✅ Ontology upload completed for {table_name}")
 
         # Upload data for this table (background/foreground configurable)
         data_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/{table_name}/"
-        
+
         upload_mode = "background" if data_background else "synchronous"
         logger.info(f"  📊 Starting data upload for {table_name} ({upload_mode})...")
 
@@ -143,10 +147,14 @@ def upload_multiple_graphs(
     process_elapsed = time.time() - process_start_time
 
     if overall_success:
-        logger.info(f"🎉 Multi-graph upload process completed in {process_elapsed:.1f}s")
+        logger.info(
+            f"🎉 Multi-graph upload process completed in {process_elapsed:.1f}s"
+        )
         logger.info(f"   📋 {len(output_files)} ontologies: Ready for queries")
         if data_background:
-            logger.info(f"   📊 {len(output_files)} data files: Uploading in background")
+            logger.info(
+                f"   📊 {len(output_files)} data files: Uploading in background"
+            )
         else:
             logger.info(f"   📊 {len(output_files)} data files: Upload completed")
     else:

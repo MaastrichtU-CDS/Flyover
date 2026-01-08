@@ -621,7 +621,9 @@ def get_unique_prefixes(query, prefixes):
     return "\n".join(unique_prefixes)
 
 
-def add_mapping(endpoint, prefixes, variable, super_class, value_map, database_name=None):
+def add_mapping(
+    endpoint, prefixes, variable, super_class, value_map, database_name=None
+):
     """
     add a mapping between various classes
 
@@ -901,7 +903,13 @@ def _add_annotation(
 
 
 def _add_mapping(
-    endpoint, prefixes, target_class, super_class, local_term, database_name=None, template_file=None
+    endpoint,
+    prefixes,
+    target_class,
+    super_class,
+    local_term,
+    database_name=None,
+    template_file=None,
 ):
     """
     directly add a mapping between various classes and data-specific term

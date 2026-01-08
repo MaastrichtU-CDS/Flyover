@@ -57,7 +57,7 @@ class PythonTriplifierIntegration:
             for csv_data, table_name in zip(csv_data_list, csv_table_names):
                 # Clean table name to be SQLite compatible
                 clean_table_name = sanitise_table_name(table_name)
-                
+
                 # Create a temporary SQLite database for this table
                 temp_db_path = os.path.join(
                     static_files_dir, f"temp_{clean_table_name}.db"
@@ -79,7 +79,9 @@ class PythonTriplifierIntegration:
                     # Use executemany for efficient batch insertion
                     conn.executemany(insert_sql, csv_data.iter_rows())
                     conn.commit()
-                    logger.info(f"Loaded CSV data into SQLite table: {clean_table_name}")
+                    logger.info(
+                        f"Loaded CSV data into SQLite table: {clean_table_name}"
+                    )
 
                 finally:
                     conn.close()
@@ -93,14 +95,20 @@ class PythonTriplifierIntegration:
                 }
 
                 config_path = os.path.join(
-                    self.root_dir, self.child_dir, f"triplifier_csv_config_{clean_table_name}.yaml"
+                    self.root_dir,
+                    self.child_dir,
+                    f"triplifier_csv_config_{clean_table_name}.yaml",
                 )
                 with open(config_path, "w") as f:
                     yaml.dump(config, f)
 
                 # Set up file paths - output to root_dir with table-specific names
-                ontology_path = os.path.join(self.root_dir, f"ontology_{clean_table_name}.owl")
-                output_path = os.path.join(self.root_dir, f"output_{clean_table_name}.ttl")
+                ontology_path = os.path.join(
+                    self.root_dir, f"ontology_{clean_table_name}.owl"
+                )
+                output_path = os.path.join(
+                    self.root_dir, f"output_{clean_table_name}.ttl"
+                )
                 base_uri_value = base_uri or f"http://{self.hostname}/rdf/ontology/"
 
                 # Create arguments object for the triplifier
@@ -117,15 +125,19 @@ class PythonTriplifierIntegration:
                 # Run Python Triplifier directly using the API
                 triplifier_run(args)
 
-                logger.info(f"Python Triplifier executed successfully for table: {clean_table_name}")
+                logger.info(
+                    f"Python Triplifier executed successfully for table: {clean_table_name}"
+                )
                 logger.info(f"Generated files: {ontology_path}, {output_path}")
 
                 # Store output file information
-                output_files.append({
-                    "data_file": output_path,
-                    "ontology_file": ontology_path,
-                    "table_name": clean_table_name
-                })
+                output_files.append(
+                    {
+                        "data_file": output_path,
+                        "ontology_file": ontology_path,
+                        "table_name": clean_table_name,
+                    }
+                )
 
                 # Clean up temporary files for this table
                 if os.path.exists(config_path):
@@ -142,7 +154,11 @@ class PythonTriplifierIntegration:
                         )
                         # Not critical - file will be overwritten on the next run
 
-            return True, "CSV data triplified successfully using Python Triplifier.", output_files
+            return (
+                True,
+                "CSV data triplified successfully using Python Triplifier.",
+                output_files,
+            )
 
         except Exception as e:
             logger.error(f"Error in CSV triplification: {e}")
@@ -285,4 +301,8 @@ def run_triplifier(
         import traceback
 
         traceback.print_exc()
-        return False, f"Unexpected error attempting to run the Triplifier, error: {e}", []
+        return (
+            False,
+            f"Unexpected error attempting to run the Triplifier, error: {e}",
+            [],
+        )

@@ -354,13 +354,16 @@ def upload_file():
 
         if upload:
             logger.info("🚀 Initiating upload to GraphDB")
-            
+
             # Use different upload strategy based on file type
             if file_type == "CSV" and session_cache.output_files:
                 # Upload multiple graphs for CSV files
                 upload_success, upload_messages = upload_multiple_graphs(
-                    root_dir, graphdb_url, repo, session_cache.output_files, 
-                    data_background=False
+                    root_dir,
+                    graphdb_url,
+                    repo,
+                    session_cache.output_files,
+                    data_background=False,
                 )
             else:
                 # Use traditional single-graph upload for PostgreSQL
@@ -370,16 +373,20 @@ def upload_file():
 
             for msg in upload_messages:
                 logger.info(f"📝 {msg}")
-            
+
             # START BACKGROUND PK/FK AND CROSS-GRAPH PROCESSING AFTER UPLOAD
             # This ensures data is in GraphDB before relationships are processed
             if file_type == "CSV":
                 if session_cache.pk_fk_data:
-                    logger.info("Upload complete. Starting background PK/FK processing...")
+                    logger.info(
+                        "Upload complete. Starting background PK/FK processing..."
+                    )
                     gevent.spawn(background_pk_fk_processing)
-                
+
                 if session_cache.cross_graph_link_data:
-                    logger.info("Upload complete. Starting background cross-graph processing...")
+                    logger.info(
+                        "Upload complete. Starting background cross-graph processing..."
+                    )
                     gevent.spawn(background_cross_graph_processing)
 
         # Redirect to the new route after processing the POST request
@@ -682,7 +689,9 @@ def retrieve_descriptive_info():
                     session_cache.DescriptiveInfoDetails[database].append(display_name)
                 else:
                     insert_equivalencies(
-                        session_cache.descriptive_info[database], local_variable_name, database
+                        session_cache.descriptive_info[database],
+                        local_variable_name,
+                        database,
                     )
 
         # Remove databases that do not have any descriptive information
@@ -881,7 +890,9 @@ def retrieve_detailed_descriptive_info():
                     )
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
-            insert_equivalencies(session_cache.descriptive_info[database], variable, database)
+            insert_equivalencies(
+                session_cache.descriptive_info[database], variable, database
+            )
 
     # Redirect the user to the 'download_page' URL
     return redirect(url_for("describe_downloads"))
@@ -1067,9 +1078,7 @@ def annotation_landing():
     """
     try:
         # Check if the graph exists
-        data_exists = check_any_data_graph_exists(
-            session_cache.repo, graphdb_url
-        )
+        data_exists = check_any_data_graph_exists(session_cache.repo, graphdb_url)
         session_cache.existing_graph = data_exists
 
         message = None
@@ -2124,7 +2133,6 @@ def insert_equivalencies(descriptive_info, variable, database):
     # Construct the named graph URI for this specific database's ontology
     ontology_graph = f"http://ontology.local/{database}/"
 
-
     query = f"""
                 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
                 PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
@@ -2186,7 +2194,12 @@ def get_column_class_uri(table_name, column_name):
         return None
 
 
-def insert_fk_relation(fk_predicate, column_class_uri, target_class_uri, relationships_graph="http://relationships.local/"):
+def insert_fk_relation(
+    fk_predicate,
+    column_class_uri,
+    target_class_uri,
+    relationships_graph="http://relationships.local/",
+):
     """Insert PK/FK relationship into the relationships graph"""
     insert_query = f"""
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
@@ -2388,7 +2401,12 @@ def get_existing_column_class_uri(table_name, column_name):
         return None
 
 
-def insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri, relationships_graph="http://relationships.local/"):
+def insert_cross_graph_relation(
+    predicate,
+    new_column_uri,
+    existing_column_uri,
+    relationships_graph="http://relationships.local/",
+):
     """Insert cross-graph relationship into the relationships graph"""
     insert_query = f"""
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
@@ -2491,7 +2509,7 @@ def run_triplifier(properties_file=None):
                 csv_data_list=session_cache.csvData,
                 csv_table_names=session_cache.csvTableNames,
             )
-            
+
             # Store output files in session cache for later use
             session_cache.output_files = output_files
 
@@ -2508,7 +2526,7 @@ def run_triplifier(properties_file=None):
             # Note: Background PK/FK and cross-graph processing are now started
             # after upload completes (in upload_file function) to ensure data
             # is available in GraphDB before relationships are processed
-            
+
             return True, Markup(
                 "The data you have submitted was triplified successfully and "
                 "is now available in GraphDB."

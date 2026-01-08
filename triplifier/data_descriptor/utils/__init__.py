@@ -9,7 +9,11 @@ from .data_preprocessing import (
     sanitise_table_name,
 )
 
-from .data_ingest import upload_file_to_graphdb, upload_ontology_then_data, upload_multiple_graphs
+from .data_ingest import (
+    upload_file_to_graphdb,
+    upload_ontology_then_data,
+    upload_multiple_graphs,
+)
 
 from .session_helpers import (
     check_graph_exists,
