@@ -28,6 +28,7 @@ _class_aesthetic_label = "reconstructionaestheticlabel"
 _class_iri_label = "reconstructioniri"
 
 _prefixes_to_add = "PREFIX PLACEHOLDER: <>"
+_annotation_graph_uri = "ANNOTATION_GRAPH_URI"
 
 
 def add_annotation(
@@ -475,6 +476,7 @@ def add_annotation(
                     variable=generic_category,
                     super_class=class_object,
                     value_map=variable_data["value_mapping"],
+                    database_name=database,
                 )
 
             # remove the 'has_column' section
@@ -619,7 +621,7 @@ def get_unique_prefixes(query, prefixes):
     return "\n".join(unique_prefixes)
 
 
-def add_mapping(endpoint, prefixes, variable, super_class, value_map):
+def add_mapping(endpoint, prefixes, variable, super_class, value_map, database_name=None):
     """
     add a mapping between various classes
 
@@ -628,6 +630,7 @@ def add_mapping(endpoint, prefixes, variable, super_class, value_map):
     :param str variable: variable name for logging purposes
     :param str super_class: class to add the mapping to
     :param dict value_map: dictionary containing the mapping data to save the query generated for the mapping
+    :param str database_name: database name for graph URI (optional, defaults to single annotation graph)
     """
     responses = []
     queries = {}
@@ -653,6 +656,7 @@ def add_mapping(endpoint, prefixes, variable, super_class, value_map):
                 target_class=target_class,
                 super_class=super_class,
                 local_term=local_term,
+                database_name=database_name,
             )
 
             # store response and query in a list
@@ -881,6 +885,7 @@ def _add_annotation(
         _variable_definition: local_definition,
         _variable_class: class_object,
         _prefixes_to_add: prefixes,
+        _annotation_graph_uri: f"http://annotation.local/{database_name}/",
         "# Template that is automatically filled using Python.": (
             "# This query was automatically generated using the annotation helper."
         ),
@@ -896,7 +901,7 @@ def _add_annotation(
 
 
 def _add_mapping(
-    endpoint, prefixes, target_class, super_class, local_term, template_file=None
+    endpoint, prefixes, target_class, super_class, local_term, database_name=None, template_file=None
 ):
     """
     directly add a mapping between various classes and data-specific term
@@ -906,6 +911,7 @@ def _add_mapping(
     :param str target_class: specific class, e.g., male or female
     :param str super_class: overarching class, e.g., biological sex
     :param str local_term: a value in the data e.g., 0 for females and 1 for males
+    :param str database_name: database name for graph URI (optional, defaults to single annotation graph)
     :param str template_file: file name of the mapping template, e.g., template_mapping.rq
     :return: response from request
     """
@@ -969,9 +975,16 @@ def _add_mapping(
     # add the target_class, super_class, and local_term
     query = query % (target_class, super_class, local_term)
 
+    # Determine annotation graph URI
+    if database_name:
+        annotation_graph_uri = f"http://annotation.local/{database_name}/"
+    else:
+        annotation_graph_uri = "http://annotation.local/"
+
     # replace the placeholders
     replacements = {
         _prefixes_to_add: prefixes,
+        _annotation_graph_uri: annotation_graph_uri,
         "# Template that is automatically filled using Python.": (
             "# This query was automatically generated using the annotation helper."
         ),
@@ -1121,6 +1134,7 @@ def _construct_extra_class(
         _class_aesthetic_label: class_aesthetic_label,
         _class_iri_label: class_iri_label,
         _prefixes_to_add: prefixes,
+        _annotation_graph_uri: f"http://annotation.local/{database_name}/",
         "# Template that is automatically filled using Python.": (
             "# This query was automatically generated using the annotation helper."
         ),
@@ -1179,6 +1193,7 @@ def _construct_extra_node(
         _node_class: node_class,
         _node_aesthetic_label: node_aesthetic_label,
         _prefixes_to_add: prefixes,
+        _annotation_graph_uri: f"http://annotation.local/{database_name}/",
         "# Template that is automatically filled using Python.": (
             "# This query was automatically generated using the annotation helper."
         ),
