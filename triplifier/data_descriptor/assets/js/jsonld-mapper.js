@@ -45,7 +45,7 @@ const JSONLDMapper = {
             usedVariables[baseName] = 0;
             return baseName;
         }
-        
+
         const suffix = usedVariables[baseName] + 1;
         usedVariables[baseName] = suffix;
         return `${baseName}_${suffix}`;
@@ -54,10 +54,10 @@ const JSONLDMapper = {
     forEachColumn: function(databases, callback) {
         for (const [dbKey, dbData] of Object.entries(databases)) {
             if (!dbData?.tables) continue;
-            
+
             for (const [tableKey, tableData] of Object.entries(dbData.tables)) {
                 if (!tableData?.columns) continue;
-                
+
                 for (const [colKey, colData] of Object.entries(tableData.columns)) {
                     const shouldContinue = callback(colData, colKey, tableData, tableKey, dbData, dbKey);
                     if (shouldContinue === false) return;
@@ -68,12 +68,12 @@ const JSONLDMapper = {
 
     findColumnForVariable: function(databases, globalVarName, localVariable = null, matchingDatabase = null) {
         let foundColumn = null;
-        
+
         this.forEachColumn(databases, (colData, colKey, tableData, tableKey, dbData, dbKey) => {
             if (matchingDatabase && !this.graphDatabaseFindNameMatch(dbData.name, matchingDatabase)) {
                 return;
             }
-            
+
             const varKey = this.getVariableKeyFromColumn(colData);
             if (varKey === globalVarName) {
                 if (localVariable) {
@@ -87,13 +87,13 @@ const JSONLDMapper = {
                 }
             }
         });
-        
+
         return foundColumn;
     },
 
     loadFromIndexedDB: async function() {
         const result = await FlyoverDB.getData('metadata', 'semantic_map');
-        
+
         if (result && result.data) {
             this.mapping = result.data;
             return true;
@@ -105,7 +105,7 @@ const JSONLDMapper = {
         if (!this.mapping || !this.mapping.databases) {
             return null;
         }
-        
+
         const dbKeys = Object.keys(this.mapping.databases);
         const dbName = dbKeys.length > 0 ? this.mapping.databases[dbKeys[0]].name : null;
         return dbName;
@@ -115,7 +115,7 @@ const JSONLDMapper = {
         if (!this.mapping?.schema?.variables) {
             return [];
         }
-        
+
         const keys = Object.keys(this.mapping.schema.variables);
         return keys;
     },
@@ -225,23 +225,23 @@ const JSONLDMapper = {
 
     populateDescriptionOptions: function() {
         const globalNames = this.getGlobalVariableNames();
-        
+
         $('select.description-select').each(function() {
             const $select = $(this);
             const currentValue = $select.val();
-            
+
             $select.empty();
             $select.append('<option value="">Description</option>');
-            
+
             globalNames.forEach(name => {
                 $select.append(`<option value="${name}">${name}</option>`);
             });
-            
+
             if (currentValue && globalNames.includes(currentValue)) {
                 $select.val(currentValue);
             }
         });
-        
+
         $('select.description-select').selectpicker();
         $('select.datatype-select').selectpicker();
     },
@@ -251,7 +251,7 @@ const JSONLDMapper = {
         $(selector).each(function() {
             const $select = $(this);
             const key = `${$select.data('database')}_${$select.data('item')}`;
-            
+
             if (key in preselections) {
                 $select.selectpicker('val', preselections[key]);
                 count++;
@@ -281,7 +281,7 @@ const JSONLDMapper = {
             if (!databaseName) {
                 continue;
             }
-            
+
             const prefix = databaseName + '_';
             const localColumnName = key.startsWith(prefix) ? key.substring(prefix.length) : key;
 
@@ -299,7 +299,7 @@ const JSONLDMapper = {
 
             this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData) => {
                 const colVarKey = this.getVariableKeyFromColumn(colData);
-                
+
                 if (colVarKey !== varName && colData.mapsTo !== `schema:variable/${varName}`) {
                     if (colData.localColumn === localColumnName) {
                         delete tableData.columns[colKey];
@@ -310,12 +310,12 @@ const JSONLDMapper = {
             let columnFound = false;
             this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData) => {
                 if (columnFound) return false;
-                
+
                 const colVarKey = this.getVariableKeyFromColumn(colData);
-                
+
                 if (colVarKey === varName || colData.mapsTo === `schema:variable/${varName}`) {
                     colData.localColumn = localColumnName;
-                    
+
                     columnFound = true;
                     return false;
                 }
@@ -324,7 +324,7 @@ const JSONLDMapper = {
             if (!columnFound) {
                 this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData, tableKey, dbData) => {
                     if (!this.graphDatabaseFindNameMatch(dbData.name, databaseName)) return;
-                    
+
                     const newColKey = varName;
                     tableData.columns[newColKey] = {
                         mapsTo: `schema:variable/${varName}`,
@@ -348,9 +348,9 @@ const JSONLDMapper = {
 
         this.forEachColumn(modifiedMapping.databases || {}, (colData, colKey, tableData, tableKey, dbData) => {
             if (!this.graphDatabaseFindNameMatch(dbData.name, database)) return;
-            
+
             colData.localColumn = null;
-            
+
             if (colData.localMappings) {
                 for (const termKey of Object.keys(colData.localMappings)) {
                     colData.localMappings[termKey] = null;
@@ -361,7 +361,7 @@ const JSONLDMapper = {
         if (typeof descriptiveInfo === 'undefined') {
             return null;
         }
-        
+
         if (!descriptiveInfo[database]) {
             return modifiedMapping;
         }
@@ -377,7 +377,7 @@ const JSONLDMapper = {
             if (descParts.length < 2) {
                 continue;
             }
-            
+
             const globalVariable = this.formatToSnakeCase(descParts[1]);
 
             if (!modifiedMapping.schema?.variables?.[globalVariable]) {
@@ -385,7 +385,7 @@ const JSONLDMapper = {
             }
 
             const newGlobalVariable = this.getUniqueVariableName(globalVariable, usedGlobalVariables);
-            
+
             if (newGlobalVariable !== globalVariable) {
                 modifiedMapping.schema.variables[newGlobalVariable] =
                     JSON.parse(JSON.stringify(modifiedMapping.schema.variables[globalVariable]));
@@ -413,7 +413,7 @@ const JSONLDMapper = {
                     }
 
                     const varInfo = modifiedMapping.schema.variables[newGlobalVariable];
-                    
+
                     if (varInfo.valueMapping?.terms) {
                         if (!colData.localMappings) {
                             colData.localMappings = {};
@@ -434,7 +434,7 @@ const JSONLDMapper = {
                                 if (valueParts.length < 2) {
                                     continue;
                                 }
-                                
+
                                 const globalTerm = valueParts[1]
                                     .split(', comment')[0]
                                     .toLowerCase()
@@ -485,7 +485,7 @@ const JSONLDMapper = {
         }
 
         const result = this.findColumnForVariable(this.mapping.databases, globalVarName, localVariable, database);
-        
+
         if (result) {
             const localMappings = result.colData.localMappings || {};
             return this.normalizeLocalMappings(localMappings);
@@ -505,7 +505,7 @@ const JSONLDMapper = {
         const previousTermKey = previousOption ? this.formatToSnakeCase(previousOption) : null;
 
         const result = this.findColumnForVariable(this.mapping.databases, globalVarName, localVariable, database);
-        
+
         if (!result) {
             return false;
         }
@@ -518,14 +518,14 @@ const JSONLDMapper = {
 
         if (previousTermKey && colData.localMappings[previousTermKey]) {
             if (!Array.isArray(colData.localMappings[previousTermKey])) {
-                colData.localMappings[previousTermKey] = colData.localMappings[previousTermKey] ? 
+                colData.localMappings[previousTermKey] = colData.localMappings[previousTermKey] ?
                     [colData.localMappings[previousTermKey]] : [];
             }
-            
+
             const prevIndex = colData.localMappings[previousTermKey].indexOf(localValue);
             if (prevIndex > -1) {
                 colData.localMappings[previousTermKey].splice(prevIndex, 1);
-                
+
                 if (colData.localMappings[previousTermKey].length === 0) {
                     delete colData.localMappings[previousTermKey];
                 }
