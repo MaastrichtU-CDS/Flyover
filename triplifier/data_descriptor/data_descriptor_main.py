@@ -261,6 +261,74 @@ def upload_semantic_map():
         )
 
 
+@app.route("/submit-indexeddb-semantic-map", methods=["POST"])
+def submit_indexeddb_semantic_map():
+    """
+    Handle submission of semantic map data from IndexedDB (frontend).
+    This endpoint accepts JSON-LD data directly from the request body,
+    validates it, and stores it in the session cache.
+
+    Returns:
+        flask.Response: JSON response indicating success or error with redirect URL
+    """
+    try:
+        # Get JSON data from request body
+        mapping_data = request.get_json()
+
+        if not mapping_data:
+            return jsonify({"error": "No semantic map data provided"}), 400
+
+        # Validate the mapping data
+        validator = MappingValidator()
+        result = validator.validate(mapping_data)
+
+        if not result.is_valid:
+            errors = validator.format_errors_for_ui(result)
+            return (
+                jsonify(
+                    {
+                        "error": "Semantic map validation failed",
+                        "validation_errors": errors,
+                    }
+                ),
+                400,
+            )
+
+        # Store the validated mapping in session cache
+        jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
+        session_cache.jsonld_mapping = jsonld_mapping
+
+        if jsonld_mapping.databases:
+            session_cache.databases = list(jsonld_mapping.databases.keys())
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Semantic map loaded successfully from browser storage",
+                "redirect_url": "/annotation-review",
+                "statistics": result.statistics,
+            }
+        )
+
+    except json.JSONDecodeError as e:
+        return (
+            jsonify(
+                {
+                    "error": f"Invalid JSON data: {e.msg}",
+                }
+            ),
+            400,
+        )
+    except Exception as e:
+        logger.error(f"Error processing IndexedDB semantic map: {str(e)}")
+        return (
+            jsonify(
+                {"error": f"Unexpected error processing the semantic map: {str(e)}"}
+            ),
+            400,
+        )
+
+
 @app.route("/upload", methods=["POST"])
 def upload_file():
     """
@@ -1172,8 +1240,8 @@ def annotation_landing():
 @app.route("/upload-annotation-json", methods=["POST"])
 def upload_annotation_json():
     """
-    Handle the upload of a JSON file for direct annotation.
-    This allows users to upload JSON files with data descriptions for annotation.
+    Handle the upload of a JSON-LD file for direct annotation.
+    This allows users to upload JSON-LD files with data descriptions for annotation.
 
     Returns:
         flask.jsonify: JSON response indicating success or failure
@@ -1187,8 +1255,8 @@ def upload_annotation_json():
         if file.filename == "":
             return jsonify({"error": "No file selected"}), 400
 
-        if not file.filename.lower().endswith(".json"):
-            return jsonify({"error": "File must be a JSON file"}), 400
+        if not file.filename.lower().endswith(".jsonld"):
+            return jsonify({"error": "File must be a JSON-LD (.jsonld) file"}), 400
 
         # Save the uploaded file
         filename = secure_filename(file.filename)
@@ -1271,124 +1339,11 @@ def upload_annotation_json():
 def annotation_review():
     """
     Display the annotation review page where users can inspect their semantic map
-    before running the annotation process. Uses local semantic maps per database.
-    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
+    before running the annotation process. The page loads data from IndexedDB
+    on the client side and renders it dynamically.
     """
-    # Check if any semantic map is available (jsonld_mapping or global_semantic_map)
-    if not has_semantic_map(session_cache):
-        flash(
-            "No semantic map available for annotation. Please upload a semantic map first."
-        )
-        return redirect(url_for("annotation_landing"))
-
-    # Ensure databases are initialised from the RDF-store if not already populated
-    if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
-        flash("No databases available for annotation.")
-        return redirect(url_for("ingest"))
-
-    # Get the database name from the available mapping
-    map_database_name = get_database_name_from_mapping(session_cache)
-
-    # Check if database_name is null or empty
-    if map_database_name is None or map_database_name == "":
-        flash(
-            Markup(
-                "The semantic map does not have a database name specified. <br>"
-                "Please either edit your mapping file to add a valid database name, or "
-                "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
-            )
-        )
-        return redirect(url_for("annotation_landing"))
-
-    # Validate that database_name matches at least one available database
-    matching_db = graph_database_find_matching(
-        map_database_name, session_cache.databases
-    )
-    if matching_db is None:
-        available_dbs = ", ".join(str(db) for db in session_cache.databases)
-        flash(
-            f"The semantic map is for database '{map_database_name}', "
-            f"which does not match any available database. "
-            f"Available databases: {available_dbs}"
-        )
-        return redirect(url_for("annotation_landing"))
-
-    # Organize annotation data by database using local semantic maps
-    annotation_data = {}
-    unannotated_variables = []
-    non_matching_databases = []  # Track databases that don't match the semantic map
-
-    for database in session_cache.databases:
-        # Check if this database matches the semantic map's database_name
-        if not graph_database_find_name_match(map_database_name, database):
-            non_matching_databases.append(database)
-            continue
-
-        # Get the semantic map for this database (uses jsonld_mapping if available)
-        semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
-            session_cache, database_key=None
-        )
-
-        # If using jsonld_mapping, the legacy format already has all info
-        # If using global_semantic_map, use formulate_local_semantic_map for local definitions
-        if is_jsonld:
-            variable_info = semantic_map.get("variable_info", {})
-        else:
-            local_semantic_map = formulate_local_semantic_map(database)
-            variable_info = local_semantic_map.get("variable_info", {})
-
-        if not variable_info:
-            continue
-
-        annotation_data[database] = {}
-
-        # Process variables from the semantic map
-        for var_name, var_data in variable_info.items():
-            # Validate required fields first (before processing)
-            if not var_data.get("predicate"):
-                unannotated_variables.append(
-                    f"{database}.{var_name} (missing predicate)"
-                )
-                continue
-
-            if not var_data.get("class"):
-                unannotated_variables.append(f"{database}.{var_name} (missing class)")
-                continue
-
-            # For JSON-LD, local_definition is already in var_data
-            # For legacy, use the shared helper to process variable
-            if is_jsonld:
-                has_local_def = var_data.get("local_definition") is not None
-                var_copy = copy.deepcopy(var_data)
-            else:
-                var_copy, has_local_def = process_variable_for_annotation(
-                    var_name, var_data, session_cache.global_semantic_map
-                )
-
-            if has_local_def:
-                annotation_data[database][var_name] = var_copy
-            else:
-                unannotated_variables.append(
-                    f"{database}.{var_name} (no local definition)"
-                )
-
-    # Check if we have any variables to annotate
-    total_annotated = sum(len(vars_dict) for vars_dict in annotation_data.values())
-
-    if total_annotated == 0:
-        flash(
-            "No variables are ready for annotation. "
-            "Please ensure variables have local definitions, predicates, and classes."
-        )
-        return redirect(url_for("describe_downloads"))
-
-    return render_template(
-        "annotation_review.html",
-        annotation_data=annotation_data,
-        unannotated_variables=unannotated_variables,
-        non_matching_databases=non_matching_databases,
-        map_database_name=map_database_name,
-    )
+    # Just render the template - data will be loaded from IndexedDB on the client side
+    return render_template("annotation_review.html")
 
 
 @app.route("/start-annotation", methods=["POST"])
