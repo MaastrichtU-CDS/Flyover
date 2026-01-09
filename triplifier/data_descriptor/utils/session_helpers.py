@@ -37,24 +37,33 @@ select ?db where {
 """
 
 
-def check_graph_exists(repo: str, graph_uri: str, graphdb_url: str) -> bool:
+def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
     """
-    This function checks if a graph exists in a GraphDB repository.
+    This function checks if any data graph exists in a GraphDB repository.
+    It checks for graphs matching the pattern http://data.local/* which includes
+    both the legacy single graph (http://data.local/) and new per-table graphs
+    (http://data.local/tablename/).
 
     Args:
         repo: The name of the repository in GraphDB.
-        graph_uri: The URI of the graph to check.
         graphdb_url: The base URL of the GraphDB instance.
 
     Returns:
-        bool: True if the graph exists, False otherwise.
+        bool: True if any data graph exists, False otherwise.
 
     Raises:
         Exception: If the request to the GraphDB instance fails,
         an exception is raised with the status code of the failed request.
     """
-    # Construct the SPARQL query
-    query = f"ASK WHERE {{ GRAPH <{graph_uri}> {{ ?s ?p ?o }} }}"
+    # Construct a SPARQL query that checks for any graph starting with http://data.local/
+    query = """
+    ASK WHERE {
+        GRAPH ?g {
+            ?s ?p ?o
+        }
+        FILTER(STRSTARTS(STR(?g), "http://data.local/"))
+    }
+    """
 
     # Send a GET request to the GraphDB instance
     response = requests.get(

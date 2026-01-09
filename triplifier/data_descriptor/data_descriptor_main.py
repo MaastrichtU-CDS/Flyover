@@ -57,9 +57,9 @@ from utils.data_preprocessing import (
     dataframe_to_template_data,
     sanitise_table_name,
 )
-from utils.data_ingest import upload_ontology_then_data
+from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
 from utils.session_helpers import (
-    check_graph_exists,
+    check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
     graph_database_find_name_match,
     graph_database_find_matching,
@@ -127,6 +127,7 @@ class Cache:
         self.cross_graph_link_status = None
         self.annotation_status = None  # Store annotation results
         self.annotation_json_path = None  # Store path to the uploaded JSON file
+        self.output_files = None  # Store output files list for CSV uploads
 
 
 session_cache = Cache()
@@ -162,7 +163,7 @@ def index():
     """
     # Check whether a data graph already exists
     try:
-        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
+        if check_any_data_graph_exists(session_cache.repo, graphdb_url):
             # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
             session_cache.existing_graph = True
             return render_template(
@@ -387,13 +388,41 @@ def upload_file():
         session_cache.StatusToDisplay = message
 
         if upload:
-            logger.info("🚀 Initiating sequential upload to GraphDB")
-            upload_success, upload_messages = upload_ontology_then_data(
-                root_dir, graphdb_url, repo, data_background=False
-            )
+            logger.info("🚀 Initiating upload to GraphDB")
+
+            # Use different upload strategy based on file type
+            if file_type == "CSV" and session_cache.output_files:
+                # Upload multiple graphs for CSV files
+                upload_success, upload_messages = upload_multiple_graphs(
+                    root_dir,
+                    graphdb_url,
+                    repo,
+                    session_cache.output_files,
+                    data_background=False,
+                )
+            else:
+                # Use traditional single-graph upload for PostgreSQL
+                upload_success, upload_messages = upload_ontology_then_data(
+                    root_dir, graphdb_url, repo, data_background=False
+                )
 
             for msg in upload_messages:
                 logger.info(f"📝 {msg}")
+
+            # START BACKGROUND PK/FK AND CROSS-GRAPH PROCESSING AFTER UPLOAD
+            # This ensures data is in GraphDB before relationships are processed
+            if file_type == "CSV":
+                if session_cache.pk_fk_data:
+                    logger.info(
+                        "Upload complete. Starting background PK/FK processing..."
+                    )
+                    gevent.spawn(background_pk_fk_processing)
+
+                if session_cache.cross_graph_link_data:
+                    logger.info(
+                        "Upload complete. Starting background cross-graph processing..."
+                    )
+                    gevent.spawn(background_cross_graph_processing)
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for("data_submission"))
@@ -439,7 +468,7 @@ def describe_landing():
     """
     try:
         # Check if the graph exists first
-        if check_graph_exists(session_cache.repo, "http://data.local/", graphdb_url):
+        if check_any_data_graph_exists(session_cache.repo, graphdb_url):
             session_cache.existing_graph = True
             message = "Data has been uploaded successfully. You can now proceed to describe your data variables."
             return render_template("describe_landing.html", message=Markup(message))
@@ -696,7 +725,9 @@ def retrieve_descriptive_info():
                     session_cache.DescriptiveInfoDetails[database].append(display_name)
                 else:
                     insert_equivalencies(
-                        session_cache.descriptive_info[database], local_variable_name
+                        session_cache.descriptive_info[database],
+                        local_variable_name,
+                        database,
                     )
 
         # Remove databases that do not have any descriptive information
@@ -852,7 +883,9 @@ def retrieve_detailed_descriptive_info():
                     )
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
-            insert_equivalencies(session_cache.descriptive_info[database], variable)
+            insert_equivalencies(
+                session_cache.descriptive_info[database], variable, database
+            )
 
     # Redirect the user to the 'download_page' URL
     return redirect(url_for("describe_downloads"))
@@ -964,54 +997,145 @@ def download_semantic_map():
 @app.route("/downloadOntology", methods=["GET"])
 def download_ontology(named_graph="http://ontology.local/", filename=None):
     """
-    This function downloads an ontology from a specified graph and returns it as a response which
-    can be downloaded as a file.
+    This function downloads ontology files from GraphDB and returns them as a response.
+    For multiple ontologies, it creates a zip file containing all ontologies.
 
     Parameters:
-    named_graph (str): The URL of the graph from which the ontology is to be downloaded.
+    named_graph (str): The base URL of the graph from which the ontology is to be downloaded.
     Defaults to "http://ontology.local/".
     filename (str): The name of the file to be downloaded. Defaults to 'local_ontology_{database_name}.nt'.
 
     Returns:
-        flask.Response: A Flask response object containing the ontology as a string if the download is successful,
+        flask.Response: A Flask response object containing the ontology as a string (single ontology)
+                        or a zip file (multiple ontologies) if the download is successful,
                         or an error message if the download fails.
-                        If an error occurs during the processing of the request,
-                        an HTTP response with a status code of 500 (Internal Server Error)
-                         is returned along with a message describing the error.
     """
-    if (
-        session_cache.csvTableNames is not None
-        and session_cache.existing_graph is False
-    ):
-        if len(session_cache.csvTableNames) == 1:
-            database_name = session_cache.csvTableNames[0]
-        else:
-            database_name = "for_multiple_databases"
-    else:
-        database_name = "for_multiple_databases"
-
-    if filename is None:
-        filename = f"local_ontology_{database_name}.nt"
-
     try:
-        response = requests.get(
-            f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-            params={"graph": named_graph},
-            headers={"Accept": "application/n-triples"},
-            timeout=30,
-        )
+        # Check if we have multiple databases (either from session or need to query GraphDB)
+        databases_to_process = []
 
-        if response.status_code == 200:
-            return Response(
-                response.text,
-                mimetype="application/n-triples",
-                headers={"Content-Disposition": f"attachment;filename={filename}"},
+        # First, try to get databases from session cache
+        if session_cache.databases and len(session_cache.databases) > 1:
+            databases_to_process = session_cache.databases
+        else:
+            # Query GraphDB to find all ontology graphs
+            query_graphs = """
+                SELECT DISTINCT ?g WHERE {
+                    GRAPH ?g {
+                        ?s ?p ?o .
+                    }
+                    FILTER(STRSTARTS(STR(?g), "http://ontology.local/"))
+                }
+            """
+            result = execute_query(session_cache.repo, query_graphs)
+
+            if result and result.strip():
+                graphs_df = pl.read_csv(
+                    StringIO(result),
+                    infer_schema_length=0,
+                    null_values=[],
+                    try_parse_dates=False,
+                )
+
+                if not graphs_df.is_empty() and "g" in graphs_df.columns:
+                    # Extract database names from graph URIs
+                    for graph_uri in graphs_df.get_column("g").to_list():
+                        # Extract database name from URI like "http://ontology.local/database_name/"
+                        db_name = graph_uri.replace(named_graph, "").rstrip("/")
+                        if db_name:
+                            databases_to_process.append(db_name)
+
+        # If we have multiple databases, create a zip file
+        if len(databases_to_process) > 1:
+            _filename = "local_ontologies.zip"
+
+            # Create a new zip file and loop through each database
+            files_added = 0
+            with zipfile.ZipFile(_filename, "w") as zipf:
+                for database in databases_to_process:
+                    # Construct the graph URI for this database
+                    table_graph = f"{named_graph}{database}/"
+                    ontology_filename = f"local_ontology_{database}.nt"
+
+                    # Fetch the ontology for this database
+                    response = requests.get(
+                        f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
+                        params={"graph": table_graph},
+                        headers={"Accept": "application/n-triples"},
+                    )
+
+                    if response.status_code == 200 and response.text.strip():
+                        zipf.writestr(ontology_filename, response.text)
+                        files_added += 1
+                    else:
+                        logger.warning(
+                            f"No ontology data found for graph: {table_graph}"
+                        )
+
+            # Check if the zip file was created successfully and contains data
+            if files_added == 0 or not os.path.exists(_filename):
+                # No files were added or zip file doesn't exist
+                if os.path.exists(_filename):
+                    os.remove(_filename)
+                abort(
+                    404,
+                    description="No ontology data found for any of the specified graphs.",
+                )
+
+            # Define a function to remove the zip file after the request has been handled
+            @after_this_request
+            def remove_file(response):
+                try:
+                    os.remove(_filename)
+                except Exception as error:
+                    app.logger.error(
+                        "Error removing or closing downloaded file handle", error
+                    )
+                return response
+
+            # Open the zip file in binary mode and return it as a response
+            with open(_filename, "rb") as f:
+                return Response(
+                    f.read(),
+                    mimetype="application/zip",
+                    headers={"Content-Disposition": f"attachment;filename={_filename}"},
+                )
+
+        else:
+            # Single ontology: download directly
+            if len(databases_to_process) == 1:
+                # Use the single database name
+                database = databases_to_process[0]
+                ontology_graph = f"{named_graph}{database}/"
+                filename = f"local_ontology_{database}.nt"
+            else:
+                # Fallback to default graph
+                ontology_graph = named_graph
+                if filename is None:
+                    filename = "local_ontology.nt"
+
+            response = requests.get(
+                f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
+                params={"graph": ontology_graph},
+                headers={"Accept": "application/n-triples"},
             )
+
+            if response.status_code == 200:
+                return Response(
+                    response.text,
+                    mimetype="application/n-triples",
+                    headers={"Content-Disposition": f"attachment;filename={filename}"},
+                )
+            else:
+                abort(
+                    500,
+                    description=f"Failed to download ontology. Status code: {response.status_code}",
+                )
 
     except Exception as e:
         abort(
             500,
-            description=f"An error occurred while processing the ontology, error: {str(e)}",
+            description=f"An error occurred while downloading the ontology, error: {str(e)}",
         )
 
 
@@ -1027,9 +1151,7 @@ def annotation_landing():
     """
     try:
         # Check if the graph exists
-        data_exists = check_graph_exists(
-            session_cache.repo, "http://data.local/", graphdb_url
-        )
+        data_exists = check_any_data_graph_exists(session_cache.repo, graphdb_url)
         session_cache.existing_graph = data_exists
 
         message = None
@@ -1737,9 +1859,8 @@ def api_check_graph_exists():
         if not session_cache.repo:
             return jsonify({"exists": False, "error": "No repository configured"})
 
-        # Check if the main data graph exists
-        graph_uri = "http://data.local/"
-        exists = check_graph_exists(session_cache.repo, graph_uri, graphdb_url)
+        # Check if any data graph exists (supports both single and multi-graph patterns)
+        exists = check_any_data_graph_exists(session_cache.repo, graphdb_url)
 
         return jsonify({"exists": exists})
     except Exception as e:
@@ -2104,7 +2225,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         )
 
 
-def insert_equivalencies(descriptive_info, variable):
+def insert_equivalencies(descriptive_info, variable, database):
     """
     This function inserts equivalencies into a GraphDB repository.
 
@@ -2155,6 +2276,9 @@ def insert_equivalencies(descriptive_info, variable):
     if not (has_type or has_description or has_comments):
         return None
 
+    # Construct the named graph URI for this specific database's ontology
+    ontology_graph = f"http://ontology.local/{database}/"
+
     query = f"""
                 PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
                 PREFIX db: <http://{session_cache.repo}.local/rdf/ontology/>
@@ -2163,7 +2287,7 @@ def insert_equivalencies(descriptive_info, variable):
 
                 INSERT
                 {{
-                    GRAPH <http://ontology.local/>
+                    GRAPH <{ontology_graph}>
                     {{ ?s owl:equivalentClass "{list(var_info.values())}". }}
                 }}
                 WHERE
@@ -2216,15 +2340,22 @@ def get_column_class_uri(table_name, column_name):
         return None
 
 
-def insert_fk_relation(fk_predicate, column_class_uri, target_class_uri):
-    """Insert PK/FK relationship into the data graph"""
+def insert_fk_relation(
+    fk_predicate,
+    column_class_uri,
+    target_class_uri,
+    relationships_graph="http://relationships.local/",
+):
+    """Insert PK/FK relationship into the relationships graph"""
     insert_query = f"""
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
     INSERT {{
-        ?sources <{fk_predicate}> ?targets .
+        GRAPH <{relationships_graph}> {{
+            ?sources <{fk_predicate}> ?targets .
+        }}
     }} WHERE {{
         ?sources rdf:type <{column_class_uri}> ;
                  dbo:has_cell ?sourceCell .
@@ -2416,15 +2547,22 @@ def get_existing_column_class_uri(table_name, column_name):
         return None
 
 
-def insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri):
-    """Insert cross-graph relationship into the data graph"""
+def insert_cross_graph_relation(
+    predicate,
+    new_column_uri,
+    existing_column_uri,
+    relationships_graph="http://relationships.local/",
+):
+    """Insert cross-graph relationship into the relationships graph"""
     insert_query = f"""
     PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
     INSERT {{
-        ?newSources <{predicate}> ?existingSources .
+        GRAPH <{relationships_graph}> {{
+            ?newSources <{predicate}> ?existingSources .
+        }}
     }} WHERE {{
         ?newSources rdf:type <{new_column_uri}> ;
                     dbo:has_cell ?newCell .
@@ -2510,7 +2648,7 @@ def run_triplifier(properties_file=None):
         if properties_file == "triplifierCSV.properties":
             # Use Python Triplifier for CSV processing
             # DataFrames are loaded directly into SQLite, no need to save CSV files
-            success, message = run_triplifier_impl(
+            success, message, output_files = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
                 child_dir=child_dir,
@@ -2518,32 +2656,22 @@ def run_triplifier(properties_file=None):
                 csv_table_names=session_cache.csvTableNames,
             )
 
+            # Store output files in session cache for later use
+            session_cache.output_files = output_files
+
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
-            success, message = run_triplifier_impl(
+            success, message, output_files = run_triplifier_impl(
                 properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
             )
+            session_cache.output_files = output_files
         else:
             return False, f"Unknown properties file: {properties_file}"
 
         if success:
-            # START BACKGROUND PK/FK PROCESSING FOR CSV FILES - Use gevent spawn
-            if (
-                properties_file == "triplifierCSV.properties"
-                and session_cache.pk_fk_data
-            ):
-                print("Triplifier successful. Starting background PK/FK processing...")
-                gevent.spawn(background_pk_fk_processing)
-
-            # START BACKGROUND CROSS-GRAPH PROCESSING FOR CSV FILES - Use gevent spawn
-            if (
-                properties_file == "triplifierCSV.properties"
-                and session_cache.cross_graph_link_data
-            ):
-                print(
-                    "Triplifier successful. Starting background cross-graph processing..."
-                )
-                gevent.spawn(background_cross_graph_processing)
+            # Note: Background PK/FK and cross-graph processing are now started
+            # after upload completes (in upload_file function) to ensure data
+            # is available in GraphDB before relationships are processed
 
             return True, Markup(
                 "The data you have submitted was triplified successfully and "

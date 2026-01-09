@@ -10,7 +10,7 @@ PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
 PREFIX PLACEHOLDER: <>
 
 INSERT {
-    GRAPH <http://annotation.local/> {
+    GRAPH <ANNOTATION_GRAPH_URI> {
 
         ?tablerow PLACEHOLDER:variablepredicate ?component0.
 
