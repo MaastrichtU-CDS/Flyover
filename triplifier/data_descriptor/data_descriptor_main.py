@@ -59,7 +59,6 @@ from utils.data_preprocessing import (
 )
 from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
 from utils.session_helpers import (
-    check_graph_exists,
     check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
     graph_database_find_name_match,
