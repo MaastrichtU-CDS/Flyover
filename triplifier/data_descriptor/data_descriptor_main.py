@@ -1085,7 +1085,9 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                     if response.status_code == 200 and response.text.strip():
                         zipf.writestr(ontology_filename, response.text)
                     else:
-                        logger.warning(f"No ontology data found for graph: {table_graph}")
+                        logger.warning(
+                            f"No ontology data found for graph: {table_graph}"
+                        )
 
             # Define a function to remove the zip file after the request has been handled
             @after_this_request
