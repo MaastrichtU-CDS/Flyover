@@ -101,6 +101,23 @@ const JSONLDMapper = {
         return false;
     },
 
+    initializeEmptyMapping: function() {
+        this.mapping = {
+            '@context': {
+                'schema': 'mapping:schema/',
+                'mapping': 'http://example.org/mapping#'
+            },
+            '@id': 'mapping:root',
+            '@type': 'mapping:SemanticMapping',
+            schema: {
+                '@id': 'schema:root',
+                '@type': 'mapping:Schema',
+                variables: {}
+            },
+            databases: {}
+        };
+    },
+
     getFirstDatabaseName: function() {
         if (!this.mapping || !this.mapping.databases) {
             return null;
@@ -268,7 +285,7 @@ const JSONLDMapper = {
 
     updateMappingFromForm: async function(formData) {
         if (!this.mapping) {
-            return false;
+            this.initializeEmptyMapping();
         }
 
         for (const [key, data] of Object.entries(formData)) {
@@ -322,9 +339,11 @@ const JSONLDMapper = {
             });
 
             if (!columnFound) {
+                let dbFound = false;
                 this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData, tableKey, dbData) => {
                     if (!this.graphDatabaseFindNameMatch(dbData.name, databaseName)) return;
 
+                    dbFound = true;
                     const newColKey = varName;
                     tableData.columns[newColKey] = {
                         mapsTo: `schema:variable/${varName}`,
@@ -333,10 +352,56 @@ const JSONLDMapper = {
                     };
                     return false;
                 });
+
+                if (!dbFound) {
+                    this.ensureDatabaseExists(databaseName);
+                    const dbKey = this.formatToSnakeCase(databaseName);
+                    const tableKey = Object.keys(this.mapping.databases[dbKey].tables)[0];
+                    this.mapping.databases[dbKey].tables[tableKey].columns[varName] = {
+                        mapsTo: `schema:variable/${varName}`,
+                        variable: varName,
+                        localColumn: localColumnName
+                    };
+                }
             }
         }
 
         return await this.saveMapping();
+    },
+
+    ensureDatabaseExists: function(databaseName) {
+        if (!this.mapping.databases) {
+            this.mapping.databases = {};
+        }
+
+        const dbKey = this.formatToSnakeCase(databaseName);
+
+        let dbExists = false;
+        for (const [key, dbData] of Object.entries(this.mapping.databases)) {
+            if (this.graphDatabaseFindNameMatch(dbData.name, databaseName)) {
+                dbExists = true;
+                break;
+            }
+        }
+
+        if (!dbExists) {
+            const tableKey = 'data';
+            this.mapping.databases[dbKey] = {
+                '@id': `mapping:database/${dbKey}`,
+                '@type': 'mapping:Database',
+                name: databaseName,
+                description: '',
+                tables: {
+                    [tableKey]: {
+                        '@id': `mapping:table/${dbKey}/${tableKey}`,
+                        '@type': 'mapping:Table',
+                        sourceFile: databaseName,
+                        description: '',
+                        columns: {}
+                    }
+                }
+            };
+        }
     },
 
     formulateLocalSemanticMap: async function(database) {

@@ -54,7 +54,6 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import (
     preprocess_dataframe,
-    dataframe_to_template_data,
     sanitise_table_name,
 )
 from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
@@ -507,129 +506,28 @@ def describe_landing():
 
 @app.route("/describe_variables", methods=["GET", "POST"])
 def describe_variables():
-    """
-    This function is mapped to the "/describe_landing" URL and is invoked when a POST request is made to this URL.
-    It retrieves column information from a GraphDB repository and
-    prepares it for rendering in the 'describe_variables.html' template.
-
-    The function performs the following steps:
-    1. Executes a SPARQL query to fetch the URI and column name of each column in the GraphDB repository.
-    2. Reads the query results into a polars DataFrame.
-    3. Extracts the database name from the URI and adds it as a new column in the DataFrame.
-    4. Drops the 'uri' column from the DataFrame.
-    5. Gets the unique values in the 'database' column and stores them in the session cache.
-    6. Creates a dictionary of dataframes, where the key is the unique database name and
-    the value is the corresponding dataframe.
-    7. Gets the global variable names for the description drop-down menu.
-    8. Renders the 'describe_variables.html' template with the dictionary of dataframes and the global variable names.
-
-    Returns:
-        flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'describe_variables.html' template
-        with the dictionary of dataframes and the global variable names.
-    """
-    # Execute the query and read the results into a polars DataFrame
     column_info = pl.read_csv(
         StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY)),
         infer_schema_length=0,
         null_values=[],
         try_parse_dates=False,
     )
-    # Extract the database name from the URI and add it as a new column in the DataFrame
     column_info = column_info.with_columns(
         pl.col("uri").str.extract(DATABASE_NAME_PATTERN, 1).alias("database")
     )
-
-    # Drop the 'uri' column from the DataFrame
     column_info = column_info.drop("uri")
 
-    # Get unique values in the 'database' column and store them in the session cache
     unique_values = column_info.get_column("database").unique().to_list()
     session_cache.databases = unique_values
 
-    # Create a dictionary of dataframes, where the key is the database name, and the value is a corresponding dataframe
-    dataframes = {
-        value: column_info.filter(pl.col("database") == value)
-        for value in unique_values
-    }
+    columns_by_database = {}
+    for db in unique_values:
+        db_columns = column_info.filter(pl.col("database") == db)
+        columns_by_database[db] = db_columns.get_column("column").to_list()
 
-    # Get the global variable names to use in the description drop-down menu
-    global_names = retrieve_global_names()
-
-    # Create dictionaries to store preselected values from the semantic map
-    preselected_descriptions = {}
-    preselected_datatypes = {}
-
-    # Create mapping from description names to datatypes for auto-population
-    description_to_datatype = {}
-
-    # If a JSON-LD mapping exists
-    if session_cache.jsonld_mapping:
-        # Get the first database name for filtering (backwards compatibility)
-        map_database_name = session_cache.jsonld_mapping.get_first_database_name()
-
-        for var_name in session_cache.jsonld_mapping.get_all_variable_keys():
-            var_info = session_cache.jsonld_mapping.get_variable(var_name)
-            if not var_info:
-                continue
-
-            # Create mapping for auto-population (description -> datatype)
-            description_display = var_name.capitalize().replace("_", " ")
-            if var_info.data_type:
-                datatype = var_info.data_type.lower()
-                words = datatype.split()
-                datatype_display = " ".join(word.capitalize() for word in words)
-                description_to_datatype[description_display] = datatype_display
-
-            for db in unique_values:  # For each database
-                # Only apply mappings if the database name matches or if the map is a global template
-                if not graph_database_find_name_match(map_database_name, db):
-                    continue
-
-                # Match by local_definition (local column name) if available
-                local_def = (
-                    session_cache.jsonld_mapping.get_local_column(var_name) or var_name
-                )
-                key = f"{db}_{local_def}"
-                preselected_descriptions[key] = description_display
-                if var_info.data_type:
-                    datatype = var_info.data_type.lower()
-                    words = datatype.split()
-                    preselected_datatypes[key] = " ".join(
-                        word.capitalize() for word in words
-                    )
-
-                # Match-by-column name variations
-                variations = [
-                    var_name,
-                    var_name.lower(),
-                    var_name.replace("_", ""),
-                    var_name.replace("_", " "),
-                ]
-                for variation in variations:
-                    key_variation = f"{db}_{variation}"
-                    if (
-                        key_variation not in preselected_descriptions
-                        and var_info.data_type
-                    ):
-                        datatype = var_info.data_type.lower()
-                        words = datatype.split()
-                        preselected_datatypes[key_variation] = " ".join(
-                            word.capitalize() for word in words
-                        )
-
-    # Render the 'describe_variables.html' template with all the necessary data
-    # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
-    template_dataframes = {
-        db: dataframe_to_template_data(df) for db, df in dataframes.items()
-    }
     return render_template(
         "describe_variables.html",
-        dataframes=template_dataframes,
-        global_variable_names=global_names,
-        preselected_descriptions=preselected_descriptions,
-        preselected_datatypes=preselected_datatypes,
-        description_to_datatype=description_to_datatype,
+        column_info=columns_by_database,
     )
 
 
