@@ -1306,28 +1306,49 @@ def annotation_review():
     map_database_name = session_cache.global_semantic_map.get("database_name")
 
     # Check if database_name is null or empty
+    # Allow empty database_name if coming from Describe workflow (descriptive_info populated)
+    # In this case, the semantic map acts as a global template for all databases
     if map_database_name is None or map_database_name == "":
-        flash(
-            Markup(
-                "The semantic map does not have a 'database_name' specified. <br>"
-                "Please either edit your JSON file to add a valid 'database_name' field, or "
-                "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
-            )
+        # Check if user came from Describe workflow
+        # descriptive_info being a dict (even if empty) indicates the describe workflow
+        # was initiated, as it's set to {} at the start of retrieve_descriptive_info()
+        came_from_describe = (
+            session_cache.descriptive_info is not None
+            and isinstance(session_cache.descriptive_info, dict)
         )
-        return redirect(url_for("annotation_landing"))
+        
+        if not came_from_describe:
+            # Direct JSON upload without database_name - require it to be specified
+            flash(
+                Markup(
+                    "The semantic map does not have a 'database_name' specified. <br>"
+                    "Please either edit your JSON file to add a valid 'database_name' field, or "
+                    "use the <a href='/describe_landing'>Describe</a> workflow to create mappings for your data."
+                )
+            )
+            return redirect(url_for("annotation_landing"))
+        
+        # If came from Describe workflow, empty database_name is allowed
+        # It will be treated as a global template applying to all databases
+        logger.info(
+            "Proceeding with empty database_name from Describe workflow. "
+            "Semantic map will be applied as a global template to all databases."
+        )
 
     # Validate that database_name matches at least one available database
-    matching_db = graph_database_find_matching(
-        map_database_name, session_cache.databases
-    )
-    if matching_db is None:
-        available_dbs = ", ".join(str(db) for db in session_cache.databases)
-        flash(
-            f"The semantic map is for database '{map_database_name}', "
-            f"which does not match any available database. "
-            f"Available databases: {available_dbs}"
+    # Skip this validation if database_name is empty (global template)
+    if map_database_name and map_database_name != "":
+        matching_db = graph_database_find_matching(
+            map_database_name, session_cache.databases
         )
-        return redirect(url_for("annotation_landing"))
+        if matching_db is None:
+            available_dbs = ", ".join(str(db) for db in session_cache.databases)
+            flash(
+                f"The semantic map is for database '{map_database_name}', "
+                f"which does not match any available database. "
+                f"Available databases: {available_dbs}"
+            )
+            return redirect(url_for("annotation_landing"))
 
     # Organize annotation data by database using local semantic maps
     annotation_data = {}
