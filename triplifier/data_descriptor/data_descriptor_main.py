@@ -1069,6 +1069,7 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
             _filename = "local_ontologies.zip"
 
             # Create a new zip file and loop through each database
+            files_added = 0
             with zipfile.ZipFile(_filename, "w") as zipf:
                 for database in databases_to_process:
                     # Construct the graph URI for this database
@@ -1084,10 +1085,21 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
 
                     if response.status_code == 200 and response.text.strip():
                         zipf.writestr(ontology_filename, response.text)
+                        files_added += 1
                     else:
                         logger.warning(
                             f"No ontology data found for graph: {table_graph}"
                         )
+            
+            # Check if the zip file was created successfully and contains data
+            if files_added == 0 or not os.path.exists(_filename):
+                # No files were added or zip file doesn't exist
+                if os.path.exists(_filename):
+                    os.remove(_filename)
+                abort(
+                    404,
+                    description="No ontology data found for any of the specified graphs.",
+                )
 
             # Define a function to remove the zip file after the request has been handled
             @after_this_request

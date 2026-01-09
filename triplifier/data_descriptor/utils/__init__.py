@@ -16,7 +16,6 @@ from .data_ingest import (
 )
 
 from .session_helpers import (
-    check_graph_exists,
     check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
     graph_database_fetch_from_rdf,
@@ -35,7 +34,6 @@ __all__ = [
     "upload_file_to_graphdb",
     "upload_ontology_then_data",
     "upload_multiple_graphs",
-    "check_graph_exists",
     "check_any_data_graph_exists",
     "graph_database_ensure_backend_initialisation",
     "graph_database_fetch_from_rdf",
