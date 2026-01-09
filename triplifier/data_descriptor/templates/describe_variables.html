@@ -204,99 +204,21 @@
         <hr>
         {% for database, df in dataframes.items() %}
             <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
-            <button class="toggle-button" type="button">
+            <button class="toggle-button" type="button" data-database="{{ database }}">
                 <span class="toggle-text">Show more</span>
                 <svg class="angle-icon" xmlns="http://www.w3.org/1999/svg" viewBox="0 0 448 512" width="20" height="20">
                     <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
                 </svg>
             </button>
-            <div class="content hidden">
+            <div class="content hidden" data-database="{{ database }}">
                 {% set columns = df.columns %}
+                {% set total_items = columns|length %}
+                <div class="variables-container" id="variables-{{ database }}" 
+                     data-columns='{{ columns|tojson }}'
+                     data-total="{{ total_items }}">
+                </div>
+
                 {% set total_groups = ((columns|length + 9) // 10)|int %}
-
-                {% for group_index in range(total_groups) %}
-                    <div class="column-group {% if group_index == 0 %}active{% endif %}"
-                         id="group-{{ database }}-{{ group_index }}">
-                        {% for i in range(group_index * 10, [group_index * 10 + 10, columns|length]|min) %}
-                            {% set item = columns[i] %}
-                            <div class="variable-row">
-                                <div class="variable-label">{{ item }}</div>
-                                <div class="variable-controls">
-                                    <!-- Description dropdown (first) -->
-                                    <select id="ncit_comment_{{ database }}_{{ item }}"
-                                            name="ncit_comment_{{ database }}_{{ item }}"
-                                            class="selectpicker description-select" data-live-search="true"
-                                            data-database="{{ database }}" data-item="{{ item }}">
-                                        {% if global_variable_names %}
-                                            <option value="">Description</option>
-                                            {% for value in global_variable_names %}
-                                                <option {% if preselected_descriptions and preselected_descriptions.get(database ~ '_' ~ item) == value %}selected{% endif %}>
-                                                    {{ value }}
-                                                </option>
-                                            {% endfor %}
-                                        {% else %}
-                                            <option value="">Description</option>
-                                            <option value="Patient Identifier">Patient Identifier</option>
-                                            <option value="Age">Age</option>
-                                            <option value="Gender">Gender</option>
-                                            <option value="T Stage">T Stage</option>
-                                            <option value="N Stage">N Stage</option>
-                                            <option value="M Stage">M Stage</option>
-                                            <option value="HPV Status">HPV Status</option>
-                                            <option value="ASA Score">ASA Score</option>
-                                            <option value="WHO/ECOG Status">WHO/ECOG Status</option>
-                                            <option value="AJCC Stage">AJCC Stage</option>
-                                            <option value="Tumour Site">Tumour Site</option>
-                                            <option value="Metastasis">Metastasis</option>
-                                            <option value="Metastasis Days">Metastasis Days</option>
-                                            <option value="Event Recurrence">Event Recurrence</option>
-                                            <option value="Event Recurrence Days">Event Recurrence Days</option>
-                                            <option value="Local Recurrence">Local Recurrence</option>
-                                            <option value="Local Recurrence Days">Local Recurrence Days</option>
-                                            <option value="Regional Recurrence">Regional Recurrence</option>
-                                            <option value="Regional Recurrence Days">Regional Recurrence Days</option>
-                                            <option value="Event Survival">Event Survival</option>
-                                            <option value="Overall Survival Days">Overall Survival Days</option>
-                                            <option value="Surgery">Surgery</option>
-                                            <option value="Chemotherapy">Chemotherapy</option>
-                                            <option value="Radiotherapy time">Radiotherapy treatment time</option>
-                                            <option value="RT Total Dose">RT Total Dose</option>
-                                            <option value="RT Dose per fraction">RT Dose per fraction</option>
-                                            <option value="RT Fractions">RT Fractions</option>
-                                            <option value="Other">Other</option>
-                                        {% endif %}
-                                    </select>
-
-                                    <!-- Comment box (second) -->
-                                    <input class="form-control" type="text" id="comment_{{ database }}_{{ item }}"
-                                           name="comment_{{ database }}_{{ item }}"
-                                           placeholder="If other, please specify" disabled='disabled'/>
-
-                                    <!-- Data type dropdown (third) -->
-                                    <div class="datatype-container">
-                                        <select id="{{ database }}_{{ item }}" name="{{ database }}_{{ item }}"
-                                                class="selectpicker datatype-select" data-live-search="true"
-                                                data-database="{{ database }}" data-item="{{ item }}">
-                                            <option value="">Data type</option>
-                                            {% set datatype_options = ['Categorical', 'Continuous', 'Identifier', 'Standardised'] %}
-                                            {% for option in datatype_options %}
-                                                <option value="{{ option }}"
-                                                        {% if preselected_datatypes and preselected_datatypes.get(database ~ '_' ~ item) == option %}selected{% endif %}>
-                                                    {{ option }}
-                                                </option>
-                                            {% endfor %}
-                                        </select>
-                                        <small class="datatype-feedback" id="feedback_{{ database }}_{{ item }}"
-                                               style="display: none; color: #28a745;">
-                                            <i class="fas fa-magic"></i> Auto-filled based on description
-                                        </small>
-                                    </div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                {% endfor %}
-
                 {% if total_groups > 1 %}
                     <div class="pagination-controls">
                         <button type="button" class="prev-btn" onclick="changePage('{{ database }}', -1)" disabled>
@@ -304,7 +226,8 @@
                         </button>
                         <span class="page-indicator">Page <span
                                 id="current-page-{{ database }}">1</span> of {{ total_groups }}</span>
-                        <button type="button" class="next-btn" onclick="changePage('{{ database }}', 1)">&#x2192;
+                        <button type="button" class="next-btn" onclick="changePage('{{ database }}', 1)" 
+                                {% if total_groups == 1 %}disabled{% endif %}>&#x2192;
                         </button>
                     </div>
                 {% endif %}
@@ -392,13 +315,15 @@
 {% include 'footer.html' %}
 
 <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
 <script>
-    // Global datatype mapping passed from backend
-    var descriptionToDatatype = {{ description_to_datatype|tojson }};
-
-    // Track which fields were auto-filled vs manually overridden
+    var descriptionToDatatype = {};
     var autoFilledFields = new Set();
     var manualOverrides = new Set();
+    
+    const PAGE_SIZE = 10;
+    const databasePages = {};
+    const formStateCache = {};
 
     // Loading animation functions
     let loadingInterval;
@@ -474,19 +399,78 @@
     }
     initializeIndexedDB();
 
+    async function loadAndApplySemanticMapping() {
+        try {
+            const loaded = await JSONLDMapper.loadFromIndexedDB();
+
+            if (!loaded) {
+                console.log('Flyover: No semantic map in IndexedDB, using default options');
+                populateDefaultDescriptions();
+                return;
+            }
+
+            JSONLDMapper.populateDescriptionOptions();
+
+            const { preselectedDescriptions, preselectedDatatypes, descriptionToDatatype: dtMap }
+                = JSONLDMapper.computePreselections();
+
+            JSONLDMapper.applyPreselections(preselectedDescriptions, preselectedDatatypes, dtMap);
+
+            checkDescriptions();
+
+        } catch (error) {
+            console.error('Flyover: Error loading semantic mapping:', error);
+            populateDefaultDescriptions();
+        }
+    }
+
+    function populateDefaultDescriptions() {
+        const defaultOptions = [
+            "Research subject identifier",
+            "Biological sex",
+            "Age at inclusion",
+            "Other"
+        ];
+
+        $('select.description-select').each(function() {
+            const $select = $(this);
+            
+            $select.empty();
+            $select.append('<option value="">Description</option>');
+            
+            defaultOptions.forEach(name => {
+                $select.append(`<option value="${name}">${name}</option>`);
+            });
+        });
+        
+        $('select.description-select').selectpicker();
+        $('select.datatype-select').selectpicker();
+        
+        console.log('Flyover: Populated default description options');
+    }
+
     $(document).ready(function () {
         $('.toggle-button').click(function () {
             var textElement = $(this).find('.toggle-text');
             var svgElement = $(this).find('.angle-icon path');
+            const database = $(this).data('database');
+            const content = $(this).next('.content');
+            
             if (textElement.text() === 'Show more') {
                 textElement.text('Show less');
                 svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
+                
+                if (!databasePages[database]) {
+                    renderPage(database, 1);
+                }
             } else {
                 textElement.text('Show more');
                 svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
+                
+                cacheCurrentPageState(database);
             }
             $(this).toggleClass('open');
-            $(this).next('.content').toggleClass('active');
+            content.toggleClass('active');
         });
 
         $(".selectpicker").on('show.bs.select', function (e) {
@@ -503,53 +487,39 @@
             toggleContent.css('overflow-y', 'auto');
         });
 
-        // Initialize bootstrap-select
-        $('.selectpicker').each(function () {
-            $(this).selectpicker('refresh');
-        });
+        loadAndApplySemanticMapping();
 
-        // Handle comment box enabling/disabling when "Other" is selected
-        $('.description-select').on('changed.bs.select', function () {
-            var database = $(this).data('database');
-            var item = $(this).data('item');
-            var commentBox = $('#comment_' + database + '_' + item);
-
-            if ($(this).val() === "Other") {
-                commentBox.removeAttr("disabled");
-            } else {
-                commentBox.attr("disabled", "disabled");
-            }
-
-            // Auto-populate datatype when description is selected
-            autoPopulateDatatype(database, item);
-
-            // Update submit button state
-            checkDescriptions();
-        });
-
-        // Handle manual datatype selection (override detection)
-        $('.datatype-select').on('changed.bs.select', function () {
-            var database = $(this).data('database');
-            var item = $(this).data('item');
-            var fieldKey = database + '_' + item;
-
-            // If this field was auto-filled and user is now manually changing it
-            if (autoFilledFields.has(fieldKey)) {
-                manualOverrides.add(fieldKey);
-                // Show override confirmation
-                showOverrideConfirmation(database, item);
-            }
-        });
-
-        // Handle form submission
         $('form').submit(function(e) {
-            // Start loading animation for submit button
+            $('.variables-container').each(function() {
+                const database = $(this).attr('id').replace('variables-', '');
+                cacheCurrentPageState(database);
+            });
+
             startLoadingAnimation('#submitBtn');
         });
 
-        // Check for pre-selected values on page load
         checkDescriptions();
     });
+
+    function checkDescriptions() {
+        let hasSelection = false;
+
+        $('select[id^="ncit_comment_"]').each(function () {
+            if ($(this).val() && $(this).val() !== '') {
+                hasSelection = true;
+                return false;
+            }
+        });
+        
+        for (const key in formStateCache) {
+            if (formStateCache[key].description) {
+                hasSelection = true;
+                break;
+            }
+        }
+
+        $('#submitBtn').prop('disabled', !hasSelection);
+    }
 
     function autoPopulateDatatype(database, item) {
         var descriptionSelect = $('#ncit_comment_' + database + '_' + item);
@@ -594,25 +564,233 @@
         }, 2000);
     }
 
+    function cacheCurrentPageState(database) {
+        $(`#variables-${database} .variable-row`).each(function() {
+            const row = $(this);
+            const item = row.find('.description-select').data('item');
+            const key = `${database}_${item}`;
+            
+            formStateCache[key] = {
+                database: database,
+                description: row.find('.description-select').val(),
+                datatype: row.find('.datatype-select').val(),
+                comment: row.find(`#comment_${database}_${item}`).val()
+            };
+        });
+        
+        syncToIndexedDB();
+    }
+
+    async function syncToIndexedDB() {
+        try {
+            await JSONLDMapper.updateMappingFromForm(formStateCache);
+        } catch (error) {
+            console.error('Failed to sync to IndexedDB:', error);
+        }
+    }
+
+    function renderPage(database, pageNumber) {
+        const container = $(`#variables-${database}`);
+        const columns = JSON.parse(container.attr('data-columns'));
+        const totalItems = parseInt(container.attr('data-total'));
+        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+        
+        if (pageNumber < 1 || pageNumber > totalPages) return;
+        
+        cacheCurrentPageState(database);
+        
+        container.empty();
+        
+        const startIdx = (pageNumber - 1) * PAGE_SIZE;
+        const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
+        
+        for (let i = startIdx; i < endIdx; i++) {
+            const item = columns[i];
+            const key = `${database}_${item}`;
+            const cached = formStateCache[key] || {};
+            
+            const row = $(`
+                <div class="variable-row">
+                    <div class="variable-label">${item}</div>
+                    <div class="variable-controls">
+                        <select id="ncit_comment_${database}_${item}"
+                                name="ncit_comment_${database}_${item}"
+                                class="selectpicker description-select" data-live-search="true"
+                                data-database="${database}" data-item="${item}">
+                            <option value="">Description</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        
+                        <input class="form-control" type="text" id="comment_${database}_${item}"
+                               name="comment_${database}_${item}"
+                               placeholder="If other, please specify" disabled='disabled'/>
+                        
+                        <div class="datatype-container">
+                            <select id="${database}_${item}" name="${database}_${item}"
+                                    class="selectpicker datatype-select" data-live-search="true"
+                                    data-database="${database}" data-item="${item}">
+                                <option value="">Data type</option>
+                                <option value="Categorical">Categorical</option>
+                                <option value="Continuous">Continuous</option>
+                                <option value="Identifier">Identifier</option>
+                                <option value="Standardised">Standardised</option>
+                            </select>
+                            <small class="datatype-feedback" id="feedback_${database}_${item}"
+                                   style="display: none; color: #28a745;">
+                                <i class="fas fa-magic"></i> Auto-filled based on description
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `);
+            
+            container.append(row);
+        }
+        
+        databasePages[database] = pageNumber;
+        
+        const globalNames = JSONLDMapper.getGlobalVariableNames();
+        container.find('.description-select').each(function() {
+            const $select = $(this);
+            globalNames.forEach(name => {
+                if (name !== "Other") {
+                    $select.append(`<option value="${name}">${name}</option>`);
+                }
+            });
+        });
+        
+        container.find('.selectpicker').selectpicker();
+        
+        for (let i = startIdx; i < endIdx; i++) {
+            const item = columns[i];
+            const key = `${database}_${item}`;
+            const cached = formStateCache[key];
+            
+            if (cached) {
+                if (cached.description) {
+                    $(`#ncit_comment_${database}_${item}`).selectpicker('val', cached.description);
+                }
+                if (cached.datatype) {
+                    $(`#${database}_${item}`).selectpicker('val', cached.datatype);
+                }
+                if (cached.comment) {
+                    $(`#comment_${database}_${item}`).val(cached.comment);
+                    $(`#comment_${database}_${item}`).prop('disabled', false);
+                }
+            }
+        }
+        
+        attachEventHandlers(database);
+        applyPreselectionsToCurrentPage(database);
+        checkDescriptions();
+    }
+
+    function attachEventHandlers(database) {
+        const container = $(`#variables-${database}`);
+        
+        container.find('.description-select').on('changed.bs.select', function () {
+            const db = $(this).data('database');
+            const item = $(this).data('item');
+            const commentBox = $(`#comment_${db}_${item}`);
+            const key = `${db}_${item}`;
+
+            if ($(this).val() === "Other") {
+                commentBox.removeAttr("disabled");
+            } else {
+                commentBox.attr("disabled", "disabled");
+            }
+
+            if (!formStateCache[key]) {
+                formStateCache[key] = {};
+            }
+            formStateCache[key].database = db;
+            formStateCache[key].description = $(this).val();
+
+            autoPopulateDatatype(db, item);
+            checkDescriptions();
+            syncToIndexedDB();
+        });
+
+        container.find('.datatype-select').on('changed.bs.select', function () {
+            const db = $(this).data('database');
+            const item = $(this).data('item');
+            const fieldKey = `${db}_${item}`;
+
+            if (!formStateCache[fieldKey]) {
+                formStateCache[fieldKey] = {};
+            }
+            formStateCache[fieldKey].database = db;
+            formStateCache[fieldKey].datatype = $(this).val();
+
+            if (autoFilledFields.has(fieldKey)) {
+                manualOverrides.add(fieldKey);
+                showOverrideConfirmation(db, item);
+            }
+            
+            syncToIndexedDB();
+        });
+
+        container.find('input[id^="comment_"]').on('change', function() {
+            const id = $(this).attr('id');
+            const parts = id.replace('comment_', '').split('_');
+            const item = parts.pop();
+            const db = parts.join('_');
+            const key = `${db}_${item}`;
+
+            if (!formStateCache[key]) {
+                formStateCache[key] = {};
+            }
+            formStateCache[key].database = db;
+            formStateCache[key].comment = $(this).val();
+            
+            syncToIndexedDB();
+        });
+    }
+
+    function applyPreselectionsToCurrentPage(database) {
+        const { preselectedDescriptions, preselectedDatatypes } = JSONLDMapper.computePreselections();
+        
+        $(`#variables-${database} .description-select`).each(function() {
+            const $select = $(this);
+            const db = $select.data('database');
+            const item = $select.data('item');
+            const key = `${db}_${item}`;
+
+            if (key in preselectedDescriptions && !formStateCache[key]?.description) {
+                const value = preselectedDescriptions[key];
+                $select.selectpicker('val', value);
+            }
+        });
+
+        $(`#variables-${database} .datatype-select`).each(function() {
+            const $select = $(this);
+            const db = $select.data('database');
+            const item = $select.data('item');
+            const key = `${db}_${item}`;
+
+            if (key in preselectedDatatypes && !formStateCache[key]?.datatype) {
+                const value = preselectedDatatypes[key];
+                $select.selectpicker('val', value);
+            }
+        });
+    }
+
     function changePage(database, direction) {
-        const groups = document.querySelectorAll(`[id^="group-${database}-"]`);
-        const currentPage = parseInt(document.getElementById(`current-page-${database}`).textContent);
-        const totalPages = groups.length;
+        const container = $(`#variables-${database}`);
+        const totalItems = parseInt(container.attr('data-total'));
+        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+        const currentPage = databasePages[database] || 1;
         const newPage = currentPage + direction;
 
         if (newPage >= 1 && newPage <= totalPages) {
-            // Hide current group
-            document.getElementById(`group-${database}-${currentPage - 1}`).classList.remove('active');
-            // Show new group
-            document.getElementById(`group-${database}-${newPage - 1}`).classList.add('active');
-            // Update page number
-            document.getElementById(`current-page-${database}`).textContent = newPage;
-
-            // Update button states
-            const prevBtn = document.querySelector(`#group-${database}-${newPage - 1}`).parentElement.querySelector('.prev-btn');
-            const nextBtn = document.querySelector(`#group-${database}-${newPage - 1}`).parentElement.querySelector('.next-btn');
-            prevBtn.disabled = newPage === 1;
-            nextBtn.disabled = newPage === totalPages;
+            renderPage(database, newPage);
+            
+            $(`#current-page-${database}`).text(newPage);
+            
+            const prevBtn = container.closest('.content').find('.prev-btn');
+            const nextBtn = container.closest('.content').find('.next-btn');
+            prevBtn.prop('disabled', newPage === 1);
+            nextBtn.prop('disabled', newPage === totalPages);
         }
     }
 

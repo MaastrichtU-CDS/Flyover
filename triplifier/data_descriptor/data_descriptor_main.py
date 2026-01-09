@@ -715,56 +715,35 @@ def retrieve_descriptive_info():
 def describe_variable_details():
     """
     This function is responsible for rendering the 'describe_variable_details.html' page.
+    It passes descriptive_info and DescriptiveInfoDetails to the frontend for IndexedDB storage.
 
     Returns:
         flask.render_template: A Flask function that renders the 'variable-details.html' template.
     """
-    dataframes = {}
     preselected_values = {}
 
-    # Get the database_name from the JSON-LD mapping for filtering
     map_database_name = None
     if session_cache.jsonld_mapping:
         map_database_name = session_cache.jsonld_mapping.get_first_database_name()
 
-    # Iterate over the items in the dictionary
-    for database, variables in session_cache.DescriptiveInfoDetails.items():
-        # Initialise an empty list to hold the rows of the dataframe
-        rows = []
+    if session_cache.jsonld_mapping and session_cache.DescriptiveInfoDetails:
+        for database, variables in session_cache.DescriptiveInfoDetails.items():
+            if not graph_database_find_name_match(map_database_name, database):
+                continue
 
-        # Iterate over the variables
-        for variable in variables:
-            # Check if the variable is a string (continuous variable)
-            if isinstance(variable, str):
-                # Add a row to the dataframe with the column name as the variable name and the value as None
-                rows.append({"column": variable, "value": None})
-            # Check if the variable is a dictionary (categorical variable)
-            elif isinstance(variable, dict):
-                # Iterate over the items in the variable dictionary
-                for var_name, categories in variable.items():
-                    # If this variable exists in the JSON-LD mapping and database matches
-                    if session_cache.jsonld_mapping and graph_database_find_name_match(
-                        map_database_name, database
-                    ):
-                        # Get global variable name (removing the local name in parentheses)
+            for variable in variables:
+                if isinstance(variable, dict):
+                    for var_name, categories in variable.items():
                         global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
-
                         var_info = session_cache.jsonld_mapping.get_variable(global_var)
                         if var_info:
-                            # Get local column for this variable
                             local_column = (
                                 session_cache.jsonld_mapping.get_local_column(
                                     global_var
                                 )
                             )
-
-                            # Iterate over the categories
                             for category in categories:
-                                # Find matching term in value_mapping
-                                matching_term = None
                                 category_value = category.get("value")
-
-                                # Check if this value has a local mapping
                                 for (
                                     term,
                                     _target_class,
@@ -774,61 +753,17 @@ def describe_variable_details():
                                             global_var, term
                                         )
                                     )
-                                    # Convert both to strings for comparison
                                     if str(local_term) == str(category_value):
-                                        matching_term = term.title().replace("_", " ")
+                                        key = f"{database}_{local_column or ''}_category_\"{category.get('value')}\""
+                                        preselected_values[key] = term.title().replace(
+                                            "_", " "
+                                        )
                                         break
 
-                                # Add preselected value to dictionary
-                                if matching_term:
-                                    key = (
-                                        f"{database}_{local_column or ''}_category_"
-                                        f'"{category.get("value")}"'
-                                    )
-                                    preselected_values[key] = matching_term
-
-                                # Add a row to the dataframe
-                                rows.append({"column": var_name, "value": category})
-                        else:
-                            # Variable not found in mapping
-                            for category in categories:
-                                rows.append({"column": var_name, "value": category})
-                    else:
-                        # Iterate over the categories
-                        for category in categories:
-                            # Add a row to the dataframe for each category with
-                            # the column name as the variable name and the value as the category
-                            rows.append({"column": var_name, "value": category})
-
-        # Convert the list of rows to a dataframe using polars
-        # The "value" column contains mixed types (None for continuous, dict for categorical)
-        # which polars handles using its Object dtype
-        df = pl.DataFrame(rows)
-
-        # Add the dataframe to the result dictionary with the database name as the key
-        dataframes[database] = df
-
-    # Get all variables from JSON-LD mapping for template
-    variable_info = {}
-    if session_cache.jsonld_mapping:
-        for var_key in session_cache.jsonld_mapping.get_all_variable_keys():
-            var = session_cache.jsonld_mapping.get_variable(var_key)
-            if var:
-                # Create a dict representation for template compatibility
-                variable_info[var_key] = {
-                    "data_type": var.data_type,
-                    "predicate": var.predicate,
-                    "class": var.class_uri,
-                }
-
-    # Wrap dataframes for template compatibility (provides pandas-like access patterns for Jinja)
-    template_dataframes = {
-        db: dataframe_to_template_data(df) for db, df in dataframes.items()
-    }
     return render_template(
         "describe_variable_details.html",
-        dataframes=template_dataframes,
-        global_variable_info=variable_info,
+        descriptive_info=json.dumps(session_cache.descriptive_info or {}),
+        descriptive_info_details=json.dumps(session_cache.DescriptiveInfoDetails or {}),
         preselected_values=preselected_values,
     )
 
@@ -932,17 +867,8 @@ def describe_downloads():
     Returns:
         flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
     """
-    # Check if any semantic map is available and descriptive info exists
-    show_semantic_map = False
-    if has_semantic_map(session_cache) and isinstance(
-        session_cache.descriptive_info, dict
-    ):
-        show_semantic_map = True
-
     return render_template(
-        "describe_downloads.html",
-        graphdb_location="http://localhost:7200/",
-        show_semantic_map=show_semantic_map,
+        "describe_downloads.html", graphdb_location="http://localhost:7200/"
     )
 
 
