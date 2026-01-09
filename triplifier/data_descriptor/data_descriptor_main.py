@@ -1068,25 +1068,24 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
         if len(databases_to_process) > 1:
             _filename = "local_ontologies.zip"
 
-            # Loop through each database
-            for database in databases_to_process:
-                # Construct the graph URI for this database
-                table_graph = f"{named_graph}{database}/"
-                ontology_filename = f"local_ontology_{database}.nt"
+            # Create a new zip file and loop through each database
+            with zipfile.ZipFile(_filename, "w") as zipf:
+                for database in databases_to_process:
+                    # Construct the graph URI for this database
+                    table_graph = f"{named_graph}{database}/"
+                    ontology_filename = f"local_ontology_{database}.nt"
 
-                # Fetch the ontology for this database
-                response = requests.get(
-                    f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-                    params={"graph": table_graph},
-                    headers={"Accept": "application/n-triples"},
-                )
+                    # Fetch the ontology for this database
+                    response = requests.get(
+                        f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
+                        params={"graph": table_graph},
+                        headers={"Accept": "application/n-triples"},
+                    )
 
-                if response.status_code == 200 and response.text.strip():
-                    # Open the zip file in 'append' mode
-                    with zipfile.ZipFile(_filename, "a") as zipf:
+                    if response.status_code == 200 and response.text.strip():
                         zipf.writestr(ontology_filename, response.text)
-                else:
-                    logger.warning(f"No ontology data found for graph: {table_graph}")
+                    else:
+                        logger.warning(f"No ontology data found for graph: {table_graph}")
 
             # Define a function to remove the zip file after the request has been handled
             @after_this_request
