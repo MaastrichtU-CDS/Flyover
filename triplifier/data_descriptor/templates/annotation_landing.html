@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 </head>
 
 <body>
@@ -124,6 +125,32 @@
                 </form>
             </div>
         </div>
+
+        <!-- Continue with IndexedDB Semantic Map Section (hidden by default) -->
+        <div id="indexedDbSection" class="card" style="display: none;">
+            <div class="card-header" style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);">
+                <h5 class="mb-0">
+                    <i class="fas fa-database"></i> Option 3: Continue with Existing Semantic Map
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success" style="font-size: 0.9em;">
+                    <i class="fas fa-check-circle"></i>
+                    <strong>Semantic Map Found!</strong><br>
+                    A semantic map from your previous session was found in your browser storage.
+                    You can continue directly to the annotation review.
+                </div>
+
+                <p class="text-muted">
+                    <strong>Database:</strong> <span id="indexedDbDatabaseName">Loading...</span><br>
+                    <small>This semantic map was saved during your last describe workflow session.</small>
+                </p>
+
+                <a href="/annotation-review" class="btn btn-success btn-lg">
+                    <i class="fas fa-arrow-right"></i> Continue to Annotation Review
+                </a>
+            </div>
+        </div>
     {% endif %}
 
     <hr>
@@ -161,7 +188,44 @@
         $("#statusMessages").html(alertHtml);
     }
 
+    /**
+     * Check IndexedDB for existing semantic map on page load
+     */
+    async function checkIndexedDbSemanticMap() {
+        try {
+            // Check if FlyoverDB is available
+            if (typeof FlyoverDB === 'undefined') {
+                console.warn('FlyoverDB not available');
+                return;
+            }
+
+            // Initialize the database
+            await FlyoverDB.initDB();
+
+            // Try to get the semantic map from IndexedDB
+            const result = await FlyoverDB.getData('metadata', 'semantic_map');
+
+            if (result && result.data) {
+                console.log('IndexedDB: Found semantic map', result);
+
+                // Extract database name from the semantic map
+                const databaseName = result.data.database_name || 'Unknown';
+
+                // Update the UI to show Option 3
+                document.getElementById('indexedDbSection').style.display = 'block';
+                document.getElementById('indexedDbDatabaseName').textContent = databaseName;
+            } else {
+                console.log('IndexedDB: No semantic map found');
+            }
+        } catch (error) {
+            console.error('Error checking IndexedDB for semantic map:', error);
+        }
+    }
+
     $(document).ready(function () {
+        // Check for IndexedDB semantic map on page load
+        checkIndexedDbSemanticMap();
+
         // Handle JSON-LD upload form submission
         $("#jsonUploadForm").submit(function (e) {
             e.preventDefault();

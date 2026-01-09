@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -145,6 +146,16 @@
             max-height: 200px;
             overflow-y: auto;
         }
+
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+        }
+
+        .loading-spinner i {
+            font-size: 3em;
+            color: #007bff;
+        }
     </style>
 </head>
 
@@ -162,121 +173,40 @@
         If information is missing or incorrect, you can adjust the local definitions through the describe data pages.
     </p>
 
-    {% if annotation_data %}
+    <!-- Loading state -->
+    <div id="loadingState" class="loading-spinner">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Loading semantic map from browser storage...</p>
+    </div>
+
+    <!-- No data warning (hidden by default) -->
+    <div id="noDataWarning" class="alert alert-warning" style="display: none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>No semantic map found</strong><br>
+        Please ensure you have completed the describe workflow and have a semantic map in your browser storage.
+        <br><br>
+        <a href="/describe_landing" class="btn btn-primary">Go to Describe</a>
+        <a href="/" class="btn btn-light">Return to Home</a>
+    </div>
+
+    <!-- Main content (hidden until data loads) -->
+    <div id="annotationContent" style="display: none;">
         <form class="form-horizontal">
             <hr>
-            {% for database, variables in annotation_data.items() %}
-                <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
-                <button class="toggle-button" type="button">
-                    <span class="toggle-text">Show more</span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20"
-                         height="20">
-                        <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
-                    </svg>
-                </button>
-                <div class="content hidden">
-                    <div class="database-summary">
-                        <strong>Database Summary:</strong>
-                        {{ variables|length }} variable(s) ready for annotation
-                    </div>
-
-                    {% for var_name, var_info in variables.items() %}
-                        <div class="variable-card">
-                            <div class="variable-header">
-                                <div class="variable-name">{{ var_name }}</div>
-                                <div class="status-badge {% if var_info.local_definition %}status-annotated{% else %}status-unannotated{% endif %}">
-                                    {% if var_info.local_definition %}
-                                        <i class="fas fa-check-circle"></i> Described
-                                    {% else %}
-                                        <i class="fas fa-exclamation-triangle"></i> Undescribed
-                                    {% endif %}
-                                </div>
-                            </div>
-
-                            <div class="variable-details">
-                                <div class="detail-row">
-                                    <div class="detail-label">Local Definition:</div>
-                                    <div class="detail-value">
-                                        {{ var_info.local_definition if var_info.local_definition else 'Not specified' }}
-                                    </div>
-                                </div>
-
-                                <div class="detail-row">
-                                    <div class="detail-label">Predicate:</div>
-                                    <div class="detail-value"><code>{{ var_info.predicate }}</code></div>
-                                </div>
-
-                                <div class="detail-row">
-                                    <div class="detail-label">Class:</div>
-                                    <div class="detail-value"><code>{{ var_info.class }}</code></div>
-                                </div>
-
-                                {% if var_info.data_type %}
-                                    <div class="detail-row">
-                                        <div class="detail-label">Data Type:</div>
-                                        <div class="detail-value">{{ var_info.data_type }}</div>
-                                    </div>
-                                {% endif %}
-
-                                {% if var_info.value_mapping and var_info.value_mapping.terms %}
-                                    <div class="detail-row">
-                                        <div class="detail-label">Value Mapping:</div>
-                                        <div class="detail-value">
-                                            <div class="value-mapping-section">
-                                                {% for term, term_info in var_info.value_mapping.terms.items() %}
-                                                    {% if term_info.local_term %}
-                                                        <div class="value-mapping-item">
-                                                            <span><strong>{{ term.replace('_', ' ').title() }}</strong></span>
-                                                            <span>{{ term_info.local_term }}</span>
-                                                            <span><code>{{ term_info.target_class }}</code></span>
-                                                        </div>
-                                                    {% endif %}
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    {% endfor %}
-                </div>
-                <hr>
-            {% endfor %}
+            <div id="databaseSections">
+                <!-- Database sections will be rendered here by JavaScript -->
+            </div>
         </form>
 
-{#        {% if unannotated_variables %}#}
-{#            <div class="unannotated-section">#}
-{#                <h4><i class="fas fa-exclamation-triangle"></i> Undescribed Variables</h4>#}
-{#                <p>The following variables were not described and will be skipped:</p>#}
-{#                <ul>#}
-{#                    {% for var in unannotated_variables %}#}
-{#                        <li>{{ var }}</li>#}
-{#                    {% endfor %}#}
-{#                </ul>#}
-{#            </div>#}
-{#            <br>#}
-{#        {% endif %}#}
-
-        {% if non_matching_databases %}
-            <div class="alert alert-warning" style="border-left: 4px solid #ffc107;">
-                <h5><i class="fas fa-info-circle"></i> Databases without corresponding mapping detected</h5>
-                <p style="margin-bottom: 10px;">
-                    The uploaded semantic map
-                    {% if map_database_name %}
-                        (for database <strong>"{{ map_database_name }}"</strong>)
-                    {% endif %}
-                    does not apply to the following databases. These databases will not be annotated:
-                </p>
-                <ul style="margin-bottom: 0;">
-                    {% for db in non_matching_databases %}
-                        <li><i class="fas fa-database"></i> {{ db }}</li>
-                    {% endfor %}
-                </ul>
-                <p class="mt-2 mb-0" style="font-size: 0.9em; color: #856404;">
-                    <i class="fas fa-lightbulb"></i> To annotate these databases, upload a semantic map with a matching <code>database_name</code> field.
-                </p>
-            </div>
-        {% endif %}
+        <!-- Non-matching databases warning (rendered by JS if needed) -->
+        <div id="nonMatchingDatabasesWarning" class="alert alert-warning" style="display: none; border-left: 4px solid #ffc107;">
+            <h5><i class="fas fa-info-circle"></i> Databases without corresponding mapping detected</h5>
+            <p style="margin-bottom: 10px;" id="nonMatchingDatabasesText"></p>
+            <ul id="nonMatchingDatabasesList" style="margin-bottom: 0;"></ul>
+            <p class="mt-2 mb-0" style="font-size: 0.9em; color: #856404;">
+                <i class="fas fa-lightbulb"></i> To annotate these databases, upload a semantic map with a matching <code>database_name</code> field.
+            </p>
+        </div>
 
         <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process
@@ -301,25 +231,326 @@
                 </div>
             </div>
         </div>
-
-    {% else %}
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>No annotation data found</strong><br>
-            Please ensure you have uploaded a semantic map and described your data before proceeding.
-            <br><br>
-            <a href="/" class="btn btn-light">Return to Home</a>
-        </div>
-    {% endif %}
+    </div>
 </div>
 
 <!-- Include footer -->
 {% include 'footer.html' %}
 
 <script>
-    // Toggle functionality for database sections (matching describe_variables.html pattern)
-    $(document).ready(function () {
-        $('.toggle-button').click(function () {
+    // Store the semantic map data
+    let semanticMapData = null;
+
+    /**
+     * Load semantic map from IndexedDB and render the page
+     */
+    async function loadSemanticMapFromIndexedDB() {
+        try {
+            if (typeof FlyoverDB === 'undefined' || !FlyoverDB.isSupported()) {
+                console.error('IndexedDB not supported');
+                showNoDataWarning();
+                return;
+            }
+
+            await FlyoverDB.initDB();
+            const result = await FlyoverDB.getData('metadata', 'semantic_map');
+
+            if (!result || !result.data) {
+                console.log('No semantic map found in IndexedDB');
+                showNoDataWarning();
+                return;
+            }
+
+            semanticMapData = result.data;
+            console.log('Loaded semantic map from IndexedDB:', semanticMapData);
+
+            // Render the annotation data
+            renderAnnotationData(semanticMapData);
+
+        } catch (error) {
+            console.error('Error loading semantic map:', error);
+            showNoDataWarning();
+        }
+    }
+
+    /**
+     * Show the no data warning and hide loading state
+     */
+    function showNoDataWarning() {
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('noDataWarning').style.display = 'block';
+        document.getElementById('annotationContent').style.display = 'none';
+    }
+
+    /**
+     * Render the annotation data from the semantic map
+     */
+    function renderAnnotationData(data) {
+        // Handle both JSON-LD structure (schema.variables) and flat structure (variable_info)
+        let databaseName = 'Unknown';
+        let variableInfo = {};
+
+        if (data.schema && data.schema.variables) {
+            // JSON-LD structure - transform to flat variable_info format
+            variableInfo = transformJsonLdToVariableInfo(data);
+
+            // Get database name from the databases section
+            if (data.databases) {
+                const dbKeys = Object.keys(data.databases);
+                if (dbKeys.length > 0) {
+                    databaseName = data.databases[dbKeys[0]].name || dbKeys[0];
+                }
+            }
+        } else if (data.variable_info) {
+            // Flat structure
+            databaseName = data.database_name || 'Unknown';
+            variableInfo = data.variable_info;
+        } else {
+            console.error('Unknown semantic map structure:', data);
+            showNoDataWarning();
+            return;
+        }
+
+        // Check if we have any variables
+        const variableNames = Object.keys(variableInfo);
+        if (variableNames.length === 0) {
+            showNoDataWarning();
+            return;
+        }
+
+        // Filter variables that are ready for annotation (have predicate, class, and local_definition)
+        const annotatedVars = {};
+        const unannotatedVars = [];
+
+        for (const [varName, varData] of Object.entries(variableInfo)) {
+            if (!varData.predicate) {
+                unannotatedVars.push(`${varName} (missing predicate)`);
+                continue;
+            }
+            if (!varData.class) {
+                unannotatedVars.push(`${varName} (missing class)`);
+                continue;
+            }
+            if (!varData.local_definition) {
+                unannotatedVars.push(`${varName} (no local definition)`);
+                continue;
+            }
+            annotatedVars[varName] = varData;
+        }
+
+        // Check if we have any annotated variables
+        if (Object.keys(annotatedVars).length === 0) {
+            showNoDataWarning();
+            return;
+        }
+
+        // Build the HTML for the database section
+        const databaseSectionsDiv = document.getElementById('databaseSections');
+        databaseSectionsDiv.innerHTML = renderDatabaseSection(databaseName, annotatedVars);
+
+        // Hide loading, show content
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('annotationContent').style.display = 'block';
+
+        // Initialize toggle buttons
+        initializeToggleButtons();
+    }
+
+    /**
+     * Transform JSON-LD structure to flat variable_info format
+     * TODO handle appropriate using JSON-LD context
+     */
+    function transformJsonLdToVariableInfo(data) {
+        const variableInfo = {};
+        const schemaVariables = data.schema?.variables || {};
+        const databases = data.databases || {};
+
+        // Build a map of local columns to their definitions
+        const localDefinitions = {};
+        for (const [dbKey, dbData] of Object.entries(databases)) {
+            if (!dbData.tables) continue;
+            for (const [tableKey, tableData] of Object.entries(dbData.tables)) {
+                if (!tableData.columns) continue;
+                for (const [colKey, colData] of Object.entries(tableData.columns)) {
+                    // Extract variable name from mapsTo (e.g., "schema:variable/biological_sex" -> "biological_sex")
+                    let varName = colData.variable;
+                    if (!varName && colData.mapsTo) {
+                        varName = colData.mapsTo.split('/').pop();
+                    }
+                    if (varName) {
+                        // Get local column name(s)
+                        const localCols = Array.isArray(colData.localColumn) ? colData.localColumn : [colData.localColumn];
+                        const localDef = localCols.filter(c => c).join(', ') || colKey;
+
+                        // Store local mappings for value mapping terms
+                        const localMappings = colData.localMappings || {};
+
+                        localDefinitions[varName] = {
+                            local_definition: localDef,
+                            localMappings: localMappings
+                        };
+                    }
+                }
+            }
+        }
+
+        // Combine schema variables with local definitions
+        for (const [varName, varSchema] of Object.entries(schemaVariables)) {
+            const localInfo = localDefinitions[varName] || {};
+
+            variableInfo[varName] = {
+                predicate: varSchema.predicate || null,
+                class: varSchema.class || null,
+                data_type: varSchema.dataType || null,
+                local_definition: localInfo.local_definition || null,
+                value_mapping: null
+            };
+
+            // Add value mapping if present
+            if (varSchema.valueMapping && varSchema.valueMapping.terms) {
+                const terms = {};
+                for (const [termKey, termData] of Object.entries(varSchema.valueMapping.terms)) {
+                    // Get local term from localMappings if available
+                    const localMappings = localInfo.localMappings || {};
+                    const localTerms = localMappings[termKey];
+                    const localTerm = Array.isArray(localTerms) ? localTerms[0] : localTerms;
+
+                    terms[termKey] = {
+                        target_class: termData.targetClass || null,
+                        local_term: localTerm || null
+                    };
+                }
+                variableInfo[varName].value_mapping = { terms };
+            }
+        }
+
+        return variableInfo;
+    }
+
+    /**
+     * Render a database section with its variables
+     */
+    function renderDatabaseSection(databaseName, variables) {
+        const varCount = Object.keys(variables).length;
+        let html = `
+            <h2 style="display: inline-block;"><i class="fas fa-database"></i> ${escapeHtml(databaseName)}</h2>
+            <button class="toggle-button" type="button">
+                <span class="toggle-text">Show more</span>
+                <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                </svg>
+            </button>
+            <div class="content hidden">
+                <div class="database-summary">
+                    <strong>Database Summary:</strong> ${varCount} variable(s) ready for annotation
+                </div>
+        `;
+
+        for (const [varName, varInfo] of Object.entries(variables)) {
+            html += renderVariableCard(varName, varInfo);
+        }
+
+        html += `
+            </div>
+            <hr>
+        `;
+
+        return html;
+    }
+
+    /**
+     * Render a variable card
+     */
+    function renderVariableCard(varName, varInfo) {
+        const hasLocalDef = !!varInfo.local_definition;
+        const statusClass = hasLocalDef ? 'status-annotated' : 'status-unannotated';
+        const statusIcon = hasLocalDef ? 'check-circle' : 'exclamation-triangle';
+        const statusText = hasLocalDef ? 'Described' : 'Undescribed';
+
+        let html = `
+            <div class="variable-card">
+                <div class="variable-header">
+                    <div class="variable-name">${escapeHtml(varName)}</div>
+                    <div class="status-badge ${statusClass}">
+                        <i class="fas fa-${statusIcon}"></i> ${statusText}
+                    </div>
+                </div>
+                <div class="variable-details">
+                    <div class="detail-row">
+                        <div class="detail-label">Local Definition:</div>
+                        <div class="detail-value">${escapeHtml(varInfo.local_definition || 'Not specified')}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Predicate:</div>
+                        <div class="detail-value"><code>${escapeHtml(varInfo.predicate || '')}</code></div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Class:</div>
+                        <div class="detail-value"><code>${escapeHtml(varInfo.class || '')}</code></div>
+                    </div>
+        `;
+
+        if (varInfo.data_type) {
+            html += `
+                    <div class="detail-row">
+                        <div class="detail-label">Data Type:</div>
+                        <div class="detail-value">${escapeHtml(varInfo.data_type)}</div>
+                    </div>
+            `;
+        }
+
+        // Render value mapping if present
+        if (varInfo.value_mapping && varInfo.value_mapping.terms) {
+            html += `
+                    <div class="detail-row">
+                        <div class="detail-label">Value Mapping:</div>
+                        <div class="detail-value">
+                            <div class="value-mapping-section">
+            `;
+
+            for (const [term, termInfo] of Object.entries(varInfo.value_mapping.terms)) {
+                if (termInfo.local_term) {
+                    const termLabel = term.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    html += `
+                                <div class="value-mapping-item">
+                                    <span><strong>${escapeHtml(termLabel)}</strong></span>
+                                    <span>${escapeHtml(termInfo.local_term)}</span>
+                                    <span><code>${escapeHtml(termInfo.target_class || '')}</code></span>
+                                </div>
+                    `;
+                }
+            }
+
+            html += `
+                            </div>
+                        </div>
+                    </div>
+            `;
+        }
+
+        html += `
+                </div>
+            </div>
+        `;
+
+        return html;
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Initialize toggle button functionality
+     */
+    function initializeToggleButtons() {
+        $('.toggle-button').off('click').on('click', function () {
             var textElement = $(this).find('.toggle-text');
             var svgElement = $(this).find('.angle-icon path');
             if (textElement.text() === 'Show more') {
@@ -332,36 +563,80 @@
             $(this).toggleClass('open');
             $(this).next('.content').toggleClass('active');
         });
-    });
-
-    function startAnnotationProcess() {
-        const button = document.getElementById('startAnnotation');
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Annotations...';
-
-        fetch('/start-annotation', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/annotation-verify';
-                } else {
-                    alert('Error: ' + data.error);
-                    button.disabled = false;
-                    button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while starting the annotation process.');
-                button.disabled = false;
-                button.innerHTML = '<i class="fas fa-play"></i> Start Annotation Process';
-            });
     }
+
+    /**
+     * Start the annotation process - submit semantic map to backend first
+     */
+    async function startAnnotationProcess() {
+        const button = document.getElementById('startAnnotation');
+        const originalHtml = button.innerHTML;
+
+        if (!semanticMapData) {
+            alert('No semantic map data available. Please reload the page.');
+            return;
+        }
+
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting semantic map...';
+
+        try {
+            // First, submit the semantic map to the backend
+            const submitResponse = await fetch('/submit-indexeddb-semantic-map', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(semanticMapData)
+            });
+
+            const submitData = await submitResponse.json();
+
+            if (!submitResponse.ok || !submitData.success) {
+                let errorMessage = submitData.error || 'Failed to submit semantic map.';
+                if (submitData.validation_errors && submitData.validation_errors.length > 0) {
+                    errorMessage += '\n\nValidation errors:';
+                    submitData.validation_errors.forEach(function(err) {
+                        errorMessage += '\n- ' + err.message;
+                    });
+                }
+                alert(errorMessage);
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+                return;
+            }
+
+            // Now start the annotation process
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing Annotations...';
+
+            const annotationResponse = await fetch('/start-annotation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const annotationData = await annotationResponse.json();
+
+            if (annotationData.success) {
+                window.location.href = '/annotation-verify';
+            } else {
+                alert('Error: ' + annotationData.error);
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while processing. Please try again.');
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
+    }
+
+    // Load data when page is ready
+    $(document).ready(function () {
+        loadSemanticMapFromIndexedDB();
+    });
 </script>
 
 <script>
