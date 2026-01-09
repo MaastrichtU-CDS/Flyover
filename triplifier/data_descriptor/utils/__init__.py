@@ -1,5 +1,5 @@
 """
-Utility functions for the Flyover data descriptor application.
+Utility functions for the Flyover data descriptor application .
 """
 
 from .data_preprocessing import (
@@ -9,10 +9,14 @@ from .data_preprocessing import (
     sanitise_table_name,
 )
 
-from .data_ingest import upload_file_to_graphdb, upload_ontology_then_data
+from .data_ingest import (
+    upload_file_to_graphdb,
+    upload_ontology_then_data,
+    upload_multiple_graphs,
+)
 
 from .session_helpers import (
-    check_graph_exists,
+    check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
     graph_database_fetch_from_rdf,
     graph_database_find_name_match,
@@ -26,9 +30,11 @@ __all__ = [
     "clean_column_names",
     "preprocess_dataframe",
     "get_original_column_name",
+    "sanitise_table_name",
     "upload_file_to_graphdb",
     "upload_ontology_then_data",
-    "check_graph_exists",
+    "upload_multiple_graphs",
+    "check_any_data_graph_exists",
     "graph_database_ensure_backend_initialisation",
     "graph_database_fetch_from_rdf",
     "graph_database_find_name_match",
