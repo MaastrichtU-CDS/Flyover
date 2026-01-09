@@ -18,12 +18,6 @@ const JSONLDMapper = {
         return colData.variable || colData.mapsTo?.split('/').pop();
     },
 
-    ensureLocalColumnIsArray: function(colData) {
-        if (!Array.isArray(colData.localColumn)) {
-            colData.localColumn = colData.localColumn ? [colData.localColumn] : [];
-        }
-    },
-
     normalizeLocalMappings: function(localMappings) {
         for (const [key, value] of Object.entries(localMappings)) {
             if (!Array.isArray(value)) {
@@ -83,10 +77,7 @@ const JSONLDMapper = {
             const varKey = this.getVariableKeyFromColumn(colData);
             if (varKey === globalVarName) {
                 if (localVariable) {
-                    const localColumns = Array.isArray(colData.localColumn) ? 
-                        colData.localColumn : [colData.localColumn];
-                    
-                    if (localColumns.includes(localVariable)) {
+                    if (colData.localColumn === localVariable) {
                         foundColumn = { colData, colKey, tableData, tableKey, dbData, dbKey };
                         return false;
                     }
@@ -310,15 +301,8 @@ const JSONLDMapper = {
                 const colVarKey = this.getVariableKeyFromColumn(colData);
                 
                 if (colVarKey !== varName && colData.mapsTo !== `schema:variable/${varName}`) {
-                    if (Array.isArray(colData.localColumn)) {
-                        const index = colData.localColumn.indexOf(localColumnName);
-                        if (index > -1) {
-                            colData.localColumn.splice(index, 1);
-                            
-                            if (colData.localColumn.length === 0) {
-                                delete tableData.columns[colKey];
-                            }
-                        }
+                    if (colData.localColumn === localColumnName) {
+                        delete tableData.columns[colKey];
                     }
                 }
             });
@@ -330,11 +314,7 @@ const JSONLDMapper = {
                 const colVarKey = this.getVariableKeyFromColumn(colData);
                 
                 if (colVarKey === varName || colData.mapsTo === `schema:variable/${varName}`) {
-                    this.ensureLocalColumnIsArray(colData);
-                    
-                    if (!colData.localColumn.includes(localColumnName)) {
-                        colData.localColumn.push(localColumnName);
-                    }
+                    colData.localColumn = localColumnName;
                     
                     columnFound = true;
                     return false;
@@ -349,7 +329,7 @@ const JSONLDMapper = {
                     tableData.columns[newColKey] = {
                         mapsTo: `schema:variable/${varName}`,
                         variable: varName,
-                        localColumn: [localColumnName]
+                        localColumn: localColumnName
                     };
                     return false;
                 });
@@ -460,7 +440,7 @@ const JSONLDMapper = {
                                     .toLowerCase()
                                     .replace(/ /g, '_');
 
-                                const localTerm = category.split(': ')[1];
+                                const localTerm = String(category.split(': ')[1]);
 
                                 if (!varInfo.valueMapping.terms[globalTerm]) {
                                     continue;
@@ -518,6 +498,8 @@ const JSONLDMapper = {
         if (!this.mapping?.databases) {
             return false;
         }
+
+        localValue = String(localValue);
 
         const termKey = selectedOption ? this.formatToSnakeCase(selectedOption) : null;
         const previousTermKey = previousOption ? this.formatToSnakeCase(previousOption) : null;

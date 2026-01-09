@@ -620,7 +620,7 @@
                 const database = $(this).data('database');
                 const localVariable = $(this).data('variable');
                 const globalVariable = $(this).data('global-variable');
-                const categoryValue = $(this).data('category-value');
+                const categoryValue = String($(this).data('category-value'));
                 const selectedOption = $(this).val();
                 const previousOption = $(this).data('previous-selection');
 
