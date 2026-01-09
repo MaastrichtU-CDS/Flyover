@@ -1090,7 +1090,7 @@ def download_ontology(named_graph="http://ontology.local/", filename=None):
                         logger.warning(
                             f"No ontology data found for graph: {table_graph}"
                         )
-            
+
             # Check if the zip file was created successfully and contains data
             if files_added == 0 or not os.path.exists(_filename):
                 # No files were added or zip file doesn't exist
