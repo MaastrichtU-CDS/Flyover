@@ -329,6 +329,38 @@ def submit_indexeddb_semantic_map():
         )
 
 
+@app.route("/api/graphdb-databases", methods=["GET"])
+def get_graphdb_databases():
+    """
+    Fetch the list of databases available in GraphDB.
+    This endpoint is used by the frontend to get actual database names
+    from the RDF store for validation and display purposes.
+
+    Returns:
+        flask.Response: JSON response with list of databases or error
+    """
+    try:
+        # Fetch databases from GraphDB
+        if graph_database_ensure_backend_initialisation(session_cache, execute_query):
+            return jsonify({"success": True, "databases": session_cache.databases})
+        else:
+            return jsonify(
+                {
+                    "success": False,
+                    "databases": [],
+                    "message": "No databases found in GraphDB",
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error fetching GraphDB databases: {str(e)}")
+        return (
+            jsonify(
+                {"success": False, "error": f"Failed to fetch databases: {str(e)}"}
+            ),
+            500,
+        )
+
+
 @app.route("/upload", methods=["POST"])
 def upload_file():
     """
@@ -1222,15 +1254,8 @@ def annotation_landing():
         data_exists = check_any_data_graph_exists(session_cache.repo, graphdb_url)
         session_cache.existing_graph = data_exists
 
-        message = None
-        if not data_exists:
-            message = (
-                "To start annotating, you need to complete the Ingest and Describe steps first. "
-                "Alternatively, you can upload a JSON file with your data descriptions."
-            )
-
         return render_template(
-            "annotation_landing.html", data_exists=data_exists, message=message
+            "annotation_landing.html", data_exists=data_exists, message=None
         )
     except Exception as e:
         flash(f"Error accessing annotation step: {e}")
@@ -1242,6 +1267,7 @@ def upload_annotation_json():
     """
     Handle the upload of a JSON-LD file for direct annotation.
     This allows users to upload JSON-LD files with data descriptions for annotation.
+    Validates that databases in the JSON-LD match databases available in GraphDB.
 
     Returns:
         flask.jsonify: JSON response indicating success or failure
@@ -1268,9 +1294,6 @@ def upload_annotation_json():
             with open(filepath, "r") as f:
                 json_data = json.load(f)
 
-            # Validate database_name against available databases
-            map_database_name = json_data.get("database_name")
-
             # Ensure databases are initialised from RDF-store
             if not graph_database_ensure_backend_initialisation(
                 session_cache, execute_query
@@ -1279,41 +1302,71 @@ def upload_annotation_json():
                 return (
                     jsonify(
                         {
-                            "error": "No databases found in the data store. Please complete the Ingest step first."
+                            "error": "No data found in the data store. Please complete the Ingest step first.",
+                            "graphdb_databases": [],
+                            "jsonld_databases": [],
                         }
                     ),
                     400,
                 )
 
-            # Check if database_name is null or empty - require it to be specified
-            if map_database_name is None or map_database_name == "":
+            # Extract tables from JSON-LD structure (tables are the actual data sources)
+            jsonld_tables = []
+            if json_data.get("databases"):
+                for db_key, db_data in json_data["databases"].items():
+                    if isinstance(db_data, dict) and db_data.get("tables"):
+                        for table_key, table_data in db_data["tables"].items():
+                            # Use sourceFile if available, otherwise use the table key
+                            table_name = (
+                                table_data.get("sourceFile", table_key)
+                                if isinstance(table_data, dict)
+                                else table_key
+                            )
+                            jsonld_tables.append(table_name)
+            elif json_data.get("database_name"):
+                # Fallback for flat structure
+                jsonld_tables.append(json_data["database_name"])
+
+            if not jsonld_tables:
                 os.remove(filepath)  # Clean up file
                 return (
                     jsonify(
                         {
-                            "error": "The uploaded semantic map does not have a 'database_name' specified.<br>"
-                            "Please either: (1) Edit your JSON file to add a valid 'database_name' field, or "
-                            "(2) Use the <a href='/describe_landing'>Describe</a> "
-                            "workflow to create mappings for your data.",
-                            "error_type": "missing_database_name",
+                            "error": "The uploaded semantic map does not contain any table definitions.<br>"
+                            "Please ensure your JSON-LD file has tables defined in the 'databases' section.",
+                            "graphdb_databases": session_cache.databases,
+                            "jsonld_databases": [],
                         }
                     ),
                     400,
                 )
 
-            # If the map has a specific database_name, validate it matches an available database
-            matching_db = graph_database_find_matching(
-                map_database_name, session_cache.databases
-            )
-            if matching_db is None:
-                available_dbs = ", ".join(str(db) for db in session_cache.databases)
+            # Find matching tables between JSON-LD and GraphDB
+            matching_databases = []
+            non_matching_jsonld = []
+
+            for jsonld_table in jsonld_tables:
+                matched = graph_database_find_matching(
+                    jsonld_table, session_cache.databases
+                )
+                if matched:
+                    matching_databases.append(
+                        {"jsonld": jsonld_table, "graphdb": matched}
+                    )
+                else:
+                    non_matching_jsonld.append(jsonld_table)
+
+            # Check if we have at least one matching table
+            if not matching_databases:
                 os.remove(filepath)  # Clean up file
                 return (
                     jsonify(
                         {
-                            "error": f"The uploaded semantic map is for database '{map_database_name}', "
-                            f"which does not match any available database.<br>"
-                            f"Available databases: {available_dbs}"
+                            "error": f"None of the data sources in the semantic map match data in GraphDB.",
+                            "graphdb_databases": session_cache.databases,
+                            "jsonld_databases": jsonld_tables,
+                            "matching_databases": [],
+                            "non_matching_jsonld": non_matching_jsonld,
                         }
                     ),
                     400,
@@ -1323,8 +1376,23 @@ def upload_annotation_json():
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
 
+            # Also store as jsonld_mapping for consistency
+            validator = MappingValidator()
+            result = validator.validate(json_data)
+            if result.is_valid:
+                jsonld_mapping = JSONLDMapping.from_dict(json_data)
+                session_cache.jsonld_mapping = jsonld_mapping
+
             return jsonify(
-                {"success": "JSON file uploaded successfully", "filename": filename}
+                {
+                    "success": True,
+                    "message": "JSON-LD file uploaded and validated successfully",
+                    "filename": filename,
+                    "graphdb_databases": session_cache.databases,
+                    "jsonld_databases": jsonld_tables,
+                    "matching_databases": matching_databases,
+                    "non_matching_jsonld": non_matching_jsonld,
+                }
             )
 
         except json.JSONDecodeError:

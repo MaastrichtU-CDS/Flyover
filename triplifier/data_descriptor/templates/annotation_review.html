@@ -102,18 +102,47 @@
             background-color: #f8f9fa;
             border-radius: 4px;
             padding: 8px;
-            margin-top: 8px;
+            margin-top: 4px;
         }
 
         .value-mapping-item {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: minmax(100px, 1fr) minmax(80px, 1fr) minmax(120px, 2fr);
+            gap: 8px;
+            align-items: center;
             margin-bottom: 4px;
             padding: 4px 8px;
             background-color: white;
             border-radius: 3px;
             border: 1px solid #dee2e6;
             font-size: 0.85em;
+        }
+
+        .value-mapping-item .term-name {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .value-mapping-item .local-value {
+            color: #28a745;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .value-mapping-item .local-value.empty-value {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .value-mapping-item .target-class {
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .value-mapping-item .target-class code {
+            font-size: 0.85em;
+            color: #6c757d;
         }
 
         .annotation-actions {
@@ -168,7 +197,7 @@
     <h1><i class="fas fa-search"></i> Review Annotation Data</h1>
     <hr>
 
-    <p style="line-height: 1.5; margin: 0;">Please review the variable mappings below before proceeding with the
+    <p style="line-height: 1.5; margin-bottom: 20px;">Please review the variable mappings below before proceeding with the
         annotation process.<br>
         If information is missing or incorrect, you can adjust the local definitions through the describe data pages.
     </p>
@@ -191,22 +220,16 @@
 
     <!-- Main content (hidden until data loads) -->
     <div id="annotationContent" style="display: none;">
+        <!-- Database info section - only shows issues -->
+        <div id="databaseInfoSection" class="mb-4" style="display: none;"></div>
+
         <form class="form-horizontal">
-            <hr>
             <div id="databaseSections">
                 <!-- Database sections will be rendered here by JavaScript -->
             </div>
         </form>
 
-        <!-- Non-matching databases warning (rendered by JS if needed) -->
-        <div id="nonMatchingDatabasesWarning" class="alert alert-warning" style="display: none; border-left: 4px solid #ffc107;">
-            <h5><i class="fas fa-info-circle"></i> Databases without corresponding mapping detected</h5>
-            <p style="margin-bottom: 10px;" id="nonMatchingDatabasesText"></p>
-            <ul id="nonMatchingDatabasesList" style="margin-bottom: 0;"></ul>
-            <p class="mt-2 mb-0" style="font-size: 0.9em; color: #856404;">
-                <i class="fas fa-lightbulb"></i> To annotate these databases, upload a semantic map with a matching <code>database_name</code> field.
-            </p>
-        </div>
+        <hr>
 
         <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process
@@ -238,21 +261,117 @@
 {% include 'footer.html' %}
 
 <script>
-    // Store the semantic map data
+    // Store the semantic map data and GraphDB databases
     let semanticMapData = null;
+    let graphDbDatabases = [];
+
+    /**
+     * Fetch databases from GraphDB and store in IndexedDB
+     */
+    async function fetchAndStoreGraphDbDatabases() {
+        try {
+            const response = await fetch('/api/graphdb-databases');
+            const data = await response.json();
+
+            if (data.success && data.databases && data.databases.length > 0) {
+                graphDbDatabases = data.databases;
+                console.log('Fetched GraphDB databases:', graphDbDatabases);
+
+                // Store in IndexedDB for use across pages
+                await FlyoverDB.saveData('metadata', {
+                    key: 'graphdb_databases',
+                    data: graphDbDatabases,
+                    timestamp: new Date().toISOString()
+                });
+
+                return true;
+            } else {
+                console.warn('No databases found in GraphDB:', data.message);
+                return false;
+            }
+        } catch (error) {
+            console.error('Error fetching GraphDB databases:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Load GraphDB databases from IndexedDB (fallback if API call fails)
+     */
+    async function loadGraphDbDatabasesFromIndexedDB() {
+        try {
+            const result = await FlyoverDB.getData('metadata', 'graphdb_databases');
+            if (result && result.data && result.data.length > 0) {
+                graphDbDatabases = result.data;
+                console.log('Loaded GraphDB databases from IndexedDB:', graphDbDatabases);
+                return true;
+            }
+        } catch (error) {
+            console.error('Error loading GraphDB databases from IndexedDB:', error);
+        }
+        return false;
+    }
+
+    /**
+     * Check if a database name matches any GraphDB database
+     * Handles cases like "file.csv" matching "file" or vice versa
+     */
+    function findMatchingDatabase(mapDbName) {
+        if (!mapDbName || mapDbName === '') return graphDbDatabases[0] || null;
+
+        for (const db of graphDbDatabases) {
+            if (db === mapDbName) return db;
+
+            // Try matching without .csv extension
+            const mapNoExt = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName;
+            const dbNoExt = db.endsWith('.csv') ? db.slice(0, -4) : db;
+            if (mapNoExt === dbNoExt) return db;
+        }
+        return null;
+    }
 
     /**
      * Load semantic map from IndexedDB and render the page
      */
     async function loadSemanticMapFromIndexedDB() {
         try {
-            if (typeof FlyoverDB === 'undefined' || !FlyoverDB.isSupported()) {
-                console.error('IndexedDB not supported');
-                showNoDataWarning();
+            console.log('Starting loadSemanticMapFromIndexedDB...');
+
+            if (typeof FlyoverDB === 'undefined') {
+                console.error('FlyoverDB is undefined');
+                showNoDataWarning('Browser storage not available. Please ensure JavaScript is enabled.');
                 return;
             }
 
+            if (!FlyoverDB.isSupported()) {
+                console.error('IndexedDB not supported');
+                showNoDataWarning('Your browser does not support IndexedDB. Please use a modern browser.');
+                return;
+            }
+
+            console.log('Initializing FlyoverDB...');
             await FlyoverDB.initDB();
+
+            // First, try to fetch databases from GraphDB
+            console.log('Fetching GraphDB databases...');
+            let hasGraphDbDatabases = await fetchAndStoreGraphDbDatabases();
+
+            // If API call failed, try loading from IndexedDB
+            if (!hasGraphDbDatabases) {
+                console.log('API call failed, trying IndexedDB...');
+                hasGraphDbDatabases = await loadGraphDbDatabasesFromIndexedDB();
+            }
+
+            if (!hasGraphDbDatabases) {
+                console.warn('No GraphDB databases available');
+                showNoDataWarning('No databases found in the data store. Please complete the Ingest step first.');
+                return;
+            }
+
+            console.log('GraphDB databases loaded:', graphDbDatabases);
+
+            // Load semantic map
+            console.log('Loading semantic map from IndexedDB...');
             const result = await FlyoverDB.getData('metadata', 'semantic_map');
 
             if (!result || !result.data) {
@@ -264,168 +383,319 @@
             semanticMapData = result.data;
             console.log('Loaded semantic map from IndexedDB:', semanticMapData);
 
-            // Render the annotation data
+            // Render the annotation data with GraphDB database validation
             renderAnnotationData(semanticMapData);
 
         } catch (error) {
             console.error('Error loading semantic map:', error);
-            showNoDataWarning();
+            showNoDataWarning('An error occurred while loading: ' + error.message);
         }
     }
 
     /**
      * Show the no data warning and hide loading state
      */
-    function showNoDataWarning() {
+    function showNoDataWarning(message) {
         document.getElementById('loadingState').style.display = 'none';
         document.getElementById('noDataWarning').style.display = 'block';
         document.getElementById('annotationContent').style.display = 'none';
+
+        // Update message if provided
+        if (message) {
+            const warningDiv = document.getElementById('noDataWarning');
+            warningDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Cannot proceed with annotation</strong><br>
+                ${message}
+                <br><br>
+                <a href="/describe_landing" class="btn btn-primary">Go to Describe</a>
+                <a href="/ingest" class="btn btn-secondary">Go to Ingest</a>
+                <a href="/" class="btn btn-light">Return to Home</a>
+            `;
+        }
+    }
+
+    /**
+     * Extract table names from JSON-LD structure
+     * Tables are the actual data sources that match with GraphDB
+     */
+    function extractJsonLdTables(data) {
+        const tables = [];
+        if (data.databases) {
+            for (const [dbKey, dbData] of Object.entries(data.databases)) {
+                if (dbData.tables) {
+                    for (const [tableKey, tableData] of Object.entries(dbData.tables)) {
+                        // Use sourceFile if available, otherwise use the table key
+                        const tableName = (typeof tableData === 'object' && tableData.sourceFile)
+                            ? tableData.sourceFile
+                            : tableKey;
+                        tables.push(tableName);
+                    }
+                }
+            }
+        } else if (data.database_name) {
+            // Fallback for flat structure
+            tables.push(data.database_name);
+        }
+        return tables;
+    }
+
+    /**
+     * Generate database comparison and populate the info section
+     */
+    function populateDatabaseComparisonSection(jsonldTables) {
+        // Calculate matches
+        const matching = [];
+        const nonMatchingJsonld = [];
+        const nonMatchingGraphDb = [...graphDbDatabases];
+
+        for (const jsonldTable of jsonldTables) {
+            const match = findMatchingDatabase(jsonldTable);
+            if (match) {
+                matching.push({ jsonld: jsonldTable, graphdb: match });
+                const idx = nonMatchingGraphDb.indexOf(match);
+                if (idx > -1) nonMatchingGraphDb.splice(idx, 1);
+            } else {
+                nonMatchingJsonld.push(jsonldTable);
+            }
+        }
+
+        // Only show info section if there are non-matching databases
+        const infoSection = document.getElementById('databaseInfoSection');
+
+        if (nonMatchingJsonld.length > 0 || nonMatchingGraphDb.length > 0) {
+            let infoHtml = '';
+
+            if (nonMatchingJsonld.length > 0) {
+                infoHtml += `<div class="alert alert-warning" style="font-size: 0.9em;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Will not be annotated</strong> (not in GraphDB): ${nonMatchingJsonld.map(t => escapeHtml(t)).join(', ')}
+                </div>`;
+            }
+
+            if (nonMatchingGraphDb.length > 0) {
+                infoHtml += `<div class="alert alert-info" style="font-size: 0.9em;">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Other data in GraphDB</strong> (no mapping provided): ${nonMatchingGraphDb.map(t => escapeHtml(t)).join(', ')}
+                </div>`;
+            }
+
+            infoSection.innerHTML = infoHtml;
+            infoSection.style.display = 'block';
+        } else {
+            infoSection.style.display = 'none';
+        }
+
+        return {
+            matching: matching,
+            nonMatchingJsonld: nonMatchingJsonld,
+            nonMatchingGraphDb: nonMatchingGraphDb,
+            hasMatches: matching.length > 0
+        };
     }
 
     /**
      * Render the annotation data from the semantic map
      */
     function renderAnnotationData(data) {
-        // Handle both JSON-LD structure (schema.variables) and flat structure (variable_info)
-        let databaseName = 'Unknown';
-        let variableInfo = {};
+        try {
+            console.log('renderAnnotationData called with:', data);
 
-        if (data.schema && data.schema.variables) {
-            // JSON-LD structure - transform to flat variable_info format
-            variableInfo = transformJsonLdToVariableInfo(data);
+            // Extract all tables from JSON-LD (these are the actual data sources)
+            const jsonldTables = extractJsonLdTables(data);
+            console.log('Extracted JSON-LD tables:', jsonldTables);
 
-            // Get database name from the databases section
-            if (data.databases) {
-                const dbKeys = Object.keys(data.databases);
-                if (dbKeys.length > 0) {
-                    databaseName = data.databases[dbKeys[0]].name || dbKeys[0];
+            // Populate database comparison section
+            const comparison = populateDatabaseComparisonSection(jsonldTables);
+            console.log('Database comparison:', comparison);
+
+            if (!comparison.hasMatches) {
+                showNoDataWarning(
+                    `None of the data sources in the semantic map match data in GraphDB.<br><br>` +
+                    `<strong>Data sources in semantic map:</strong> ${jsonldTables.join(', ') || 'None'}<br>` +
+                    `<strong>Data in GraphDB:</strong> ${graphDbDatabases.join(', ') || 'None'}`
+                );
+                return;
+            }
+
+            // Transform JSON-LD to get variable info organized by table
+            const tableVariables = transformJsonLdToVariableInfoByTable(data, comparison.matching);
+            console.log('Table variables:', tableVariables);
+
+            // Check if we have any tables with variables
+            if (Object.keys(tableVariables).length === 0) {
+                showNoDataWarning('No variables with local column definitions found in the semantic map.');
+                return;
+            }
+
+            // Build the HTML for all database sections
+            const databaseSectionsDiv = document.getElementById('databaseSections');
+            let allHtml = '';
+            let totalAnnotatedVars = 0;
+
+            for (const [tableName, tableData] of Object.entries(tableVariables)) {
+                const { variableInfo, graphdbName } = tableData;
+
+                // Filter variables that are ready for annotation
+                const annotatedVars = {};
+                const unannotatedVars = [];
+
+                for (const [varName, varData] of Object.entries(variableInfo)) {
+                    if (!varData.predicate) {
+                        unannotatedVars.push(`${varName} (missing predicate)`);
+                        continue;
+                    }
+                    if (!varData.class) {
+                        unannotatedVars.push(`${varName} (missing class)`);
+                        continue;
+                    }
+                    if (!varData.local_definition) {
+                        unannotatedVars.push(`${varName} (no local definition)`);
+                        continue;
+                    }
+                    annotatedVars[varName] = varData;
+                }
+
+                console.log(`Table ${tableName}: ${Object.keys(annotatedVars).length} annotated, ${unannotatedVars.length} unannotated`);
+
+                if (Object.keys(annotatedVars).length > 0) {
+                    allHtml += renderDatabaseSection(graphdbName, annotatedVars);
+                    totalAnnotatedVars += Object.keys(annotatedVars).length;
                 }
             }
-        } else if (data.variable_info) {
-            // Flat structure
-            databaseName = data.database_name || 'Unknown';
-            variableInfo = data.variable_info;
-        } else {
-            console.error('Unknown semantic map structure:', data);
-            showNoDataWarning();
-            return;
-        }
 
-        // Check if we have any variables
-        const variableNames = Object.keys(variableInfo);
-        if (variableNames.length === 0) {
-            showNoDataWarning();
-            return;
-        }
+            console.log('Total annotated vars:', totalAnnotatedVars);
 
-        // Filter variables that are ready for annotation (have predicate, class, and local_definition)
-        const annotatedVars = {};
-        const unannotatedVars = [];
-
-        for (const [varName, varData] of Object.entries(variableInfo)) {
-            if (!varData.predicate) {
-                unannotatedVars.push(`${varName} (missing predicate)`);
-                continue;
+            if (totalAnnotatedVars === 0) {
+                showNoDataWarning('No variables are ready for annotation. Please ensure variables have local definitions, predicates, and classes.');
+                return;
             }
-            if (!varData.class) {
-                unannotatedVars.push(`${varName} (missing class)`);
-                continue;
-            }
-            if (!varData.local_definition) {
-                unannotatedVars.push(`${varName} (no local definition)`);
-                continue;
-            }
-            annotatedVars[varName] = varData;
+
+            databaseSectionsDiv.innerHTML = allHtml;
+
+            // Hide loading, show content
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('annotationContent').style.display = 'block';
+
+            // Initialize toggle buttons
+            initializeToggleButtons();
+        } catch (error) {
+            console.error('Error in renderAnnotationData:', error);
+            showNoDataWarning('An error occurred while processing the semantic map: ' + error.message);
         }
-
-        // Check if we have any annotated variables
-        if (Object.keys(annotatedVars).length === 0) {
-            showNoDataWarning();
-            return;
-        }
-
-        // Build the HTML for the database section
-        const databaseSectionsDiv = document.getElementById('databaseSections');
-        databaseSectionsDiv.innerHTML = renderDatabaseSection(databaseName, annotatedVars);
-
-        // Hide loading, show content
-        document.getElementById('loadingState').style.display = 'none';
-        document.getElementById('annotationContent').style.display = 'block';
-
-        // Initialize toggle buttons
-        initializeToggleButtons();
     }
 
     /**
-     * Transform JSON-LD structure to flat variable_info format
-     * TODO handle appropriate using JSON-LD context
+     * Transform JSON-LD structure to variable_info organized by table
+     * Only includes tables that have a match in GraphDB
      */
-    function transformJsonLdToVariableInfo(data) {
-        const variableInfo = {};
+    function transformJsonLdToVariableInfoByTable(data, matchingTables) {
+        const result = {};
         const schemaVariables = data.schema?.variables || {};
         const databases = data.databases || {};
 
-        // Build a map of local columns to their definitions
-        const localDefinitions = {};
+        // Create a map of jsonld table name -> graphdb name
+        const tableToGraphDb = {};
+        for (const match of matchingTables) {
+            tableToGraphDb[match.jsonld] = match.graphdb;
+        }
+
+        // Process each database and table
         for (const [dbKey, dbData] of Object.entries(databases)) {
             if (!dbData.tables) continue;
+
             for (const [tableKey, tableData] of Object.entries(dbData.tables)) {
+                // Determine the table name (sourceFile or tableKey)
+                const tableName = (tableData.sourceFile) ? tableData.sourceFile : tableKey;
+
+                // Skip if this table doesn't have a GraphDB match
+                if (!tableToGraphDb[tableName]) continue;
+
+                const graphdbName = tableToGraphDb[tableName];
+                const variableInfo = {};
+
                 if (!tableData.columns) continue;
+
+                // Process columns for this table
                 for (const [colKey, colData] of Object.entries(tableData.columns)) {
-                    // Extract variable name from mapsTo (e.g., "schema:variable/biological_sex" -> "biological_sex")
+                    // Skip columns without localColumn defined
+                    if (!colData.localColumn) continue;
+
+                    // Extract variable name from mapsTo
                     let varName = colData.variable;
                     if (!varName && colData.mapsTo) {
                         varName = colData.mapsTo.split('/').pop();
                     }
-                    if (varName) {
-                        // Get local column name(s)
-                        const localCols = Array.isArray(colData.localColumn) ? colData.localColumn : [colData.localColumn];
-                        const localDef = localCols.filter(c => c).join(', ') || colKey;
+                    if (!varName) continue;
 
-                        // Store local mappings for value mapping terms
-                        const localMappings = colData.localMappings || {};
+                    // Get the schema variable info
+                    const varSchema = schemaVariables[varName] || {};
 
-                        localDefinitions[varName] = {
-                            local_definition: localDef,
-                            localMappings: localMappings
-                        };
+                    // Get local column name(s) - handle arrays
+                    const localCols = Array.isArray(colData.localColumn) ? colData.localColumn : [colData.localColumn];
+                    const filteredCols = localCols.filter(c => c);
+
+                    // Skip if no valid local columns after filtering
+                    if (filteredCols.length === 0) continue;
+
+                    const localDef = filteredCols.join(', ');
+
+                    // Get local mappings
+                    const localMappings = colData.localMappings || {};
+
+                    variableInfo[varName] = {
+                        predicate: varSchema.predicate || null,
+                        class: varSchema.class || null,
+                        data_type: varSchema.dataType || null,
+                        local_definition: localDef,
+                        value_mapping: null
+                    };
+
+                    // Add value mapping if present in schema - only include terms with local mappings
+                    if (varSchema.valueMapping && varSchema.valueMapping.terms) {
+                        const terms = {};
+                        let hasAnyLocalTerms = false;
+
+                        for (const [termKey, termData] of Object.entries(varSchema.valueMapping.terms)) {
+                            const localTermValue = localMappings[termKey];
+
+                            // Skip if no local mapping defined for this term
+                            if (localTermValue === undefined || localTermValue === null) continue;
+
+                            // Handle array values - concatenate them
+                            let localTerm;
+                            if (Array.isArray(localTermValue)) {
+                                localTerm = localTermValue.join(', ');
+                            } else {
+                                localTerm = localTermValue;
+                            }
+
+                            terms[termKey] = {
+                                target_class: termData.targetClass || null,
+                                local_term: localTerm
+                            };
+                            hasAnyLocalTerms = true;
+                        }
+
+                        // Only add value_mapping if we have at least one term with local mapping
+                        if (hasAnyLocalTerms) {
+                            variableInfo[varName].value_mapping = { terms };
+                        }
                     }
                 }
-            }
-        }
 
-        // Combine schema variables with local definitions
-        for (const [varName, varSchema] of Object.entries(schemaVariables)) {
-            const localInfo = localDefinitions[varName] || {};
-
-            variableInfo[varName] = {
-                predicate: varSchema.predicate || null,
-                class: varSchema.class || null,
-                data_type: varSchema.dataType || null,
-                local_definition: localInfo.local_definition || null,
-                value_mapping: null
-            };
-
-            // Add value mapping if present
-            if (varSchema.valueMapping && varSchema.valueMapping.terms) {
-                const terms = {};
-                for (const [termKey, termData] of Object.entries(varSchema.valueMapping.terms)) {
-                    // Get local term from localMappings if available
-                    const localMappings = localInfo.localMappings || {};
-                    const localTerms = localMappings[termKey];
-                    const localTerm = Array.isArray(localTerms) ? localTerms[0] : localTerms;
-
-                    terms[termKey] = {
-                        target_class: termData.targetClass || null,
-                        local_term: localTerm || null
+                if (Object.keys(variableInfo).length > 0) {
+                    result[tableName] = {
+                        variableInfo: variableInfo,
+                        graphdbName: graphdbName
                     };
                 }
-                variableInfo[varName].value_mapping = { terms };
             }
         }
 
-        return variableInfo;
+        return result;
     }
+
 
     /**
      * Render a database section with its variables
@@ -499,8 +769,8 @@
             `;
         }
 
-        // Render value mapping if present
-        if (varInfo.value_mapping && varInfo.value_mapping.terms) {
+        // Render value mapping if present and has terms
+        if (varInfo.value_mapping && varInfo.value_mapping.terms && Object.keys(varInfo.value_mapping.terms).length > 0) {
             html += `
                     <div class="detail-row">
                         <div class="detail-label">Value Mapping:</div>
@@ -509,16 +779,19 @@
             `;
 
             for (const [term, termInfo] of Object.entries(varInfo.value_mapping.terms)) {
-                if (termInfo.local_term) {
-                    const termLabel = term.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                    html += `
-                                <div class="value-mapping-item">
-                                    <span><strong>${escapeHtml(termLabel)}</strong></span>
-                                    <span>${escapeHtml(termInfo.local_term)}</span>
-                                    <span><code>${escapeHtml(termInfo.target_class || '')}</code></span>
-                                </div>
-                    `;
-                }
+                const termLabel = term.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                const localValue = termInfo.local_term;
+                const isEmptyValue = localValue === '';
+                const displayValue = isEmptyValue ? '(empty)' : localValue;
+                const valueClass = isEmptyValue ? 'local-value empty-value' : 'local-value';
+
+                html += `
+                            <div class="value-mapping-item">
+                                <span class="term-name">${escapeHtml(termLabel)}</span>
+                                <span class="${valueClass}">${escapeHtml(displayValue)}</span>
+                                <span class="target-class"><code>${escapeHtml(termInfo.target_class || '')}</code></span>
+                            </div>
+                `;
             }
 
             html += `
