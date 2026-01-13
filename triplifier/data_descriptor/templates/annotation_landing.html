@@ -66,42 +66,57 @@
                         upload it directly for annotation processing.
                     </p>
 
-                    <div class="alert alert-info"
-                         style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
-                        <i class="fas fa-info-circle"></i>
-                        <strong>What should the JSON-LD contain?</strong><br>
-                        Your JSON-LD file should include data variable definitions, types, and any pre-existing semantic
-                        mappings that you want to enhance with additional annotations.
+                    <!-- Warning when existing JSON-LD is in IndexedDB (hidden by default) -->
+                    <div id="existingJsonldWarning" class="alert alert-warning" style="display: none; font-size: 0.9em;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Existing semantic map detected!</strong><br>
+                        You already have a semantic map stored in your browser from a previous session.
+                        Uploading a new JSON-LD file will <strong>overwrite</strong> the existing semantic map.
+                        <br><small class="text-muted">Current semantic map data source(s): <span id="existingJsonldDatabases">-</span></small>
                     </div>
 
-                    <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data"
-                          id="jsonUploadForm">
-                        <div class="form-group">
-                            <label for="annotationJsonPath">JSON-LD File for Annotation:</label>
-                            <div class="input-group">
-                                <input type="text" id="annotationJsonPath" name="annotationJsonPath"
-                                       class="form-control"
-                                       placeholder="Select JSON-LD file..." readonly>
-                                <div class="input-group-append">
-                                    <button type="button" class="btn btn-outline-secondary"
-                                            onclick="document.getElementById('annotationJsonFile').click();">
-                                        <i class="fas fa-folder-open"></i> Browse
-                                    </button>
-                                </div>
-                            </div>
-                            <input type="file" id="annotationJsonFile" name="annotationJsonFile" style="display:none;"
-                                   accept=".jsonld" onchange="updateAnnotationJsonPath(this)">
-                            <small class="form-text text-muted">
-                                Upload a JSON-LD file containing your data descriptions and variable mappings.
-                            </small>
+                    <!-- Upload status messages (shown inside this card) -->
+                    <div id="uploadStatusMessage" style="display: none;"></div>
+
+                    <div id="uploadInfoSection">
+                        <div class="alert alert-info"
+                             style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>What should the JSON-LD contain?</strong><br>
+                            Your JSON-LD file should include data variable definitions, types, and any pre-existing semantic
+                            mappings that you want to enhance with additional annotations.
                         </div>
 
-                        <div class="form-group">
-                            <button type="submit" id="uploadJsonButton" class="btn btn-success" disabled>
-                                <i class="fas fa-upload"></i> Upload JSON-LD for Annotation
-                            </button>
-                        </div>
-                    </form>
+                        <form method="POST" action="/upload-annotation-json" enctype="multipart/form-data"
+                              id="jsonUploadForm">
+                            <div class="form-group">
+                                <label for="annotationJsonPath">JSON-LD File for Annotation:</label>
+                                <div class="input-group">
+                                    <input type="text" id="annotationJsonPath" name="annotationJsonPath"
+                                           class="form-control"
+                                           placeholder="Select JSON-LD file..." readonly>
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-secondary"
+                                                onclick="document.getElementById('annotationJsonFile').click();">
+                                            <i class="fas fa-folder-open"></i> Browse
+                                        </button>
+                                    </div>
+                                </div>
+                                <input type="file" id="annotationJsonFile" name="annotationJsonFile" style="display:none;"
+                                       accept=".jsonld" onchange="updateAnnotationJsonPath(this)">
+                                <small class="form-text text-muted">
+                                    Upload a JSON-LD file containing your data descriptions and variable mappings.
+                                </small>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Button is outside uploadInfoSection so it stays visible after successful upload -->
+                    <div class="form-group mb-0">
+                        <button type="submit" id="uploadJsonButton" class="btn btn-success" disabled form="jsonUploadForm">
+                            <i class="fas fa-upload"></i> Upload JSON-LD for Annotation
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -120,35 +135,31 @@
 
                 <form method="GET" action="/describe_landing">
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-play"></i> Start Describing your data
+                        <i class="fas fa-fast-backward"></i> Start Describing your data
                     </button>
                 </form>
             </div>
         </div>
 
         <!-- Continue with IndexedDB Semantic Map Section (hidden by default) -->
-        <div id="indexedDbSection" class="card" style="display: none;">
-            <div class="card-header" style="background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);">
+        <div id="indexedDbSection" class="card mb-4" style="display: none;">
+            <div class="card-header">
                 <h5 class="mb-0">
-                    <i class="fas fa-database"></i> Option 3: Continue with Existing Semantic Map
+                    <i class="fas fa-history"></i> Option 3: Continue with Existing Semantic Map
                 </h5>
             </div>
             <div class="card-body">
-                <div class="alert alert-success" style="font-size: 0.9em;">
-                    <i class="fas fa-check-circle"></i>
-                    <strong>Semantic Map Found!</strong><br>
-                    A semantic map from your previous session was found in your browser storage.
-                    You can continue directly to the annotation review.
-                </div>
-
                 <p class="text-muted">
-                    <strong>Database:</strong> <span id="indexedDbDatabaseName">Loading...</span><br>
-                    <small>This semantic map was saved during your last describe workflow session.</small>
+                    A semantic map from your previous session was found in your browser storage.
                 </p>
 
-                <a href="/annotation-review" class="btn btn-success btn-lg">
+                <div id="indexedDbMatchInfo" class="mb-3"></div>
+
+                <a href="/annotation-review" class="btn btn-primary" id="continueToReviewBtn" style="display: none;">
                     <i class="fas fa-arrow-right"></i> Continue to Annotation Review
                 </a>
+
+                <div id="indexedDbErrorMessage" style="display: none;"></div>
             </div>
         </div>
     {% endif %}
@@ -161,6 +172,9 @@
 {% include 'footer.html' %}
 
 <script>
+    // Store GraphDB databases globally
+    let graphDbDatabases = [];
+
     function updateAnnotationJsonPath(input) {
         const fullPath = input.value;
         const fileName = fullPath.split('\\').pop();
@@ -170,6 +184,9 @@
         $("#uploadJsonButton").prop("disabled", !fileName);
     }
 
+    /**
+     * Show status message at the top of the page (for general messages)
+     */
     function showStatusMessage(message, type = "success") {
         const alertClass = type === "error" ? "alert-danger" :
             type === "info" ? "alert-info" : "alert-success";
@@ -189,7 +206,156 @@
     }
 
     /**
-     * Check IndexedDB for existing semantic map on page load
+     * Show upload status message inside the Option 1 card
+     */
+    function showUploadStatus(message, type = "success") {
+        const alertClass = type === "error" ? "alert-danger" :
+            type === "info" ? "alert-info" : "alert-success";
+        const icon = type === "error" ? "exclamation-triangle" :
+            type === "info" ? "info-circle" : "check-circle";
+
+        const alertHtml = `
+            <div class="alert ${alertClass}" style="font-size: 0.9em;">
+                <i class="fas fa-${icon}"></i>
+                ${message}
+            </div>
+        `;
+
+        $("#uploadStatusMessage").html(alertHtml).show();
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
+     * Check if a database name matches any GraphDB database
+     */
+    function findMatchingDatabase(mapDbName, graphDbList) {
+        if (!mapDbName || mapDbName === '') return null;
+
+        for (const db of graphDbList) {
+            if (db === mapDbName) return db;
+
+            // Try matching without .csv extension
+            const mapNoExt = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName;
+            const dbNoExt = db.endsWith('.csv') ? db.slice(0, -4) : db;
+            if (mapNoExt === dbNoExt) return db;
+        }
+        return null;
+    }
+
+    /**
+     * Extract table names from JSON-LD structure
+     * Tables are the actual data sources that match with GraphDB
+     */
+    function extractJsonLdTables(data) {
+        const tables = [];
+        if (data.databases) {
+            for (const [dbKey, dbData] of Object.entries(data.databases)) {
+                if (dbData.tables) {
+                    for (const [tableKey, tableData] of Object.entries(dbData.tables)) {
+                        // Use sourceFile if available, otherwise use the table key
+                        const tableName = (typeof tableData === 'object' && tableData.sourceFile)
+                            ? tableData.sourceFile
+                            : tableKey;
+                        tables.push(tableName);
+                    }
+                }
+            }
+        } else if (data.database_name) {
+            // Fallback for flat structure
+            tables.push(data.database_name);
+        }
+        return tables;
+    }
+
+    /**
+     * Generate database comparison HTML - only show issues/warnings
+     */
+    function generateDatabaseComparisonHtml(jsonldTables, graphDbList) {
+        const matching = [];
+        const nonMatchingJsonld = [];
+        const nonMatchingGraphDb = [...graphDbList];
+
+        for (const jsonldTable of jsonldTables) {
+            const match = findMatchingDatabase(jsonldTable, graphDbList);
+            if (match) {
+                matching.push({ jsonld: jsonldTable, graphdb: match });
+                const idx = nonMatchingGraphDb.indexOf(match);
+                if (idx > -1) nonMatchingGraphDb.splice(idx, 1);
+            } else {
+                nonMatchingJsonld.push(jsonldTable);
+            }
+        }
+
+        let html = '';
+
+        if (matching.length > 0) {
+            html += `<div class="text-success mb-2" style="font-size: 0.9em;">
+                <i class="fas fa-check-circle"></i> <strong>${matching.length}</strong> data source(s) ready for annotation
+            </div>`;
+        }
+
+        if (nonMatchingJsonld.length > 0) {
+            html += `<div class="text-warning mb-2" style="font-size: 0.9em;">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Not in GraphDB:</strong> ${nonMatchingJsonld.map(t => escapeHtml(t)).join(', ')}
+            </div>`;
+        }
+
+        if (nonMatchingGraphDb.length > 0) {
+            html += `<div class="text-muted mb-2" style="font-size: 0.9em;">
+                <i class="fas fa-info-circle"></i> <strong>Other data in GraphDB:</strong> ${nonMatchingGraphDb.map(t => escapeHtml(t)).join(', ')}
+            </div>`;
+        }
+
+        return {
+            html: html,
+            hasMatches: matching.length > 0,
+            matching: matching,
+            nonMatchingJsonld: nonMatchingJsonld,
+            nonMatchingGraphDb: nonMatchingGraphDb
+        };
+    }
+
+    /**
+     * Fetch databases from GraphDB and store in IndexedDB
+     */
+    async function fetchAndStoreGraphDbDatabases() {
+        try {
+            const response = await fetch('/api/graphdb-databases');
+            const data = await response.json();
+
+            if (data.success && data.databases && data.databases.length > 0) {
+                console.log('Fetched GraphDB databases:', data.databases);
+                graphDbDatabases = data.databases;
+
+                // Store in IndexedDB for use across pages
+                await FlyoverDB.saveData('metadata', {
+                    key: 'graphdb_databases',
+                    data: data.databases,
+                    timestamp: new Date().toISOString()
+                });
+
+                return data.databases;
+            } else {
+                console.warn('No databases found in GraphDB:', data.message);
+                return [];
+            }
+        } catch (error) {
+            console.error('Error fetching GraphDB databases:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Check IndexedDB for existing semantic map and compare with GraphDB databases
      */
     async function checkIndexedDbSemanticMap() {
         try {
@@ -202,20 +368,46 @@
             // Initialize the database
             await FlyoverDB.initDB();
 
+            // Fetch and store GraphDB databases
+            graphDbDatabases = await fetchAndStoreGraphDbDatabases();
+
             // Try to get the semantic map from IndexedDB
             const result = await FlyoverDB.getData('metadata', 'semantic_map');
 
             if (result && result.data) {
                 console.log('IndexedDB: Found semantic map', result);
 
-                // Extract database name from the semantic map
-                const databaseName = result.data.database_name || 'Unknown';
-
-                // Update the UI to show Option 3
+                // Show Option 3 section
                 document.getElementById('indexedDbSection').style.display = 'block';
-                document.getElementById('indexedDbDatabaseName').textContent = databaseName;
+
+                // Extract tables from JSON-LD (these are the actual data sources)
+                const jsonldTables = extractJsonLdTables(result.data);
+
+                // Generate comparison
+                const comparison = generateDatabaseComparisonHtml(jsonldTables, graphDbDatabases);
+                document.getElementById('indexedDbMatchInfo').innerHTML = comparison.html;
+
+                // Show/hide continue button based on match
+                if (comparison.hasMatches) {
+                    document.getElementById('continueToReviewBtn').style.display = 'inline-block';
+                    document.getElementById('indexedDbErrorMessage').style.display = 'none';
+                } else {
+                    document.getElementById('continueToReviewBtn').style.display = 'none';
+                    document.getElementById('indexedDbErrorMessage').style.display = 'block';
+                    document.getElementById('indexedDbErrorMessage').innerHTML = `
+                        <div class="alert alert-danger mt-3" style="font-size: 0.9em;">
+                            <i class="fas fa-times-circle"></i>
+                            <strong>Cannot proceed:</strong> No matching data sources found between your semantic map and GraphDB.
+                        </div>`;
+                }
+
+                // Also show warning in Option 1 about overwriting
+                document.getElementById('existingJsonldWarning').style.display = 'block';
+                document.getElementById('existingJsonldDatabases').textContent = jsonldTables.join(', ') || 'Unknown';
             } else {
                 console.log('IndexedDB: No semantic map found');
+                // Hide the warning in Option 1 since there's nothing to overwrite
+                document.getElementById('existingJsonldWarning').style.display = 'none';
             }
         } catch (error) {
             console.error('Error checking IndexedDB for semantic map:', error);
@@ -227,7 +419,7 @@
         checkIndexedDbSemanticMap();
 
         // Handle JSON-LD upload form submission
-        $("#jsonUploadForm").submit(function (e) {
+        $("#jsonUploadForm").submit(async function (e) {
             e.preventDefault();
 
             if (!$("#annotationJsonFile")[0].files.length) {
@@ -235,42 +427,123 @@
                 return;
             }
 
-            // Create FormData object
-            const formData = new FormData();
-            formData.append("annotationJsonFile", $("#annotationJsonFile")[0].files[0]);
+            const file = $("#annotationJsonFile")[0].files[0];
 
-            // Show loading state
+            // Show loading state immediately
             $("#uploadJsonButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Uploading...');
+            $("#uploadStatusMessage").hide();
 
-            // Submit via AJAX
-            $.ajax({
-                url: "/upload-annotation-json",
-                type: "POST",
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function (response) {
-                    showStatusMessage("JSON-LD file uploaded successfully! Redirecting to annotation review...", "success");
+            try {
+                // Read file content for later IndexedDB storage
+                const fileContent = await readFileAsText(file);
+                let jsonData;
 
-                    // Redirect to annotation review after short delay
-                    setTimeout(function () {
-                        window.location.href = "/annotation-review";
-                    }, 2000);
-                },
-                error: function (xhr, status, error) {
-                    let errorMessage = "Failed to upload JSON-LD file.";
-                    if (xhr.responseJSON && xhr.responseJSON.error) {
-                        errorMessage = xhr.responseJSON.error;
+                try {
+                    jsonData = JSON.parse(fileContent);
+                } catch (parseError) {
+                    showUploadStatus("Invalid JSON-LD file format. Please check your file.", "error");
+                    $("#uploadJsonButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload JSON-LD for Annotation');
+                    return;
+                }
+
+                // Create FormData and upload
+                const formData = new FormData();
+                formData.append("annotationJsonFile", file);
+
+                const response = await fetch("/upload-annotation-json", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Save to IndexedDB (overwriting any existing)
+                    try {
+                        await FlyoverDB.saveData('metadata', {
+                            key: 'semantic_map',
+                            data: jsonData,
+                            timestamp: new Date().toISOString()
+                        });
+                        console.log('Saved uploaded JSON-LD to IndexedDB');
+                    } catch (dbError) {
+                        console.error('Failed to save JSON-LD to IndexedDB:', dbError);
                     }
-                    showStatusMessage(errorMessage, "error");
+
+                    // Build success message
+                    let message = "<strong>JSON-LD file uploaded successfully!</strong><br>";
+
+                    if (result.matching_databases && result.matching_databases.length > 0) {
+                        message += `<i class="fas fa-check-circle text-success"></i> ${result.matching_databases.length} data source(s) matched and ready for annotation.<br>`;
+                    }
+
+                    if (result.non_matching_jsonld && result.non_matching_jsonld.length > 0) {
+                        message += `<i class="fas fa-exclamation-triangle text-warning"></i> ${result.non_matching_jsonld.length} data source(s) in semantic map not found in GraphDB.<br>`;
+                    }
+
+                    showUploadStatus(message, "success");
+
+                    // Hide the info section and existing warning since upload was successful
+                    $("#uploadInfoSection").hide();
+                    $("#existingJsonldWarning").hide();
+
+                    // Hide Option 3 since we just uploaded a new semantic map
+                    $("#indexedDbSection").hide();
+
+                    // Re-enable button and change to "Proceed" button
+                    $("#uploadJsonButton")
+                        .prop("disabled", false)
+                        .removeClass("btn-success")
+                        .addClass("btn-primary")
+                        .html('<i class="fas fa-arrow-right"></i> Proceed to Annotation Review')
+                        .off("click")
+                        .on("click", function(e) {
+                            e.preventDefault();
+                            window.location.href = "/annotation-review";
+                        });
+                } else {
+                    // Handle error response
+                    let errorMessage = result.error || "Failed to upload JSON-LD file.";
+
+                    if (result.graphdb_databases && result.graphdb_databases.length > 0) {
+                        errorMessage += "<br><br><strong>Data available in GraphDB:</strong><ul>";
+                        result.graphdb_databases.forEach(db => {
+                            errorMessage += `<li>${escapeHtml(db)}</li>`;
+                        });
+                        errorMessage += "</ul>";
+                    }
+
+                    if (result.jsonld_databases && result.jsonld_databases.length > 0) {
+                        errorMessage += "<strong>Data sources in uploaded semantic map:</strong><ul>";
+                        result.jsonld_databases.forEach(db => {
+                            errorMessage += `<li>${escapeHtml(db)}</li>`;
+                        });
+                        errorMessage += "</ul>";
+                    }
+
+                    showUploadStatus(errorMessage, "error");
                     $("#uploadJsonButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload JSON-LD for Annotation');
                 }
-            });
+            } catch (error) {
+                console.error('Upload error:', error);
+                showUploadStatus("Failed to upload file: " + error.message, "error");
+                $("#uploadJsonButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload JSON-LD for Annotation');
+            }
         });
     });
-</script>
 
-<!-- Add some custom CSS -->
+    /**
+     * Helper function to read file as text using Promise
+     */
+    function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+</script><!-- Add some custom CSS -->
 <style>
     .card {
         border: 1px solid #dee2e6;
