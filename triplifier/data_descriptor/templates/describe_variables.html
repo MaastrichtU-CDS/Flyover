@@ -475,6 +475,24 @@
                 cacheCurrentPageState(database);
             });
 
+            const form = $(this);
+            for (const [key, cached] of Object.entries(formStateCache)) {
+                const db = cached.database;
+                const item = key.replace(`${db}_`, '');
+
+                if ($(`#ncit_comment_${db}_${item}`).length === 0) {
+                    if (cached.description) {
+                        form.append(`<input type="hidden" name="ncit_comment_${db}_${item}" value="${cached.description}">`);
+                    }
+                    if (cached.datatype) {
+                        form.append(`<input type="hidden" name="${db}_${item}" value="${cached.datatype}">`);
+                    }
+                    if (cached.comment) {
+                        form.append(`<input type="hidden" name="comment_${db}_${item}" value="${cached.comment}">`);
+                    }
+                }
+            }
+
             startLoadingAnimation('#submitBtn');
         });
 
@@ -505,9 +523,12 @@
         selectedDescriptions = {};
 
         for (const key in formStateCache) {
-            const desc = formStateCache[key].description;
-            if (desc && desc !== '' && desc !== 'Other') {
-                selectedDescriptions[desc] = key;
+            const cached = formStateCache[key];
+            const desc = cached.description;
+            const db = cached.database;
+            if (desc && desc !== '' && desc !== 'Other' && db) {
+                if (!selectedDescriptions[db]) selectedDescriptions[db] = {};
+                selectedDescriptions[db][desc] = key;
             }
         }
 
@@ -518,8 +539,11 @@
             const key = `${db}_${item}`;
             const val = $select.val();
 
-            if (val && val !== '' && val !== 'Other' && !selectedDescriptions[val]) {
-                selectedDescriptions[val] = key;
+            if (val && val !== '' && val !== 'Other') {
+                if (!selectedDescriptions[db]) selectedDescriptions[db] = {};
+                if (!selectedDescriptions[db][val]) {
+                    selectedDescriptions[db][val] = key;
+                }
             }
         });
     }
@@ -533,12 +557,13 @@
             const item = $select.data('item');
             const currentKey = `${db}_${item}`;
             const currentVal = $select.val();
+            const dbSelections = selectedDescriptions[db] || {};
 
             $select.find('option').each(function() {
                 const optVal = $(this).val();
                 if (optVal === '' || optVal === 'Other') return;
 
-                if (selectedDescriptions[optVal] && selectedDescriptions[optVal] !== currentKey) {
+                if (dbSelections[optVal] && dbSelections[optVal] !== currentKey) {
                     $(this).prop('disabled', true);
                 } else {
                     $(this).prop('disabled', false);

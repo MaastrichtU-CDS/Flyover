@@ -6,7 +6,8 @@ const JSONLDMapper = {
     },
 
     formatToSnakeCase: function(str) {
-        return str.toLowerCase().replace(/\s+/g, '_');
+        if (str === null || str === undefined) return '';
+        return String(str).toLowerCase().replace(/\s+/g, '_');
     },
 
     formatDataTypeDisplay: function(dataType) {
@@ -21,7 +22,7 @@ const JSONLDMapper = {
     normalizeLocalMappings: function(localMappings) {
         for (const [key, value] of Object.entries(localMappings)) {
             if (!Array.isArray(value)) {
-                localMappings[key] = value ? [value] : [];
+                localMappings[key] = (value !== null && value !== undefined) ? [value] : [];
             }
         }
         return localMappings;
@@ -528,11 +529,22 @@ const JSONLDMapper = {
     },
 
     getCategoryOptionsForVariable: function(database, globalVarName) {
-        if (!this.mapping?.databases) {
+        if (!this.mapping?.schema?.variables) {
             return [];
         }
 
-        const varInfo = this.mapping.schema?.variables?.[globalVarName];
+        let varInfo = this.mapping.schema.variables[globalVarName];
+
+        if (!varInfo) {
+            const normalizedName = globalVarName.toLowerCase().replace(/\s+/g, '_');
+            for (const [key, value] of Object.entries(this.mapping.schema.variables)) {
+                if (key.toLowerCase().replace(/\s+/g, '_') === normalizedName) {
+                    varInfo = value;
+                    break;
+                }
+            }
+        }
+
         if (!varInfo?.valueMapping?.terms) {
             return [];
         }
@@ -549,7 +561,15 @@ const JSONLDMapper = {
             return {};
         }
 
-        const result = this.findColumnForVariable(this.mapping.databases, globalVarName, localVariable, database);
+        let result = this.findColumnForVariable(this.mapping.databases, globalVarName, localVariable, database);
+
+        if (!result) {
+            result = this.findColumnForVariable(this.mapping.databases, globalVarName, null, database);
+        }
+
+        if (!result) {
+            result = this.findColumnForVariable(this.mapping.databases, globalVarName, null, null);
+        }
 
         if (result) {
             const localMappings = result.colData.localMappings || {};
@@ -581,10 +601,9 @@ const JSONLDMapper = {
             colData.localMappings = {};
         }
 
-        if (previousTermKey && colData.localMappings[previousTermKey]) {
+        if (previousTermKey && (colData.localMappings[previousTermKey] !== null && colData.localMappings[previousTermKey] !== undefined)) {
             if (!Array.isArray(colData.localMappings[previousTermKey])) {
-                colData.localMappings[previousTermKey] = colData.localMappings[previousTermKey] ?
-                    [colData.localMappings[previousTermKey]] : [];
+                colData.localMappings[previousTermKey] = [colData.localMappings[previousTermKey]];
             }
 
             const prevIndex = colData.localMappings[previousTermKey].indexOf(localValue);

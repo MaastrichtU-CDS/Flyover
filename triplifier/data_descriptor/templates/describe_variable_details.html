@@ -409,7 +409,18 @@
 
             bindToggleEvents();
             $('.selectpicker').selectpicker();
+            applyLocalMappingPreselections();
             applyPreselectedValues();
+        }
+
+        function applyLocalMappingPreselections() {
+            $('.category-select').each(function() {
+                const $select = $(this);
+                const preselectedValue = $select.data('previous-selection');
+                if (preselectedValue !== undefined && preselectedValue !== null && preselectedValue !== '') {
+                    $select.selectpicker('val', preselectedValue);
+                }
+            });
         }
 
         function renderContinuousVariable(container, database, displayName, dbIdx, itemIdx) {
@@ -465,11 +476,16 @@
             for (const [termKey, values] of Object.entries(localMappings)) {
                 if (Array.isArray(values)) {
                     values.forEach(val => {
-                        valueToTermKey[val] = termKey;
+                        if (val !== null && val !== undefined) {
+                            valueToTermKey[String(val).trim()] = termKey;
+                        }
                     });
+                } else if (values !== null && values !== undefined) {
+                    valueToTermKey[String(values).trim()] = termKey;
                 }
             }
             console.log('Flyover: Value to term key mapping:', valueToTermKey);
+            console.log('Flyover: Raw local mappings:', localMappings);
 
             let valueIdx = 0;
             for (const categoryData of categories) {
@@ -500,7 +516,7 @@
                     `;
                 }
 
-                const termKey = valueToTermKey[value];
+                const termKey = valueToTermKey[String(value).trim()];
                 const preselectedValue = termKey ? termKey.charAt(0).toUpperCase() + termKey.slice(1).replace(/_/g, ' ') : '';
                 console.log('Flyover: Preselected value for', value, ':', preselectedValue);
 
@@ -541,10 +557,6 @@
                            data-category-value="${safeValue}"
                            value="${count}" />
                 `);
-
-                if (preselectedValue) {
-                    categoryItem.find('.category-select').val(preselectedValue);
-                }
 
                 categoriesSection.append(categoryItem);
             }
@@ -620,9 +632,13 @@
                 const database = $(this).data('database');
                 const localVariable = $(this).data('variable');
                 const globalVariable = $(this).data('global-variable');
-                const categoryValue = String($(this).data('category-value'));
+                const categoryValue = $(this).data('category-value');
                 const selectedOption = $(this).val();
                 const previousOption = $(this).data('previous-selection');
+
+                if (!database || !localVariable || !globalVariable || categoryValue === undefined) {
+                    return;
+                }
 
                 console.log('Flyover: Category selection changed:', {
                     database: database,
@@ -635,7 +651,7 @@
 
                 $(this).data('previous-selection', selectedOption);
 
-                JSONLDMapper.updateCategoryMapping(database, localVariable, globalVariable, categoryValue, selectedOption, previousOption)
+                JSONLDMapper.updateCategoryMapping(database, localVariable, globalVariable, String(categoryValue), selectedOption, previousOption)
                     .then(success => {
                         if (success) {
                             console.log('Flyover: Successfully updated category mapping');
