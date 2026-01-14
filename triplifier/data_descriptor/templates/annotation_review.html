@@ -185,6 +185,41 @@
             font-size: 3em;
             color: #007bff;
         }
+
+        .pagination-controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .pagination-controls button {
+            padding: 5px 15px;
+            margin: 0 5px;
+            border: none;
+            background-color: transparent;
+            color: #007bff;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .pagination-controls button:hover {
+            transform: scale(1.2);
+        }
+
+        .pagination-controls button:disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .page-indicator {
+            margin: 0 10px;
+            font-size: 1rem;
+        }
+
+        .variables-container {
+            min-height: 100px;
+        }
     </style>
 </head>
 
@@ -264,6 +299,10 @@
     // Store the semantic map data and GraphDB databases
     let semanticMapData = null;
     let graphDbDatabases = [];
+
+    const PAGE_SIZE = 10;
+    const databasePages = {};
+    const databaseVariables = {};
 
     /**
      * Fetch databases from GraphDB and store in IndexedDB
@@ -702,30 +741,88 @@
      */
     function renderDatabaseSection(databaseName, variables) {
         const varCount = Object.keys(variables).length;
+        const totalPages = Math.ceil(varCount / PAGE_SIZE);
+
+        databaseVariables[databaseName] = Object.entries(variables);
+        databasePages[databaseName] = 1;
+
         let html = `
             <h2 style="display: inline-block;"><i class="fas fa-database"></i> ${escapeHtml(databaseName)}</h2>
-            <button class="toggle-button" type="button">
+            <button class="toggle-button" type="button" data-database="${escapeHtml(databaseName)}">
                 <span class="toggle-text">Show more</span>
                 <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
                     <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
                 </svg>
             </button>
-            <div class="content hidden">
+            <div class="content hidden" data-database="${escapeHtml(databaseName)}">
                 <div class="database-summary">
                     <strong>Database Summary:</strong> ${varCount} variable(s) ready for annotation
                 </div>
-        `;
-
-        for (const [varName, varInfo] of Object.entries(variables)) {
-            html += renderVariableCard(varName, varInfo);
-        }
-
-        html += `
+                <div class="variables-container" id="variables-${escapeHtml(databaseName)}">
+                </div>
+                ${totalPages > 1 ? `
+                <div class="pagination-controls" data-database="${escapeHtml(databaseName)}">
+                    <button type="button" onclick="changePage('${escapeHtml(databaseName)}', -1)" disabled>&#x2190;</button>
+                    <span class="page-indicator">Page <span class="current-page">1</span> of <span class="total-pages">${totalPages}</span></span>
+                    <button type="button" onclick="changePage('${escapeHtml(databaseName)}', 1)">&#x2192;</button>
+                </div>
+                ` : ''}
             </div>
             <hr>
         `;
 
         return html;
+    }
+
+    /**
+     * Render a specific page of variables for a database
+     */
+    function renderPage(database, pageNumber) {
+        const variables = databaseVariables[database];
+        if (!variables) return;
+
+        const totalPages = Math.ceil(variables.length / PAGE_SIZE);
+        const startIdx = (pageNumber - 1) * PAGE_SIZE;
+        const endIdx = Math.min(startIdx + PAGE_SIZE, variables.length);
+
+        const container = document.getElementById(`variables-${database}`);
+        if (!container) return;
+
+        let html = '';
+        for (let i = startIdx; i < endIdx; i++) {
+            const [varName, varInfo] = variables[i];
+            html += renderVariableCard(varName, varInfo);
+        }
+        container.innerHTML = html;
+
+        const paginationControls = document.querySelector(`.pagination-controls[data-database="${database}"]`);
+        if (paginationControls) {
+            const prevBtn = paginationControls.querySelector('button:first-child');
+            const nextBtn = paginationControls.querySelector('button:last-child');
+            const currentPageSpan = paginationControls.querySelector('.current-page');
+
+            if (prevBtn) prevBtn.disabled = pageNumber <= 1;
+            if (nextBtn) nextBtn.disabled = pageNumber >= totalPages;
+            if (currentPageSpan) currentPageSpan.textContent = pageNumber;
+        }
+
+        databasePages[database] = pageNumber;
+    }
+
+    /**
+     * Change page for a specific database
+     */
+    function changePage(database, direction) {
+        const currentPage = databasePages[database] || 1;
+        const variables = databaseVariables[database];
+        if (!variables) return;
+
+        const totalPages = Math.ceil(variables.length / PAGE_SIZE);
+        const newPage = currentPage + direction;
+
+        if (newPage >= 1 && newPage <= totalPages) {
+            renderPage(database, newPage);
+        }
     }
 
     /**
@@ -826,9 +923,15 @@
         $('.toggle-button').off('click').on('click', function () {
             var textElement = $(this).find('.toggle-text');
             var svgElement = $(this).find('.angle-icon path');
-            if (textElement.text() === 'Show more') {
+            var database = $(this).data('database');
+            var isOpening = textElement.text() === 'Show more';
+
+            if (isOpening) {
                 textElement.text('Show less');
                 svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
+                if (database && databaseVariables[database]) {
+                    renderPage(database, databasePages[database] || 1);
+                }
             } else {
                 textElement.text('Show more');
                 svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
