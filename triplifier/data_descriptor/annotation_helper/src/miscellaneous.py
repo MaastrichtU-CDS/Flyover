@@ -772,7 +772,7 @@ def read_file(file_name, path=None):
     try:
         logging.debug(f"Reading file {file_path}")
         with open(file_path, "r") as file:
-            if file_name.lower().endswith(".json"):
+            if file_name.lower().endswith(".json") or file_name.lower().endswith(".jsonld"):
                 # if the file has a .json extension, treat it as a JSON file
                 file_contents = json.load(file)
             else:
