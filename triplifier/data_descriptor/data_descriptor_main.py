@@ -68,6 +68,7 @@ from utils.session_helpers import (
     get_database_name_from_mapping,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
+    get_table_names_from_mapping,
 )
 from annotation_helper.src.miscellaneous import add_annotation
 from validation import MappingValidator
@@ -1336,22 +1337,32 @@ def start_annotation():
 
         # Create a temporary directory for the annotation process
         temp_dir = "/tmp/annotation_temp"
-        os.makedirs(temp_dir, exist_ok=True)
+        os. makedirs(temp_dir, exist_ok=True)
 
         # Initialize annotation status
         session_cache.annotation_status = {}
 
         total_annotated_vars = 0
 
-        # Get the database name from the available mapping
-        map_database_name = get_database_name_from_mapping(session_cache)
+        # Get table names from the mapping (handles both JSON-LD and legacy formats)
+        map_table_names = get_table_names_from_mapping(session_cache)
 
         # Process each database separately using its semantic map
         for database in session_cache.databases:
-            # Skip databases that don't match the semantic map's database_name
-            if not graph_database_find_name_match(map_database_name, database):
+            # Check if this database matches any table name from the semantic map
+            matches_any_table = False
+            for table_name in map_table_names:
+                if graph_database_find_name_match(table_name, database):
+                    matches_any_table = True
+                    break
+
+            # If no table names specified (empty list), treat as global template
+            if not map_table_names:
+                matches_any_table = True
+
+            if not matches_any_table:
                 logger.info(
-                    f"Skipping database {database} - does not match semantic map database_name '{map_database_name}'"
+                    f"Skipping database {database} - does not match any table in semantic map:  {map_table_names}"
                 )
                 continue
 
@@ -1375,12 +1386,12 @@ def start_annotation():
                     "PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> "
                     "PREFIX owl: <http://www.w3.org/2002/07/owl#> "
                     "PREFIX roo: <http://www.cancerdata.org/roo/> "
-                    "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+                    "PREFIX ncit: <http://ncicb.nci. nih.gov/xml/owl/EVS/Thesaurus. owl#>",
                 )
 
             # Filter only variables that have local definitions
             annotated_variables = {}
-            for var_name, var_data in variable_info.items():
+            for var_name, var_data in variable_info. items():
                 # For JSON-LD, local_definition is already in var_data
                 # For legacy, use the shared helper to process variable
                 if is_jsonld:
@@ -1388,7 +1399,7 @@ def start_annotation():
                     var_copy = copy.deepcopy(var_data)
                 else:
                     var_copy, has_local_def = process_variable_for_annotation(
-                        var_name, var_data, session_cache.global_semantic_map
+                        var_name, var_data, session_cache. global_semantic_map
                     )
 
                 # Only add variables with local definitions
@@ -1396,7 +1407,7 @@ def start_annotation():
                     annotated_variables[var_name] = var_copy
 
             if not annotated_variables:
-                logger.info(
+                logger. info(
                     f"No variables with local definitions found for database {database}"
                 )
                 continue
@@ -1420,7 +1431,7 @@ def start_annotation():
                 # For now, we'll assume success for variables with local definitions
                 # In the future the add_annotation function should return status
                 for var_name, _var_data in annotated_variables.items():
-                    session_cache.annotation_status[f"{database}.{var_name}"] = {
+                    session_cache.annotation_status[f"{database}. {var_name}"] = {
                         "success": True,
                         "message": "Annotation completed successfully",
                         "database": database,
@@ -1433,11 +1444,11 @@ def start_annotation():
 
             except Exception as annotation_error:
                 logger.error(
-                    f"Error during annotation execution for database {database}: {str(annotation_error)}"
+                    f"Error during annotation execution for database {database}:  {str(annotation_error)}"
                 )
 
                 # Mark all variables as failed for this database
-                for var_name in annotated_variables.keys():
+                for var_name in annotated_variables. keys():
                     session_cache.annotation_status[f"{database}.{var_name}"] = {
                         "success": False,
                         "error": str(annotation_error),
