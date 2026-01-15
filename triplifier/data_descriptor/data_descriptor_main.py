@@ -1337,7 +1337,7 @@ def start_annotation():
 
         # Create a temporary directory for the annotation process
         temp_dir = "/tmp/annotation_temp"
-        os. makedirs(temp_dir, exist_ok=True)
+        os.makedirs(temp_dir, exist_ok=True)
 
         # Initialize annotation status
         session_cache.annotation_status = {}
@@ -1391,7 +1391,7 @@ def start_annotation():
 
             # Filter only variables that have local definitions
             annotated_variables = {}
-            for var_name, var_data in variable_info. items():
+            for var_name, var_data in variable_info.items():
                 # For JSON-LD, local_definition is already in var_data
                 # For legacy, use the shared helper to process variable
                 if is_jsonld:
@@ -1399,7 +1399,7 @@ def start_annotation():
                     var_copy = copy.deepcopy(var_data)
                 else:
                     var_copy, has_local_def = process_variable_for_annotation(
-                        var_name, var_data, session_cache. global_semantic_map
+                        var_name, var_data, session_cache.global_semantic_map
                     )
 
                 # Only add variables with local definitions
@@ -1407,7 +1407,7 @@ def start_annotation():
                     annotated_variables[var_name] = var_copy
 
             if not annotated_variables:
-                logger. info(
+                logger.info(
                     f"No variables with local definitions found for database {database}"
                 )
                 continue
@@ -1448,7 +1448,7 @@ def start_annotation():
                 )
 
                 # Mark all variables as failed for this database
-                for var_name in annotated_variables. keys():
+                for var_name in annotated_variables.keys():
                     session_cache.annotation_status[f"{database}.{var_name}"] = {
                         "success": False,
                         "error": str(annotation_error),
@@ -1650,24 +1650,34 @@ def verify_annotation_ask():
                 {"success": False, "error": "Variable has no local definition"}
             )
 
+        if not var_class:
+            return jsonify({"success": False, "error": "Variable has no class mapping"})
+
+        if isinstance(local_definition, list):
+            local_definition = local_definition[0] if local_definition else ""
+        if isinstance(local_definition, str):
+            local_definition = local_definition.strip("[]'\"")
+
         # Build prefixes string with required prefixes
-        prefixes = """PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://data.local/rdf/ontology/>
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
-        PREFIX sio: <http://semanticscience.org/resource/>"""
+        base_prefixes = {
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "dbo": "http://um-cds/ontologies/databaseontology/",
+            "db": "http://data.local/rdf/ontology/",
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "roo": "http://www.cancerdata.org/roo/",
+            "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+            "sio": "http://semanticscience.org/resource/",
+        }
 
         # Add any additional prefixes from the semantic map
         prefixes_from_map = semantic_map.get("prefixes", {})
         if isinstance(prefixes_from_map, dict):
             for prefix_key, prefix_uri in prefixes_from_map.items():
-                prefixes += f"\nPREFIX {prefix_key}: <{prefix_uri}>"
-        elif isinstance(prefixes_from_map, str):
-            # Legacy format may have prefixes as a string
-            prefixes += f"\n{prefixes_from_map}"
+                if prefix_key not in base_prefixes:
+                    base_prefixes[prefix_key] = prefix_uri
+
+        prefixes = "\n".join(f"PREFIX {k}: <{v}>" for k, v in base_prefixes.items())
 
         # Build the ASK query according to the specification
         ask_query_parts = []
