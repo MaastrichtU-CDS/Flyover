@@ -65,7 +65,6 @@ from utils.session_helpers import (
     process_variable_for_annotation,
     get_semantic_map_for_annotation,
     has_semantic_map,
-    get_database_name_from_mapping,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
     get_table_names_from_mapping,
@@ -1212,7 +1211,7 @@ def upload_annotation_json():
             # Extract tables from JSON-LD structure (tables are the actual data sources)
             jsonld_tables = []
             if json_data.get("databases"):
-                for db_key, db_data in json_data["databases"].items():
+                for _db_key, db_data in json_data["databases"].items():
                     if isinstance(db_data, dict) and db_data.get("tables"):
                         for table_key, table_data in db_data["tables"].items():
                             # Use sourceFile if available, otherwise use the table key
@@ -1261,7 +1260,7 @@ def upload_annotation_json():
                 return (
                     jsonify(
                         {
-                            "error": f"None of the data sources in the semantic map match data in GraphDB.",
+                            "error": "None of the data sources in the semantic map match data in GraphDB.",
                             "graphdb_databases": session_cache.databases,
                             "jsonld_databases": jsonld_tables,
                             "matching_databases": [],
@@ -1416,6 +1415,11 @@ def start_annotation():
                 f"Starting annotation process for {len(annotated_variables)} variables in {database}"
             )
 
+            for var_name, var_data in annotated_variables.items():
+                logger.info(
+                    f"Variable {var_name}: predicate={var_data.get('predicate')}, class={var_data.get('class')}, local_definition={var_data.get('local_definition')}"
+                )
+
             try:
                 # Use add_annotation function from the annotation helper for this database
                 add_annotation(
@@ -1492,17 +1496,23 @@ def annotation_verify():
         flash("No databases available.")
         return redirect(url_for("describe_downloads"))
 
-    # Get the database name from the available mapping
-    map_database_name = get_database_name_from_mapping(session_cache)
+    map_table_names = get_table_names_from_mapping(session_cache)
 
-    # Get annotated variables from all databases using semantic maps
     annotated_variables = []
     unannotated_variables = []
     variable_data = {}
 
     for database in session_cache.databases:
-        # Skip databases that don't match the semantic map's database_name
-        if not graph_database_find_name_match(map_database_name, database):
+        matches_any_table = False
+        for table_name in map_table_names:
+            if graph_database_find_name_match(table_name, database):
+                matches_any_table = True
+                break
+
+        if not map_table_names:
+            matches_any_table = True
+
+        if not matches_any_table:
             continue
 
         # Get the semantic map for this database (uses jsonld_mapping if available)
@@ -1596,6 +1606,14 @@ def verify_annotation_ask():
             session_cache, database_key=None
         )
 
+        if semantic_map is None:
+            logger.warning(f"No semantic map available for database '{database}'")
+            return jsonify({"success": False, "error": "No semantic map available"})
+
+        logger.debug(
+            f"verify_annotation_ask: is_jsonld={is_jsonld}, database={database}, var_name={var_name}"
+        )
+
         # Get variable info based on source
         if is_jsonld:
             variable_info = semantic_map.get("variable_info", {})
@@ -1606,6 +1624,9 @@ def verify_annotation_ask():
         var_data = variable_info.get(var_name)
 
         if not var_data:
+            logger.warning(
+                f"Variable '{var_name}' not found in variable_info. Available keys: {list(variable_info.keys())}"
+            )
             return jsonify({"success": False, "error": "Variable not found"})
 
         # Create a deep copy of the variable data to avoid reference issues
@@ -1646,11 +1667,17 @@ def verify_annotation_ask():
         var_class = var_copy.get("class")
 
         if not local_definition:
+            logger.warning(
+                f"Variable '{var_name}' has no local_definition. var_copy keys: {list(var_copy.keys())}"
+            )
             return jsonify(
                 {"success": False, "error": "Variable has no local definition"}
             )
 
         if not var_class:
+            logger.warning(
+                f"Variable '{var_name}' has no class mapping. var_copy: {var_copy}"
+            )
             return jsonify({"success": False, "error": "Variable has no class mapping"})
 
         if isinstance(local_definition, list):
@@ -1670,10 +1697,8 @@ def verify_annotation_ask():
             "sio": "http://semanticscience.org/resource/",
         }
 
-        # Add any additional prefixes from the semantic map
-        prefixes_from_map = semantic_map.get("prefixes", {})
-        if isinstance(prefixes_from_map, dict):
-            for prefix_key, prefix_uri in prefixes_from_map.items():
+        if is_jsonld and session_cache.jsonld_mapping:
+            for prefix_key, prefix_uri in session_cache.jsonld_mapping.prefixes.items():
                 if prefix_key not in base_prefixes:
                     base_prefixes[prefix_key] = prefix_uri
 

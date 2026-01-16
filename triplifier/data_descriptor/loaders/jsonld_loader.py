@@ -190,10 +190,13 @@ class ColumnMapping:
     @classmethod
     def from_dict(cls, key: str, data: dict) -> "ColumnMapping":
         """Create a ColumnMapping from a dictionary."""
+        local_col = data.get("localColumn", "")
+        if isinstance(local_col, list):
+            local_col = local_col[0] if local_col else ""
         return cls(
             key=key,
             maps_to=data.get("mapsTo", ""),
-            local_column=data.get("localColumn", ""),
+            local_column=local_col,
             local_mappings=data.get("localMappings", {}),
         )
 
@@ -743,7 +746,10 @@ class JSONLDMapping:
             # Get local column and local mappings from database/table
             column = self.get_column_for_variable(var_key, database_key, table_key)
             if column:
-                var_legacy["local_definition"] = column.local_column or None
+                local_col = column.local_column
+                if isinstance(local_col, list):
+                    local_col = local_col[0] if local_col else None
+                var_legacy["local_definition"] = local_col or None
 
                 # Populate local_term values from column mappings
                 if "value_mapping" in var_legacy and column.local_mappings:

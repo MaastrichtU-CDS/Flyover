@@ -261,9 +261,10 @@
 
         // Process annotations for described variables
         variables.forEach(function (variableName) {
-            const iconId = 'icon-' + variableName.replace('.', '-');
-            const messageId = 'message-' + variableName.replace('.', '-');
-            const item = document.querySelector(`[id="message-${variableName.replace('.', '-')}"]`).closest('.variable-item');
+            const safeId = variableName.replace(/\./g, '-');
+            const iconId = 'icon-' + safeId;
+            const messageId = 'message-' + safeId;
+            const item = document.querySelector(`[id="message-${safeId}"]`).closest('.variable-item');
 
             fetch('/verify-annotation-ask', {
                 method: 'POST',
