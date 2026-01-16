@@ -326,8 +326,9 @@ const JSONLDMapper = {
             });
 
             let columnFound = false;
-            this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData) => {
+            this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData, tableKey, dbData) => {
                 if (columnFound) return false;
+                if (!this.graphDatabaseFindNameMatch(dbData.name, databaseName)) return;
 
                 const colVarKey = this.getVariableKeyFromColumn(colData);
 

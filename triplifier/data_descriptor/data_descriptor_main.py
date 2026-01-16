@@ -239,9 +239,6 @@ def upload_semantic_map():
         jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
         session_cache.jsonld_mapping = jsonld_mapping
 
-        if jsonld_mapping.databases:
-            session_cache.databases = list(jsonld_mapping.databases.keys())
-
         return jsonify(
             {
                 "success": True,
@@ -296,9 +293,6 @@ def submit_indexeddb_semantic_map():
         # Store the validated mapping in session cache
         jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
         session_cache.jsonld_mapping = jsonld_mapping
-
-        if jsonld_mapping.databases:
-            session_cache.databases = list(jsonld_mapping.databases.keys())
 
         return jsonify(
             {
@@ -1367,9 +1361,18 @@ def start_annotation():
 
             logger.info(f"Processing annotation for database: {database}")
 
+            database_key = None
+            if session_cache.jsonld_mapping:
+                database_key = (
+                    session_cache.jsonld_mapping.find_database_key_for_graphdb(database)
+                )
+                logger.info(
+                    f"Found matching JSON-LD database key: {database_key} for GraphDB database: {database}"
+                )
+
             # Get the semantic map for this database (uses jsonld_mapping if available)
             semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
-                session_cache, database_key=None
+                session_cache, database_key=database_key
             )
 
             # Get variable info and prefixes based on source
@@ -1515,9 +1518,15 @@ def annotation_verify():
         if not matches_any_table:
             continue
 
+        database_key = None
+        if session_cache.jsonld_mapping:
+            database_key = session_cache.jsonld_mapping.find_database_key_for_graphdb(
+                database
+            )
+
         # Get the semantic map for this database (uses jsonld_mapping if available)
         semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
-            session_cache, database_key=None
+            session_cache, database_key=database_key
         )
 
         # Get variable info and prefixes based on source
@@ -1601,9 +1610,15 @@ def verify_annotation_ask():
                 }
             )
 
+        database_key = None
+        if session_cache.jsonld_mapping:
+            database_key = session_cache.jsonld_mapping.find_database_key_for_graphdb(
+                database
+            )
+
         # Get the semantic map for this database (uses jsonld_mapping if available)
         semantic_map, _, is_jsonld = get_semantic_map_for_annotation(
-            session_cache, database_key=None
+            session_cache, database_key=database_key
         )
 
         if semantic_map is None:

@@ -279,6 +279,7 @@
 <script>
     var backendColumnInfoRaw = {{ column_info|tojson }};
     var descriptionToDatatype = {};
+    var preselectedDatatypes = {};
     var autoFilledFields = new Set();
     var manualOverrides = new Set();
     var selectedDescriptions = {};
@@ -585,9 +586,9 @@
         var selectedDescription = descriptionSelect.val();
 
         if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
-            if (descriptionToDatatype[selectedDescription]) {
-                var suggestedDatatype = descriptionToDatatype[selectedDescription];
+            var suggestedDatatype = preselectedDatatypes[fieldKey] || descriptionToDatatype[selectedDescription];
 
+            if (suggestedDatatype) {
                 if (datatypeSelect.val() === '' || !manualOverrides.has(fieldKey)) {
                     datatypeSelect.selectpicker('val', suggestedDatatype);
                     autoFilledFields.add(fieldKey);
@@ -801,9 +802,10 @@
     }
 
     function applyPreselectionsToCurrentPage(database) {
-        const { preselectedDescriptions, preselectedDatatypes, descriptionToDatatype: dtMap } = JSONLDMapper.computePreselections();
+        const { preselectedDescriptions, preselectedDatatypes: preDatatypes, descriptionToDatatype: dtMap } = JSONLDMapper.computePreselections();
 
         descriptionToDatatype = dtMap;
+        preselectedDatatypes = preDatatypes;
 
         $(`#variables-${database} .description-select`).each(function() {
             const $select = $(this);

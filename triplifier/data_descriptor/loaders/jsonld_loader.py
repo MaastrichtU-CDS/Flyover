@@ -605,6 +605,42 @@ class JSONLDMapping:
             return first_db.name
         return None
 
+    def find_database_key_for_graphdb(self, graphdb_name: str) -> Optional[str]:
+        """
+        Find the JSON-LD database key that matches a GraphDB database name.
+
+        Matches by checking database name or table sourceFile against the GraphDB name.
+        Handles .csv extension differences.
+
+        Args:
+            graphdb_name: The database name from GraphDB.
+
+        Returns:
+            The matching database key, or None if no match found.
+        """
+        if not self.databases:
+            return None
+
+        graphdb_no_ext = (
+            graphdb_name[:-4] if graphdb_name.endswith(".csv") else graphdb_name
+        )
+
+        for db_key, db in self.databases.items():
+            db_name_no_ext = db.name[:-4] if db.name.endswith(".csv") else db.name
+            if db.name == graphdb_name or db_name_no_ext == graphdb_no_ext:
+                return db_key
+
+            for table in db.tables.values():
+                source_no_ext = (
+                    table.source_file[:-4]
+                    if table.source_file.endswith(".csv")
+                    else table.source_file
+                )
+                if table.source_file == graphdb_name or source_no_ext == graphdb_no_ext:
+                    return db_key
+
+        return None
+
     # ========================================================================
     # Conversion Methods
     # ========================================================================
@@ -755,9 +791,14 @@ class JSONLDMapping:
                 if "value_mapping" in var_legacy and column.local_mappings:
                     for term_key in var_legacy["value_mapping"]["terms"]:
                         if term_key in column.local_mappings:
+                            local_term_value = column.local_mappings[term_key]
+                            if isinstance(local_term_value, list):
+                                local_term_value = (
+                                    local_term_value[0] if local_term_value else None
+                                )
                             var_legacy["value_mapping"]["terms"][term_key][
                                 "local_term"
-                            ] = column.local_mappings[term_key]
+                            ] = local_term_value
 
             legacy["variable_info"][var_key] = var_legacy
 
