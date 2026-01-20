@@ -792,10 +792,6 @@ class JSONLDMapping:
                     for term_key in var_legacy["value_mapping"]["terms"]:
                         if term_key in column.local_mappings:
                             local_term_value = column.local_mappings[term_key]
-                            if isinstance(local_term_value, list):
-                                local_term_value = (
-                                    local_term_value[0] if local_term_value else None
-                                )
                             var_legacy["value_mapping"]["terms"][term_key][
                                 "local_term"
                             ] = local_term_value

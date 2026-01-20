@@ -644,26 +644,36 @@ def add_mapping(
             if local_term is None:
                 continue
 
-            if not all(isinstance(var, str) for var in (target_class, local_term)):
+            if isinstance(local_term, list):
+                local_terms = [lt for lt in local_term if isinstance(lt, str)]
+            elif isinstance(local_term, str):
+                local_terms = [local_term]
+            else:
                 logging.warning(
                     f"Value mapping for term {term} of variable {variable} is incorrectly formatted, "
                     "please see function docstring for an example."
                 )
                 continue
 
-            # call your add_mapping function with the appropriate arguments
-            response, query = _add_mapping(
-                endpoint=endpoint,
-                prefixes=prefixes,
-                target_class=target_class,
-                super_class=super_class,
-                local_term=local_term,
-                database_name=database_name,
-            )
+            if not isinstance(target_class, str):
+                logging.warning(
+                    f"Value mapping for term {term} of variable {variable} is incorrectly formatted, "
+                    "please see function docstring for an example."
+                )
+                continue
 
-            # store response and query in a list
-            responses.append(response)
-            queries.update({term: query})
+            for lt in local_terms:
+                response, query = _add_mapping(
+                    endpoint=endpoint,
+                    prefixes=prefixes,
+                    target_class=target_class,
+                    super_class=super_class,
+                    local_term=lt,
+                    database_name=database_name,
+                )
+
+                responses.append(response)
+                queries.update({f"{term}_{lt}": query})
 
         return responses, queries
     else:

@@ -656,13 +656,11 @@ def retrieve_descriptive_info():
         session_cache.DescriptiveInfoDetails[database] = []
         session_cache.descriptive_info[database] = {}
 
-        # TODO improve database name handling; e.g. using database_2025_a and database_2025 combined will cause issues
         for local_variable_name in request.form:
-            if not re.search("^ncit_comment_", local_variable_name) and not any(
-                db in local_variable_name
-                for db in session_cache.databases
-                if db != database
-            ):
+            if not re.search("^ncit_comment_", local_variable_name):
+                matching_dbs = [db for db in session_cache.databases if local_variable_name.startswith(f"{db}_")]
+                if not matching_dbs or max(matching_dbs, key=len) != database:
+                    continue
                 local_variable_name = local_variable_name.replace(f"{database}_", "")
                 form_local_variable_name = f"{database}_{local_variable_name}"
 
@@ -679,9 +677,9 @@ def retrieve_descriptive_info():
                     "comments": f'Variable comment: {comment if comment else "No comment provided"}',
                 }
 
-                # If the data type of the local variable is 'Categorical',
+                # If the data type of the local variable is 'categorical',
                 # retrieve the categories for the local variable and store them in the session cache
-                if data_type == "Categorical":
+                if data_type == "categorical":
                     cat = retrieve_categories(session_cache.repo, local_variable_name)
                     df = pl.read_csv(
                         StringIO(cat),
@@ -702,9 +700,9 @@ def retrieve_descriptive_info():
                     session_cache.DescriptiveInfoDetails[database].append(
                         {display_name: df.to_dicts()}
                     )
-                # If the data type of the local variable is 'Continuous',
+                # If the data type of the local variable is 'continuous',
                 # add the local variable to a list of variables to further specify
-                elif data_type == "Continuous":
+                elif data_type == "continuous":
                     # Check if the description is missing and format display name accordingly
                     if not global_variable_name or global_variable_name.strip() == "":
                         display_name = (
