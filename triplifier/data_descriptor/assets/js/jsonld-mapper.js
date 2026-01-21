@@ -11,8 +11,7 @@ const JSONLDMapper = {
     },
 
     formatDataTypeDisplay: function(dataType) {
-        const words = dataType.toLowerCase().split(/\s+/);
-        return words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        return dataType.toLowerCase();
     },
 
     getVariableKeyFromColumn: function(colData) {

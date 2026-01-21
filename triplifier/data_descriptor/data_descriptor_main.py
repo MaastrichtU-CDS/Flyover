@@ -658,7 +658,11 @@ def retrieve_descriptive_info():
 
         for local_variable_name in request.form:
             if not re.search("^ncit_comment_", local_variable_name):
-                matching_dbs = [db for db in session_cache.databases if local_variable_name.startswith(f"{db}_")]
+                matching_dbs = [
+                    db
+                    for db in session_cache.databases
+                    if local_variable_name.startswith(f"{db}_")
+                ]
                 if not matching_dbs or max(matching_dbs, key=len) != database:
                     continue
                 local_variable_name = local_variable_name.replace(f"{database}_", "")
