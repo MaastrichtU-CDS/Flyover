@@ -622,11 +622,17 @@
             const item = row.find('.description-select').data('item');
             const key = `${database}_${item}`;
 
+            const domDescription = row.find('.description-select').val();
+            const domDatatype = row.find('.datatype-select').val();
+            const domComment = row.find(`#comment_${database}_${item}`).val();
+
+            const existing = formStateCache[key] || {};
+
             formStateCache[key] = {
                 database: database,
-                description: row.find('.description-select').val(),
-                datatype: row.find('.datatype-select').val(),
-                comment: row.find(`#comment_${database}_${item}`).val()
+                description: domDescription || existing.description || '',
+                datatype: domDatatype || existing.datatype || '',
+                comment: domComment || existing.comment || ''
             };
         });
 
@@ -813,7 +819,7 @@
             const item = $select.data('item');
             const key = `${db}_${item}`;
 
-            if (key in preselectedDescriptions && !formStateCache[key]?.description) {
+            if (key in preselectedDescriptions && !(key in formStateCache)) {
                 const value = preselectedDescriptions[key];
                 $select.selectpicker('val', value);
             }
@@ -825,7 +831,7 @@
             const item = $select.data('item');
             const key = `${db}_${item}`;
 
-            if (key in preselectedDatatypes && !formStateCache[key]?.datatype) {
+            if (key in preselectedDatatypes && !(key in formStateCache)) {
                 const value = preselectedDatatypes[key];
                 $select.selectpicker('val', value);
             }
