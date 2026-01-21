@@ -817,25 +817,35 @@ def retrieve_detailed_descriptive_info():
         flask.redirect: A Flask function that redirects the user to another URL.
         In this case, it redirects the user to the 'download_page' URL.
     """
+    def extract_variable_from_key(key, database):
+        prefix = f"{database}_"
+        if "_category_" in key:
+            base = key.split("_category_")[0]
+        elif "_notation_missing_or_unspecified" in key:
+            base = key.split("_notation_missing_or_unspecified")[0]
+        else:
+            base = key
+        if base.startswith(prefix):
+            return base[len(prefix):]
+        return None
+
     # Iterate over each database in the session cache
     for database in session_cache.databases:
-        # Retrieve all keys from the request form that start with the database name
-        keys = [key for key in request.form if key.startswith(database)]
-        # Identify the variables associated with these keys
-        variables = [
-            (
-                key.split("_category_")[0].split(f"{database}_")[1]
-                if "_category_" in key
-                else (
-                    key.split("_notation_missing_or_unspecified")[0].split(
-                        f"{database}_"
-                    )[1]
-                    if "_notation_missing_or_unspecified" in key
-                    else key.split(f"{database}_")[1]
-                )
-            )
-            for key in keys
-        ]
+        keys = []
+        for key in request.form:
+            if not key.startswith(f"{database}_"):
+                continue
+            matching_dbs = [
+                db for db in session_cache.databases if key.startswith(f"{db}_")
+            ]
+            if matching_dbs and max(matching_dbs, key=len) == database:
+                keys.append(key)
+
+        variables = []
+        for key in keys:
+            var = extract_variable_from_key(key, database)
+            if var:
+                variables.append(var)
 
         # Iterate over each unique variable
         for variable in set(variables):

@@ -198,32 +198,36 @@ const JSONLDMapper = {
             if (datatypeDisplay) {
                 descriptionToDatatype[descriptionDisplay] = datatypeDisplay;
             }
+        }
 
-            for (const db of databases) {
-                const localDef = this.getLocalColumn(varName);
-                const key = `${db}_${localDef}`;
+        this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData, tableKey, dbData, dbKey) => {
+            const varKey = this.getVariableKeyFromColumn(colData);
+            if (!varKey) return;
 
+            const varInfo = this.getVariable(varKey);
+            if (!varInfo) return;
+
+            const localColumn = colData.localColumn;
+            if (!localColumn) return;
+
+            const mapDbName = dbData.name || dbKey;
+
+            for (const domDb of databases) {
+                if (!this.graphDatabaseFindNameMatch(mapDbName, domDb)) {
+                    continue;
+                }
+
+                const descriptionDisplay = this.formatToTitleCase(varKey);
+                const datatypeDisplay = varInfo.dataType ? this.formatDataTypeDisplay(varInfo.dataType) : null;
+
+                const key = `${domDb}_${localColumn}`;
                 preselectedDescriptions[key] = descriptionDisplay;
 
                 if (datatypeDisplay) {
                     preselectedDatatypes[key] = datatypeDisplay;
                 }
-
-                const variations = [
-                    varName,
-                    varName.toLowerCase(),
-                    varName.replace(/_/g, ''),
-                    varName.replace(/_/g, ' ')
-                ];
-
-                for (const variation of variations) {
-                    const keyVariation = `${db}_${variation}`;
-                    if (!(keyVariation in preselectedDescriptions) && datatypeDisplay) {
-                        preselectedDatatypes[keyVariation] = datatypeDisplay;
-                    }
-                }
             }
-        }
+        });
 
         return { preselectedDescriptions, preselectedDatatypes, descriptionToDatatype };
     },

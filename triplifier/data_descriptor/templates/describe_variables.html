@@ -1,866 +1,909 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>Flyover | Variable description</title>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('custom_static', filename='css/all.min.css') }}"
+    />
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
+      body {
+        background-color: #f8f9fa;
+      }
 
-        .toggle-button {
-            cursor: pointer;
-            display: inline-block;
-            border: none;
-            background: none;
-            font-size: 1.56rem;
-            line-height: 1;
-            color: #007bff;
-            float: right;
-        }
+      .toggle-button {
+        cursor: pointer;
+        display: inline-block;
+        border: none;
+        background: none;
+        font-size: 1.56rem;
+        line-height: 1;
+        color: #007bff;
+        float: right;
+      }
 
-        .content {
-            width: 100%;
-            transition: max-height 0.5s ease-out;
-            max-height: 0;
-            overflow-y: auto;
-        }
+      .content {
+        width: 100%;
+        transition: max-height 0.5s ease-out;
+        max-height: 0;
+        overflow-y: auto;
+      }
 
-        .content.active {
-            max-height: 500px;
-        }
+      .content.active {
+        max-height: 500px;
+      }
 
-        .toggle-button:focus {
-            outline: none;
-        }
+      .toggle-button:focus {
+        outline: none;
+      }
 
-        .variable-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
+      .variable-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: white;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
 
-        .variable-label {
-            flex: 0 0 200px;
-            font-weight: bold;
-            margin-right: 15px;
-        }
+      .variable-label {
+        flex: 0 0 200px;
+        font-weight: bold;
+        margin-right: 15px;
+      }
 
-        .variable-controls {
-            flex: 1;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
+      .variable-controls {
+        flex: 1;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
 
-        .variable-controls select,
-        .variable-controls input {
-            flex: 1;
-            min-width: 150px;
-        }
+      .variable-controls select,
+      .variable-controls input {
+        flex: 1;
+        min-width: 150px;
+      }
 
-        .column-group {
-            display: none;
-        }
+      .column-group {
+        display: none;
+      }
 
-        .column-group.active {
-            display: block;
-        }
+      .column-group.active {
+        display: block;
+      }
 
-        .pagination-controls {
-            text-align: center;
-            margin: 20px 0;
-        }
+      .pagination-controls {
+        text-align: center;
+        margin: 20px 0;
+      }
 
-        .pagination-controls button {
-            padding: 5px 15px;
-            margin: 0 5px;
-            border: none;
-            background-color: transparent;
-            color: #007bff;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 1.5rem;
-            transition: transform 0.3s ease;
-        }
+      .pagination-controls button {
+        padding: 5px 15px;
+        margin: 0 5px;
+        border: none;
+        background-color: transparent;
+        color: #007bff;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 1.5rem;
+        transition: transform 0.3s ease;
+      }
 
-        .pagination-controls button:hover {
-            transform: scale(1.2);
-        }
+      .pagination-controls button:hover {
+        transform: scale(1.2);
+      }
 
-        .pagination-controls button:disabled {
-            color: #ccc;
-            cursor: not-allowed;
-        }
+      .pagination-controls button:disabled {
+        color: #ccc;
+        cursor: not-allowed;
+      }
 
-        .page-indicator {
-            margin: 0 10px;
-            font-size: 1rem;
-        }
+      .page-indicator {
+        margin: 0 10px;
+        font-size: 1rem;
+      }
 
-        .btn-primary {
-            background-color: #007bff;
-            border-color: #007bff;
-        }
+      .btn-primary {
+        background-color: #007bff;
+        border-color: #007bff;
+      }
 
-        .btn-primary:hover {
-            background-color: #0056b3;
-            border-color: #004085;
-        }
+      .btn-primary:hover {
+        background-color: #0056b3;
+        border-color: #004085;
+      }
 
-        .ref-guide-icon {
-            margin-right: 5px !important;
-        }
+      .ref-guide-icon {
+        margin-right: 5px !important;
+      }
 
-        .datatype-container {
-            position: relative;
-            flex: 1;
-        }
+      .datatype-container {
+        position: relative;
+        flex: 1;
+      }
 
-        .datatype-feedback {
-            display: block;
-            margin-top: 4px;
-            font-size: 0.85em;
-            font-style: italic;
-        }
+      .datatype-feedback {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.85em;
+        font-style: italic;
+      }
 
-        .datatype-feedback i {
-            margin-right: 4px;
-        }
+      .datatype-feedback i {
+        margin-right: 4px;
+      }
 
-        .loading-icon {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            display: inline-block;
-        }
+      .loading-icon {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-block;
+      }
 
-        .icon-fade-out {
-            opacity: 0;
-            transform: scale(0.8) rotate(10deg);
-        }
+      .icon-fade-out {
+        opacity: 0;
+        transform: scale(0.8) rotate(10deg);
+      }
 
-        .icon-fade-in {
-            opacity: 1;
-            transform: scale(1.1) rotate(-5deg);
-            animation: icon-bounce 0.3s ease-out;
-        }
+      .icon-fade-in {
+        opacity: 1;
+        transform: scale(1.1) rotate(-5deg);
+        animation: icon-bounce 0.3s ease-out;
+      }
 
-        @keyframes icon-bounce {
-            0% {
-                transform: scale(1.1) rotate(-5deg);
-            }
-            50% {
-                transform: scale(1.2) rotate(0deg);
-            }
-            100% {
-                transform: scale(1) rotate(0deg);
-            }
+      @keyframes icon-bounce {
+        0% {
+          transform: scale(1.1) rotate(-5deg);
         }
+        50% {
+          transform: scale(1.2) rotate(0deg);
+        }
+        100% {
+          transform: scale(1) rotate(0deg);
+        }
+      }
 
-        #submitBtn:disabled.processing {
-            background-color: #6c757d !important;
-            border-color: #6c757d !important;
-            animation: subtle-pulse 2s infinite;
-        }
+      #submitBtn:disabled.processing {
+        background-color: #6c757d !important;
+        border-color: #6c757d !important;
+        animation: subtle-pulse 2s infinite;
+      }
 
-        @keyframes subtle-pulse {
-            0%, 100% {
-                box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
-            }
-            50% {
-                box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
-            }
+      @keyframes subtle-pulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
         }
+        50% {
+          box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
+        }
+      }
     </style>
-</head>
+  </head>
 
-<body>
-{% include 'navigation_header.html' %}
+  <body>
+    {% include 'navigation_header.html' %}
 
-<div class="container">
-    <br>
-    <h1><i class="fas fa-pencil-ruler"></i> Describe your data</h1>
-    <hr>
-    <p>Please inspect the variables (i.e. columns) of your database(s).<br>
-        For every database that you would like to describe,
-        please select the type and description of your columns from the drop-down menu.<br>
-    </p>
+    <div class="container">
+      <br />
+      <h1><i class="fas fa-pencil-ruler"></i> Describe your data</h1>
+      <hr />
+      <p>
+        Please inspect the variables (i.e. columns) of your database(s).<br />
+        For every database that you would like to describe, please select the
+        type and description of your columns from the drop-down menu.<br />
+      </p>
 
-    <form class="form-horizontal" method="POST" action="units">
-        <hr>
+      <form class="form-horizontal" method="POST" action="units">
+        <hr />
         <div id="databases-container"></div>
 
         <p>
-            <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                <i class="fas fa-play"></i> Submit
-            </button>
+          <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+            <i class="fas fa-play"></i> Submit
+          </button>
         </p>
-    </form>
+      </form>
 
-    <div class="mt-4">
-        <div class="alert alert-info py-2"
-             style="font-size: 0.85em; border-left: 4px solid #764ba2; background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
-            <i class="fas fa-info-circle"></i>
-            <strong>Reference Guide</strong><br>
-            <div class="mt-1 ms-4">
-                <strong style="font-size: 0.9em;">Data Types:</strong>
-                <div class="row g-1 mt-1">
-                    <div class="col-md-6">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-tags me-2 ref-guide-icon"></i>
-                            <span>
-                                <strong style="font-size: 0.9em;">Categorical</strong>
-                                <span class="mb-1" style="font-size: 0.85em;"> - Variables that represent distinct categories or groups (e.g., gender, tumor stage)</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-chart-line me-2 ref-guide-icon"></i>
-                            <span>
-                                <strong style="font-size: 0.9em;">Continuous</strong>
-                                <span class="mb-1" style="font-size: 0.85em;"> - Numerical variables that can take any value within a range (e.g., age, weight)</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-fingerprint me-2 ref-guide-icon"></i>
-                            <span>
-                                <strong style="font-size: 0.9em;">Identifier</strong>
-                                <span class="mb-1" style="font-size: 0.85em;"> - Unique values used to identify or link records (e.g., patient ID, study ID)</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-clipboard-check me-2 ref-guide-icon"></i>
-                            <span>
-                                <strong style="font-size: 0.9em;"> Standardised</strong>
-                                <span class="mb-1" style="font-size: 0.85em;"> - Large-scale standardised variables across multiple studies (e.g., ICD codes)</span>
-                            </span>
-                        </div>
-                    </div>
+      <div class="mt-4">
+        <div
+          class="alert alert-info py-2"
+          style="
+            font-size: 0.85em;
+            border-left: 4px solid #764ba2;
+            background: linear-gradient(
+              135deg,
+              rgba(102, 126, 234, 0.75) 0%,
+              rgba(118, 75, 162, 0.75) 100%
+            );
+            color: white;
+          "
+        >
+          <i class="fas fa-info-circle"></i>
+          <strong>Reference Guide</strong><br />
+          <div class="mt-1 ms-4">
+            <strong style="font-size: 0.9em">Data Types:</strong>
+            <div class="row g-1 mt-1">
+              <div class="col-md-6">
+                <div class="d-flex align-items-center">
+                  <i class="fas fa-tags me-2 ref-guide-icon"></i>
+                  <span>
+                    <strong style="font-size: 0.9em">Categorical</strong>
+                    <span class="mb-1" style="font-size: 0.85em">
+                      - Variables that represent distinct categories or groups
+                      (e.g., gender, tumor stage)</span
+                    >
+                  </span>
                 </div>
-
-                <div class="mt-3">
-                    <hr>
-                    <strong style="font-size: 0.9em;">Additional Information:</strong>
-                    <div class="mt-1">
-                        <p class="mb-1">
-                            &#x1F914; <i>Does none of the available descriptions accurately represent a given
-                            variable?</i><br>
-                            <span class="ms-3">Please select 'Other' and specify what the variable represents in the text box.</span>
-                        </p>
-                        <p class="mb-0">
-                            <i>Find the list of available descriptions to be too brief?</i><br>
-                            <span class="ms-3">Please consider providing a global semantic map, as the descriptions change accordingly.</span>
-                        </p>
-                    </div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex align-items-center">
+                  <i class="fas fa-chart-line me-2 ref-guide-icon"></i>
+                  <span>
+                    <strong style="font-size: 0.9em">Continuous</strong>
+                    <span class="mb-1" style="font-size: 0.85em">
+                      - Numerical variables that can take any value within a
+                      range (e.g., age, weight)</span
+                    >
+                  </span>
                 </div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex align-items-center">
+                  <i class="fas fa-fingerprint me-2 ref-guide-icon"></i>
+                  <span>
+                    <strong style="font-size: 0.9em">Identifier</strong>
+                    <span class="mb-1" style="font-size: 0.85em">
+                      - Unique values used to identify or link records (e.g.,
+                      patient ID, study ID)</span
+                    >
+                  </span>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex align-items-center">
+                  <i class="fas fa-clipboard-check me-2 ref-guide-icon"></i>
+                  <span>
+                    <strong style="font-size: 0.9em"> Standardised</strong>
+                    <span class="mb-1" style="font-size: 0.85em">
+                      - Large-scale standardised variables across multiple
+                      studies (e.g., ICD codes)</span
+                    >
+                  </span>
+                </div>
+              </div>
             </div>
+
+            <div class="mt-3">
+              <hr />
+              <strong style="font-size: 0.9em">Additional Information:</strong>
+              <div class="mt-1">
+                <p class="mb-1">
+                  &#x1F914;
+                  <i
+                    >Does none of the available descriptions accurately
+                    represent a given variable?</i
+                  ><br />
+                  <span class="ms-3"
+                    >Please select 'Other' and specify what the variable
+                    represents in the text box.</span
+                  >
+                </p>
+                <p class="mb-0">
+                  <i>Find the list of available descriptions to be too brief?</i
+                  ><br />
+                  <span class="ms-3"
+                    >Please consider providing a global semantic map, as the
+                    descriptions change accordingly.</span
+                  >
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
     </div>
-</div>
-
-{% include 'footer.html' %}
-
-<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
-<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
-<script>
-    var backendColumnInfoRaw = {{ column_info|tojson }};
-    var descriptionToDatatype = {};
-    var preselectedDatatypes = {};
-    var autoFilledFields = new Set();
-    var manualOverrides = new Set();
-    var selectedDescriptions = {};
-
-    const PAGE_SIZE = 10;
-    const databasePages = {};
-    const formStateCache = {};
-
-    var columnInfoData = null;
-
-    let loadingInterval;
-
-    function startLoadingAnimation(buttonSelector) {
-        const button = $(buttonSelector);
-        const originalText = button.html();
-
-        button.prop('disabled', true).addClass('processing');
-
-        let isPen = false;
-        button.html('<i class="fas fa-edit loading-icon"></i> Processing descriptions...');
-
-        loadingInterval = setInterval(function() {
-            const icon = button.find('.loading-icon');
-
-            icon.addClass('icon-fade-out');
-
-            setTimeout(function() {
-                if (isPen) {
-                    icon.removeClass('fa-pen').addClass('fa-edit');
-                } else {
-                    icon.removeClass('fa-edit').addClass('fa-pen');
-                }
-                isPen = !isPen;
-
-                icon.removeClass('icon-fade-out').addClass('icon-fade-in');
-
-                setTimeout(function() {
-                    icon.removeClass('icon-fade-in');
-                }, 300);
-            }, 150);
-
-        }, 1000);
-
-        button.data('original-text', originalText);
-    }
-
-    function stopLoadingAnimation(buttonSelector) {
-        const button = $(buttonSelector);
-
-        if (loadingInterval) {
-            clearInterval(loadingInterval);
-            loadingInterval = null;
-        }
-
-        const originalText = button.data('original-text');
-        if (originalText) {
-            button.html(originalText);
-        }
-        button.prop('disabled', false).removeClass('processing');
-    }
-
-    async function initializeIndexedDB() {
-        if (FlyoverDB.isSupported()) {
-            await FlyoverDB.initDB();
-        }
-    }
-
-    async function saveColumnInfo(data) {
-        await FlyoverDB.saveData('metadata', {
-            key: 'column_info',
-            data: data,
-            timestamp: new Date().toISOString()
-        });
-    }
-
-    async function loadColumnInfo() {
-        const result = await FlyoverDB.getData('metadata', 'column_info');
-        if (result && result.data) {
-            return result.data;
-        }
-        return null;
-    }
-
-    function renderDatabaseSections(columnInfo) {
-        const container = $('#databases-container');
-        container.empty();
-
-        for (const [database, columns] of Object.entries(columnInfo)) {
-            const totalItems = columns.length;
-            const totalGroups = Math.ceil(totalItems / PAGE_SIZE);
-
-            let paginationHtml = '';
-            if (totalGroups > 1) {
-                paginationHtml = `
-                    <div class="pagination-controls">
-                        <button type="button" class="prev-btn" onclick="changePage('${database}', -1)" disabled>
-                            &#x2190;
-                        </button>
-                        <span class="page-indicator">Page <span
-                                id="current-page-${database}">1</span> of ${totalGroups}</span>
-                        <button type="button" class="next-btn" onclick="changePage('${database}', 1)">&#x2192;
-                        </button>
-                    </div>
-                `;
-            }
-
-            const sectionHtml = `
-                <h2 style="display: inline-block;"><i class="fas fa-database"></i> ${database}</h2>
-                <button class="toggle-button" type="button" data-database="${database}">
-                    <span class="toggle-text">Show more</span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
-                        <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
-                    </svg>
-                </button>
-                <div class="content hidden" data-database="${database}">
-                    <div class="variables-container" id="variables-${database}"
-                         data-columns='${JSON.stringify(columns)}'
-                         data-total="${totalItems}">
-                    </div>
-                    ${paginationHtml}
-                </div>
-                <hr>
-            `;
-
-            container.append(sectionHtml);
-        }
-
-        attachToggleHandlers();
-    }
-
-    function attachToggleHandlers() {
-        $('.toggle-button').off('click').on('click', function () {
-            var textElement = $(this).find('.toggle-text');
-            var svgElement = $(this).find('.angle-icon path');
-            const database = $(this).data('database');
-            const content = $(this).next('.content');
-
-            if (textElement.text() === 'Show more') {
-                textElement.text('Show less');
-                svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
-            } else {
-                textElement.text('Show more');
-                svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
-
-                cacheCurrentPageState(database);
-            }
-            $(this).toggleClass('open');
-            content.toggleClass('active');
-        });
-    }
-
-    async function loadAndApplySemanticMapping() {
-        try {
-            await JSONLDMapper.loadFromIndexedDB();
-            JSONLDMapper.populateDescriptionOptions();
-            checkDescriptions();
-        } catch (error) {
-        }
-    }
-
-    $(function() {
-        initPage();
-    });
-
-    async function initPage() {
-        try {
-            await initializeIndexedDB();
-        } catch (e) {
-        }
-
-        if (backendColumnInfoRaw && Object.keys(backendColumnInfoRaw).length > 0) {
-            columnInfoData = backendColumnInfoRaw;
-            try {
-                await saveColumnInfo(backendColumnInfoRaw);
-            } catch (e) {
-            }
-        } else {
-            columnInfoData = await loadColumnInfo();
-        }
-
-        if (columnInfoData) {
-            renderDatabaseSections(columnInfoData);
-        }
-
-        await loadAndApplySemanticMapping();
-
-        if (columnInfoData) {
-            for (const database of Object.keys(columnInfoData)) {
-                renderPage(database, 1);
-            }
-        }
-
-        $('form').submit(function(e) {
-            $('.variables-container').each(function() {
-                const database = $(this).attr('id').replace('variables-', '');
-                cacheCurrentPageState(database);
-            });
-
-            const form = $(this);
-            for (const [key, cached] of Object.entries(formStateCache)) {
-                const db = cached.database;
-                const item = key.replace(`${db}_`, '');
-
-                if ($(`#ncit_comment_${db}_${item}`).length === 0) {
-                    if (cached.description) {
-                        form.append(`<input type="hidden" name="ncit_comment_${db}_${item}" value="${cached.description}">`);
-                    }
-                    if (cached.datatype) {
-                        form.append(`<input type="hidden" name="${db}_${item}" value="${cached.datatype}">`);
-                    }
-                    if (cached.comment) {
-                        form.append(`<input type="hidden" name="comment_${db}_${item}" value="${cached.comment}">`);
-                    }
-                }
-            }
-
-            startLoadingAnimation('#submitBtn');
-        });
-
-        checkDescriptions();
-    }
-
-    function checkDescriptions() {
-        let hasSelection = false;
-
-        $('select[id^="ncit_comment_"]').each(function () {
-            if ($(this).val() && $(this).val() !== '') {
-                hasSelection = true;
-                return false;
-            }
-        });
-
-        for (const key in formStateCache) {
-            if (formStateCache[key].description) {
-                hasSelection = true;
-                break;
-            }
-        }
-
-        $('#submitBtn').prop('disabled', !hasSelection);
-    }
-
-    function buildSelectedDescriptions() {
-        selectedDescriptions = {};
-
-        for (const key in formStateCache) {
-            const cached = formStateCache[key];
-            const desc = cached.description;
-            const db = cached.database;
-            if (desc && desc !== '' && desc !== 'Other' && db) {
-                if (!selectedDescriptions[db]) selectedDescriptions[db] = {};
-                selectedDescriptions[db][desc] = key;
-            }
-        }
-
-        $('select.description-select').each(function() {
-            const $select = $(this);
-            const db = $select.data('database');
-            const item = $select.data('item');
-            const key = `${db}_${item}`;
-            const val = $select.val();
-
-            if (val && val !== '' && val !== 'Other') {
-                if (!selectedDescriptions[db]) selectedDescriptions[db] = {};
-                if (!selectedDescriptions[db][val]) {
-                    selectedDescriptions[db][val] = key;
-                }
-            }
-        });
-    }
-
-    function updateDescriptionOptions() {
-        buildSelectedDescriptions();
-
-        $('select.description-select').each(function() {
-            const $select = $(this);
-            const db = $select.data('database');
-            const item = $select.data('item');
-            const currentKey = `${db}_${item}`;
-            const currentVal = $select.val();
-            const dbSelections = selectedDescriptions[db] || {};
-
-            $select.find('option').each(function() {
-                const optVal = $(this).val();
-                if (optVal === '' || optVal === 'Other') return;
-
-                if (dbSelections[optVal] && dbSelections[optVal] !== currentKey) {
-                    $(this).prop('disabled', true);
-                } else {
-                    $(this).prop('disabled', false);
-                }
-            });
-
-            $select.selectpicker('refresh');
-        });
-    }
-
-    function autoPopulateDatatype(database, item) {
-        var descriptionSelect = $('#ncit_comment_' + database + '_' + item);
-        var datatypeSelect = $('#' + database + '_' + item);
-        var feedback = $('#feedback_' + database + '_' + item);
-        var fieldKey = database + '_' + item;
-
-        var selectedDescription = descriptionSelect.val();
-
-        if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
-            var suggestedDatatype = preselectedDatatypes[fieldKey] || descriptionToDatatype[selectedDescription];
-
-            if (suggestedDatatype) {
-                if (datatypeSelect.val() === '' || !manualOverrides.has(fieldKey)) {
-                    datatypeSelect.selectpicker('val', suggestedDatatype);
-                    autoFilledFields.add(fieldKey);
-
-                    feedback.show();
-                    setTimeout(function () {
-                        feedback.fadeOut();
-                    }, 3000);
-                }
-            }
-        } else {
-            if (autoFilledFields.has(fieldKey) && !manualOverrides.has(fieldKey)) {
-                datatypeSelect.selectpicker('val', '');
-                autoFilledFields.delete(fieldKey);
-                feedback.hide();
-            }
-        }
-    }
-
-    function showOverrideConfirmation(database, item) {
-        var feedback = $('#feedback_' + database + '_' + item);
-        feedback.html('<i class="fas fa-user-edit"></i> Manually overridden').css('color', '#ffc107').show();
-        setTimeout(function () {
-            feedback.fadeOut();
-        }, 2000);
-    }
-
-    function cacheCurrentPageState(database) {
-        $(`#variables-${database} .variable-row`).each(function() {
-            const row = $(this);
-            const item = row.find('.description-select').data('item');
-            const key = `${database}_${item}`;
-
-            const domDescription = row.find('.description-select').val();
-            const domDatatype = row.find('.datatype-select').val();
-            const domComment = row.find(`#comment_${database}_${item}`).val();
-
-            const existing = formStateCache[key] || {};
-
-            formStateCache[key] = {
-                database: database,
-                description: domDescription || existing.description || '',
-                datatype: domDatatype || existing.datatype || '',
-                comment: domComment || existing.comment || ''
-            };
-        });
-
-        syncToIndexedDB();
-    }
-
-    async function syncToIndexedDB() {
-        try {
-            await JSONLDMapper.updateMappingFromForm(formStateCache);
-        } catch (error) {
-            console.error('Failed to sync to IndexedDB:', error);
-        }
-    }
-
-    function renderPage(database, pageNumber) {
-        const container = $(`#variables-${database}`);
-        const columns = JSON.parse(container.attr('data-columns'));
-        const totalItems = parseInt(container.attr('data-total'));
-        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
-
-        if (pageNumber < 1 || pageNumber > totalPages) return;
-
-        cacheCurrentPageState(database);
-
-        container.empty();
-
-        const startIdx = (pageNumber - 1) * PAGE_SIZE;
-        const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
-
-        for (let i = startIdx; i < endIdx; i++) {
-            const item = columns[i];
-            const key = `${database}_${item}`;
-            const cached = formStateCache[key] || {};
-
-            const row = $(`
-                <div class="variable-row">
-                    <div class="variable-label">${item}</div>
-                    <div class="variable-controls">
-                        <select id="ncit_comment_${database}_${item}"
-                                name="ncit_comment_${database}_${item}"
-                                class="selectpicker description-select" data-live-search="true"
-                                data-database="${database}" data-item="${item}">
-                            <option value="">Description</option>
-                            <option value="Other">Other</option>
-                        </select>
-
-                        <input class="form-control" type="text" id="comment_${database}_${item}"
-                               name="comment_${database}_${item}"
-                               placeholder="If other, please specify" disabled='disabled'/>
-
-                        <div class="datatype-container">
-                            <select id="${database}_${item}" name="${database}_${item}"
-                                    class="selectpicker datatype-select" data-live-search="true"
-                                    data-database="${database}" data-item="${item}">
-                                <option value="">Data type</option>
-                                <option value="categorical">Categorical</option>
-                                <option value="continuous">Continuous</option>
-                                <option value="identifier">Identifier</option>
-                                <option value="standardised">Standardised</option>
-                            </select>
-                            <small class="datatype-feedback" id="feedback_${database}_${item}"
-                                   style="display: none; color: #28a745;">
-                                <i class="fas fa-magic"></i> Auto-filled based on description
-                            </small>
-                        </div>
-                    </div>
-                </div>
-            `);
-
-            container.append(row);
-        }
-
-        databasePages[database] = pageNumber;
-
-        const globalNames = JSONLDMapper.getGlobalVariableNames();
-        container.find('.description-select').each(function() {
-            const $select = $(this);
-            globalNames.forEach(name => {
-                if (name !== "Other") {
-                    $select.append(`<option value="${name}">${name}</option>`);
-                }
-            });
-        });
-
-        container.find('.selectpicker').selectpicker();
-
-        for (let i = startIdx; i < endIdx; i++) {
-            const item = columns[i];
-            const key = `${database}_${item}`;
-            const cached = formStateCache[key];
-
-            if (cached) {
-                if (cached.description) {
-                    $(`#ncit_comment_${database}_${item}`).selectpicker('val', cached.description);
-                }
-                if (cached.datatype) {
-                    $(`#${database}_${item}`).selectpicker('val', cached.datatype);
-                }
-                if (cached.comment) {
-                    $(`#comment_${database}_${item}`).val(cached.comment);
-                    $(`#comment_${database}_${item}`).prop('disabled', false);
-                }
-            }
-        }
-
-        attachEventHandlers(database);
-        applyPreselectionsToCurrentPage(database);
-        checkDescriptions();
-        updateDescriptionOptions();
-    }
-
-    function attachEventHandlers(database) {
-        const container = $(`#variables-${database}`);
-
-        container.find('.description-select').on('changed.bs.select', function () {
-            const db = $(this).data('database');
-            const item = $(this).data('item');
-            const commentBox = $(`#comment_${db}_${item}`);
-            const key = `${db}_${item}`;
-
-            if ($(this).val() === "Other") {
-                commentBox.removeAttr("disabled");
-            } else {
-                commentBox.attr("disabled", "disabled");
-            }
-
-            if (!formStateCache[key]) {
-                formStateCache[key] = {};
-            }
-            formStateCache[key].database = db;
-            formStateCache[key].description = $(this).val();
-
-            autoPopulateDatatype(db, item);
-            checkDescriptions();
-            updateDescriptionOptions();
-            syncToIndexedDB();
-        });
-
-        container.find('.datatype-select').on('changed.bs.select', function () {
-            const db = $(this).data('database');
-            const item = $(this).data('item');
-            const fieldKey = `${db}_${item}`;
-
-            if (!formStateCache[fieldKey]) {
-                formStateCache[fieldKey] = {};
-            }
-            formStateCache[fieldKey].database = db;
-            formStateCache[fieldKey].datatype = $(this).val();
-
-            if (autoFilledFields.has(fieldKey)) {
-                manualOverrides.add(fieldKey);
-                showOverrideConfirmation(db, item);
-            }
-
-            syncToIndexedDB();
-        });
-
-        container.find('input[id^="comment_"]').on('change', function() {
-            const id = $(this).attr('id');
-            const parts = id.replace('comment_', '').split('_');
-            const item = parts.pop();
-            const db = parts.join('_');
-            const key = `${db}_${item}`;
-
-            if (!formStateCache[key]) {
-                formStateCache[key] = {};
-            }
-            formStateCache[key].database = db;
-            formStateCache[key].comment = $(this).val();
-
-            syncToIndexedDB();
-        });
-    }
-
-    function applyPreselectionsToCurrentPage(database) {
-        const { preselectedDescriptions, preselectedDatatypes: preDatatypes, descriptionToDatatype: dtMap } = JSONLDMapper.computePreselections();
-
-        descriptionToDatatype = dtMap;
-        preselectedDatatypes = preDatatypes;
-
-        $(`#variables-${database} .description-select`).each(function() {
-            const $select = $(this);
-            const db = $select.data('database');
-            const item = $select.data('item');
-            const key = `${db}_${item}`;
-
-            if (key in preselectedDescriptions && !(key in formStateCache)) {
-                const value = preselectedDescriptions[key];
-                $select.selectpicker('val', value);
-            }
-        });
-
-        $(`#variables-${database} .datatype-select`).each(function() {
-            const $select = $(this);
-            const db = $select.data('database');
-            const item = $select.data('item');
-            const key = `${db}_${item}`;
-
-            if (key in preselectedDatatypes && !(key in formStateCache)) {
-                const value = preselectedDatatypes[key];
-                $select.selectpicker('val', value);
-            }
-        });
-    }
-
-    function changePage(database, direction) {
-        const container = $(`#variables-${database}`);
-        const totalItems = parseInt(container.attr('data-total'));
-        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
-        const currentPage = databasePages[database] || 1;
-        const newPage = currentPage + direction;
-
-        if (newPage >= 1 && newPage <= totalPages) {
-            renderPage(database, newPage);
-
-            $(`#current-page-${database}`).text(newPage);
-
-            const prevBtn = container.closest('.content').find('.prev-btn');
-            const nextBtn = container.closest('.content').find('.next-btn');
-            prevBtn.prop('disabled', newPage === 1);
-            nextBtn.prop('disabled', newPage === totalPages);
-        }
-    }
-</script>
-
-<script>
-    window.graph_exists = true;
-</script>
-
-</body>
+
+    {% include 'footer.html' %}
+
+    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+    <script>
+      var backendColumnInfoRaw = {{ column_info|tojson }};
+      var descriptionToDatatype = {};
+      var preselectedDatatypes = {};
+      var autoFilledFields = new Set();
+      var manualOverrides = new Set();
+      var selectedDescriptions = {};
+
+      const PAGE_SIZE = 10;
+      const databasePages = {};
+      const formStateCache = {};
+
+      var columnInfoData = null;
+
+      let loadingInterval;
+
+      function startLoadingAnimation(buttonSelector) {
+          const button = $(buttonSelector);
+          const originalText = button.html();
+
+          button.prop('disabled', true).addClass('processing');
+
+          let isPen = false;
+          button.html('<i class="fas fa-edit loading-icon"></i> Processing descriptions...');
+
+          loadingInterval = setInterval(function() {
+              const icon = button.find('.loading-icon');
+
+              icon.addClass('icon-fade-out');
+
+              setTimeout(function() {
+                  if (isPen) {
+                      icon.removeClass('fa-pen').addClass('fa-edit');
+                  } else {
+                      icon.removeClass('fa-edit').addClass('fa-pen');
+                  }
+                  isPen = !isPen;
+
+                  icon.removeClass('icon-fade-out').addClass('icon-fade-in');
+
+                  setTimeout(function() {
+                      icon.removeClass('icon-fade-in');
+                  }, 300);
+              }, 150);
+
+          }, 1000);
+
+          button.data('original-text', originalText);
+      }
+
+      function stopLoadingAnimation(buttonSelector) {
+          const button = $(buttonSelector);
+
+          if (loadingInterval) {
+              clearInterval(loadingInterval);
+              loadingInterval = null;
+          }
+
+          const originalText = button.data('original-text');
+          if (originalText) {
+              button.html(originalText);
+          }
+          button.prop('disabled', false).removeClass('processing');
+      }
+
+      async function initializeIndexedDB() {
+          if (FlyoverDB.isSupported()) {
+              await FlyoverDB.initDB();
+          }
+      }
+
+      async function saveColumnInfo(data) {
+          await FlyoverDB.saveData('metadata', {
+              key: 'column_info',
+              data: data,
+              timestamp: new Date().toISOString()
+          });
+      }
+
+      async function loadColumnInfo() {
+          const result = await FlyoverDB.getData('metadata', 'column_info');
+          if (result && result.data) {
+              return result.data;
+          }
+          return null;
+      }
+
+      function renderDatabaseSections(columnInfo) {
+          const container = $('#databases-container');
+          container.empty();
+
+          for (const [database, columns] of Object.entries(columnInfo)) {
+              const totalItems = columns.length;
+              const totalGroups = Math.ceil(totalItems / PAGE_SIZE);
+
+              let paginationHtml = '';
+              if (totalGroups > 1) {
+                  paginationHtml = `
+                      <div class="pagination-controls">
+                          <button type="button" class="prev-btn" onclick="changePage('${database}', -1)" disabled>
+                              &#x2190;
+                          </button>
+                          <span class="page-indicator">Page <span
+                                  id="current-page-${database}">1</span> of ${totalGroups}</span>
+                          <button type="button" class="next-btn" onclick="changePage('${database}', 1)">&#x2192;
+                          </button>
+                      </div>
+                  `;
+              }
+
+              const sectionHtml = `
+                  <h2 style="display: inline-block;"><i class="fas fa-database"></i> ${database}</h2>
+                  <button class="toggle-button" type="button" data-database="${database}">
+                      <span class="toggle-text">Show more</span>
+                      <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                          <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                      </svg>
+                  </button>
+                  <div class="content hidden" data-database="${database}">
+                      <div class="variables-container" id="variables-${database}"
+                           data-columns='${JSON.stringify(columns)}'
+                           data-total="${totalItems}">
+                      </div>
+                      ${paginationHtml}
+                  </div>
+                  <hr>
+              `;
+
+              container.append(sectionHtml);
+          }
+
+          attachToggleHandlers();
+      }
+
+      function attachToggleHandlers() {
+          $('.toggle-button').off('click').on('click', function () {
+              var textElement = $(this).find('.toggle-text');
+              var svgElement = $(this).find('.angle-icon path');
+              const database = $(this).data('database');
+              const content = $(this).next('.content');
+
+              if (textElement.text() === 'Show more') {
+                  textElement.text('Show less');
+                  svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160-160z');
+              } else {
+                  textElement.text('Show more');
+                  svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
+
+                  cacheCurrentPageState(database);
+              }
+              $(this).toggleClass('open');
+              content.toggleClass('active');
+          });
+      }
+
+      async function loadAndApplySemanticMapping() {
+          try {
+              await JSONLDMapper.loadFromIndexedDB();
+              JSONLDMapper.populateDescriptionOptions();
+              checkDescriptions();
+          } catch (error) {
+          }
+      }
+
+      $(function() {
+          initPage();
+      });
+
+      async function initPage() {
+          try {
+              await initializeIndexedDB();
+          } catch (e) {
+          }
+
+          if (backendColumnInfoRaw && Object.keys(backendColumnInfoRaw).length > 0) {
+              columnInfoData = backendColumnInfoRaw;
+              try {
+                  await saveColumnInfo(backendColumnInfoRaw);
+              } catch (e) {
+              }
+          } else {
+              columnInfoData = await loadColumnInfo();
+          }
+
+          if (columnInfoData) {
+              renderDatabaseSections(columnInfoData);
+          }
+
+          await loadAndApplySemanticMapping();
+
+          if (columnInfoData) {
+              for (const database of Object.keys(columnInfoData)) {
+                  renderPage(database, 1);
+              }
+          }
+
+          $('form').submit(function(e) {
+              $('.variables-container').each(function() {
+                  const database = $(this).attr('id').replace('variables-', '');
+                  cacheCurrentPageState(database);
+              });
+
+              const form = $(this);
+              for (const [key, cached] of Object.entries(formStateCache)) {
+                  const db = cached.database;
+                  const item = key.replace(`${db}_`, '');
+
+                  if ($(`#ncit_comment_${db}_${item}`).length === 0) {
+                      if (cached.description) {
+                          form.append(`<input type="hidden" name="ncit_comment_${db}_${item}" value="${cached.description}">`);
+                      }
+                      if (cached.datatype) {
+                          form.append(`<input type="hidden" name="${db}_${item}" value="${cached.datatype}">`);
+                      }
+                      if (cached.comment) {
+                          form.append(`<input type="hidden" name="comment_${db}_${item}" value="${cached.comment}">`);
+                      }
+                  }
+              }
+
+              startLoadingAnimation('#submitBtn');
+          });
+
+          checkDescriptions();
+      }
+
+      function checkDescriptions() {
+          let hasSelection = false;
+
+          $('select[id^="ncit_comment_"]').each(function () {
+              if ($(this).val() && $(this).val() !== '') {
+                  hasSelection = true;
+                  return false;
+              }
+          });
+
+          for (const key in formStateCache) {
+              if (formStateCache[key].description) {
+                  hasSelection = true;
+                  break;
+              }
+          }
+
+          $('#submitBtn').prop('disabled', !hasSelection);
+      }
+
+      function buildSelectedDescriptions() {
+          selectedDescriptions = {};
+
+          for (const key in formStateCache) {
+              const cached = formStateCache[key];
+              const desc = cached.description;
+              const db = cached.database;
+              if (desc && desc !== '' && desc !== 'Other' && db) {
+                  if (!selectedDescriptions[db]) selectedDescriptions[db] = {};
+                  selectedDescriptions[db][desc] = key;
+              }
+          }
+
+          $('select.description-select').each(function() {
+              const $select = $(this);
+              const db = $select.data('database');
+              const item = $select.data('item');
+              const key = `${db}_${item}`;
+              const val = $select.val();
+
+              if (val && val !== '' && val !== 'Other') {
+                  if (!selectedDescriptions[db]) selectedDescriptions[db] = {};
+                  if (!selectedDescriptions[db][val]) {
+                      selectedDescriptions[db][val] = key;
+                  }
+              }
+          });
+      }
+
+      function updateDescriptionOptions() {
+          buildSelectedDescriptions();
+
+          $('select.description-select').each(function() {
+              const $select = $(this);
+              const db = $select.data('database');
+              const item = $select.data('item');
+              const currentKey = `${db}_${item}`;
+              const currentVal = $select.val();
+              const dbSelections = selectedDescriptions[db] || {};
+
+              $select.find('option').each(function() {
+                  const optVal = $(this).val();
+                  if (optVal === '' || optVal === 'Other') return;
+
+                  if (dbSelections[optVal] && dbSelections[optVal] !== currentKey) {
+                      $(this).prop('disabled', true);
+                  } else {
+                      $(this).prop('disabled', false);
+                  }
+              });
+
+              $select.selectpicker('refresh');
+          });
+      }
+
+      function autoPopulateDatatype(database, item) {
+          var descriptionSelect = $('#ncit_comment_' + database + '_' + item);
+          var datatypeSelect = $('#' + database + '_' + item);
+          var feedback = $('#feedback_' + database + '_' + item);
+          var fieldKey = database + '_' + item;
+
+          var selectedDescription = descriptionSelect.val();
+
+          if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
+              var suggestedDatatype = preselectedDatatypes[fieldKey] || descriptionToDatatype[selectedDescription];
+
+              if (suggestedDatatype) {
+                  if (datatypeSelect.val() === '' || !manualOverrides.has(fieldKey)) {
+                      datatypeSelect.selectpicker('val', suggestedDatatype);
+                      autoFilledFields.add(fieldKey);
+
+                      feedback.show();
+                      setTimeout(function () {
+                          feedback.fadeOut();
+                      }, 3000);
+                  }
+              }
+          } else {
+              if (autoFilledFields.has(fieldKey) && !manualOverrides.has(fieldKey)) {
+                  datatypeSelect.selectpicker('val', '');
+                  autoFilledFields.delete(fieldKey);
+                  feedback.hide();
+              }
+          }
+      }
+
+      function showOverrideConfirmation(database, item) {
+          var feedback = $('#feedback_' + database + '_' + item);
+          feedback.html('<i class="fas fa-user-edit"></i> Manually overridden').css('color', '#ffc107').show();
+          setTimeout(function () {
+              feedback.fadeOut();
+          }, 2000);
+      }
+
+      function cacheCurrentPageState(database) {
+          $(`#variables-${database} .variable-row`).each(function() {
+              const row = $(this);
+              const item = row.find('.description-select').data('item');
+              const key = `${database}_${item}`;
+
+              const domDescription = row.find('.description-select').val();
+              const domDatatype = row.find('.datatype-select').val();
+              const domComment = row.find(`#comment_${database}_${item}`).val();
+
+              const existing = formStateCache[key] || {};
+
+              formStateCache[key] = {
+                  database: database,
+                  description: domDescription || existing.description || '',
+                  datatype: domDatatype || existing.datatype || '',
+                  comment: domComment || existing.comment || ''
+              };
+          });
+
+          syncToIndexedDB();
+      }
+
+      async function syncToIndexedDB() {
+          try {
+              await JSONLDMapper.updateMappingFromForm(formStateCache);
+          } catch (error) {
+              console.error('Failed to sync to IndexedDB:', error);
+          }
+      }
+
+      function renderPage(database, pageNumber) {
+          const container = $(`#variables-${database}`);
+          const columns = JSON.parse(container.attr('data-columns'));
+          const totalItems = parseInt(container.attr('data-total'));
+          const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+
+          if (pageNumber < 1 || pageNumber > totalPages) return;
+
+          cacheCurrentPageState(database);
+
+          container.empty();
+
+          const startIdx = (pageNumber - 1) * PAGE_SIZE;
+          const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
+
+          for (let i = startIdx; i < endIdx; i++) {
+              const item = columns[i];
+              const key = `${database}_${item}`;
+              const cached = formStateCache[key] || {};
+
+              const row = $(`
+                  <div class="variable-row">
+                      <div class="variable-label">${item}</div>
+                      <div class="variable-controls">
+                          <select id="ncit_comment_${database}_${item}"
+                                  name="ncit_comment_${database}_${item}"
+                                  class="selectpicker description-select" data-live-search="true"
+                                  data-database="${database}" data-item="${item}">
+                              <option value="">Description</option>
+                              <option value="Other">Other</option>
+                          </select>
+
+                          <input class="form-control" type="text" id="comment_${database}_${item}"
+                                 name="comment_${database}_${item}"
+                                 placeholder="If other, please specify" disabled='disabled'/>
+
+                          <div class="datatype-container">
+                              <select id="${database}_${item}" name="${database}_${item}"
+                                      class="selectpicker datatype-select" data-live-search="true"
+                                      data-database="${database}" data-item="${item}">
+                                  <option value="">Data type</option>
+                                  <option value="categorical">Categorical</option>
+                                  <option value="continuous">Continuous</option>
+                                  <option value="identifier">Identifier</option>
+                                  <option value="standardised">Standardised</option>
+                              </select>
+                              <small class="datatype-feedback" id="feedback_${database}_${item}"
+                                     style="display: none; color: #28a745;">
+                                  <i class="fas fa-magic"></i> Auto-filled based on description
+                              </small>
+                          </div>
+                      </div>
+                  </div>
+              `);
+
+              container.append(row);
+          }
+
+          databasePages[database] = pageNumber;
+
+          const globalNames = JSONLDMapper.getGlobalVariableNames();
+          container.find('.description-select').each(function() {
+              const $select = $(this);
+              globalNames.forEach(name => {
+                  if (name !== "Other") {
+                      $select.append(`<option value="${name}">${name}</option>`);
+                  }
+              });
+          });
+
+          container.find('.selectpicker').selectpicker();
+
+          for (let i = startIdx; i < endIdx; i++) {
+              const item = columns[i];
+              const key = `${database}_${item}`;
+              const cached = formStateCache[key];
+
+              if (cached) {
+                  if (cached.description) {
+                      $(`#ncit_comment_${database}_${item}`).selectpicker('val', cached.description);
+                  }
+                  if (cached.datatype) {
+                      $(`#${database}_${item}`).selectpicker('val', cached.datatype);
+                  }
+                  if (cached.comment) {
+                      $(`#comment_${database}_${item}`).val(cached.comment);
+                      $(`#comment_${database}_${item}`).prop('disabled', false);
+                  }
+              }
+          }
+
+          attachEventHandlers(database);
+          applyPreselectionsToCurrentPage(database);
+          checkDescriptions();
+          updateDescriptionOptions();
+      }
+
+      function attachEventHandlers(database) {
+          const container = $(`#variables-${database}`);
+
+          container.find('.description-select').on('changed.bs.select', function () {
+              const db = $(this).data('database');
+              const item = $(this).data('item');
+              const commentBox = $(`#comment_${db}_${item}`);
+              const key = `${db}_${item}`;
+
+              if ($(this).val() === "Other") {
+                  commentBox.removeAttr("disabled");
+              } else {
+                  commentBox.attr("disabled", "disabled");
+              }
+
+              if (!formStateCache[key]) {
+                  formStateCache[key] = {};
+              }
+              formStateCache[key].database = db;
+              formStateCache[key].description = $(this).val();
+
+              autoPopulateDatatype(db, item);
+              checkDescriptions();
+              updateDescriptionOptions();
+              syncToIndexedDB();
+          });
+
+          container.find('.datatype-select').on('changed.bs.select', function () {
+              const db = $(this).data('database');
+              const item = $(this).data('item');
+              const fieldKey = `${db}_${item}`;
+
+              if (!formStateCache[fieldKey]) {
+                  formStateCache[fieldKey] = {};
+              }
+              formStateCache[fieldKey].database = db;
+              formStateCache[fieldKey].datatype = $(this).val();
+
+              if (autoFilledFields.has(fieldKey)) {
+                  manualOverrides.add(fieldKey);
+                  showOverrideConfirmation(db, item);
+              }
+
+              syncToIndexedDB();
+          });
+
+          container.find('input[id^="comment_"]').on('change', function() {
+              const id = $(this).attr('id');
+              const parts = id.replace('comment_', '').split('_');
+              const item = parts.pop();
+              const db = parts.join('_');
+              const key = `${db}_${item}`;
+
+              if (!formStateCache[key]) {
+                  formStateCache[key] = {};
+              }
+              formStateCache[key].database = db;
+              formStateCache[key].comment = $(this).val();
+
+              syncToIndexedDB();
+          });
+      }
+
+      function applyPreselectionsToCurrentPage(database) {
+          const { preselectedDescriptions, preselectedDatatypes: preDatatypes, descriptionToDatatype: dtMap } = JSONLDMapper.computePreselections();
+
+          descriptionToDatatype = dtMap;
+          preselectedDatatypes = preDatatypes;
+
+          $(`#variables-${database} .description-select`).each(function() {
+              const $select = $(this);
+              const db = $select.data('database');
+              const item = $select.data('item');
+              const key = `${db}_${item}`;
+
+              if (key in preselectedDescriptions && !(key in formStateCache)) {
+                  const value = preselectedDescriptions[key];
+                  $select.selectpicker('val', value);
+              }
+          });
+
+          $(`#variables-${database} .datatype-select`).each(function() {
+              const $select = $(this);
+              const db = $select.data('database');
+              const item = $select.data('item');
+              const key = `${db}_${item}`;
+
+              if (key in preDatatypes && !(key in formStateCache)) {
+                  const value = preDatatypes[key];
+                  $select.selectpicker('val', value);
+              }
+          });
+      }
+
+      function changePage(database, direction) {
+          const container = $(`#variables-${database}`);
+          const totalItems = parseInt(container.attr('data-total'));
+          const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+          const currentPage = databasePages[database] || 1;
+          const newPage = currentPage + direction;
+
+          if (newPage >= 1 && newPage <= totalPages) {
+              renderPage(database, newPage);
+
+              $(`#current-page-${database}`).text(newPage);
+
+              const prevBtn = container.closest('.content').find('.prev-btn');
+              const nextBtn = container.closest('.content').find('.next-btn');
+              prevBtn.prop('disabled', newPage === 1);
+              nextBtn.prop('disabled', newPage === totalPages);
+          }
+      }
+    </script>
+
+    <script>
+      window.graph_exists = true;
+    </script>
+  </body>
 </html>
