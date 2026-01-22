@@ -203,11 +203,15 @@ const JSONLDMapper = {
                 const colVarKey = this.getVariableKeyFromColumn(colData);
                 if (colVarKey !== varName) return;
 
-                const localCol = colData.localColumn;
+                let localCol = colData.localColumn;
                 if (!localCol) return;
 
+                const sourceFile = tableData.sourceFile;
                 const dbName = dbData.name;
-                const matchingDomDb = databases.find(domDb => this.graphDatabaseFindNameMatch(dbName, domDb));
+                const matchingDomDb = databases.find(domDb =>
+                    this.graphDatabaseFindNameMatch(sourceFile, domDb) ||
+                    this.graphDatabaseFindNameMatch(dbName, domDb)
+                );
 
                 if (matchingDomDb) {
                     const key = `${matchingDomDb}_${localCol}`;

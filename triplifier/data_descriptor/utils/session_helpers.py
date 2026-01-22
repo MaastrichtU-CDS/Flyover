@@ -246,10 +246,10 @@ def get_table_names_from_mapping(session_cache) -> List[str]:
     if session_cache.jsonld_mapping is not None:
         # Try to get table names from the jsonld_mapping object
         # If it has a method for this, use it; otherwise extract from raw data
-        if hasattr(session_cache.jsonld_mapping, 'get_table_names'):
+        if hasattr(session_cache.jsonld_mapping, "get_table_names"):
             return session_cache.jsonld_mapping.get_table_names()
         # Fallback:  extract from the raw jsonld data if available
-        if hasattr(session_cache.jsonld_mapping, 'raw_data'):
+        if hasattr(session_cache.jsonld_mapping, "raw_data"):
             return get_table_names_from_jsonld(session_cache.jsonld_mapping.raw_data)
         # Last resort: try to_legacy_format and check for sourceFile info
         try:
@@ -274,7 +274,7 @@ def get_table_names_from_mapping(session_cache) -> List[str]:
     return []
 
 
-def get_table_names_from_jsonld(semantic_map:  dict) -> list:
+def get_table_names_from_jsonld(semantic_map: dict) -> list:
     """
     Extract all table names (sourceFile values) from a JSON-LD semantic map.
 
@@ -291,13 +291,13 @@ def get_table_names_from_jsonld(semantic_map:  dict) -> list:
     if not isinstance(databases, dict):
         return table_names
 
-    for db_key, db_data in databases. items():
+    for db_key, db_data in databases.items():
         if not isinstance(db_data, dict):
             continue
-        tables = db_data. get("tables")
+        tables = db_data.get("tables")
         if not isinstance(tables, dict):
             continue
-        for table_key, table_data in tables. items():
+        for table_key, table_data in tables.items():
             if not isinstance(table_data, dict):
                 continue
             source_file = table_data.get("sourceFile")

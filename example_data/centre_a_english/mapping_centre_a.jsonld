@@ -459,12 +459,12 @@
           "columns": {
             "identifier": {
               "mapsTo": "schema:variable/identifier",
-              "localColumn": ["id"]
+              "localColumn": "id"
             },
 
             "biological_sex": {
               "mapsTo": "schema:variable/biological_sex",
-              "localColumn": ["biological_sex"],
+              "localColumn": "biological_sex",
               "localMappings": {
                 "male": "male",
                 "female": "female",
@@ -474,7 +474,7 @@
 
             "age_at_diagnosis": {
               "mapsTo": "schema:variable/age_at_diagnosis",
-              "localColumn": ["age_at_diagnosis"],
+              "localColumn": "age_at_diagnosis",
               "localMappings": {
                 "missing_or_unspecified": ""
               }
@@ -482,7 +482,7 @@
 
             "performance_status": {
               "mapsTo": "schema:variable/performance_status",
-              "localColumn": ["performance_status_ecog"],
+              "localColumn": "performance_status_ecog",
               "localMappings": {
                 "0": "0",
                 "1": "1",
@@ -493,7 +493,7 @@
 
             "hpv_status": {
               "mapsTo": "schema:variable/hpv_status",
-              "localColumn": ["overall_hpv_p16_status"],
+              "localColumn": "overall_hpv_p16_status",
               "localMappings": {
                 "positive": "positive",
                 "negative": "negative",
@@ -503,7 +503,7 @@
 
             "tumour_location": {
               "mapsTo": "schema:variable/tumour_location",
-              "localColumn": ["index_tumour_location"],
+              "localColumn": "index_tumour_location",
               "localMappings": {
                 "oropharynx": "oropharynx",
                 "larynx": "larynx",
@@ -513,7 +513,7 @@
 
             "t_stage": {
               "mapsTo": "schema:variable/t_stage",
-              "localColumn": ["clin_t"],
+              "localColumn": "clin_t",
               "localMappings": {
                 "1": "1",
                 "2": "2",
@@ -525,7 +525,7 @@
 
             "n_stage": {
               "mapsTo": "schema:variable/n_stage",
-              "localColumn": ["clin_n"],
+              "localColumn": "clin_n",
               "localMappings": {
                 "0": "0",
                 "1": "1",
@@ -537,7 +537,7 @@
 
             "m_stage": {
               "mapsTo": "schema:variable/m_stage",
-              "localColumn": ["clin_m"],
+              "localColumn": "clin_m",
               "localMappings": {
                 "0": "0",
                 "1": "1",
@@ -547,7 +547,7 @@
 
             "survival_status": {
               "mapsTo": "schema:variable/survival_status",
-              "localColumn": ["event_overall_survival"],
+              "localColumn": "event_overall_survival",
               "localMappings": {
                 "Dead": "1",
                 "Alive": "0",
@@ -557,7 +557,7 @@
 
             "survival_days": {
               "mapsTo": "schema:variable/survival_days",
-              "localColumn": ["overall_survival_in_days"],
+              "localColumn": "overall_survival_in_days",
               "localMappings": {
                 "missing_or_unspecified": ""
               }
