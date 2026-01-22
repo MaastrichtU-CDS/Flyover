@@ -383,7 +383,7 @@
           ]
         },
         "localMappings": {
-          "description": "Local value mappings - keys are schema terms, values are local terms",
+          "description": "Local value mappings - keys are schema terms, values are local terms (string or array of strings)",
           "type": "object",
           "additionalProperties": {
             "oneOf": [
@@ -392,6 +392,12 @@
               },
               {
                 "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             ]
           }

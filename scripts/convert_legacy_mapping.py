@@ -31,7 +31,7 @@ import argparse
 import re
 from pathlib import Path
 from datetime import date
-from typing import Any, Optional
+from typing import Optional
 from dataclasses import dataclass, field
 from copy import deepcopy
 

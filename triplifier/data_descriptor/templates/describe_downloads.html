@@ -34,23 +34,20 @@
         <button class="btn btn-outline-secondary"><i class="fas fa-download"></i> Download local ontology</button>
     </a>
     <br>
-    <div {% if not show_semantic_map %} style="display: none;" {% endif %}>
+    <div id="semantic-map-section" style="display: none;">
         <hr style="border: none; border-top: 2px dotted rgba(0,0,0,0.56)"/>
         <p style="line-height: 1.5; margin: 0;"> Using the provided global semantic map, we have now added your data's
             descriptions to a local semantic map. <br>
             You can download the local semantic map version through the 'Download local
             semantic map' button below.</p>
-        <a href="/downloadSemanticMap" download="semantic_map.json">
-            <button class="btn btn-outline-secondary " {% if not show_semantic_map %}
-                    style="display: none;" {% endif %}>
-                <i class="fas fa-download"></i> Download local semantic map
-            </button>
-        </a>
+        <button class="btn btn-outline-secondary" id="download-semantic-map-btn" onclick="downloadSemanticMapFromIndexedDB()">
+            <i class="fas fa-download"></i> Download local semantic map
+        </button>
         <hr>
         <p style="line-height: 1.5; margin: 0;"> With this local semantic map, you can now also annotate your data to
             actually make it semantically interoperable.</p>
-        <a href="/annotation-review" {% if not show_semantic_map %} style="display: none;" {% endif %}>
-            <button class="btn btn-primary" {% if not show_semantic_map %} style="display: none;" {% endif %}>
+        <a href="/annotation-review" id="annotation-review-link">
+            <button class="btn btn-primary" id="annotation-review-btn">
                 <i class="fas fa-play"></i> Review and Annotate Data
             </button>
         </a>
@@ -79,7 +76,71 @@
 <!-- Include footer -->
 {% include 'footer.html' %}
 
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
 <script>
+    async function checkSemanticMapAvailability() {
+        try {
+            if (!FlyoverDB.isSupported()) {
+                console.warn('Flyover: IndexedDB not supported');
+                return;
+            }
+
+            await FlyoverDB.initDB();
+            console.log('Flyover: IndexedDB initialized');
+
+            const result = await FlyoverDB.getData('metadata', 'semantic_map');
+            
+            if (result && result.data) {
+                console.log('Flyover: Semantic map found in IndexedDB, showing download section');
+                document.getElementById('semantic-map-section').style.display = 'block';
+            } else {
+                console.log('Flyover: No semantic map found in IndexedDB, hiding download section');
+                document.getElementById('semantic-map-section').style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Flyover: Error checking semantic map availability:', error);
+            document.getElementById('semantic-map-section').style.display = 'none';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', checkSemanticMapAvailability);
+
+    async function downloadSemanticMapFromIndexedDB() {
+        try {
+            if (!FlyoverDB.isSupported()) {
+                alert('IndexedDB is not supported in your browser. Cannot download semantic map.');
+                return;
+            }
+
+            await FlyoverDB.initDB();
+            const result = await FlyoverDB.getData('metadata', 'semantic_map');
+            
+            if (!result || !result.data) {
+                alert('No semantic map found in IndexedDB. Please complete the mapping first.');
+                return;
+            }
+
+            const jsonString = JSON.stringify(result.data, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/ld+json' });
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'semantic_mapping.jsonld';
+            document.body.appendChild(a);
+            a.click();
+            
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            console.log('Flyover: Semantic map downloaded successfully');
+        } catch (error) {
+            console.error('Flyover: Error downloading semantic map:', error);
+            alert('Error downloading semantic map. Please check the console for details.');
+        }
+    }
+
     // Pass Flask variables to JavaScript for navigation header
     window.graph_exists = true; // Data exists in describe step
 </script>

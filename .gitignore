@@ -38,3 +38,9 @@ annotation_ui_demo.html
 /tmp/
 *.tmp
 *.db
+
+# AI related
+.github/instructions/codacy.instructions.md
+.pre-commit-config.yaml
+CLAUDE.md
+.claudeignore

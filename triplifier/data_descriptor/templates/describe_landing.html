@@ -6,6 +6,7 @@
 <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -154,7 +155,7 @@
                         <div class="alert alert-warning" role="alert">
                             <i class="fas fa-exclamation-triangle"></i>
                             <strong>No Data Found</strong><br>
-                            You cannot proceed with the describe step as no data has been uploaded yet. 
+                            You cannot proceed with the describe step as no data has been uploaded yet.
                             Please go back to the Ingest step to upload your data first.
                             <br><br>
                             <a href="/ingest" class="btn btn-primary">
@@ -184,7 +185,7 @@
         });
 
         // Handle semantic map form submission
-        $("#semanticMapForm").submit(function (e) {
+        $("#semanticMapForm").submit(async function (e) {
             e.preventDefault();
 
             if (!$("#semanticMapFile")[0].files.length) {
@@ -192,37 +193,44 @@
                 return;
             }
 
-            // Create FormData object
-            const formData = new FormData();
-            formData.append("semanticMapFile", $("#semanticMapFile")[0].files[0]);
+            const file = $("#semanticMapFile")[0].files[0];
 
-            // Show loading state
-            $("#uploadSemanticMapButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Uploading...');
+            $("#uploadSemanticMapButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
 
-            // Submit via AJAX
-            $.ajax({
-                url: "/upload-semantic-map",
-                type: "POST",
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function (response) {
-                    $("#semanticMapSection").hide();
-                    showStatusMessage("Global semantic map uploaded successfully! This will guide the semantic mapping process and help standardise your data annotations.", "success");
+            try {
+                const fileContents = await readFileAsText(file);
+                const jsonldData = JSON.parse(fileContents);
 
-                    // Enable the continue button after successful upload
-                    enableContinueButton();
-                },
-                error: function (xhr, status, error) {
-                    let errorMessage = "Failed to upload semantic map file.";
-                    if (xhr.responseJSON && xhr.responseJSON.error) {
-                        errorMessage = xhr.responseJSON.error;
-                    }
-                    showStatusMessage(errorMessage, "error");
-                    $("#uploadSemanticMapButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload Semantic Map');
+                await FlyoverDB.saveData('metadata', {
+                    key: 'semantic_map',
+                    data: jsonldData,
+                    filename: file.name,
+                    timestamp: new Date().toISOString()
+                });
+
+                $("#semanticMapSection").hide();
+                showStatusMessage("Global semantic map uploaded successfully! This will guide the semantic mapping process and help standardise your data annotations.", "success");
+
+                enableContinueButton();
+            } catch (error) {
+                console.error("Error saving semantic map to IndexedDB:", error);
+                let errorMessage = "Failed to save semantic map file.";
+                if (error.message) {
+                    errorMessage += " " + error.message;
                 }
-            });
+                showStatusMessage(errorMessage, "error");
+                $("#uploadSemanticMapButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload Semantic Map');
+            }
         });
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(new Error("Failed to read file"));
+                reader.readAsText(file);
+            });
+        }
 
         // Handle continue form submission
         $("#continueForm").submit(function(e) {
@@ -381,4 +389,3 @@
 
 </body>
 </html>
-

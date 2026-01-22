@@ -24,8 +24,6 @@ from loaders import (
     SchemaReconstructionNode,
     SchemaVariable,
     ColumnMapping,
-    Table,
-    Database,
     JSONLDMapping,
 )
 
@@ -318,6 +316,43 @@ class TestJSONLDMapping(unittest.TestCase):
             self.assertIn("databases", saved_data)
         finally:
             os.unlink(temp_path)
+
+    def test_to_legacy_format(self):
+        """Test converting JSON-LD mapping to legacy format."""
+        mapping = JSONLDMapping.from_dict(self.mapping_data)
+        legacy = mapping.to_legacy_format()
+
+        # Check basic structure
+        self.assertIn("variable_info", legacy)
+        self.assertIn("database_name", legacy)
+        self.assertIn("prefixes", legacy)
+        self.assertIn("endpoint", legacy)
+
+        # Check variable_info contents
+        self.assertIn("biological_sex", legacy["variable_info"])
+        var_info = legacy["variable_info"]["biological_sex"]
+
+        self.assertEqual(var_info["predicate"], "sio:SIO_000008")
+        self.assertEqual(var_info["class"], "ncit:C28421")
+        self.assertEqual(var_info["local_definition"], "sex")
+        self.assertEqual(var_info["data_type"], "categorical")
+
+        # Check value mapping conversion
+        self.assertIn("value_mapping", var_info)
+        self.assertIn("terms", var_info["value_mapping"])
+        self.assertIn("male", var_info["value_mapping"]["terms"])
+        self.assertEqual(
+            var_info["value_mapping"]["terms"]["male"]["target_class"], "ncit:C20197"
+        )
+        self.assertEqual(var_info["value_mapping"]["terms"]["male"]["local_term"], "M")
+
+    def test_get_prefixes_string(self):
+        """Test getting prefixes as SPARQL PREFIX string."""
+        mapping = JSONLDMapping.from_dict(self.mapping_data)
+        prefixes_str = mapping.get_prefixes_string()
+
+        self.assertIn("PREFIX sio:", prefixes_str)
+        self.assertIn("http://semanticscience.org/resource/", prefixes_str)
 
 
 class TestJSONLDMappingWithRealFiles(unittest.TestCase):

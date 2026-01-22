@@ -190,10 +190,13 @@ class ColumnMapping:
     @classmethod
     def from_dict(cls, key: str, data: dict) -> "ColumnMapping":
         """Create a ColumnMapping from a dictionary."""
+        local_col = data.get("localColumn", "")
+        if isinstance(local_col, list):
+            local_col = local_col[0] if local_col else ""
         return cls(
             key=key,
             maps_to=data.get("mapsTo", ""),
-            local_column=data.get("localColumn", ""),
+            local_column=local_col,
             local_mappings=data.get("localMappings", {}),
         )
 
@@ -602,6 +605,42 @@ class JSONLDMapping:
             return first_db.name
         return None
 
+    def find_database_key_for_graphdb(self, graphdb_name: str) -> Optional[str]:
+        """
+        Find the JSON-LD database key that matches a GraphDB database name.
+
+        Matches by checking database name or table sourceFile against the GraphDB name.
+        Handles .csv extension differences.
+
+        Args:
+            graphdb_name: The database name from GraphDB.
+
+        Returns:
+            The matching database key, or None if no match found.
+        """
+        if not self.databases:
+            return None
+
+        graphdb_no_ext = (
+            graphdb_name[:-4] if graphdb_name.endswith(".csv") else graphdb_name
+        )
+
+        for db_key, db in self.databases.items():
+            db_name_no_ext = db.name[:-4] if db.name.endswith(".csv") else db.name
+            if db.name == graphdb_name or db_name_no_ext == graphdb_no_ext:
+                return db_key
+
+            for table in db.tables.values():
+                source_no_ext = (
+                    table.source_file[:-4]
+                    if table.source_file.endswith(".csv")
+                    else table.source_file
+                )
+                if table.source_file == graphdb_name or source_no_ext == graphdb_no_ext:
+                    return db_key
+
+        return None
+
     # ========================================================================
     # Conversion Methods
     # ========================================================================
@@ -646,3 +685,129 @@ class JSONLDMapping:
         file_path = Path(file_path)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=indent, ensure_ascii=False)
+
+    def to_legacy_format(
+        self,
+        database_key: Optional[str] = None,
+        table_key: Optional[str] = None,
+    ) -> dict:
+        """
+        Convert JSON-LD mapping to legacy format for annotation helper compatibility.
+
+        This method converts the new JSON-LD structure to the legacy format that is
+        expected by the annotation helper's add_annotation function. The legacy format
+        uses 'variable_info' with 'local_definition', 'predicate', 'class', 'data_type',
+        'schema_reconstruction', and 'value_mapping' with 'terms' containing 'local_term'
+        and 'target_class'.
+
+        .. deprecated:: 3.0.0
+            This method is transitional and scheduled for removal in version 4.0.0.
+            The annotation helper will be updated to work directly with JSON-LD format.
+
+        Args:
+            database_key: Optional database key to filter local mappings.
+                         If None, uses the first database.
+            table_key: Optional table key to filter local mappings.
+                      If None, searches all tables.
+
+        Returns:
+            Dictionary in legacy format compatible with annotation helper.
+        """
+        # Build prefixes string in legacy format
+        prefixes_str = ""
+        for prefix_name, prefix_uri in self.prefixes.items():
+            prefixes_str += f"PREFIX {prefix_name}: <{prefix_uri}>\n"
+
+        # Determine database name for legacy format
+        db_name = ""
+        if database_key and database_key in self.databases:
+            db_name = self.databases[database_key].name
+        elif self.databases:
+            first_db = list(self.databases.values())[0]
+            db_name = first_db.name
+
+        legacy = {
+            "endpoint": self.endpoint,
+            "database_name": db_name,
+            "prefixes": prefixes_str.strip(),
+            "variable_info": {},
+        }
+
+        # Convert each variable to legacy format
+        for var_key, var in self.variables.items():
+            var_legacy = {
+                "predicate": var.predicate,
+                "class": var.class_uri,
+                "data_type": var.data_type,
+                "local_definition": None,  # Will be populated from column mapping
+            }
+
+            # Convert schema reconstruction if present
+            if var.schema_reconstruction:
+                var_legacy["schema_reconstruction"] = []
+                for node in var.schema_reconstruction:
+                    # Determine node type from the @type field
+                    # ClassNode -> "class", UnitNode/PropertyNode -> "node"
+                    node_type_value = "class"
+                    if node.node_type in ("schema:UnitNode", "schema:PropertyNode"):
+                        node_type_value = "node"
+                    elif node.node_type != "schema:ClassNode":
+                        # For unknown types, default to "class" if class_label exists, otherwise "node"
+                        node_type_value = "class" if node.class_label else "node"
+
+                    node_legacy = {
+                        "type": node_type_value,
+                        "predicate": node.predicate,
+                        "class": node.class_uri,
+                    }
+                    if node.placement:
+                        node_legacy["placement"] = node.placement
+                    if node.class_label:
+                        node_legacy["class_label"] = node.class_label
+                    if node.node_label:
+                        node_legacy["node_label"] = node.node_label
+                    if node.aesthetic_label:
+                        node_legacy["aesthetic_label"] = node.aesthetic_label
+                    var_legacy["schema_reconstruction"].append(node_legacy)
+
+            # Convert value mapping if present
+            if var.value_mappings:
+                var_legacy["value_mapping"] = {"terms": {}}
+                for term_key, target_class in var.value_mappings.items():
+                    var_legacy["value_mapping"]["terms"][term_key] = {
+                        "target_class": target_class,
+                        "local_term": None,  # Will be populated from column mapping
+                    }
+
+            # Get local column and local mappings from database/table
+            column = self.get_column_for_variable(var_key, database_key, table_key)
+            if column:
+                local_col = column.local_column
+                if isinstance(local_col, list):
+                    local_col = local_col[0] if local_col else None
+                var_legacy["local_definition"] = local_col or None
+
+                # Populate local_term values from column mappings
+                if "value_mapping" in var_legacy and column.local_mappings:
+                    for term_key in var_legacy["value_mapping"]["terms"]:
+                        if term_key in column.local_mappings:
+                            local_term_value = column.local_mappings[term_key]
+                            var_legacy["value_mapping"]["terms"][term_key][
+                                "local_term"
+                            ] = local_term_value
+
+            legacy["variable_info"][var_key] = var_legacy
+
+        return legacy
+
+    def get_prefixes_string(self) -> str:
+        """
+        Get prefixes as a SPARQL PREFIX declaration string.
+
+        Returns:
+            String with PREFIX declarations for use in SPARQL queries.
+        """
+        prefixes_str = ""
+        for prefix_name, prefix_uri in self.prefixes.items():
+            prefixes_str += f"PREFIX {prefix_name}: <{prefix_uri}>\n"
+        return prefixes_str.strip()
