@@ -249,8 +249,8 @@ def get_table_names_from_mapping(session_cache) -> List[str]:
         if hasattr(session_cache.jsonld_mapping, 'get_table_names'):
             return session_cache.jsonld_mapping.get_table_names()
         # Fallback:  extract from the raw jsonld data if available
-        if hasattr(session_cache.jsonld_mapping, '_raw_data'):
-            return get_table_names_from_jsonld(session_cache.jsonld_mapping._raw_data)
+        if hasattr(session_cache.jsonld_mapping, 'raw_data'):
+            return get_table_names_from_jsonld(session_cache.jsonld_mapping.raw_data)
         # Last resort: try to_legacy_format and check for sourceFile info
         try:
             legacy = session_cache.jsonld_mapping.to_legacy_format()

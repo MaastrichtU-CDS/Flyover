@@ -199,17 +199,26 @@ const JSONLDMapper = {
                 descriptionToDatatype[descriptionDisplay] = datatypeDisplay;
             }
 
-            const localDef = this.getLocalColumn(varName);
+            this.forEachColumn(this.mapping.databases || {}, (colData, colKey, tableData, tableKey, dbData, dbKey) => {
+                const colVarKey = this.getVariableKeyFromColumn(colData);
+                if (colVarKey !== varName) return;
 
-            for (const db of databases) {
-                const key = `${db}_${localDef}`;
+                const localCol = colData.localColumn;
+                if (!localCol) return;
 
-                preselectedDescriptions[key] = descriptionDisplay;
+                const dbName = dbData.name;
+                const matchingDomDb = databases.find(domDb => this.graphDatabaseFindNameMatch(dbName, domDb));
 
-                if (datatypeDisplay) {
-                    preselectedDatatypes[key] = datatypeDisplay;
+                if (matchingDomDb) {
+                    const key = `${matchingDomDb}_${localCol}`;
+
+                    preselectedDescriptions[key] = descriptionDisplay;
+
+                    if (datatypeDisplay) {
+                        preselectedDatatypes[key] = datatypeDisplay;
+                    }
                 }
-            }
+            });
         }
 
         return { preselectedDescriptions, preselectedDatatypes, descriptionToDatatype };
