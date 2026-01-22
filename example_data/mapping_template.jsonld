@@ -1,0 +1,609 @@
+{
+  "$schema": "https://raw.githubusercontent.com/MaastrichtU-CDS/Flyover/main/triplifier/data_descriptor/schemas/mapping_schema.json",
+  "@context": {
+    "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/",
+    "sio": "http://semanticscience.org/resource/",
+    "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+    "mesh": "http://id.nlm.nih.gov/mesh/",
+    "roo": "http://www.cancerdata.org/roo/",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "schema": "schema/",
+    "mapping": "mapping/"
+  },
+  "@id": "REPLACE_WITH_YOUR_MAPPING_ID",
+  "@type": "mapping:DataMapping",
+  "name": "REPLACE_WITH_YOUR_MAPPING_NAME",
+  "description": "",
+  "version": "1.0.0",
+  "created": "2025-01-01",
+  "endpoint": "",
+  "schema": {
+    "@id": "schema:clinical-oncology/v1",
+    "@type": "schema:SemanticSchema",
+    "name": "Clinical Oncology Semantic Schema",
+    "version": "1.0.0",
+    "description": "Semantic schema for clinical oncology data harmonization",
+    "prefixes": {
+      "mesh": "http://id.nlm.nih.gov/mesh/",
+      "sio": "http://semanticscience.org/resource/",
+      "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+      "roo": "http://www.cancerdata.org/roo/"
+    },
+    "variables": {
+      "identifier": {
+        "@id": "schema:variable/identifier",
+        "@type": "schema:IdentifierVariable",
+        "dataType": "identifier",
+        "predicate": "sio:SIO_000673",
+        "class": "ncit:C25364"
+      },
+      "biological_sex": {
+        "@id": "schema:variable/biological_sex",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C28421",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:D000091569",
+            "classLabel": "demographicClass",
+            "aestheticLabel": "Demographic"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "male": {
+              "targetClass": "ncit:C20197"
+            },
+            "female": {
+              "targetClass": "ncit:C16576"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "age_at_diagnosis": {
+        "@id": "schema:variable/age_at_diagnosis",
+        "@type": "schema:ContinuousVariable",
+        "dataType": "continuous",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C156420",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:D000091569",
+            "classLabel": "demographicClass",
+            "aestheticLabel": "Demographic"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          },
+          {
+            "@type": "schema:UnitNode",
+            "predicate": "sio:SIO_000221",
+            "class": "ncit:C29848",
+            "nodeLabel": "years",
+            "aestheticLabel": "Years"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "performance_status": {
+        "@id": "schema:variable/performance_status",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C105721",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:D000091569",
+            "classLabel": "demographicClass",
+            "aestheticLabel": "Demographic"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "0": {
+              "targetClass": "ncit:C105722"
+            },
+            "1": {
+              "targetClass": "ncit:C105723"
+            },
+            "2": {
+              "targetClass": "ncit:C105725"
+            },
+            "3": {
+              "targetClass": "ncit:C105726"
+            },
+            "4": {
+              "targetClass": "ncit:C105727"
+            },
+            "5": {
+              "targetClass": "ncit:C105728"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "hpv_status": {
+        "@id": "schema:variable/hpv_status",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C185050",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:D000091569",
+            "classLabel": "demographicClass",
+            "aestheticLabel": "Demographic"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "positive": {
+              "targetClass": "ncit:C128839"
+            },
+            "negative": {
+              "targetClass": "ncit:C131488"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "tumour_location": {
+        "@id": "schema:variable/tumour_location",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C3263",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:C18772",
+            "classLabel": "clinicalClass",
+            "aestheticLabel": "Clinical"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "roo:P100029",
+            "class": "ncit:C3262",
+            "classLabel": "neoplasmClass",
+            "aestheticLabel": "Neoplasm"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "oropharynx": {
+              "targetClass": "ncit:C12762"
+            },
+            "larynx": {
+              "targetClass": "ncit:C12420"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "t_stage": {
+        "@id": "schema:variable/t_stage",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C25728",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:C18772",
+            "classLabel": "clinicalClass",
+            "aestheticLabel": "Clinical"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "roo:P100029",
+            "class": "ncit:C3262",
+            "classLabel": "neoplasmClass",
+            "aestheticLabel": "Neoplasm"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "x": {
+              "targetClass": "ncit:C48737"
+            },
+            "0": {
+              "targetClass": "ncit:C48719"
+            },
+            "1": {
+              "targetClass": "ncit:C48720"
+            },
+            "2": {
+              "targetClass": "ncit:C48724"
+            },
+            "3": {
+              "targetClass": "ncit:C48728"
+            },
+            "4": {
+              "targetClass": "ncit:C48732"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "n_stage": {
+        "@id": "schema:variable/n_stage",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C25580",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:C18772",
+            "classLabel": "clinicalClass",
+            "aestheticLabel": "Clinical"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "roo:P100029",
+            "class": "ncit:C3262",
+            "classLabel": "neoplasmClass",
+            "aestheticLabel": "Neoplasm"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "x": {
+              "targetClass": "ncit:C48718"
+            },
+            "0": {
+              "targetClass": "ncit:C48705"
+            },
+            "1": {
+              "targetClass": "ncit:C48706"
+            },
+            "2": {
+              "targetClass": "ncit:C48786"
+            },
+            "3": {
+              "targetClass": "ncit:C48714"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "m_stage": {
+        "@id": "schema:variable/m_stage",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C25727",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:C18772",
+            "classLabel": "clinicalClass",
+            "aestheticLabel": "Clinical"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "roo:P100029",
+            "class": "ncit:C3262",
+            "classLabel": "neoplasmClass",
+            "aestheticLabel": "Neoplasm"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "0": {
+              "targetClass": "ncit:C48699"
+            },
+            "1": {
+              "targetClass": "ncit:C48700"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "survival_status": {
+        "@id": "schema:variable/survival_status",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C25717",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:C18772",
+            "classLabel": "clinicalClass",
+            "aestheticLabel": "Clinical"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "roo:P100029",
+            "class": "ncit:C3262",
+            "classLabel": "neoplasmClass",
+            "aestheticLabel": "Neoplasm"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "Dead": {
+              "targetClass": "ncit:C28554"
+            },
+            "Alive": {
+              "targetClass": "ncit:C37987"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "survival_days": {
+        "@id": "schema:variable/survival_days",
+        "@type": "schema:ContinuousVariable",
+        "dataType": "continuous",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C168844",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:C18772",
+            "classLabel": "clinicalClass",
+            "aestheticLabel": "Clinical"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "roo:P100029",
+            "class": "ncit:C3262",
+            "classLabel": "neoplasmClass",
+            "aestheticLabel": "Neoplasm"
+          },
+          {
+            "@type": "schema:ClassNode",
+            "placement": "after",
+            "predicate": "sio:SIO_000253",
+            "class": "ncit:C142529",
+            "classLabel": "ehrClass",
+            "aestheticLabel": "EHR"
+          },
+          {
+            "@type": "schema:UnitNode",
+            "predicate": "sio:SIO_000221",
+            "class": "ncit:C25301",
+            "nodeLabel": "days",
+            "aestheticLabel": "Days"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      }
+    }
+  },
+  "databases": {
+    "your_database": {
+      "@id": "mapping:database/your_database",
+      "@type": "mapping:Database",
+      "name": "REPLACE_WITH_DATABASE_NAME",
+      "description": "",
+      "locale": "en_GB",
+      "tables": {
+        "your_table": {
+          "@id": "mapping:table/your_table",
+          "@type": "mapping:Table",
+          "sourceFile": "",
+          "description": "",
+          "columns": {
+            "identifier": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": null
+            },
+            "biological_sex": {
+              "mapsTo": "schema:variable/biological_sex",
+              "localColumn": null,
+              "localMappings": {
+                "male": null,
+                "female": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "age_at_diagnosis": {
+              "mapsTo": "schema:variable/age_at_diagnosis",
+              "localColumn": null,
+              "localMappings": {
+                "missing_or_unspecified": null
+              }
+            },
+            "performance_status": {
+              "mapsTo": "schema:variable/performance_status",
+              "localColumn": null,
+              "localMappings": {
+                "0": null,
+                "1": null,
+                "2": null,
+                "3": null,
+                "4": null,
+                "5": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "hpv_status": {
+              "mapsTo": "schema:variable/hpv_status",
+              "localColumn": null,
+              "localMappings": {
+                "positive": null,
+                "negative": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "tumour_location": {
+              "mapsTo": "schema:variable/tumour_location",
+              "localColumn": null,
+              "localMappings": {
+                "oropharynx": null,
+                "larynx": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "t_stage": {
+              "mapsTo": "schema:variable/t_stage",
+              "localColumn": null,
+              "localMappings": {
+                "x": null,
+                "0": null,
+                "1": null,
+                "2": null,
+                "3": null,
+                "4": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "n_stage": {
+              "mapsTo": "schema:variable/n_stage",
+              "localColumn": null,
+              "localMappings": {
+                "x": null,
+                "0": null,
+                "1": null,
+                "2": null,
+                "3": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "m_stage": {
+              "mapsTo": "schema:variable/m_stage",
+              "localColumn": null,
+              "localMappings": {
+                "0": null,
+                "1": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "survival_status": {
+              "mapsTo": "schema:variable/survival_status",
+              "localColumn": null,
+              "localMappings": {
+                "Dead": null,
+                "Alive": null,
+                "missing_or_unspecified": null
+              }
+            },
+            "survival_days": {
+              "mapsTo": "schema:variable/survival_days",
+              "localColumn": null,
+              "localMappings": {
+                "missing_or_unspecified": null
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

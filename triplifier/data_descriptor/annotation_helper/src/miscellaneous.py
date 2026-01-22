@@ -213,7 +213,7 @@ def add_annotation(
     necessary_classes = set()
     necessary_nodes = set()
 
-    for generic_category, variable_data in annotation_data.items():
+    for _generic_category, variable_data in annotation_data.items():
         reconstruction_data = variable_data.get("schema_reconstruction")
         if isinstance(reconstruction_data, list):
             for reconstruction in reconstruction_data:
@@ -260,7 +260,7 @@ def add_annotation(
                 database_name=database,
                 prefixes=prefixes,
                 class_label=class_label,
-                variable=generic_category,
+                variable=class_label,
                 response=construction_response,
             )
         else:
@@ -285,7 +285,7 @@ def add_annotation(
                 database_name=database,
                 prefixes=prefixes,
                 class_label=node_label,
-                variable=generic_category,
+                variable=node_label,
                 response=construction_response,
             )
         else:
@@ -644,26 +644,36 @@ def add_mapping(
             if local_term is None:
                 continue
 
-            if not all(isinstance(var, str) for var in (target_class, local_term)):
+            if isinstance(local_term, list):
+                local_terms = [lt for lt in local_term if isinstance(lt, str)]
+            elif isinstance(local_term, str):
+                local_terms = [local_term]
+            else:
                 logging.warning(
                     f"Value mapping for term {term} of variable {variable} is incorrectly formatted, "
                     "please see function docstring for an example."
                 )
                 continue
 
-            # call your add_mapping function with the appropriate arguments
-            response, query = _add_mapping(
-                endpoint=endpoint,
-                prefixes=prefixes,
-                target_class=target_class,
-                super_class=super_class,
-                local_term=local_term,
-                database_name=database_name,
-            )
+            if not isinstance(target_class, str):
+                logging.warning(
+                    f"Value mapping for term {term} of variable {variable} is incorrectly formatted, "
+                    "please see function docstring for an example."
+                )
+                continue
 
-            # store response and query in a list
-            responses.append(response)
-            queries.update({term: query})
+            for lt in local_terms:
+                response, query = _add_mapping(
+                    endpoint=endpoint,
+                    prefixes=prefixes,
+                    target_class=target_class,
+                    super_class=super_class,
+                    local_term=lt,
+                    database_name=database_name,
+                )
+
+                responses.append(response)
+                queries.update({f"{term}_{lt}": query})
 
         return responses, queries
     else:
@@ -772,7 +782,9 @@ def read_file(file_name, path=None):
     try:
         logging.debug(f"Reading file {file_path}")
         with open(file_path, "r") as file:
-            if file_name.lower().endswith(".json"):
+            if file_name.lower().endswith(".json") or file_name.lower().endswith(
+                ".jsonld"
+            ):
                 # if the file has a .json extension, treat it as a JSON file
                 file_contents = json.load(file)
             else:
@@ -1288,7 +1300,9 @@ def __post_query(endpoint, query, headers=None, data_style=None):
         data_style = "update=" + query
 
     if dry_run is False:
-        annotation_response = requests.post(endpoint, data=data_style, headers=headers)
+        annotation_response = requests.post(
+            endpoint, data=data_style, headers=headers, timeout=30
+        )
     else:
         annotation_response = "not-a-http-response"
 

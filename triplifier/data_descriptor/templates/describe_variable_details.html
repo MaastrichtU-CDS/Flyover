@@ -215,114 +215,25 @@
         description page.<br>
     <form class="form-horizontal" method="POST" action="end">
         <hr>
-        {% for database, df in dataframes.items() %}
-            {% set db_idx = loop.index %}
-            <h2 style="display: inline-block;"><i class="fas fa-database"></i> {{ database }}</h2>
-            <button class="toggle-button" type="button">
-                <span class="toggle-text">Show more</span>
-                <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
-                    <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
-                </svg>
-            </button>
-            <div class="content hidden">
-                {% for item in df.columns %}
-                    {% set item_idx = loop.index %}
-                    {% set local_variable_name = item.split('"')[1].split('"')[0].strip() %}
-                    {% set global_variable_name = item.split("(")[0].strip().lower().replace(' ', '_') %}
-                    {% set item_rows = df.by_column.get(item, []) %}
-                    {% set first_value = item_rows[0]['value'] if item_rows else none %}
-
-                    <div class="variable-row">
-                        <div class="variable-label">
-                            {% if item.startswith('Missing Description') %}
-                                <span class="missing-description">{{ item.replace(' (or "', '<br>(or "') | safe }}</span>
-                            {% else %}
-                                {{ item.replace(' (or "', '<br>(or "') | safe }}
-                            {% endif %}
-                        </div>
-
-                        <div class="variable-controls">
-                            {% if first_value is none %}
-                                <!-- Continuous variable -->
-                                <input id="{{ database }}_{{ local_variable_name }}" type="text"
-                                       name="{{ database }}_{{ local_variable_name }}"
-                                       placeholder="Type unit here" class="form-control"></input>
-                                <input id="{{ database }}_{{ local_variable_name }}_notation" type="text"
-                                       name="{{ database }}_{{ local_variable_name }}_notation_missing_or_unspecified"
-                                       placeholder="Type missing value notation here" class="form-control"></input>
-                            {% else %}
-                                <!-- Categorical variable -->
-                                <button class="item-toggle-button" type="button"></button>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    {% if first_value is not none %}
-                        <div class="toggle-content hidden categorical-section">
-                            {% for row_data in item_rows %}
-                                {% set category_info = row_data.get('value') %}
-                                {% set value_idx = loop.index %}
-                                {% set category_value = category_info.get('value') if category_info is mapping else category_info %}
-                                {% set preselected = preselected_values.get(database + '_' + local_variable_name + '_category_"' + (category_value|string) + '"') %}
-
-                                <div class="category-item">
-                                    <div class="category-label">
-                                        {% if category_info['value'] is not none and category_info['value'] != '' %}
-                                            {{ category_info['value'] }} (counted: {{ category_info['count'] }})
-                                        {% else %}
-                                            Empty cells (counted: {{ category_info['count'] }})
-                                        {% endif %}
-                                    </div>
-
-                                    <div class="category-controls">
-                                        <select id="select_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                                name='{{ database }}_{{ local_variable_name }}_category_"{{ category_info['value'] }}"'
-                                                class="selectpicker form-control category-select"
-                                                data-comment-id="comment_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                                data-live-search="true">
-                                            {% set item_info = global_variable_info.get(global_variable_name)|default({}) %}
-                                            {% if item_info and 'value_mapping' in item_info %}
-                                                <option value="">Description</option>
-                                                {% for value in item_info.get('value_mapping').get('terms').keys() %}
-                                                    <option {% if preselected == value.title().replace('_', ' ') %}selected{% endif %}>
-                                                        {{ value.title().replace('_', ' ') }}
-                                                    </option>
-                                                {% endfor %}
-                                                <option value="Other">Other</option>
-                                            {% else %}
-                                                <option value="">Description</option>
-                                                <option value="Yes">Yes</option>
-                                                <option value="No">No</option>
-                                                <option value="Male">Male sex</option>
-                                                <option value="Female">Female sex</option>
-                                                <option value="Primary Education">Primary education</option>
-                                                <option value="Secondary Education">Secondary education</option>
-                                                <option value="Tertiary Education">Tertiary education</option>
-                                                <option value="Missing">Missing value</option>
-                                                <option value="Other">Other</option>
-                                            {% endif %}
-                                        </select>
-
-                                        <input class="form-control" type="text"
-                                               id="comment_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                               name='comment_{{ database }}_{{ local_variable_name }}_category_"{{ category_info['value'] }}"'
-                                               placeholder="If other, please specify"
-                                               disabled='disabled'
-                                               style="width: 200px;"/>
-                                    </div>
-                                </div>
-
-                                <input type="hidden"
-                                       id="count_{{ db_idx }}_{{ item_idx }}_{{ value_idx }}"
-                                       name='count_{{ database }}_{{ local_variable_name }}_category_"{{ category_info['value'] }}"'
-                                       value="{{ category_info['count'] }}"/>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                {% endfor %}
+        <div id="databases-container">
+            <!-- Databases will be dynamically loaded from IndexedDB -->
+        </div>
+        <div id="template-storage" style="display: none;">
+            <div class="database-section">
+                <h2 style="display: inline-block;"><i class="fas fa-database"></i> <span class="db-name"></span></h2>
+                <button class="toggle-button" type="button">
+                    <span class="toggle-text">Show more</span>
+                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                        <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                    </svg>
+                </button>
+                <div class="content hidden variables-container">
+                </div>
+                <hr>
             </div>
-            <hr>
-        {% endfor %}
+        </div>
+
+
 
         <p>
             <button type="submit" id="submitBtn" class="btn btn-primary">
@@ -383,28 +294,24 @@
             </div>
         </div>
     </form>
+    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
     <script>
-        // Loading animation functions
+        const DESCRIPTIVE_INFO = {{ descriptive_info | safe }};
+        const DESCRIPTIVE_INFO_DETAILS = {{ descriptive_info_details | safe }};
+        const PRESELECTED_VALUES = {{ preselected_values | tojson | safe }};
+
         let loadingInterval;
 
         function startLoadingAnimation(buttonSelector) {
             const button = $(buttonSelector);
             const originalText = button.html();
-
-            // Disable button and add processing class
             button.prop('disabled', true).addClass('processing');
-
-            // Start with edit icon
             let isPen = false;
             button.html('<i class="fas fa-edit loading-icon"></i> Processing descriptions...');
-
-            // Alternate between edit and pen every 1 second with smooth transition
             loadingInterval = setInterval(function() {
                 const icon = button.find('.loading-icon');
-
-                // Add fade out effect
                 icon.addClass('icon-fade-out');
-
                 setTimeout(function() {
                     if (isPen) {
                         icon.removeClass('fa-pen').addClass('fa-edit');
@@ -412,32 +319,21 @@
                         icon.removeClass('fa-edit').addClass('fa-pen');
                     }
                     isPen = !isPen;
-
-                    // Remove fade out and add fade in
                     icon.removeClass('icon-fade-out').addClass('icon-fade-in');
-
-                    // Clean up fade in class after animation
                     setTimeout(function() {
                         icon.removeClass('icon-fade-in');
                     }, 300);
-                }, 150); // Half of transition duration for smooth crossfade
-
+                }, 150);
             }, 1000);
-
-            // Store original text for potential restoration
             button.data('original-text', originalText);
         }
 
         function stopLoadingAnimation(buttonSelector) {
             const button = $(buttonSelector);
-
-            // Clear the interval
             if (loadingInterval) {
                 clearInterval(loadingInterval);
                 loadingInterval = null;
             }
-
-            // Restore original button state
             const originalText = button.data('original-text');
             if (originalText) {
                 button.html(originalText);
@@ -445,34 +341,272 @@
             button.prop('disabled', false).removeClass('processing');
         }
 
-        $(document).ready(function () {
-            $('.toggle-button').click(function () {
+        async function storeAndRenderData() {
+            try {
+                await FlyoverDB.initDB();
+
+                await FlyoverDB.saveData('metadata', {
+                    key: 'descriptive_info',
+                    data: DESCRIPTIVE_INFO,
+                    timestamp: new Date().toISOString()
+                });
+                await FlyoverDB.saveData('metadata', {
+                    key: 'descriptive_info_details',
+                    data: DESCRIPTIVE_INFO_DETAILS,
+                    timestamp: new Date().toISOString()
+                });
+                console.log('Flyover: Stored descriptiveInfo and descriptiveInfoDetails in IndexedDB');
+
+                await JSONLDMapper.loadFromIndexedDB();
+                console.log('Flyover: Loaded semantic mapping from IndexedDB');
+
+                await renderFormsFromData();
+            } catch (error) {
+                console.error('Flyover: Error storing/rendering data:', error);
+            }
+        }
+
+        async function renderFormsFromData() {
+            const container = $('#databases-container');
+            let dbIdx = 0;
+
+            for (const [database, variables] of Object.entries(DESCRIPTIVE_INFO_DETAILS)) {
+                dbIdx++;
+                if (!variables || variables.length === 0) continue;
+
+                const dbSection = $('<div>').addClass('database-section');
+                dbSection.append(`
+                    <h2 style="display: inline-block;">
+                        <i class="fas fa-database"></i> ${database}
+                    </h2>
+                    <button class="toggle-button" type="button">
+                        <span class="toggle-text">Show more</span>
+                        <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20" height="20">
+                            <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
+                        </svg>
+                    </button>
+                    <div class="content hidden variables-container"></div>
+                    <hr>
+                `);
+
+                const varsContainer = dbSection.find('.variables-container');
+                let itemIdx = 0;
+
+                for (const variable of variables) {
+                    itemIdx++;
+                    if (typeof variable === 'string') {
+                        renderContinuousVariable(varsContainer, database, variable, dbIdx, itemIdx);
+                    } else if (typeof variable === 'object') {
+                        for (const [varName, categories] of Object.entries(variable)) {
+                            renderCategoricalVariable(varsContainer, database, varName, categories, dbIdx, itemIdx);
+                            itemIdx++;
+                        }
+                    }
+                }
+
+                container.append(dbSection);
+            }
+
+            bindToggleEvents();
+            $('.selectpicker').selectpicker();
+            applyLocalMappingPreselections();
+            applyPreselectedValues();
+        }
+
+        function applyLocalMappingPreselections() {
+            $('.category-select').each(function() {
+                const $select = $(this);
+                const preselectedValue = $select.data('previous-selection');
+                if (preselectedValue !== undefined && preselectedValue !== null && preselectedValue !== '') {
+                    $select.selectpicker('val', preselectedValue);
+                }
+            });
+        }
+
+        function renderContinuousVariable(container, database, displayName, dbIdx, itemIdx) {
+            const localVarMatch = displayName.match(/\(or "([^"]+)"\)/);
+            const localVariable = localVarMatch ? localVarMatch[1] : displayName.toLowerCase().replace(/ /g, '_');
+            const isMissing = displayName.startsWith('Missing Description');
+
+            const varRow = $(`
+                <div class="variable-row">
+                    <div class="variable-label">
+                        ${isMissing ? '<span class="missing-description">' + displayName.replace(' (or "', '<br>(or "') + '</span>' : displayName.replace(' (or "', '<br>(or "')}
+                    </div>
+                    <div class="variable-controls">
+                        <input id="${database}_${localVariable}" type="text"
+                               name="${database}_${localVariable}"
+                               placeholder="Type unit here" class="form-control" />
+                        <input id="${database}_${localVariable}_notation" type="text"
+                               name="${database}_${localVariable}_notation_missing_or_unspecified"
+                               placeholder="Type missing value notation here" class="form-control" />
+                    </div>
+                </div>
+            `);
+
+            container.append(varRow);
+        }
+
+        function renderCategoricalVariable(container, database, varName, categories, dbIdx, itemIdx) {
+            const localVarMatch = varName.match(/\(or "([^"]+)"\)/);
+            const localVariable = localVarMatch ? localVarMatch[1] : varName.toLowerCase().replace(/ /g, '_');
+            const globalVarName = varName.split(' (or')[0].toLowerCase().replace(/ /g, '_');
+            const isMissing = varName.startsWith('Missing Description');
+
+            const varRow = $(`
+                <div class="variable-row">
+                    <div class="variable-label">
+                        ${isMissing ? '<span class="missing-description">' + varName.replace(' (or "', '<br>(or "') + '</span>' : varName.replace(' (or "', '<br>(or "')}
+                    </div>
+                    <div class="variable-controls">
+                        <button class="item-toggle-button" type="button"></button>
+                    </div>
+                </div>
+            `);
+
+            const categoriesSection = $('<div>').addClass('toggle-content hidden categorical-section');
+
+            const categoryOptions = JSONLDMapper.getCategoryOptionsForVariable(database, globalVarName);
+            console.log('Flyover: Category options for', globalVarName, ':', categoryOptions);
+
+            const localMappings = JSONLDMapper.getLocalMappingsForVariable(database, localVariable, globalVarName);
+            console.log('Flyover: Local mappings for', localVariable, ':', localMappings);
+
+            const valueToTermKey = {};
+            for (const [termKey, values] of Object.entries(localMappings)) {
+                if (Array.isArray(values)) {
+                    values.forEach(val => {
+                        if (val !== null && val !== undefined) {
+                            valueToTermKey[String(val).trim()] = termKey;
+                        }
+                    });
+                } else if (values !== null && values !== undefined) {
+                    valueToTermKey[String(values).trim()] = termKey;
+                }
+            }
+            console.log('Flyover: Value to term key mapping:', valueToTermKey);
+            console.log('Flyover: Raw local mappings:', localMappings);
+
+            let valueIdx = 0;
+            for (const categoryData of categories) {
+                valueIdx++;
+                const value = categoryData.value !== undefined ? categoryData.value : '';
+                const count = categoryData.count || 0;
+                const safeValue = String(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                const displayValue = value !== '' ? value : 'Empty cells';
+
+                let optionsHtml = '<option value="">Description</option>';
+
+                if (categoryOptions.length > 0) {
+                    categoryOptions.forEach(option => {
+                        optionsHtml += `<option value="${option}">${option}</option>`;
+                    });
+                    optionsHtml += '<option value="Other">Other</option>';
+                } else {
+                    optionsHtml += `
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                        <option value="Male">Male sex</option>
+                        <option value="Female">Female sex</option>
+                        <option value="Primary Education">Primary education</option>
+                        <option value="Secondary Education">Secondary education</option>
+                        <option value="Tertiary Education">Tertiary education</option>
+                        <option value="Missing">Missing value</option>
+                        <option value="Other">Other</option>
+                    `;
+                }
+
+                const termKey = valueToTermKey[String(value).trim()];
+                const preselectedValue = termKey ? termKey.charAt(0).toUpperCase() + termKey.slice(1).replace(/_/g, ' ') : '';
+                console.log('Flyover: Preselected value for', value, ':', preselectedValue);
+
+                const categoryItem = $(`
+                    <div class="category-item">
+                        <div class="category-label">
+                            ${displayValue} (counted: ${count})
+                        </div>
+                        <div class="category-controls">
+                            <select id="select_${dbIdx}_${itemIdx}_${valueIdx}"
+                                    name="category_select_${dbIdx}_${itemIdx}_${valueIdx}"
+                                    class="selectpicker form-control category-select"
+                                    data-comment-id="comment_${dbIdx}_${itemIdx}_${valueIdx}"
+                                    data-database="${database}"
+                                    data-variable="${localVariable}"
+                                    data-global-variable="${globalVarName}"
+                                    data-category-value="${safeValue}"
+                                    data-previous-selection="${preselectedValue}"
+                                    data-live-search="true">
+                                ${optionsHtml}
+                            </select>
+                            <input class="form-control" type="text"
+                                   id="comment_${dbIdx}_${itemIdx}_${valueIdx}"
+                                   name="category_comment_${dbIdx}_${itemIdx}_${valueIdx}"
+                                   data-database="${database}"
+                                   data-variable="${localVariable}"
+                                   data-category-value="${safeValue}"
+                                   placeholder="If other, please specify"
+                                   disabled='disabled'
+                                   style="width: 200px;" />
+                        </div>
+                    </div>
+                    <input type="hidden"
+                           id="count_${dbIdx}_${itemIdx}_${valueIdx}"
+                           name="category_count_${dbIdx}_${itemIdx}_${valueIdx}"
+                           data-database="${database}"
+                           data-variable="${localVariable}"
+                           data-category-value="${safeValue}"
+                           value="${count}" />
+                `);
+
+                categoriesSection.append(categoryItem);
+            }
+
+            container.append(varRow);
+            container.append(categoriesSection);
+        }
+
+        function applyPreselectedValues() {
+            for (const [key, value] of Object.entries(PRESELECTED_VALUES)) {
+                $('.category-select').each(function() {
+                    const $select = $(this);
+                    const database = $select.data('database');
+                    const variable = $select.data('variable');
+                    const categoryValue = $select.data('category-value');
+                    const selectKey = `${database}_${variable}_category_"${categoryValue}"`;
+
+                    if (selectKey === key) {
+                        $select.val(value);
+                        $select.selectpicker('refresh');
+                    }
+                });
+            }
+        }
+
+        function bindToggleEvents() {
+            $('.toggle-button').off('click').on('click', function () {
                 var textElement = $(this).find('.toggle-text');
                 var svgElement = $(this).find('.angle-icon path');
                 if (textElement.text() === 'Show more') {
                     textElement.text('Show less');
-                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z'); // SVG path for angle down
+                    svgElement.attr('d', 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z');
                 } else {
                     textElement.text('Show more');
-                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z'); // SVG path for angle up
+                    svgElement.attr('d', 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z');
                 }
                 $(this).toggleClass('open');
                 $(this).next('.content').toggleClass('active');
             });
 
-            $('.item-toggle-button').click(function () {
+            $('.item-toggle-button').off('click').on('click', function () {
                 $(this).toggleClass('open');
-                // Find the next .toggle-content after the current variable-row
                 $(this).closest('.variable-row').next('.toggle-content').toggleClass('active');
             });
+        }
 
-            // Handle form submission
-            $('form').submit(function(e) {
-                // Start loading animation for submit button
-                startLoadingAnimation('#submitBtn');
-            });
+        $(document).ready(function () {
+            storeAndRenderData();
 
-            $(".selectpicker").on('show.bs.select', function (e) {
+            $(document).on('show.bs.select', '.selectpicker', function (e) {
                 var dropdownMenu = $(this).parent().find('.dropdown-menu');
                 var toggleContent = $(this).closest('.toggle-content');
                 var newHeight = Math.max(toggleContent.height(), dropdownMenu.height());
@@ -480,15 +614,13 @@
                 toggleContent.css('overflow-y', 'hidden');
             });
 
-            $(".selectpicker").on('hide.bs.select', function (e) {
+            $(document).on('hide.bs.select', '.selectpicker', function (e) {
                 var toggleContent = $(this).closest('.toggle-content');
                 toggleContent.height('auto');
                 toggleContent.css('overflow-y', 'auto');
             });
 
-            // Handle category select change to enable/disable comment field
-            // Uses class-based selection and data attributes to avoid issues with special characters in IDs
-            $('.category-select').on('change', function () {
+            $(document).on('change', '.category-select', function () {
                 var commentId = $(this).data('comment-id');
                 var commentInput = $('[id="' + commentId + '"]');
                 if ($(this).val() === "Other") {
@@ -496,12 +628,115 @@
                 } else {
                     commentInput.attr("disabled", "disabled");
                 }
+
+                const database = $(this).data('database');
+                const localVariable = $(this).data('variable');
+                const globalVariable = $(this).data('global-variable');
+                const categoryValue = $(this).data('category-value');
+                const selectedOption = $(this).val();
+                const previousOption = $(this).data('previous-selection');
+
+                if (!database || !localVariable || !globalVariable || categoryValue === undefined) {
+                    return;
+                }
+
+                console.log('Flyover: Category selection changed:', {
+                    database: database,
+                    localVariable: localVariable,
+                    globalVariable: globalVariable,
+                    categoryValue: categoryValue,
+                    selectedOption: selectedOption,
+                    previousOption: previousOption
+                });
+
+                $(this).data('previous-selection', selectedOption);
+
+                JSONLDMapper.updateCategoryMapping(database, localVariable, globalVariable, String(categoryValue), selectedOption, previousOption)
+                    .then(success => {
+                        if (success) {
+                            console.log('Flyover: Successfully updated category mapping');
+                        } else {
+                            console.warn('Flyover: Failed to update category mapping');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Flyover: Error updating category mapping:', error);
+                    });
+            });
+
+            $('form').submit(async function(e) {
+                $('.category-select, .category-item input[type="text"], .category-item input[type="hidden"]').each(function() {
+                    const $field = $(this);
+                    const database = $field.data('database');
+                    const variable = $field.data('variable');
+                    const categoryValue = $field.data('category-value');
+
+                    if (database && variable && categoryValue !== undefined) {
+                        let properName = '';
+                        const originalName = $field.attr('name');
+
+                        if (originalName.startsWith('category_select_')) {
+                            properName = `${database}_${variable}_category_"${categoryValue}"`;
+                        } else if (originalName.startsWith('category_comment_')) {
+                            properName = `comment_${database}_${variable}_category_"${categoryValue}"`;
+                        } else if (originalName.startsWith('category_count_')) {
+                            properName = `count_${database}_${variable}_category_"${categoryValue}"`;
+                        }
+
+                        if (properName) {
+                            $field.attr('name', properName);
+                        }
+                    }
+                });
+
+                try {
+                    const updatedDescriptiveInfo = JSON.parse(JSON.stringify(DESCRIPTIVE_INFO));
+
+                    $('input[id$="_notation"]').each(function() {
+                        const id = $(this).attr('id').replace('_notation', '');
+                        const parts = id.split('_');
+                        const variable = parts.pop();
+                        const database = parts.join('_');
+                        const units = $(`#${id}`).val();
+
+                        if (units && updatedDescriptiveInfo[database]?.[variable]) {
+                            updatedDescriptiveInfo[database][variable].units = units;
+                        }
+                    });
+
+                    $('.category-select').each(function() {
+                        const database = $(this).data('database');
+                        const variable = $(this).data('variable');
+                        const categoryValue = $(this).data('category-value');
+                        const description = $(this).val();
+                        const commentId = $(this).data('comment-id');
+                        const comment = $(`#${commentId}`).val();
+                        const countId = commentId.replace('comment_', 'count_');
+                        const count = $(`#${countId}`).val();
+
+                        if (description && updatedDescriptiveInfo[database]?.[variable]) {
+                            updatedDescriptiveInfo[database][variable][`Category: ${categoryValue}`] =
+                                `Category ${categoryValue}: ${description}, comment: ${comment || 'No comment provided'}, count: ${count || 'No count available'}`;
+                        }
+                    });
+
+                    await FlyoverDB.saveData('metadata', {
+                        key: 'descriptive_info',
+                        data: updatedDescriptiveInfo,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    console.log('Flyover: Updated descriptive info stored in IndexedDB');
+                } catch (error) {
+                    console.error('Flyover: Failed to store variable details in IndexedDB:', error);
+                }
+
+                startLoadingAnimation('#submitBtn');
             });
         });
     </script>
 
     <script>
-        // Pass Flask variables to JavaScript for navigation header
         window.graph_exists = true; // Data exists in describe step
     </script>
 
@@ -510,4 +745,3 @@
 {% include 'footer.html' %}
 </body>
 </html>
-
