@@ -817,6 +817,7 @@ def retrieve_detailed_descriptive_info():
         flask.redirect: A Flask function that redirects the user to another URL.
         In this case, it redirects the user to the 'download_page' URL.
     """
+
     def extract_variable_from_key(key, database):
         prefix = f"{database}_"
         if "_category_" in key:
@@ -826,7 +827,7 @@ def retrieve_detailed_descriptive_info():
         else:
             base = key
         if base.startswith(prefix):
-            return base[len(prefix):]
+            return base[len(prefix) :]
         return None
 
     # Iterate over each database in the session cache

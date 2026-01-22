@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from . src.miscellaneous import read_file, add_annotation
+from .src.miscellaneous import read_file, add_annotation
 
 
 def is_jsonld_file(file_path, content):
@@ -14,10 +14,10 @@ def is_jsonld_file(file_path, content):
     :return: True if JSON-LD, False otherwise
     """
     # Check file extension
-    if file_path.lower().endswith('.jsonld'):
+    if file_path.lower().endswith(".jsonld"):
         return True
     # Check for JSON-LD specific keys
-    if isinstance(content, dict) and '@context' in content:
+    if isinstance(content, dict) and "@context" in content:
         return True
     return False
 
@@ -32,11 +32,11 @@ def extract_schema_variable_name(maps_to):
     if not isinstance(maps_to, str):
         return None
     # Handle format like "schema:variable/biological_sex"
-    if '/' in maps_to:
-        return maps_to.split('/')[-1]
+    if "/" in maps_to:
+        return maps_to.split("/")[-1]
     # Handle format like "schema:variable: biological_sex" (alternative)
-    if ':' in maps_to:
-        parts = maps_to. split(': ')
+    if ":" in maps_to:
+        parts = maps_to.split(": ")
         return parts[-1]
     return maps_to
 
@@ -53,25 +53,29 @@ def convert_schema_reconstruction(schema_reconstructions):
 
     converted = []
     for reconstruction in schema_reconstructions:
-        rec_type = reconstruction.get('@type', '')
+        rec_type = reconstruction.get("@type", "")
 
-        if 'ClassNode' in rec_type:
-            converted.append({
-                'type': 'class',
-                'predicate': reconstruction.get('predicate'),
-                'class':  reconstruction.get('class'),
-                'class_label': reconstruction.get('classLabel'),
-                'aesthetic_label': reconstruction.get('aestheticLabel'),
-                'placement': reconstruction.get('placement', 'before')
-            })
-        elif 'UnitNode' in rec_type:
-            converted.append({
-                'type': 'node',
-                'predicate': reconstruction.get('predicate'),
-                'class': reconstruction.get('class'),
-                'node_label': reconstruction. get('nodeLabel'),
-                'aesthetic_label': reconstruction.get('aestheticLabel')
-            })
+        if "ClassNode" in rec_type:
+            converted.append(
+                {
+                    "type": "class",
+                    "predicate": reconstruction.get("predicate"),
+                    "class": reconstruction.get("class"),
+                    "class_label": reconstruction.get("classLabel"),
+                    "aesthetic_label": reconstruction.get("aestheticLabel"),
+                    "placement": reconstruction.get("placement", "before"),
+                }
+            )
+        elif "UnitNode" in rec_type:
+            converted.append(
+                {
+                    "type": "node",
+                    "predicate": reconstruction.get("predicate"),
+                    "class": reconstruction.get("class"),
+                    "node_label": reconstruction.get("nodeLabel"),
+                    "aesthetic_label": reconstruction.get("aestheticLabel"),
+                }
+            )
 
     return converted if converted else None
 
@@ -88,13 +92,13 @@ def convert_value_mapping(schema_value_mapping, local_mappings):
     if not isinstance(schema_value_mapping, dict):
         return None
 
-    schema_terms = schema_value_mapping.get('terms', {})
+    schema_terms = schema_value_mapping.get("terms", {})
     if not schema_terms:
         return None
 
     converted_terms = {}
-    for term_name, term_data in schema_terms. items():
-        target_class = term_data.get('targetClass')
+    for term_name, term_data in schema_terms.items():
+        target_class = term_data.get("targetClass")
         if not target_class:
             continue
 
@@ -106,11 +110,11 @@ def convert_value_mapping(schema_value_mapping, local_mappings):
         # Only include if we have a local_term (skip terms not mapped locally)
         if local_term is not None:
             converted_terms[term_name] = {
-                'target_class': target_class,
-                'local_term': local_term if local_term != "" else None
+                "target_class": target_class,
+                "local_term": local_term if local_term != "" else None,
             }
 
-    return {'terms': converted_terms} if converted_terms else None
+    return {"terms": converted_terms} if converted_terms else None
 
 
 def parse_jsonld_for_table(jsonld_content, database_key, table_key):
@@ -125,38 +129,38 @@ def parse_jsonld_for_table(jsonld_content, database_key, table_key):
     :return: tuple (endpoint, table_name, prefixes, variable_info)
     """
     # Extract endpoint
-    endpoint = jsonld_content.get('endpoint')
+    endpoint = jsonld_content.get("endpoint")
 
     # Extract prefixes from schema
-    schema = jsonld_content. get('schema', {})
-    prefixes_dict = schema.get('prefixes', {})
+    schema = jsonld_content.get("schema", {})
+    prefixes_dict = schema.get("prefixes", {})
 
     # Convert prefixes dict to string format expected by add_annotation
     prefixes_lines = []
     for prefix, uri in prefixes_dict.items():
-        prefixes_lines. append(f"PREFIX {prefix}:  <{uri}>")
+        prefixes_lines.append(f"PREFIX {prefix}:  <{uri}>")
     prefixes = "\n".join(prefixes_lines)
 
     # Extract schema variables
-    schema_variables = schema.get('variables', {})
+    schema_variables = schema.get("variables", {})
 
     # Get the specific table
-    databases = jsonld_content.get('databases', {})
+    databases = jsonld_content.get("databases", {})
     database = databases.get(database_key, {})
-    tables = database.get('tables', {})
-    table = tables. get(table_key, {})
+    tables = database.get("tables", {})
+    table = tables.get(table_key, {})
 
     # Get table name from sourceFile
-    table_name = table. get('sourceFile')
+    table_name = table.get("sourceFile")
 
     # Get columns
-    columns = table. get('columns', {})
+    columns = table.get("columns", {})
 
     # Build variable_info by merging schema and local mappings
     variable_info = {}
 
     for column_key, column_data in columns.items():
-        maps_to = column_data.get('mapsTo')
+        maps_to = column_data.get("mapsTo")
         schema_var_name = extract_schema_variable_name(maps_to)
 
         if not schema_var_name or schema_var_name not in schema_variables:
@@ -168,7 +172,7 @@ def parse_jsonld_for_table(jsonld_content, database_key, table_key):
         schema_var = schema_variables[schema_var_name]
 
         # Get local column - use first item if it's a list
-        local_column = column_data.get('localColumn')
+        local_column = column_data.get("localColumn")
         if isinstance(local_column, list) and len(local_column) > 0:
             local_definition = local_column[0]
         elif isinstance(local_column, str):
@@ -181,26 +185,25 @@ def parse_jsonld_for_table(jsonld_content, database_key, table_key):
 
         # Build the variable info entry
         var_entry = {
-            'predicate': schema_var. get('predicate'),
-            'class':  schema_var.get('class'),
-            'local_definition': local_definition
+            "predicate": schema_var.get("predicate"),
+            "class": schema_var.get("class"),
+            "local_definition": local_definition,
         }
 
         # Convert and add schema_reconstruction if present
         schema_reconstruction = convert_schema_reconstruction(
-            schema_var.get('schemaReconstruction')
+            schema_var.get("schemaReconstruction")
         )
         if schema_reconstruction:
-            var_entry['schema_reconstruction'] = schema_reconstruction
+            var_entry["schema_reconstruction"] = schema_reconstruction
 
         # Convert and add value_mapping if present
-        local_mappings = column_data.get('localMappings')
+        local_mappings = column_data.get("localMappings")
         value_mapping = convert_value_mapping(
-            schema_var.get('valueMapping'),
-            local_mappings
+            schema_var.get("valueMapping"), local_mappings
         )
         if value_mapping:
-            var_entry['value_mapping'] = value_mapping
+            var_entry["value_mapping"] = value_mapping
 
         # Use the schema variable name as the key (for consistency)
         variable_info[schema_var_name] = var_entry
@@ -216,11 +219,11 @@ def get_all_tables(jsonld_content):
     :return: list of tuples (database_key, table_key)
     """
     tables_list = []
-    databases = jsonld_content.get('databases', {})
+    databases = jsonld_content.get("databases", {})
 
     for db_key, db_data in databases.items():
-        tables = db_data. get('tables', {})
-        for table_key in tables. keys():
+        tables = db_data.get("tables", {})
+        for table_key in tables.keys():
             tables_list.append((db_key, table_key))
 
     return tables_list
@@ -257,7 +260,7 @@ def main():
         json_file_path = sys.argv[1]
 
     # retrieve the path, assuming the contents of the settings are located there or in a subdirectory
-    path = os.path. dirname(json_file_path)
+    path = os.path.dirname(json_file_path)
 
     # set up logging
     logging.basicConfig(
@@ -293,7 +296,7 @@ def main():
 
             # Validate extracted data
             if not isinstance(endpoint, str) or len(endpoint) < 1:
-                logging. error(
+                logging.error(
                     f"'endpoint' not found or invalid for table '{table_key}', skipping."
                 )
                 continue
@@ -334,7 +337,7 @@ def main():
         logging.info("Using legacy JSON format parser.")
 
         # check for 'endpoint' key existence in settings
-        endpoint = settings_content. get("endpoint")
+        endpoint = settings_content.get("endpoint")
         if isinstance(endpoint, str) is False:
             logging.error(
                 "'endpoint' key not found in the settings or not provided as string, exiting."
@@ -369,7 +372,7 @@ def main():
             sys.exit(1)
 
         # run annotations if specified
-        annotations = settings_content. get("variable_info")
+        annotations = settings_content.get("variable_info")
         if annotations:
             add_annotation(
                 endpoint=endpoint,
