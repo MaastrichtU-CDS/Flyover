@@ -1,6 +1,6 @@
 # Flyover
 <p align="center">
-<a href="https://doi.org/10.5281/zenodo.17419800"><img alt="DOI: 10.5281/zenodo.17419800" src="https://zenodo.org/badge/DOI/10.5281/zenodo.17419800.svg"></a>  
+<a href="https://doi.org/10.5281/zenodo.17419800"><img alt="DOI: 10.5281/zenodo.17419800" src="https://zenodo.org/badge/DOI/10.5281/zenodo.17419800.svg"></a>
 <a href="https://opensource.org/licenses/Apache-2.0"><img alt="Licence: Apache 2.0" src="https://img.shields.io/badge/Licence-Apache%202.0-blue.svg"></a>
 <br>
 <a href="https://www.ontotext.com/products/graphdb/"><img alt="Ontotext GraphDB 10.8.5" src="https://img.shields.io/badge/Ontotext%20GraphDB-v10.8.5-002b4f.svg"></a>
@@ -25,7 +25,7 @@ This so-called "Triplifier" tool works with PostGreSQL and CSV tables.
 For user data, a new module (data_descriptor) is created where the user can describe their own data and provide us with
 the metadata, which can then be used to create annotations.
 
-For a detailed explanation and a practical example of this tool, please refer to the following open access published [paper](https://doi.org/10.1093/bjrai/ubae005).  
+For a detailed explanation and a practical example of this tool, please refer to the following open access published [paper](https://doi.org/10.1093/bjrai/ubae005).
 
 A video showcasing the Flyover process is available in `example_data/flyover-v2.0.1.mp4` and is embedded here:
 
@@ -117,12 +117,12 @@ The previous example is expanded as such
       ]
 
 Note that you can add multiple schema reconstructions, these will be added to the graph in the same order as they are
-specified (from top to bottom).  
+specified (from top to bottom).
 The schema reconstruction of type 'class' also takes a placement argument - either 'before' or 'after' -
 which specifies the location of the new class to be added.
-Placement defaults to 'before'.   
+Placement defaults to 'before'.
 'Before' refers to a class that is placed between an individual's class (e.g. a patient or participant), and the
-variable class.  
+variable class.
 'After' refers to a class that is placed between the variable class and the class the reconstruction itself is referring
 to.
 
@@ -202,7 +202,7 @@ After specifying the metadata in JSON, you can fill in local terminology and run
 from the repository folder:
 
 ```
-python triplifier/data_descriptor/annotation_helper/main.py 
+python triplifier/data_descriptor/annotation_helper/main.py
 ```
 
 #### Evaluate the annotation process
@@ -218,7 +218,7 @@ for those variables that were unsuccessfully annotated.
 
 ### Example data
 
-In the `example_data` folder, you can find an example of a global semantic map in `data_semantic_map.json`.  
+In the `example_data` folder, you can find an example of a global semantic map in `data_semantic_map.json`.
 Additionally there is data (`.csv`) and a mapping file (`.json`) of two fictitious centres
 (centre a, which uses English terminology, and centre b, which uses Dutch terminology).
 These files can be used
@@ -234,5 +234,3 @@ maps as guide for data generation.
 - Joshi Hogenboom
 - Johan van Soest
 - Leonard Wee
-
-

@@ -6,6 +6,7 @@
 <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -38,9 +39,9 @@
             </div>
             <div class="card-body">
                 <p class="text-muted">
-                    You can optionally upload a Flyover semantic map JSON file to guide the mapping process.<br>
+                    You can optionally upload a Flyover semantic map JSON-LD file to guide the mapping process.<br>
                     This will help provide better semantic annotations and standardised mappings for your data
-                    variables. <br><br> You can find an example template <a href="https://github.com/MaastrichtU-CDS/Flyover/blob/main/example_data/data_semantic_map.json" target="_blank">here</a>.<br>
+                    variables. <br><br> You can find an example template <a href="https://github.com/MaastrichtU-CDS/Flyover/blob/main/example_data/mapping_template.jsonld" target="_blank">here</a>.<br>
                     For more information on the Semantic Map, refer to Flyover's README <a href="https://github.com/MaastrichtU-CDS/Flyover/blob/main/README.md" target='_blank'>here</a>.
                 </p>
 
@@ -54,10 +55,10 @@
 
                 <form method="POST" action="/upload-semantic-map" enctype="multipart/form-data" id="semanticMapForm">
                     <div class="form-group">
-                        <label for="semanticMapPath">Global Semantic Map JSON File:</label>
+                        <label for="semanticMapPath">Global Semantic Map JSON-LD File:</label>
                         <div class="input-group">
                             <input type="text" id="semanticMapPath" name="semanticMapPath" class="form-control"
-                                   placeholder="Select semantic map JSON file..." readonly>
+                                   placeholder="Select semantic map JSON-LD file..." readonly>
                             <div class="input-group-append">
                                 <button type="button" class="btn btn-outline-secondary"
                                         onclick="document.getElementById('semanticMapFile').click();">
@@ -66,10 +67,9 @@
                             </div>
                         </div>
                         <input type="file" id="semanticMapFile" name="semanticMapFile" style="display:none;"
-                               accept=".json" onchange="updateSemanticMapPath(this)">
+                               accept=".jsonld" onchange="updateSemanticMapPath(this)">
                         <small class="form-text text-muted">
-                            The JSON file should contain a 'variable_info' field with semantic variable definitions and
-                            mappings.
+                            The JSON-LD file should follow the Flyover semantic mapping schema with @context, schema, and databases sections.
                         </small>
                     </div>
 
@@ -155,7 +155,7 @@
                         <div class="alert alert-warning" role="alert">
                             <i class="fas fa-exclamation-triangle"></i>
                             <strong>No Data Found</strong><br>
-                            You cannot proceed with the describe step as no data has been uploaded yet. 
+                            You cannot proceed with the describe step as no data has been uploaded yet.
                             Please go back to the Ingest step to upload your data first.
                             <br><br>
                             <a href="/ingest" class="btn btn-primary">
@@ -185,45 +185,52 @@
         });
 
         // Handle semantic map form submission
-        $("#semanticMapForm").submit(function (e) {
+        $("#semanticMapForm").submit(async function (e) {
             e.preventDefault();
 
             if (!$("#semanticMapFile")[0].files.length) {
-                showStatusMessage("Please select a semantic map JSON file to upload.", "error");
+                showStatusMessage("Please select a semantic map JSON-LD file to upload.", "error");
                 return;
             }
 
-            // Create FormData object
-            const formData = new FormData();
-            formData.append("semanticMapFile", $("#semanticMapFile")[0].files[0]);
+            const file = $("#semanticMapFile")[0].files[0];
 
-            // Show loading state
-            $("#uploadSemanticMapButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Uploading...');
+            $("#uploadSemanticMapButton").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
 
-            // Submit via AJAX
-            $.ajax({
-                url: "/upload-semantic-map",
-                type: "POST",
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function (response) {
-                    $("#semanticMapSection").hide();
-                    showStatusMessage("Global semantic map uploaded successfully! This will guide the semantic mapping process and help standardise your data annotations.", "success");
+            try {
+                const fileContents = await readFileAsText(file);
+                const jsonldData = JSON.parse(fileContents);
 
-                    // Enable the continue button after successful upload
-                    enableContinueButton();
-                },
-                error: function (xhr, status, error) {
-                    let errorMessage = "Failed to upload semantic map file.";
-                    if (xhr.responseJSON && xhr.responseJSON.error) {
-                        errorMessage = xhr.responseJSON.error;
-                    }
-                    showStatusMessage(errorMessage, "error");
-                    $("#uploadSemanticMapButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload Semantic Map');
+                await FlyoverDB.saveData('metadata', {
+                    key: 'semantic_map',
+                    data: jsonldData,
+                    filename: file.name,
+                    timestamp: new Date().toISOString()
+                });
+
+                $("#semanticMapSection").hide();
+                showStatusMessage("Global semantic map uploaded successfully! This will guide the semantic mapping process and help standardise your data annotations.", "success");
+
+                enableContinueButton();
+            } catch (error) {
+                console.error("Error saving semantic map to IndexedDB:", error);
+                let errorMessage = "Failed to save semantic map file.";
+                if (error.message) {
+                    errorMessage += " " + error.message;
                 }
-            });
+                showStatusMessage(errorMessage, "error");
+                $("#uploadSemanticMapButton").prop("disabled", false).html('<i class="fas fa-upload"></i> Upload Semantic Map');
+            }
         });
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(new Error("Failed to read file"));
+                reader.readAsText(file);
+            });
+        }
 
         // Handle continue form submission
         $("#continueForm").submit(function(e) {
@@ -382,4 +389,3 @@
 
 </body>
 </html>
-

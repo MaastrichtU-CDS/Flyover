@@ -62,9 +62,35 @@
             border-radius: 8px;
         }
 
-        .pagination {
-            margin-top: 20px;
-            justify-content: center;
+        .pagination-controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .pagination-controls button {
+            padding: 5px 15px;
+            margin: 0 5px;
+            border: none;
+            background-color: transparent;
+            color: #007bff;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .pagination-controls button:hover {
+            transform: scale(1.2);
+        }
+
+        .pagination-controls button:disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .page-indicator {
+            margin: 0 10px;
+            font-size: 1rem;
         }
 
         .hidden {
@@ -152,11 +178,11 @@
     </div>
 
     <!-- Pagination -->
-    <nav aria-label="Variable pagination">
-        <ul class="pagination" id="pagination">
-            <!-- Pagination will be populated by JavaScript -->
-        </ul>
-    </nav>
+    <div class="pagination-controls" id="pagination">
+        <button type="button" id="prevBtn" onclick="changePage(-1)" disabled>&#x2190;</button>
+        <span class="page-indicator">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+        <button type="button" id="nextBtn" onclick="changePage(1)">&#x2192;</button>
+    </div>
 
     <hr>
     <a href="/" class="btn btn-primary"><i class="fas fa-home"></i> Return to Home</a>
@@ -166,46 +192,27 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const itemsPerPage = 20;
+        const itemsPerPage = 10;
         let currentPage = 1;
         const variables = Object.keys({{ variable_data | tojson }});
         const variableItems = document.querySelectorAll('.variable-item');
 
-        // Initialize pagination
-        function initPagination() {
+        function updatePaginationControls() {
             const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
             const pagination = document.getElementById('pagination');
-            pagination.innerHTML = '';
 
             if (totalPages <= 1) {
                 pagination.style.display = 'none';
                 return;
             }
 
-            pagination.style.display = 'flex';
-
-            // Previous button
-            const prevLi = document.createElement('li');
-            prevLi.className = 'page-item' + (currentPage === 1 ? ' disabled' : '');
-            prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
-            pagination.appendChild(prevLi);
-
-            // Page numbers
-            for (let i = 1; i <= totalPages; i++) {
-                const li = document.createElement('li');
-                li.className = 'page-item' + (currentPage === i ? ' active' : '');
-                li.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
-                pagination.appendChild(li);
-            }
-
-            // Next button
-            const nextLi = document.createElement('li');
-            nextLi.className = 'page-item' + (currentPage === totalPages ? ' disabled' : '');
-            nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
-            pagination.appendChild(nextLi);
+            pagination.style.display = 'block';
+            document.getElementById('currentPage').textContent = currentPage;
+            document.getElementById('totalPages').textContent = totalPages;
+            document.getElementById('prevBtn').disabled = currentPage <= 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
         }
 
-        // Get visible items based on current filters
         function getVisibleItems() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const statusFilter = document.getElementById('statusFilter').value;
@@ -218,7 +225,6 @@
             });
         }
 
-        // Update display based on current page and filters
         function updateDisplay() {
             const visibleItems = getVisibleItems();
             const start = (currentPage - 1) * itemsPerPage;
@@ -227,13 +233,16 @@
             variableItems.forEach(item => item.classList.add('hidden'));
             visibleItems.slice(start, end).forEach(item => item.classList.remove('hidden'));
 
-            initPagination();
+            updatePaginationControls();
         }
 
-        // Change page
-        window.changePage = function (page) {
-            currentPage = page;
-            updateDisplay();
+        window.changePage = function (direction) {
+            const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
+            const newPage = currentPage + direction;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                updateDisplay();
+            }
         };
 
         // Add event listeners for filters
@@ -252,9 +261,10 @@
 
         // Process annotations for described variables
         variables.forEach(function (variableName) {
-            const iconId = 'icon-' + variableName.replace('.', '-');
-            const messageId = 'message-' + variableName.replace('.', '-');
-            const item = document.querySelector(`[id="message-${variableName.replace('.', '-')}"]`).closest('.variable-item');
+            const safeId = variableName.replace(/\./g, '-');
+            const iconId = 'icon-' + safeId;
+            const messageId = 'message-' + safeId;
+            const item = document.querySelector(`[id="message-${safeId}"]`).closest('.variable-item');
 
             fetch('/verify-annotation-ask', {
                 method: 'POST',

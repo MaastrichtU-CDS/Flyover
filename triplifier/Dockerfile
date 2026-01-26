@@ -1,22 +1,19 @@
-FROM python:3.13-alpine
+FROM python:3.13-slim
 WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
 # Install build dependencies, Python packages, and clean up
-RUN apk add --no-cache --virtual .build-deps \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
-    musl-dev \
-    postgresql-dev \
-    && apk add --no-cache \
-    libpq \
+    libpq-dev \
     ca-certificates \
     curl \
     && pip install --no-cache-dir -r requirements.txt \
-    && apk del .build-deps \
-    && rm -rf /var/cache/apk/* /root/.cache
+    && apt-get purge -y --auto-remove gcc python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the entire application code
 COPY data_descriptor/ /app/data_descriptor/
