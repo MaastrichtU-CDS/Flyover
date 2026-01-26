@@ -4,6 +4,12 @@ import pandas as pd
 
 from typing import Any, Dict, List, Optional, Union
 
+# Constants for mock data generation
+_DEFAULT_MIN_VALUE = 1
+_DEFAULT_MAX_VALUE = 100
+_MISSING_VALUE_PROBABILITY = 0.1
+_IDENTIFIER_FORMAT = "ID_{:05d}"
+
 
 def generate_mock_data_from_semantic_map(
     jsonld_map: Dict[str, Any], 
@@ -75,10 +81,14 @@ def generate_mock_data_from_semantic_map(
             for col_id, col_info in columns.items():
                 # Get the variable this column maps to
                 maps_to = col_info.get("mapsTo", "")
+                if not maps_to:
+                    continue  # Skip if no mapping defined
+                
                 # Extract variable name from the full IRI (e.g., "schema:variable/identifier" -> "identifier")
                 var_name = maps_to.split("/")[-1] if "/" in maps_to else maps_to
+                var_name = var_name.strip()  # Clean up any whitespace
                 
-                if var_name not in variables:
+                if not var_name or var_name not in variables:
                     continue  # Skip if variable not found in schema
                 
                 var_info = variables[var_name]
@@ -115,8 +125,8 @@ def generate_mock_data_from_semantic_map(
                     # Generate random numbers or missing values
                     table_data[local_column] = [
                         (
-                            random.randint(1, 100)
-                            if random.random() > 0.1 or not has_missing
+                            random.randint(_DEFAULT_MIN_VALUE, _DEFAULT_MAX_VALUE)
+                            if random.random() > _MISSING_VALUE_PROBABILITY or not has_missing
                             else missing_value
                         )
                         for _ in range(num_rows)
@@ -124,7 +134,7 @@ def generate_mock_data_from_semantic_map(
                 
                 elif data_type == "identifier":
                     # Generate sequential identifiers
-                    table_data[local_column] = [f"ID_{i:05d}" for i in range(1, num_rows + 1)]
+                    table_data[local_column] = [_IDENTIFIER_FORMAT.format(i) for i in range(1, num_rows + 1)]
                 
                 elif data_type == "standardised":
                     # TODO: improve handling of standardised data; e.g. using ontology informed synthetic data
@@ -134,8 +144,8 @@ def generate_mock_data_from_semantic_map(
                     
                     table_data[local_column] = [
                         (
-                            random.randint(1, 100)
-                            if random.random() > 0.1 or not has_missing
+                            random.randint(_DEFAULT_MIN_VALUE, _DEFAULT_MAX_VALUE)
+                            if random.random() > _MISSING_VALUE_PROBABILITY or not has_missing
                             else missing_value
                         )
                         for _ in range(num_rows)
