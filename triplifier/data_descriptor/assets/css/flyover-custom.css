@@ -1,0 +1,412 @@
+/**
+ * Flyover Custom Styles
+ * Custom CSS for the Flyover data F.A.I.R.-ification application.
+ * Provides consistent styling across pages.
+ */
+
+/* ==========================================================================
+   Navigation Header Styles
+   ========================================================================== */
+
+.flyover-navigation {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 20px 0;
+    margin-bottom: 20px;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.nav-steps {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.nav-step {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.7);
+    transition: all 0.3s ease;
+    padding: 10px 15px;
+    border-radius: 8px;
+    min-width: 140px;
+    justify-content: center;
+}
+
+.nav-step:hover {
+    text-decoration: none;
+    color: white;
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.nav-step.active {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.2);
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.nav-step.completed {
+    color: #d4edda;
+}
+
+.nav-step.disabled {
+    color: rgba(255, 255, 255, 0.4);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.step-number {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.2);
+    font-weight: bold;
+    font-size: 0.9em;
+    position: relative;
+}
+
+.nav-step.active .step-number {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.nav-step.completed .step-number {
+    background-color: #99a1dc;
+    color: white;
+}
+
+.step-text {
+    padding-left: 5px;
+    padding-bottom: 2px;
+}
+
+.step-icon-header {
+    font-size: 1.1em;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    line-height: 1;
+}
+
+.step-arrow {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 1.2em;
+    margin: 0 10px;
+}
+
+.step-separator {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 1.2em;
+    margin: 0 10px;
+    font-weight: bold;
+}
+
+/* ==========================================================================
+   Hero Section Styles (Landing Page)
+   ========================================================================== */
+
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 80px 0;
+    margin-bottom: 50px;
+    border-radius: 15px;
+    text-align: center;
+    position: relative;
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-size: 110%;
+    background-position: center 40%;
+    background-repeat: no-repeat;
+    opacity: 0.08;
+    pointer-events: none;
+    border-radius: 15px;
+}
+
+.hero-section > * {
+    position: relative;
+    z-index: 1;
+}
+
+.hero-title {
+    font-size: 3.5rem;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+
+.hero-subtitle {
+    font-size: 1.3rem;
+    margin-bottom: 30px;
+    opacity: 0.9;
+}
+
+/* ==========================================================================
+   Workflow Card Styles
+   ========================================================================== */
+
+.workflow-card {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    margin-bottom: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+}
+
+.workflow-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.workflow-card.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1) !important;
+}
+
+.step-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    color: white;
+    margin: 0 auto 20px auto;
+}
+
+.ingest-icon {
+    background: linear-gradient(45deg, #b92f84, #ed144f);
+}
+
+.describe-icon {
+    background: linear-gradient(45deg, #2196F3, #0862c6);
+}
+
+.annotate-icon {
+    background: linear-gradient(45deg, #d36500, #FF9800);
+}
+
+.step-title {
+    font-size: 1.8rem;
+    font-weight: bold;
+    margin-bottom: 15px;
+    margin-top: 0;
+    text-align: center;
+    width: 100%;
+}
+
+.step-description {
+    text-align: center;
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 20px;
+    margin-top: 0;
+    width: 100%;
+    flex-grow: 1;
+}
+
+.step-features {
+    list-style: none;
+    padding: 0;
+    width: 100%;
+    margin-top: auto;
+}
+
+.step-features li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.step-features li:last-child {
+    border-bottom: none;
+}
+
+.step-features i {
+    color: #28a745;
+    margin-right: 10px;
+    width: 16px;
+}
+
+/* ==========================================================================
+   CTA Section Styles
+   ========================================================================== */
+
+.cta-section {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    margin-top: 40px;
+    margin-bottom: 40px;
+}
+
+/* ==========================================================================
+   Footer Styles
+   ========================================================================== */
+
+.flyover-footer {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px 0;
+    margin-top: 50px;
+    border-radius: 8px 8px 0 0;
+}
+
+.footer-links {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.footer-links a {
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.footer-links a:hover {
+    color: white;
+}
+
+.footer-copyright {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9em;
+}
+
+/* ==========================================================================
+   Form and Card Styles
+   ========================================================================== */
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px 10px 0 0 !important;
+}
+
+/* ==========================================================================
+   Alert and Status Styles
+   ========================================================================== */
+
+.alert-info {
+    background-color: #e3f2fd;
+    border-color: #90caf9;
+    color: #1565c0;
+}
+
+.alert-warning {
+    background-color: #fff3e0;
+    border-color: #ffcc80;
+    color: #e65100;
+}
+
+.alert-success {
+    background-color: #e8f5e9;
+    border-color: #a5d6a7;
+    color: #2e7d32;
+}
+
+.alert-danger {
+    background-color: #ffebee;
+    border-color: #ef9a9a;
+    color: #c62828;
+}
+
+/* ==========================================================================
+   Responsive Styles
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .nav-steps {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .step-arrow {
+        transform: rotate(90deg);
+        margin: 5px 0;
+    }
+
+    .step-separator {
+        transform: rotate(90deg);
+        margin: 5px 0;
+    }
+
+    .nav-step {
+        min-width: 200px;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+}
+
+/* ==========================================================================
+   Loading Spinner
+   ========================================================================== */
+
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ==========================================================================
+   Progress Indicator
+   ========================================================================== */
+
+.progress-container {
+    margin: 20px 0;
+}
+
+.progress {
+    height: 25px;
+    border-radius: 15px;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    border-radius: 15px;
+    transition: width 0.5s ease;
+}
