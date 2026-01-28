@@ -15,6 +15,55 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from repositories import QueryBuilder
 
 
+class TestQueryBuilderSanitization(unittest.TestCase):
+    """Test the SPARQL sanitization functionality."""
+
+    def test_sanitize_sparql_value_none(self):
+        """Test sanitizing None value."""
+        result = QueryBuilder.sanitize_sparql_value(None)
+        self.assertEqual(result, "")
+
+    def test_sanitize_sparql_value_simple(self):
+        """Test sanitizing simple string."""
+        result = QueryBuilder.sanitize_sparql_value("simple_value")
+        self.assertEqual(result, "simple_value")
+
+    def test_sanitize_sparql_value_quotes(self):
+        """Test sanitizing string with quotes."""
+        result = QueryBuilder.sanitize_sparql_value("test'value")
+        self.assertEqual(result, "test\\'value")
+
+    def test_sanitize_sparql_value_double_quotes(self):
+        """Test sanitizing string with double quotes."""
+        result = QueryBuilder.sanitize_sparql_value('test"value')
+        self.assertEqual(result, 'test\\"value')
+
+    def test_sanitize_sparql_value_backslash(self):
+        """Test sanitizing string with backslash."""
+        result = QueryBuilder.sanitize_sparql_value("test\\value")
+        self.assertEqual(result, "test\\\\value")
+
+    def test_validate_identifier_valid(self):
+        """Test validating a valid identifier."""
+        result = QueryBuilder.validate_identifier("test_table_1")
+        self.assertEqual(result, "test_table_1")
+
+    def test_validate_identifier_with_hyphen(self):
+        """Test validating identifier with hyphen."""
+        result = QueryBuilder.validate_identifier("test-table")
+        self.assertEqual(result, "test-table")
+
+    def test_validate_identifier_empty(self):
+        """Test validating empty identifier raises error."""
+        with self.assertRaises(ValueError):
+            QueryBuilder.validate_identifier("")
+
+    def test_validate_identifier_invalid_chars(self):
+        """Test validating identifier with invalid characters."""
+        with self.assertRaises(ValueError):
+            QueryBuilder.validate_identifier("test'; DROP TABLE users;--")
+
+
 class TestQueryBuilderPrefixes(unittest.TestCase):
     """Test the PREFIX building functionality."""
 

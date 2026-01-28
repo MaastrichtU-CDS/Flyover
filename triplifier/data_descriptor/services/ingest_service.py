@@ -5,6 +5,7 @@ This service handles business logic for file uploads,
 data validation, and triplification.
 """
 
+import json
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -137,8 +138,6 @@ class IngestService:
         if not pk_fk_json:
             return None
 
-        import json
-
         try:
             return json.loads(pk_fk_json)
         except Exception as e:
@@ -158,8 +157,6 @@ class IngestService:
         """
         if not cross_graph_json:
             return None
-
-        import json
 
         try:
             return json.loads(cross_graph_json)
