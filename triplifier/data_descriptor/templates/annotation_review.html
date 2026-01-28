@@ -661,10 +661,8 @@
                     if (!colData.localColumn) continue;
 
                     // Extract variable name from mapsTo
-                    let varName = colData.variable;
-                    if (!varName && colData.mapsTo) {
-                        varName = colData.mapsTo.split('/').pop();
-                    }
+                    if (!colData.mapsTo) continue;
+                    const varName = colData.mapsTo.split('/').pop();
                     if (!varName) continue;
 
                     // Get the schema variable info
