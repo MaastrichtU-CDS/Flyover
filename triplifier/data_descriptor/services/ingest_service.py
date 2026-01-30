@@ -196,6 +196,10 @@ class IngestService:
                     rel.get("foreignKeyColumn"),
                 ]
             ):
+                logger.warning(
+                    f"Skipping incomplete FK relationship for file '{rel.get('fileName', 'unknown')}': "
+                    f"missing foreignKey, foreignKeyTable, or foreignKeyColumn"
+                )
                 continue
 
             # Find the target table's PK info
@@ -203,6 +207,9 @@ class IngestService:
             target_rel = file_map.get(target_file)
 
             if not target_rel or not target_rel.get("primaryKey"):
+                logger.warning(
+                    f"Skipping FK relationship: target table '{target_file}' not found or has no primaryKey"
+                )
                 continue
 
             # Sanitise table names

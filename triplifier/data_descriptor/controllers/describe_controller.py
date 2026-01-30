@@ -7,14 +7,12 @@ data variables, including type specification and categorisation.
 
 import json
 import logging
-import re
 from io import StringIO
 
 import polars as pl
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, redirect, render_template, request, url_for
 
 from services import DescribeService
-from repositories import QueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +173,6 @@ def describe_variable_details():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
     name_matcher = ctx.get("name_matcher")
 
     preselected_values = {}

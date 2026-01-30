@@ -37,6 +37,30 @@ class GraphDBRepository:
         self.repo = repo
         self.query_builder = QueryBuilder()
 
+    def _parse_csv_result(self, csv_data: str) -> Optional[pl.DataFrame]:
+        """
+        Parse CSV query result into a Polars DataFrame.
+
+        Args:
+            csv_data: CSV-formatted query result string.
+
+        Returns:
+            Polars DataFrame, or None on error.
+        """
+        if not csv_data or not csv_data.strip():
+            return None
+
+        try:
+            return pl.read_csv(
+                StringIO(csv_data),
+                infer_schema_length=0,
+                null_values=[],
+                try_parse_dates=False,
+            )
+        except Exception as e:
+            logger.error(f"Error parsing CSV result: {e}")
+            return None
+
     def execute_query(
         self,
         query: str,
@@ -99,23 +123,26 @@ class GraphDBRepository:
         Check if any data graph exists in the repository.
 
         Returns:
-            True if a data graph exists, False otherwise.
-
-        Raises:
-            Exception: If the request fails.
+            True if a data graph exists, False otherwise. If the check
+            fails due to an error, False is returned.
         """
         query = QueryBuilder.check_data_graph_exists_query()
-        response = requests.get(
-            f"{self.graphdb_url}/repositories/{self.repo}",
-            params={"query": query},
-            headers={"Accept": "application/sparql-results+json"},
-            timeout=30,
-        )
+        try:
+            response = requests.get(
+                f"{self.graphdb_url}/repositories/{self.repo}",
+                params={"query": query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=30,
+            )
 
-        if response.status_code == 200:
-            return response.json()["boolean"]
-        else:
-            raise Exception(f"Query failed with status code {response.status_code}")
+            if response.status_code == 200:
+                return response.json().get("boolean", False)
+            else:
+                logger.error(f"Query failed with status code {response.status_code}")
+                return False
+        except Exception as e:
+            logger.error(f"Error checking data graph existence: {e}")
+            return False
 
     def get_column_info(self) -> Optional[pl.DataFrame]:
         """
@@ -126,19 +153,7 @@ class GraphDBRepository:
         """
         query = QueryBuilder.column_info_query()
         result = self.execute_query(query)
-        if not result:
-            return None
-
-        try:
-            return pl.read_csv(
-                StringIO(result),
-                infer_schema_length=0,
-                null_values=[],
-                try_parse_dates=False,
-            )
-        except Exception as e:
-            logger.error(f"Error parsing column info: {e}")
-            return None
+        return self._parse_csv_result(result)
 
     def get_database_names(self) -> List[str]:
         """
@@ -149,19 +164,15 @@ class GraphDBRepository:
         """
         query = QueryBuilder.database_name_query()
         result = self.execute_query(query)
-        if not result or not result.strip():
+        df = self._parse_csv_result(result)
+
+        if df is None or df.is_empty():
             return []
 
         try:
-            df = pl.read_csv(
-                StringIO(result),
-                infer_schema_length=0,
-                null_values=[],
-                try_parse_dates=False,
-            )
-            return df.get_column("db").unique().to_list() if not df.is_empty() else []
+            return df.get_column("db").unique().to_list()
         except Exception as e:
-            logger.error(f"Error fetching database names: {e}")
+            logger.error(f"Error extracting database names: {e}")
             return []
 
     def get_categories(self, column_name: str) -> Optional[str]:
@@ -190,19 +201,14 @@ class GraphDBRepository:
         """
         query = QueryBuilder.column_class_uri_query(table_name, column_name)
         result = self.execute_query(query)
+        df = self._parse_csv_result(result)
 
-        if not result or not result.strip():
+        if df is None or df.is_empty():
             logger.debug(f"No results found for column {table_name}.{column_name}")
             return None
 
         try:
-            df = pl.read_csv(
-                StringIO(result),
-                infer_schema_length=0,
-                null_values=[],
-                try_parse_dates=False,
-            )
-            if df.is_empty() or "uri" not in df.columns:
+            if "uri" not in df.columns:
                 return None
             return df.get_column("uri")[0]
         except Exception as e:
@@ -288,20 +294,12 @@ class GraphDBRepository:
         """
         query = QueryBuilder.graph_structure_query()
         result = self.execute_query(query)
+        df = self._parse_csv_result(result)
 
-        if not result or not result.strip():
+        if df is None or df.is_empty():
             return {"tables": [], "tableColumns": {}}
 
         try:
-            df = pl.read_csv(
-                StringIO(result),
-                infer_schema_length=0,
-                null_values=[],
-                try_parse_dates=False,
-            )
-            if df.is_empty():
-                return {"tables": [], "tableColumns": {}}
-
             # Extract table names from URIs
             df = df.with_columns(
                 pl.col("uri")
@@ -332,18 +330,13 @@ class GraphDBRepository:
         """
         query = QueryBuilder.ontology_graphs_query()
         result = self.execute_query(query)
+        df = self._parse_csv_result(result)
 
-        if not result or not result.strip():
+        if df is None or df.is_empty():
             return []
 
         try:
-            df = pl.read_csv(
-                StringIO(result),
-                infer_schema_length=0,
-                null_values=[],
-                try_parse_dates=False,
-            )
-            if df.is_empty() or "g" not in df.columns:
+            if "g" not in df.columns:
                 return []
 
             databases = []

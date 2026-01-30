@@ -28,6 +28,20 @@ def get_app_context():
     return current_app.config.get("APP_CONTEXT", {})
 
 
+def safe_remove_file(filepath):
+    """
+    Safely remove a file, logging any errors but not raising exceptions.
+
+    Args:
+        filepath: Path to the file to remove.
+    """
+    try:
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath)
+    except OSError as e:
+        logger.warning(f"Failed to remove file {filepath}: {e}")
+
+
 @annotate_bp.route("/annotation_landing")
 def annotation_landing():
     """
@@ -93,7 +107,7 @@ def upload_annotation_json():
             session_cache.databases = databases
 
             if not databases:
-                os.remove(filepath)
+                safe_remove_file(filepath)
                 return (
                     jsonify(
                         {
@@ -121,7 +135,7 @@ def upload_annotation_json():
                 jsonld_tables.append(json_data["database_name"])
 
             if not jsonld_tables:
-                os.remove(filepath)
+                safe_remove_file(filepath)
                 return (
                     jsonify(
                         {
@@ -149,7 +163,7 @@ def upload_annotation_json():
                     non_matching.append(jsonld_table)
 
             if not matching:
-                os.remove(filepath)
+                safe_remove_file(filepath)
                 return (
                     jsonify(
                         {
@@ -186,7 +200,7 @@ def upload_annotation_json():
             )
 
         except json.JSONDecodeError:
-            os.remove(filepath)
+            safe_remove_file(filepath)
             return jsonify({"error": "Invalid JSON file format"}), 400
 
     except Exception as e:
