@@ -15,7 +15,7 @@ const JSONLDMapper = {
     },
 
     getVariableKeyFromColumn: function(colData) {
-        return colData.variable || colData.mapsTo?.split('/').pop();
+        return colData.mapsTo?.split('/').pop();
     },
 
     normalizeLocalMappings: function(localMappings) {
@@ -149,7 +149,7 @@ const JSONLDMapper = {
 
         let result = varKey;
         this.forEachColumn(this.mapping.databases, (colData) => {
-            if (colData.variable === varKey || colData.mapsTo === `schema:variable/${varKey}`) {
+            if (colData.mapsTo === `schema:variable/${varKey}`) {
                 result = colData.localColumn || varKey;
                 return false;
             }
@@ -474,7 +474,6 @@ const JSONLDMapper = {
                     colData.localColumn = localVariable;
 
                     if (newGlobalVariable !== globalVariable) {
-                        colData.variable = newGlobalVariable;
                         colData.mapsTo = `schema:variable/${newGlobalVariable}`;
                     }
 
