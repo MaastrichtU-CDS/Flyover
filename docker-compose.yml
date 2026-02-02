@@ -28,8 +28,8 @@ services:
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
       # Optional: Override default timeout settings
-      - GUNICORN_TIMEOUT=300
-      - RDF_REQUEST_TIMEOUT=30
+      - GUNICORN_TIMEOUT=3000
+      - RDF_REQUEST_TIMEOUT=3000
       # Optional: Override default PostgreSQL database settings for Triplifier
       # - TRIPLIFIER_DB_URL=postgresql://postgres/opc
       # - TRIPLIFIER_DB_USER=postgres
