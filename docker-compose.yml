@@ -17,16 +17,19 @@ services:
     container_name: rdf-store
 
   triplifier:
-    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    # image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    # build:
-    #   context: ./triplifier
+    build:  # TODO REMOVE PRIOR TO MERGE WITH MAIN
+       context: ./triplifier
     ports:
       - "127.0.0.1:5000:5000"
     environment:
       - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
+      # Optional: Override default timeout settings
+      - GUNICORN_TIMEOUT=300
+      - RDF_REQUEST_TIMEOUT=30
       # Optional: Override default PostgreSQL database settings for Triplifier
       # - TRIPLIFIER_DB_URL=postgresql://postgres/opc
       # - TRIPLIFIER_DB_USER=postgres
