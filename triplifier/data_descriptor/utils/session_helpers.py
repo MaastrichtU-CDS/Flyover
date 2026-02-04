@@ -71,7 +71,7 @@ def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
         f"{graphdb_url}/repositories/{repo}",
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
-        timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 30)),
+        timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
     )
 
     # If the request is successful, return the result of the ASK query

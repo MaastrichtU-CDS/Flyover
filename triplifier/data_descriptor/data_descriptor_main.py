@@ -1763,7 +1763,7 @@ def verify_annotation_ask():
             f"{graphdb_url}/repositories/{session_cache.repo}",
             params={"query": ask_query},
             headers={"Accept": "application/sparql-results+json"},
-            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 30)),
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
 
         if response.status_code == 200:
@@ -1902,7 +1902,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
             endpoint,
             data={query_type: query},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 30)),
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
         # Return the result of the query execution
         return response.text
