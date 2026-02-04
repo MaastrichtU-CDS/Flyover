@@ -1301,7 +1301,10 @@ def __post_query(endpoint, query, headers=None, data_style=None):
 
     if dry_run is False:
         annotation_response = requests.post(
-            endpoint, data=data_style, headers=headers, timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600))
+            endpoint,
+            data=data_style,
+            headers=headers,
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
     else:
         annotation_response = "not-a-http-response"
