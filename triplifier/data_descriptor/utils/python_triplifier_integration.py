@@ -191,15 +191,15 @@ class PythonTriplifierIntegration:
             if db_url is None:
                 db_url = os.getenv("TRIPLIFIER_DB_URL")
                 if db_url is None:
-                    return False, "Database URL is required but was not provided"
+                    return False, "Database URL is required. Please provide it via the form or set the TRIPLIFIER_DB_URL environment variable."
             if db_user is None:
                 db_user = os.getenv("TRIPLIFIER_DB_USER")
                 if db_user is None:
-                    return False, "Database user is required but was not provided"
+                    return False, "Database user is required. Please provide it via the form or set the TRIPLIFIER_DB_USER environment variable."
             if db_password is None:
                 db_password = os.getenv("TRIPLIFIER_DB_PASSWORD")
                 if db_password is None:
-                    return False, "Database password is required but was not provided"
+                    return False, "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable."
 
             # Create YAML configuration dynamically
             config = {
