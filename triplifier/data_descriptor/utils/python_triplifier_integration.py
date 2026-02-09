@@ -179,21 +179,27 @@ class PythonTriplifierIntegration:
 
         Args:
             base_uri: Base URI for RDF generation
-            db_url: Database connection URL (can be set from environment variable)
-            db_user: Database user (can be set from environment variable)
-            db_password: Database password (can be set from environment variable)
+            db_url: Database connection URL (required; falls back to environment variable if not provided)
+            db_user: Database user (required; falls back to environment variable if not provided)
+            db_password: Database password (required; falls back to environment variable if not provided)
 
         Returns:
             Tuple[bool, str]: (success, message/error)
         """
         try:
-            # Get database configuration from environment variables if not provided
+            # Get database configuration from parameters first, then fall back to environment variables
             if db_url is None:
-                db_url = os.getenv("TRIPLIFIER_DB_URL", "postgresql://postgres/opc")
+                db_url = os.getenv("TRIPLIFIER_DB_URL")
+                if db_url is None:
+                    return False, "Database URL is required but was not provided"
             if db_user is None:
-                db_user = os.getenv("TRIPLIFIER_DB_USER", "postgres")
+                db_user = os.getenv("TRIPLIFIER_DB_USER")
+                if db_user is None:
+                    return False, "Database user is required but was not provided"
             if db_password is None:
-                db_password = os.getenv("TRIPLIFIER_DB_PASSWORD", "postgres")
+                db_password = os.getenv("TRIPLIFIER_DB_PASSWORD")
+                if db_password is None:
+                    return False, "Database password is required but was not provided"
 
             # Create YAML configuration dynamically
             config = {
@@ -260,6 +266,9 @@ def run_triplifier(
     child_dir: str = ".",
     csv_data_list: List[pl.DataFrame] | None = None,
     csv_table_names: List[str] | None = None,
+    db_url: str | None = None,
+    db_user: str | None = None,
+    db_password: str | None = None,
 ) -> Tuple[bool, Union[str], List[dict]]:
     """
     Run the Python Triplifier for CSV or SQL data.
@@ -272,6 +281,9 @@ def run_triplifier(
         child_dir: Child directory for file operations
         csv_data_list: List of polars DataFrames (for CSV mode)
         csv_table_names: List of table names derived from CSV filenames (for CSV mode)
+        db_url: Database connection URL (for SQL mode)
+        db_user: Database user (for SQL mode)
+        db_password: Database password (for SQL mode)
 
     Returns:
         Tuple[bool, Union[str], List[dict]]: (success, message, output_files)
@@ -291,7 +303,9 @@ def run_triplifier(
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
-            success, message = triplifier.run_triplifier_sql()
+            success, message = triplifier.run_triplifier_sql(
+                db_url=db_url, db_user=db_user, db_password=db_password
+            )
             return success, message, []
         else:
             return False, f"Unknown properties file: {properties_file}", []

@@ -2656,8 +2656,16 @@ def run_triplifier(properties_file=None):
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
+            # Build database URL from session cache
+            db_url = f"postgresql://{session_cache.url}/{session_cache.db_name}"
+            
             success, message, output_files = run_triplifier_impl(
-                properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
+                properties_file=properties_file,
+                root_dir=root_dir,
+                child_dir=child_dir,
+                db_url=db_url,
+                db_user=session_cache.username,
+                db_password=session_cache.password,
             )
             session_cache.output_files = output_files
         else:
