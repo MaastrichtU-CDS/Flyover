@@ -483,9 +483,10 @@ def upload_file():
         if upload:
             logger.info("🚀 Initiating upload to GraphDB")
 
-            # Use different upload strategy based on file type
-            if file_type == "CSV" and session_cache.output_files:
-                # Upload multiple graphs for CSV files
+            # Use upload_multiple_graphs for both CSV and PostgreSQL
+            # This ensures consistent named graph structure: http://ontology.local/{table_or_db_name}/ and http://data.local/{table_or_db_name}/
+            if session_cache.output_files:
+                # Upload multiple graphs (works for both CSV tables and PostgreSQL database)
                 upload_success, upload_messages = upload_multiple_graphs(
                     root_dir,
                     graphdb_url,
@@ -494,7 +495,7 @@ def upload_file():
                     data_background=False,
                 )
             else:
-                # Use traditional single-graph upload for PostgreSQL
+                # Fallback to traditional single-graph upload (should rarely happen)
                 upload_success, upload_messages = upload_ontology_then_data(
                     root_dir, graphdb_url, repo, data_background=False
                 )

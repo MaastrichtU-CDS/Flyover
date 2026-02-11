@@ -173,7 +173,8 @@ class PythonTriplifierIntegration:
         db_url: str | None = None,
         db_user: str | None = None,
         db_password: str | None = None,
-    ) -> Tuple[bool, str]:
+        db_name: str | None = None,
+    ) -> Tuple[bool, str, List[dict]]:
         """
         Process PostgreSQL data using Python Triplifier API directly.
 
@@ -182,24 +183,43 @@ class PythonTriplifierIntegration:
             db_url: Database connection URL (required; falls back to environment variable if not provided)
             db_user: Database user (required; falls back to environment variable if not provided)
             db_password: Database password (required; falls back to environment variable if not provided)
+            db_name: Database name to use for named graph (extracted from db_url if not provided)
 
         Returns:
-            Tuple[bool, str]: (success, message/error)
+            Tuple[bool, str, List[dict]]: (success, message/error, output_files)
+            output_files is a list with a single dict containing data_file, ontology_file, and table_name (database name)
         """
         try:
             # Get database configuration from parameters first, then fall back to environment variables
             if db_url is None:
                 db_url = os.getenv("TRIPLIFIER_DB_URL")
                 if db_url is None:
-                    return False, "Database URL is required. Please provide it via the form or set the TRIPLIFIER_DB_URL environment variable."
+                    return False, "Database URL is required. Please provide it via the form or set the TRIPLIFIER_DB_URL environment variable.", []
             if db_user is None:
                 db_user = os.getenv("TRIPLIFIER_DB_USER")
                 if db_user is None:
-                    return False, "Database user is required. Please provide it via the form or set the TRIPLIFIER_DB_USER environment variable."
+                    return False, "Database user is required. Please provide it via the form or set the TRIPLIFIER_DB_USER environment variable.", []
             if db_password is None:
                 db_password = os.getenv("TRIPLIFIER_DB_PASSWORD")
                 if db_password is None:
-                    return False, "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable."
+                    return False, "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable.", []
+
+            # Extract database name from db_url if not provided
+            # Expected format: postgresql://host/database_name
+            if db_name is None:
+                try:
+                    # Split URL to extract database name
+                    # Format: postgresql://host:port/database or postgresql://host/database
+                    url_parts = db_url.split("/")
+                    if len(url_parts) >= 4:
+                        db_name = url_parts[-1]  # Last part is the database name
+                    else:
+                        db_name = "default"
+                    # Sanitize database name for use in file names and graph URIs
+                    db_name = sanitise_table_name(db_name)
+                except Exception as e:
+                    logger.warning(f"Could not extract database name from URL: {e}. Using 'default'")
+                    db_name = "default"
 
             # Create YAML configuration dynamically
             config = {
@@ -221,10 +241,11 @@ class PythonTriplifierIntegration:
             with open(config_path, "w") as f:
                 yaml.dump(config, f)
 
-            # Set up file paths - output to root_dir for upload_ontology_then_data compatibility
-            ontology_path = os.path.join(self.root_dir, "ontology.owl")
-            output_path = os.path.join(self.root_dir, "output.ttl")
-            base_uri = base_uri or f"http://{self.hostname}/rdf/ontology/"
+            # Set up file paths with database-specific naming (similar to CSV approach)
+            # This allows using upload_multiple_graphs for consistent named graph structure
+            ontology_path = os.path.join(self.root_dir, f"ontology_{db_name}.owl")
+            output_path = os.path.join(self.root_dir, f"output_{db_name}.ttl")
+            base_uri_value = base_uri or f"http://{self.hostname}/rdf/ontology/"
 
             # Create arguments object for the triplifier
             class Args:
@@ -232,7 +253,7 @@ class PythonTriplifierIntegration:
                     self.config = config_path
                     self.output = output_path
                     self.ontology = ontology_path
-                    self.baseuri = base_uri
+                    self.baseuri = base_uri_value
                     self.ontologyAndOrData = None  # Convert both ontology and data
 
             args = Args()
@@ -243,6 +264,15 @@ class PythonTriplifierIntegration:
             logger.info("Python Triplifier executed successfully")
             logger.info(f"Generated files: {ontology_path}, {output_path}")
 
+            # Create output_files structure similar to CSV for consistent upload handling
+            output_files = [
+                {
+                    "data_file": output_path,
+                    "ontology_file": ontology_path,
+                    "table_name": db_name,
+                }
+            ]
+
             # Clean up temporary config file
             if os.path.exists(config_path):
                 os.remove(config_path)
@@ -250,6 +280,7 @@ class PythonTriplifierIntegration:
             return (
                 True,
                 "PostgreSQL data triplified successfully using Python Triplifier.",
+                output_files,
             )
 
         except Exception as e:
@@ -257,7 +288,7 @@ class PythonTriplifierIntegration:
             import traceback
 
             traceback.print_exc()
-            return False, f"Error processing PostgreSQL data: {str(e)}"
+            return False, f"Error processing PostgreSQL data: {str(e)}", []
 
 
 def run_triplifier(
@@ -303,10 +334,10 @@ def run_triplifier(
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
-            success, message = triplifier.run_triplifier_sql(
+            success, message, output_files = triplifier.run_triplifier_sql(
                 db_url=db_url, db_user=db_user, db_password=db_password
             )
-            return success, message, []
+            return success, message, output_files
         else:
             return False, f"Unknown properties file: {properties_file}", []
 
