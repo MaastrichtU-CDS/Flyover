@@ -5,6 +5,7 @@ import socket
 import time
 import gc
 import logging
+from urllib.parse import urlparse
 
 import polars as pl
 
@@ -209,12 +210,13 @@ class PythonTriplifierIntegration:
             if db_name is None:
                 try:
                     # Use proper URL parsing to handle query parameters and fragments
-                    from urllib.parse import urlparse
                     parsed_url = urlparse(db_url)
-                    # Extract database name from path (remove leading /)
+                    # Extract database name from path (remove leading / and take first segment)
                     path = parsed_url.path.lstrip('/')
                     if path:
-                        db_name = path
+                        # Take only the first path segment (database name)
+                        # This handles cases like /database or /database/schema
+                        db_name = path.split('/')[0]
                     else:
                         db_name = "default"
                     # Sanitize database name for use in file names and graph URIs
