@@ -188,7 +188,12 @@ class PythonTriplifierIntegration:
 
         Returns:
             Tuple[bool, str, List[dict]]: (success, message/error, output_files)
-            output_files is a list with a single dict containing data_file, ontology_file, and table_name (database name)
+            - success (bool): Whether the triplification was successful
+            - message (str): Success message or error description
+            - output_files (List[dict]): List with a single dict containing:
+                * 'data_file' (str): Path to the generated data file (output_{db_name}.ttl)
+                * 'ontology_file' (str): Path to the generated ontology file (ontology_{db_name}.owl)
+                * 'table_name' (str): Database name used for named graph identification
         """
         try:
             # Get database configuration from parameters first, then fall back to environment variables
@@ -220,6 +225,8 @@ class PythonTriplifierIntegration:
                     else:
                         db_name = "default"
                     # Sanitize database name for use in file names and graph URIs
+                    # Note: sanitise_table_name is used for both table and database names
+                    # as they require the same sanitization rules for filesystem and URI safety
                     db_name = sanitise_table_name(db_name)
                 except Exception as e:
                     logger.warning(f"Could not extract database name from URL: {e}. Using 'default'")
