@@ -208,11 +208,13 @@ class PythonTriplifierIntegration:
             # Expected format: postgresql://host/database_name
             if db_name is None:
                 try:
-                    # Split URL to extract database name
-                    # Format: postgresql://host:port/database or postgresql://host/database
-                    url_parts = db_url.split("/")
-                    if len(url_parts) >= 4:
-                        db_name = url_parts[-1]  # Last part is the database name
+                    # Use proper URL parsing to handle query parameters and fragments
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(db_url)
+                    # Extract database name from path (remove leading /)
+                    path = parsed_url.path.lstrip('/')
+                    if path:
+                        db_name = path
                     else:
                         db_name = "default"
                     # Sanitize database name for use in file names and graph URIs
@@ -245,7 +247,7 @@ class PythonTriplifierIntegration:
             # This allows using upload_multiple_graphs for consistent named graph structure
             ontology_path = os.path.join(self.root_dir, f"ontology_{db_name}.owl")
             output_path = os.path.join(self.root_dir, f"output_{db_name}.ttl")
-            base_uri_value = base_uri or f"http://{self.hostname}/rdf/ontology/"
+            base_uri = base_uri or f"http://{self.hostname}/rdf/ontology/"
 
             # Create arguments object for the triplifier
             class Args:
@@ -253,7 +255,7 @@ class PythonTriplifierIntegration:
                     self.config = config_path
                     self.output = output_path
                     self.ontology = ontology_path
-                    self.baseuri = base_uri_value
+                    self.baseuri = base_uri
                     self.ontologyAndOrData = None  # Convert both ontology and data
 
             args = Args()
