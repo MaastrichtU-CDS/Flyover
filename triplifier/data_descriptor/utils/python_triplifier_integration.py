@@ -178,7 +178,7 @@ class PythonTriplifierIntegration:
     ) -> Tuple[bool, str, List[dict]]:
         """
         Process PostgreSQL data using Python Triplifier API directly.
-        
+
         Each table in the PostgreSQL database is processed separately and converted
         to SQLite, then triplified individually (similar to CSV processing). This ensures:
         - Each table gets its own named graph (http://ontology.local/{table_name}/)
@@ -206,23 +206,35 @@ class PythonTriplifierIntegration:
             if db_url is None:
                 db_url = os.getenv("TRIPLIFIER_DB_URL")
                 if db_url is None:
-                    return False, "Database URL is required. Please provide it via the form or set the TRIPLIFIER_DB_URL environment variable.", []
+                    return (
+                        False,
+                        "Database URL is required. Please provide it via the form or set the TRIPLIFIER_DB_URL environment variable.",
+                        [],
+                    )
             if db_user is None:
                 db_user = os.getenv("TRIPLIFIER_DB_USER")
                 if db_user is None:
-                    return False, "Database user is required. Please provide it via the form or set the TRIPLIFIER_DB_USER environment variable.", []
+                    return (
+                        False,
+                        "Database user is required. Please provide it via the form or set the TRIPLIFIER_DB_USER environment variable.",
+                        [],
+                    )
             if db_password is None:
                 db_password = os.getenv("TRIPLIFIER_DB_PASSWORD")
                 if db_password is None:
-                    return False, "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable.", []
+                    return (
+                        False,
+                        "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable.",
+                        [],
+                    )
 
             # Extract database name from db_url for logging purposes
             if db_name is None:
                 try:
                     parsed_url = urlparse(db_url)
-                    path = parsed_url.path.lstrip('/')
+                    path = parsed_url.path.lstrip("/")
                     if path:
-                        db_name = path.split('/')[0]
+                        db_name = path.split("/")[0]
                     else:
                         db_name = "unknown"
                 except Exception as e:
@@ -241,18 +253,22 @@ class PythonTriplifierIntegration:
                 conn_string = db_url
 
             logger.info(f"Connecting to PostgreSQL database: {db_name}")
-            
+
             # Connect to PostgreSQL and fetch table list
             # Convert postgresql:// URL to psycopg2 connection parameters
             parsed_url = urlparse(conn_string)
             conn = psycopg2.connect(
                 host=parsed_url.hostname,
                 port=parsed_url.port or 5432,
-                database=parsed_url.path.lstrip('/').split('/')[0] if parsed_url.path else 'postgres',
+                database=(
+                    parsed_url.path.lstrip("/").split("/")[0]
+                    if parsed_url.path
+                    else "postgres"
+                ),
                 user=db_user,
-                password=db_password
+                password=db_password,
             )
-            
+
             try:
                 # Use context manager for cursor to ensure proper cleanup
                 with conn.cursor() as cursor:
@@ -265,13 +281,15 @@ class PythonTriplifierIntegration:
                         ORDER BY table_name
                     """)
                     tables = [row[0] for row in cursor.fetchall()]
-                
+
                 if not tables:
                     conn.close()
                     return False, f"No tables found in database {db_name}", []
-                
-                logger.info(f"Found {len(tables)} tables in database {db_name}: {', '.join(tables)}")
-                
+
+                logger.info(
+                    f"Found {len(tables)} tables in database {db_name}: {', '.join(tables)}"
+                )
+
             except Exception as e:
                 conn.close()
                 return False, f"Error querying database tables: {str(e)}", []
@@ -286,21 +304,25 @@ class PythonTriplifierIntegration:
             for table_name in tables:
                 # Sanitize table name for use in file names and graph URIs
                 clean_table_name = sanitise_table_name(table_name)
-                logger.info(f"Processing table: {table_name} (sanitized: {clean_table_name})")
+                logger.info(
+                    f"Processing table: {table_name} (sanitized: {clean_table_name})"
+                )
 
                 try:
                     # Fetch table data from PostgreSQL using parameterized query
                     # Note: table_name comes from information_schema.tables query, so it's trusted
                     # But we still use proper quoting for safety
-                    
+
                     # Use SQL identifier quoting to safely handle table names
                     from psycopg2 import sql
-                    
+
                     # Use context manager for cursor to ensure proper cleanup
                     with conn.cursor() as cursor:
-                        query = sql.SQL('SELECT * FROM {}').format(sql.Identifier(table_name))
+                        query = sql.SQL("SELECT * FROM {}").format(
+                            sql.Identifier(table_name)
+                        )
                         cursor.execute(query)
-                        
+
                         rows = cursor.fetchall()
                         columns = [desc[0] for desc in cursor.description]
 
@@ -310,10 +332,8 @@ class PythonTriplifierIntegration:
 
                     # Convert to polars DataFrame using from_dicts for better memory efficiency
                     # This avoids creating intermediate lists for large datasets
-                    table_data = pl.DataFrame(
-                        [dict(zip(columns, row)) for row in rows]
-                    )
-                    
+                    table_data = pl.DataFrame([dict(zip(columns, row)) for row in rows])
+
                     logger.info(f"Fetched {len(rows)} rows from table {table_name}")
 
                     # Create a temporary SQLite database for this table
@@ -333,29 +353,39 @@ class PythonTriplifierIntegration:
                         for col in columns:
                             # Remove any characters that could be problematic
                             # Only allow alphanumeric and underscore (hyphens are not valid in SQL)
-                            safe_col = ''.join(c for c in col if c.isalnum() or c == '_')
+                            safe_col = "".join(
+                                c for c in col if c.isalnum() or c == "_"
+                            )
                             if not safe_col:
                                 safe_col = f"col_{len(safe_columns)}"
                             safe_columns.append(safe_col)
-                        
+
                         # Write polars DataFrame to SQLite
                         # Using sanitized column names and clean_table_name which has been processed
                         # by sanitise_table_name to ensure SQL safety
                         col_defs = ", ".join([f'"{col}" TEXT' for col in safe_columns])
-                        sqlite_conn.execute(f'DROP TABLE IF EXISTS "{clean_table_name}"')
-                        sqlite_conn.execute(f'CREATE TABLE "{clean_table_name}" ({col_defs})')
+                        sqlite_conn.execute(
+                            f'DROP TABLE IF EXISTS "{clean_table_name}"'
+                        )
+                        sqlite_conn.execute(
+                            f'CREATE TABLE "{clean_table_name}" ({col_defs})'
+                        )
                         insert_sql = f'INSERT INTO "{clean_table_name}" VALUES ({", ".join(["?" for _ in safe_columns])})'
                         sqlite_conn.executemany(insert_sql, table_data.iter_rows())
                         sqlite_conn.commit()
-                        logger.info(f"Loaded data into SQLite table: {clean_table_name}")
-                    
+                        logger.info(
+                            f"Loaded data into SQLite table: {clean_table_name}"
+                        )
+
                     # Connection is automatically closed by context manager
 
                     # Create YAML configuration for this table
                     config = {
                         "db": {"url": f"sqlite:///{temp_db_path}"},
                         "repo.dataUri": (
-                            base_uri if base_uri else f"http://{self.hostname}/rdf/data/"
+                            base_uri
+                            if base_uri
+                            else f"http://{self.hostname}/rdf/data/"
                         ),
                     }
 
@@ -383,14 +413,18 @@ class PythonTriplifierIntegration:
                             self.output = output_path
                             self.ontology = ontology_path
                             self.baseuri = base_uri_value
-                            self.ontologyAndOrData = None  # Convert both ontology and data
+                            self.ontologyAndOrData = (
+                                None  # Convert both ontology and data
+                            )
 
                     args = Args()
 
                     # Run Python Triplifier directly using the API
                     triplifier_run(args)
 
-                    logger.info(f"Python Triplifier executed successfully for table: {clean_table_name}")
+                    logger.info(
+                        f"Python Triplifier executed successfully for table: {clean_table_name}"
+                    )
                     logger.info(f"Generated files: {ontology_path}, {output_path}")
 
                     # Store output file information
@@ -405,7 +439,7 @@ class PythonTriplifierIntegration:
                     # Clean up temporary files for this table
                     if os.path.exists(config_path):
                         os.remove(config_path)
-                    
+
                     # Clean up temporary database
                     # The context manager ensures the connection is closed properly
                     # but we still need to be careful with file deletion timing
@@ -420,6 +454,7 @@ class PythonTriplifierIntegration:
                 except Exception as e:
                     logger.error(f"Error processing table {table_name}: {e}")
                     import traceback
+
                     traceback.print_exc()
                     # Continue with next table instead of failing completely
                     continue

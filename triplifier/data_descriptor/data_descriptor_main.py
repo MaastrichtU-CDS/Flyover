@@ -2659,13 +2659,16 @@ def run_triplifier(properties_file=None):
             # Use Python Triplifier for PostgreSQL processing
             # Validate that required connection details are present
             if not session_cache.url or not session_cache.db_name:
-                return False, "PostgreSQL connection details are missing from session cache"
+                return (
+                    False,
+                    "PostgreSQL connection details are missing from session cache",
+                )
             if not session_cache.username or not session_cache.password:
                 return False, "PostgreSQL credentials are missing from session cache"
-            
+
             # Build database URL from session cache (without credentials - they're passed separately)
             db_url = f"postgresql://{session_cache.url}/{session_cache.db_name}"
-            
+
             success, message, output_files = run_triplifier_impl(
                 properties_file=properties_file,
                 root_dir=root_dir,
