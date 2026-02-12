@@ -254,17 +254,17 @@ class PythonTriplifierIntegration:
             )
             
             try:
-                cursor = conn.cursor()
-                # Query to get all user tables (excluding system tables)
-                cursor.execute("""
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_type = 'BASE TABLE'
-                    ORDER BY table_name
-                """)
-                tables = [row[0] for row in cursor.fetchall()]
-                cursor.close()
+                # Use context manager for cursor to ensure proper cleanup
+                with conn.cursor() as cursor:
+                    # Query to get all user tables (excluding system tables)
+                    cursor.execute("""
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_type = 'BASE TABLE'
+                        ORDER BY table_name
+                    """)
+                    tables = [row[0] for row in cursor.fetchall()]
                 
                 if not tables:
                     conn.close()
@@ -292,16 +292,17 @@ class PythonTriplifierIntegration:
                     # Fetch table data from PostgreSQL using parameterized query
                     # Note: table_name comes from information_schema.tables query, so it's trusted
                     # But we still use proper quoting for safety
-                    cursor = conn.cursor()
                     
                     # Use SQL identifier quoting to safely handle table names
                     from psycopg2 import sql
-                    query = sql.SQL('SELECT * FROM {}').format(sql.Identifier(table_name))
-                    cursor.execute(query)
                     
-                    rows = cursor.fetchall()
-                    columns = [desc[0] for desc in cursor.description]
-                    cursor.close()
+                    # Use context manager for cursor to ensure proper cleanup
+                    with conn.cursor() as cursor:
+                        query = sql.SQL('SELECT * FROM {}').format(sql.Identifier(table_name))
+                        cursor.execute(query)
+                        
+                        rows = cursor.fetchall()
+                        columns = [desc[0] for desc in cursor.description]
 
                     if not rows:
                         logger.warning(f"Table {table_name} is empty, skipping")
@@ -331,12 +332,15 @@ class PythonTriplifierIntegration:
                         safe_columns = []
                         for col in columns:
                             # Remove any characters that could be problematic
-                            safe_col = ''.join(c for c in col if c.isalnum() or c in ('_', '-'))
+                            # Only allow alphanumeric and underscore (hyphens are not valid in SQL)
+                            safe_col = ''.join(c for c in col if c.isalnum() or c == '_')
                             if not safe_col:
                                 safe_col = f"col_{len(safe_columns)}"
                             safe_columns.append(safe_col)
                         
                         # Write polars DataFrame to SQLite
+                        # Using sanitized column names and clean_table_name which has been processed
+                        # by sanitise_table_name to ensure SQL safety
                         col_defs = ", ".join([f'"{col}" TEXT' for col in safe_columns])
                         sqlite_conn.execute(f'DROP TABLE IF EXISTS "{clean_table_name}"')
                         sqlite_conn.execute(f'CREATE TABLE "{clean_table_name}" ({col_defs})')
