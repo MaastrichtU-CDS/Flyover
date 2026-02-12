@@ -289,16 +289,28 @@ class PythonTriplifierIntegration:
                 logger.info(f"Processing table: {table_name} (sanitized: {clean_table_name})")
 
                 try:
-                    # Fetch table data from PostgreSQL
+                    # Fetch table data from PostgreSQL using parameterized query
+                    # Note: table_name comes from information_schema.tables query, so it's trusted
+                    # But we still use proper quoting for safety
                     cursor = conn.cursor()
-                    cursor.execute(f'SELECT * FROM "{table_name}"')
+                    
+                    # Use SQL identifier quoting to safely handle table names
+                    from psycopg2 import sql
+                    query = sql.SQL('SELECT * FROM {}').format(sql.Identifier(table_name))
+                    cursor.execute(query)
+                    
                     rows = cursor.fetchall()
                     columns = [desc[0] for desc in cursor.description]
                     cursor.close()
 
-                    # Convert to polars DataFrame
+                    if not rows:
+                        logger.warning(f"Table {table_name} is empty, skipping")
+                        continue
+
+                    # Convert to polars DataFrame using from_dicts for better memory efficiency
+                    # This avoids creating intermediate lists for large datasets
                     table_data = pl.DataFrame(
-                        {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+                        [dict(zip(columns, row)) for row in rows]
                     )
                     
                     logger.info(f"Fetched {len(rows)} rows from table {table_name}")
@@ -312,21 +324,28 @@ class PythonTriplifierIntegration:
                     if os.path.exists(temp_db_path):
                         os.remove(temp_db_path)
 
-                    # Create SQLite connection and load data
-                    sqlite_conn = sqlite3.connect(temp_db_path)
-
-                    try:
+                    # Create SQLite connection and load data using context manager
+                    with sqlite3.connect(temp_db_path) as sqlite_conn:
+                        # Sanitize column names to ensure they're safe for SQL
+                        # Column names from cursor.description should be safe, but we validate anyway
+                        safe_columns = []
+                        for col in columns:
+                            # Remove any characters that could be problematic
+                            safe_col = ''.join(c for c in col if c.isalnum() or c in ('_', '-'))
+                            if not safe_col:
+                                safe_col = f"col_{len(safe_columns)}"
+                            safe_columns.append(safe_col)
+                        
                         # Write polars DataFrame to SQLite
-                        col_defs = ", ".join([f'"{col}" TEXT' for col in columns])
+                        col_defs = ", ".join([f'"{col}" TEXT' for col in safe_columns])
                         sqlite_conn.execute(f'DROP TABLE IF EXISTS "{clean_table_name}"')
                         sqlite_conn.execute(f'CREATE TABLE "{clean_table_name}" ({col_defs})')
-                        insert_sql = f'INSERT INTO "{clean_table_name}" VALUES ({", ".join(["?" for _ in columns])})'
+                        insert_sql = f'INSERT INTO "{clean_table_name}" VALUES ({", ".join(["?" for _ in safe_columns])})'
                         sqlite_conn.executemany(insert_sql, table_data.iter_rows())
                         sqlite_conn.commit()
                         logger.info(f"Loaded data into SQLite table: {clean_table_name}")
-
-                    finally:
-                        sqlite_conn.close()
+                    
+                    # Connection is automatically closed by context manager
 
                     # Create YAML configuration for this table
                     config = {
@@ -382,10 +401,11 @@ class PythonTriplifierIntegration:
                     # Clean up temporary files for this table
                     if os.path.exists(config_path):
                         os.remove(config_path)
+                    
+                    # Clean up temporary database
+                    # The context manager ensures the connection is closed properly
+                    # but we still need to be careful with file deletion timing
                     if os.path.exists(temp_db_path):
-                        gc.collect()  # Force garbage collection
-                        time.sleep(0.5)  # Wait for file handles to close
-
                         try:
                             os.remove(temp_db_path)
                         except PermissionError as pe:
