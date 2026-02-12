@@ -178,22 +178,28 @@ class PythonTriplifierIntegration:
     ) -> Tuple[bool, str, List[dict]]:
         """
         Process PostgreSQL data using Python Triplifier API directly.
+        
+        Each table in the PostgreSQL database is processed separately and converted
+        to SQLite, then triplified individually (similar to CSV processing). This ensures:
+        - Each table gets its own named graph (http://ontology.local/{table_name}/)
+        - insert_equivalencies works correctly with table names
+        - Consistent behavior between CSV and PostgreSQL ingestion
 
         Args:
             base_uri: Base URI for RDF generation
             db_url: Database connection URL (required; falls back to environment variable if not provided)
             db_user: Database user (required; falls back to environment variable if not provided)
             db_password: Database password (required; falls back to environment variable if not provided)
-            db_name: Database name to use for named graph (extracted from db_url if not provided)
+            db_name: Database name (extracted from db_url if not provided, used for logging only)
 
         Returns:
             Tuple[bool, str, List[dict]]: (success, message/error, output_files)
             - success (bool): Whether the triplification was successful
             - message (str): Success message or error description
-            - output_files (List[dict]): List with a single dict containing:
-                * 'data_file' (str): Path to the generated data file (output_{db_name}.ttl)
-                * 'ontology_file' (str): Path to the generated ontology file (ontology_{db_name}.owl)
-                * 'table_name' (str): Database name used for named graph identification
+            - output_files (List[dict]): List of dicts, one per table, each containing:
+                * 'data_file' (str): Path to the generated data file (output_{table_name}.ttl)
+                * 'ontology_file' (str): Path to the generated ontology file (ontology_{table_name}.owl)
+                * 'table_name' (str): Table name used for named graph identification
         """
         try:
             # Get database configuration from parameters first, then fall back to environment variables
@@ -210,87 +216,199 @@ class PythonTriplifierIntegration:
                 if db_password is None:
                     return False, "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable.", []
 
-            # Extract database name from db_url if not provided
-            # Expected format: postgresql://host/database_name
+            # Extract database name from db_url for logging purposes
             if db_name is None:
                 try:
-                    # Use proper URL parsing to handle query parameters and fragments
                     parsed_url = urlparse(db_url)
-                    # Extract database name from path (remove leading / and take first segment)
                     path = parsed_url.path.lstrip('/')
                     if path:
-                        # Take only the first path segment (database name)
-                        # This handles cases like /database or /database/schema
                         db_name = path.split('/')[0]
                     else:
-                        db_name = "default"
-                    # Sanitize database name for use in file names and graph URIs
-                    # Note: sanitise_table_name is used for both table and database names
-                    # as they require the same sanitization rules for filesystem and URI safety
-                    db_name = sanitise_table_name(db_name)
+                        db_name = "unknown"
                 except Exception as e:
-                    logger.warning(f"Could not extract database name from URL: {e}. Using 'default'")
-                    db_name = "default"
+                    logger.warning(f"Could not extract database name from URL: {e}")
+                    db_name = "unknown"
 
-            # Create YAML configuration dynamically
-            config = {
-                "db": {"url": db_url},
-                "repo.dataUri": (
-                    base_uri if base_uri else f"http://{self.hostname}/rdf/data/"
-                ),
-            }
+            # Import psycopg2 for PostgreSQL connection
+            import psycopg2
 
-            # Add user and password if they're not in the URL
-            if db_user and "://" in db_url and "@" not in db_url:
-                # Insert credentials into URL
-                parts = db_url.split("://")
-                config["db"]["url"] = f"{parts[0]}://{db_user}:{db_password}@{parts[1]}"
+            # Build connection string with credentials
+            if "@" not in db_url:
+                # Add credentials to URL if not already present
+                parsed_url = urlparse(db_url)
+                conn_string = f"{parsed_url.scheme}://{db_user}:{db_password}@{parsed_url.netloc}{parsed_url.path}"
+            else:
+                conn_string = db_url
 
-            config_path = os.path.join(
-                self.root_dir, self.child_dir, "triplifier_sql_config.yaml"
+            logger.info(f"Connecting to PostgreSQL database: {db_name}")
+            
+            # Connect to PostgreSQL and fetch table list
+            # Convert postgresql:// URL to psycopg2 connection parameters
+            parsed_url = urlparse(conn_string)
+            conn = psycopg2.connect(
+                host=parsed_url.hostname,
+                port=parsed_url.port or 5432,
+                database=parsed_url.path.lstrip('/').split('/')[0] if parsed_url.path else 'postgres',
+                user=db_user,
+                password=db_password
             )
-            with open(config_path, "w") as f:
-                yaml.dump(config, f)
+            
+            try:
+                cursor = conn.cursor()
+                # Query to get all user tables (excluding system tables)
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """)
+                tables = [row[0] for row in cursor.fetchall()]
+                cursor.close()
+                
+                if not tables:
+                    conn.close()
+                    return False, f"No tables found in database {db_name}", []
+                
+                logger.info(f"Found {len(tables)} tables in database {db_name}: {', '.join(tables)}")
+                
+            except Exception as e:
+                conn.close()
+                return False, f"Error querying database tables: {str(e)}", []
 
-            # Set up file paths with database-specific naming (similar to CSV approach)
-            # This allows using upload_multiple_graphs for consistent named graph structure
-            ontology_path = os.path.join(self.root_dir, f"ontology_{db_name}.owl")
-            output_path = os.path.join(self.root_dir, f"output_{db_name}.ttl")
-            base_uri = base_uri or f"http://{self.hostname}/rdf/ontology/"
+            # Process each table separately (similar to CSV processing)
+            output_files = []
+            static_files_dir = os.path.join(
+                self.root_dir, self.child_dir, "static", "files"
+            )
+            os.makedirs(static_files_dir, exist_ok=True)
 
-            # Create arguments object for the triplifier
-            class Args:
-                def __init__(self):
-                    self.config = config_path
-                    self.output = output_path
-                    self.ontology = ontology_path
-                    self.baseuri = base_uri
-                    self.ontologyAndOrData = None  # Convert both ontology and data
+            for table_name in tables:
+                # Sanitize table name for use in file names and graph URIs
+                clean_table_name = sanitise_table_name(table_name)
+                logger.info(f"Processing table: {table_name} (sanitized: {clean_table_name})")
 
-            args = Args()
+                try:
+                    # Fetch table data from PostgreSQL
+                    cursor = conn.cursor()
+                    cursor.execute(f'SELECT * FROM "{table_name}"')
+                    rows = cursor.fetchall()
+                    columns = [desc[0] for desc in cursor.description]
+                    cursor.close()
 
-            # Run Python Triplifier directly using the API
-            triplifier_run(args)
+                    # Convert to polars DataFrame
+                    table_data = pl.DataFrame(
+                        {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+                    )
+                    
+                    logger.info(f"Fetched {len(rows)} rows from table {table_name}")
 
-            logger.info("Python Triplifier executed successfully")
-            logger.info(f"Generated files: {ontology_path}, {output_path}")
+                    # Create a temporary SQLite database for this table
+                    temp_db_path = os.path.join(
+                        static_files_dir, f"temp_{clean_table_name}.db"
+                    )
 
-            # Create output_files structure similar to CSV for consistent upload handling
-            output_files = [
-                {
-                    "data_file": output_path,
-                    "ontology_file": ontology_path,
-                    "table_name": db_name,
-                }
-            ]
+                    # Remove existing temp database
+                    if os.path.exists(temp_db_path):
+                        os.remove(temp_db_path)
 
-            # Clean up temporary config file
-            if os.path.exists(config_path):
-                os.remove(config_path)
+                    # Create SQLite connection and load data
+                    sqlite_conn = sqlite3.connect(temp_db_path)
+
+                    try:
+                        # Write polars DataFrame to SQLite
+                        col_defs = ", ".join([f'"{col}" TEXT' for col in columns])
+                        sqlite_conn.execute(f'DROP TABLE IF EXISTS "{clean_table_name}"')
+                        sqlite_conn.execute(f'CREATE TABLE "{clean_table_name}" ({col_defs})')
+                        insert_sql = f'INSERT INTO "{clean_table_name}" VALUES ({", ".join(["?" for _ in columns])})'
+                        sqlite_conn.executemany(insert_sql, table_data.iter_rows())
+                        sqlite_conn.commit()
+                        logger.info(f"Loaded data into SQLite table: {clean_table_name}")
+
+                    finally:
+                        sqlite_conn.close()
+
+                    # Create YAML configuration for this table
+                    config = {
+                        "db": {"url": f"sqlite:///{temp_db_path}"},
+                        "repo.dataUri": (
+                            base_uri if base_uri else f"http://{self.hostname}/rdf/data/"
+                        ),
+                    }
+
+                    config_path = os.path.join(
+                        self.root_dir,
+                        self.child_dir,
+                        f"triplifier_sql_config_{clean_table_name}.yaml",
+                    )
+                    with open(config_path, "w") as f:
+                        yaml.dump(config, f)
+
+                    # Set up file paths - output to root_dir with table-specific names
+                    ontology_path = os.path.join(
+                        self.root_dir, f"ontology_{clean_table_name}.owl"
+                    )
+                    output_path = os.path.join(
+                        self.root_dir, f"output_{clean_table_name}.ttl"
+                    )
+                    base_uri_value = base_uri or f"http://{self.hostname}/rdf/ontology/"
+
+                    # Create arguments object for the triplifier
+                    class Args:
+                        def __init__(self):
+                            self.config = config_path
+                            self.output = output_path
+                            self.ontology = ontology_path
+                            self.baseuri = base_uri_value
+                            self.ontologyAndOrData = None  # Convert both ontology and data
+
+                    args = Args()
+
+                    # Run Python Triplifier directly using the API
+                    triplifier_run(args)
+
+                    logger.info(f"Python Triplifier executed successfully for table: {clean_table_name}")
+                    logger.info(f"Generated files: {ontology_path}, {output_path}")
+
+                    # Store output file information
+                    output_files.append(
+                        {
+                            "data_file": output_path,
+                            "ontology_file": ontology_path,
+                            "table_name": clean_table_name,
+                        }
+                    )
+
+                    # Clean up temporary files for this table
+                    if os.path.exists(config_path):
+                        os.remove(config_path)
+                    if os.path.exists(temp_db_path):
+                        gc.collect()  # Force garbage collection
+                        time.sleep(0.5)  # Wait for file handles to close
+
+                        try:
+                            os.remove(temp_db_path)
+                        except PermissionError as pe:
+                            logger.warning(
+                                f"Could not delete temp database (will be cleaned up on next run): {pe}"
+                            )
+
+                except Exception as e:
+                    logger.error(f"Error processing table {table_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue with next table instead of failing completely
+                    continue
+
+            # Close PostgreSQL connection
+            conn.close()
+
+            if not output_files:
+                return False, "No tables were successfully processed", []
 
             return (
                 True,
-                "PostgreSQL data triplified successfully using Python Triplifier.",
+                f"PostgreSQL data triplified successfully. Processed {len(output_files)} table(s).",
                 output_files,
             )
 
