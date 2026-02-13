@@ -228,6 +228,17 @@ scenarios of  `schema_reconstruction`.
 The example data is a synthetic dataset generated with the MOSTLY AI Data Intelligence Platform using the data semantic
 maps as guide for data generation.
 
+## Architecture
+
+For a detailed description of the software architecture with modular transformation design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+The architecture document covers:
+- High-level system overview
+- Core components and their responsibilities
+- Transformation pipeline stages (Ingest → Triplify → Describe → Annotate)
+- Module interfaces and extension points
+- Data flow diagrams
+
 ## Developers
 
 - Varsha Gouthamchand
