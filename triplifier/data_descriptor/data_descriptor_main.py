@@ -97,36 +97,80 @@ if not os.path.exists(app.config["UPLOAD_FOLDER"]):
 
 
 class Cache:
+    """
+    Session cache for storing application state.
+
+    This class holds session-specific data for the Flyover application,
+    including database connections, semantic mappings, and processing status.
+
+    Attributes:
+        repo: GraphDB repository name
+        table: PostgreSQL table name (for SQL data sources)
+        url: PostgreSQL URL
+        username: PostgreSQL username
+        password: PostgreSQL password
+        db_name: PostgreSQL database name
+        conn: PostgreSQL connection object
+        csvData: List of parsed CSV dataframes
+        csvTableNames: List of table names derived from CSV filenames
+        global_semantic_map: DEPRECATED - Legacy JSON semantic map (for backward compatibility)
+        jsonld_mapping: JSONLDMapping object for JSON-LD format semantic maps
+        existing_graph: Boolean indicating if data graph exists
+        databases: List of database names from GraphDB
+        descriptive_info: Variable description metadata by database
+        DescriptiveInfoDetails: Detailed variable info (categories, units) by database
+        StatusToDisplay: Message to display on status pages
+        pk_fk_data: Primary key/foreign key relationship data
+        pk_fk_status: PK/FK processing status ("processing", "success", "failed")
+        cross_graph_link_data: Cross-graph linking relationship data
+        cross_graph_link_status: Cross-graph processing status
+        annotation_status: Annotation results by variable
+        annotation_json_path: Path to uploaded annotation JSON file
+        output_files: List of output files from triplification
+    """
+
     def __init__(self):
+        # GraphDB configuration
         self.repo = repo
-        self.file_path = None
+
+        # PostgreSQL connection details
         self.table = None
         self.url = None
         self.username = None
         self.password = None
         self.db_name = None
         self.conn = None
-        self.col_cursor = None
+
+        # CSV data storage
         self.csvData = None
         self.csvTableNames = None
-        self.uploaded_file = None
+
+        # Semantic mapping storage
         # DEPRECATED: global_semantic_map is deprecated in favor of jsonld_mapping.
         # Kept for backward compatibility with legacy JSON uploads.
         # Scheduled for removal in a future version.
         self.global_semantic_map = None
         self.jsonld_mapping = None  # Store JSONLDMapping object for JSON-LD format
+
+        # Application state
         self.existing_graph = False
         self.databases = None
         self.descriptive_info = None
         self.DescriptiveInfoDetails = None
         self.StatusToDisplay = None
+
+        # Relationship processing
         self.pk_fk_data = None
         self.pk_fk_status = None  # "processing", "success", "failed"
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
+
+        # Annotation state
         self.annotation_status = None  # Store annotation results
         self.annotation_json_path = None  # Store path to the uploaded JSON file
-        self.output_files = None  # Store output files list for CSV uploads
+
+        # Output files from triplification
+        self.output_files = None
 
 
 session_cache = Cache()
