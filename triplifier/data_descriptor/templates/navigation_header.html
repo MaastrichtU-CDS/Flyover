@@ -163,6 +163,16 @@
                 </span>
                 <span class="step-text">Annotate</span>
             </a>
+
+            <i class="fas fa-chevron-right step-arrow"></i>
+
+            <!-- Step 4: Share -->
+            <a href="/share_landing" class="nav-step" id="share-step">
+                <span class="step-number">
+                    <i class="fas fa-share step-icon-header"></i>
+                </span>
+                <span class="step-text">Share</span>
+            </a>
         </div>
     </div>
 </div>
@@ -188,10 +198,15 @@
                 pages: ['/annotation_landing', '/annotation-review', '/annotation-verify', '/start-annotation'],
                 element: document.getElementById('annotate-step'),
                 requiresData: true
+            },
+            'share': {
+                pages: ['/share_landing', '/share_options', '/share_publish'],
+                element: document.getElementById('share-step'),
+                requiresData: true
             }
         };
 
-        // Get current page path
+        // Get the current page path
         const currentPath = window.location.pathname;
 
         // Determine current step
@@ -205,7 +220,7 @@
 
         // Check if data exists (basic check - you can enhance this)
         function hasData() {
-            // If graph_exists is already defined from server-side template, use it
+            // If graph_exists is already defined from the server-side template, use it
             if (typeof graph_exists !== 'undefined') {
                 return graph_exists;
             }
@@ -213,11 +228,11 @@
             // Make AJAX call to check if data exists in the database
             let dataExists = false;
 
-            // Use synchronous AJAX for immediate result (note: this blocks the UI momentarily)
+            // Use synchronous AJAX for an immediate result (note: this blocks the UI momentarily)
             $.ajax({
                 url: '/api/check-graph-exists',
                 type: 'GET',
-                async: false, // Make synchronous to get immediate result
+                async: false, // Make synchronous to get an immediate result
                 success: function (response) {
                     dataExists = response.exists || false;
                 },
@@ -237,7 +252,7 @@
             // Reset all steps
             Object.values(steps).forEach(step => {
                 step.element.classList.remove('active', 'completed', 'disabled');
-                // Reset icons to original state
+                // Reset icons to their original state
                 const icon = step.element.querySelector('.step-icon-header');
                 if (icon) {
                     // Reset ingest icon
@@ -252,15 +267,19 @@
                     else if (step.element.id === 'annotate-step') {
                         icon.className = 'fas fa-tags step-icon-header';
                     }
+                    // Reset share icon
+                    else if (step.element.id === 'share-step') {
+                        icon.className = 'fas fa-share step-icon-header';
+                    }
                 }
             });
 
-            // Set current step as active
+            // Set the current step as active
             if (currentStep && steps[currentStep]) {
                 steps[currentStep].element.classList.add('active');
             }
 
-            // Mark ingest as completed if data exists (regardless of current page)
+            // Mark 'ingest' as completed if data exists (regardless of current page)
             if (dataExists) {
                 steps.ingest.element.classList.add('completed');
                 const ingestIcon = steps.ingest.element.querySelector('.step-icon-header');
@@ -268,9 +287,9 @@
                     ingestIcon.className = 'fas fa-check step-icon-header';
                 }
 
-                // If we're on describe or annotate step, they require ingest to be completed
-                if (currentStep === 'describe' || currentStep === 'annotate') {
-                    // Describe is completed if we're on annotate step
+                // If we're on describe or annotate step, they require the 'ingest' to be completed
+                if (currentStep === 'describe' || currentStep === 'annotate' || currentStep === 'share') {
+                    // Describe is completed if we're on the 'annotate' step
                     if (currentStep === 'annotate') {
                         steps.describe.element.classList.add('completed');
                         const describeIcon = steps.describe.element.querySelector('.step-icon-header');
@@ -281,7 +300,7 @@
                 }
             }
 
-            // For index page, if data exists, show ingest as completed but not active
+            // For the index page, if data exists, show 'ingest' as completed but not active
             if (currentPath === '/' && dataExists) {
                 steps.ingest.element.classList.remove('active');
                 steps.ingest.element.classList.add('completed');
@@ -314,7 +333,7 @@
             });
         });
 
-        // Initialize the navigation
+        // Initialise the navigation
         updateStepStates();
 
         // Make functions available globally for templates to use

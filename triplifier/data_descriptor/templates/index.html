@@ -103,6 +103,10 @@
             background: linear-gradient(45deg, #d36500, #FF9800);
         }
 
+        .share-icon {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+        }
+
         .step-title {
             font-size: 1.8rem;
             font-weight: bold;
@@ -154,6 +158,12 @@
             margin-bottom: 40px;
         }
 
+        .double-padding-lg {
+            padding-left: 20rem !important;
+            padding-right: 20rem !important;
+        }
+
+
     </style>
 </head>
 
@@ -161,18 +171,19 @@
 <!-- Include navigation header -->
 {% include 'navigation_header.html' %}
 
-<div class="container">
+<div class="container-fluid">
     <!-- Hero Section -->
     <div class="hero-section">
         <h1 class="hero-title">Welcome to Flyover</h1>
         <p class="hero-subtitle">Your Data F.A.I.R.-ification Tool - Bridging Data Incompatibilities</p>
-        <p class="mb-0">Transform your data into semantically interoperable Resource Description Framework (RDF) format
-            through our guided three-step process</p>
+        <p class="mb-0">Transform your data into F.A.I.R. semantically interoperable Resource Description Framework
+            (RDF) triples
+            through our guided four-step process</p>
     </div>
 
     <!-- Workflow Overview -->
     <div class="row">
-        <div class="col-lg-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
             <div class="workflow-card" id="ingest-card" data-target="/ingest">
                 <div class="step-icon ingest-icon">
                     <i class="fas fa-cookie-bite"></i>
@@ -189,7 +200,7 @@
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
             <div class="workflow-card" id="describe-card" data-target="/describe_landing">
                 <div class="step-icon describe-icon">
                     <i class="fas fa-edit"></i>
@@ -206,19 +217,36 @@
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
             <div class="workflow-card" id="annotate-card" data-target="/annotation_landing">
                 <div class="step-icon annotate-icon">
                     <i class="fas fa-tags"></i>
                 </div>
                 <h3 class="step-title">3. Annotate</h3>
-                <p class="step-description">Apply semantic annotations using standardised ontologies to make your data more
-                    F.A.I.R.</p>
+                <p class="step-description">Apply annotations using standardised ontologies to make your data
+                    semantically interoperable.</p>
                 <ul class="step-features">
                     <li><i class="fas fa-check"></i> Ontology-based annotations</li>
                     <li><i class="fas fa-check"></i> Value mapping to terminologies</li>
                     <li><i class="fas fa-check"></i> Semantic interoperability</li>
                     <li><i class="fas fa-check"></i> Increase data F.A.I.R.-ness</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
+            <div class="workflow-card" id="share-card" data-target="/share_landing">
+                <div class="step-icon share-icon">
+                    <i class="fas fa-share"></i>
+                </div>
+                <h3 class="step-title">4. Share</h3>
+                <p class="step-description">Share (meta-)data of your semantically interoperable data and speed up your
+                    collaborations.</p>
+                <ul class="step-features">
+                    <li><i class="fas fa-check"></i> Archive your mapping</li>
+                    <li><i class="fas fa-check"></i> Generate anonymous mock data</li>
+                    <li><i class="fas fa-check"></i> Increase findability</li>
+                    <li><i class="fas fa-person-digging"></i> Export HealthDCAT-AP triples</li>
                 </ul>
             </div>
         </div>
@@ -254,7 +282,7 @@
                 // Update card states based on data existence
                 updateCardStates(dataExists);
 
-                // Update navigation header if the function exists
+                // Update the navigation header if the function exists
                 if (window.flyoverNavigation && window.flyoverNavigation.updateStepStates) {
                     window.flyoverNavigation.updateStepStates();
                 }
@@ -271,7 +299,7 @@
                 e.preventDefault();
                 const target = $(this).data('target');
 
-                // Show appropriate message based on which card was clicked
+                // Show an appropriate message based on which card was clicked
                 if (target === '/describe_landing' || target === '/annotation_landing') {
                     alert('Please complete the Ingest step first by submitting your data.');
                 }
@@ -292,17 +320,17 @@
 
         // Describe and Annotate cards require data
         if (!dataExists) {
-            $('#describe-card, #annotate-card').addClass('disabled')
-                .attr('data-toggle', 'tooltip')
-                .attr('data-placement', 'top')
-                .attr('title', 'First complete the data ingest step to proceed with this step.');
+            $('#describe-card, #annotate-card, #share-card').addClass('disabled')
+                    .attr('data-toggle', 'tooltip')
+                    .attr('data-placement', 'top')
+                    .attr('title', 'First complete the data ingest step to proceed with this step.');
 
             // Initialize tooltips for disabled cards
-            $('#describe-card, #annotate-card').tooltip();
+            $('#describe-card, #annotate-card, #share-card').tooltip();
         } else {
-            $('#describe-card, #annotate-card').removeClass('disabled')
-                .removeAttr('data-toggle data-placement title')
-                .tooltip('dispose');
+            $('#describe-card, #annotate-card, #share-card').removeClass('disabled')
+                    .removeAttr('data-toggle data-placement title')
+                    .tooltip('dispose');
         }
     }
 </script>
