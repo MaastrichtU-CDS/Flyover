@@ -16,7 +16,7 @@ import requests
 
 import polars as pl
 
-from io import StringIO
+from io import BytesIO, StringIO
 from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
@@ -53,6 +53,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import (
+    detect_and_convert_encoding,
     preprocess_dataframe,
     sanitise_table_name,
 )
@@ -412,9 +413,15 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
+                # Read raw bytes and detect/convert encoding to UTF-8.
+                # This ensures consistent behavior for both single and
+                # multiple file uploads, and handles non-UTF-8 encoded files.
+                file_bytes = csv_file.read()
+                file_bytes = detect_and_convert_encoding(file_bytes)
+
                 # Use polars to read CSV with minimal inference
                 df = pl.read_csv(
-                    csv_file,
+                    BytesIO(file_bytes),
                     separator=separator_sign,
                     infer_schema_length=0,  # Treat everything as strings
                     null_values=[],  # Don't infer nulls

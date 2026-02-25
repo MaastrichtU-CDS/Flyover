@@ -5,6 +5,7 @@ Data preprocessing utilities for cleaning and preparing data for the Flyover app
 import polars as pl
 import re
 import logging
+import chardet
 from typing import Any, Dict, List, Tuple
 
 # Setup logger for this module
@@ -13,6 +14,50 @@ logger = logging.getLogger(__name__)
 # Global registry for column mappings (since polars does not have .attrs)
 # Defined at module level for clearer visibility
 _column_mapping_registry: Dict[int, Dict] = {}
+
+
+def detect_and_convert_encoding(file_bytes: bytes) -> bytes:
+    """
+    Detect the encoding of file bytes and convert to UTF-8 if necessary.
+
+    Uses chardet for encoding detection. If the file is already UTF-8 or ASCII,
+    the original bytes are returned unchanged. Otherwise, the bytes are decoded
+    using the detected encoding and re-encoded as UTF-8.
+
+    Args:
+        file_bytes: Raw bytes from a file
+
+    Returns:
+        UTF-8 encoded bytes
+    """
+    detected = chardet.detect(file_bytes)
+    encoding = (detected.get("encoding") or "utf-8").lower()
+    logger.debug(
+        f"Detected encoding: {encoding} "
+        f"(confidence: {detected.get('confidence', 0):.0%})"
+    )
+
+    # If already UTF-8 or ASCII compatible, return as-is
+    if encoding in ("utf-8", "ascii"):
+        return file_bytes
+
+    # Handle UTF-8 with BOM
+    if encoding == "utf-8-sig":
+        return file_bytes.decode("utf-8-sig").encode("utf-8")
+
+    # Convert non-UTF-8 encoding to UTF-8
+    try:
+        return file_bytes.decode(encoding).encode("utf-8")
+    except (UnicodeDecodeError, LookupError):
+        logger.warning(
+            f"Failed to decode with detected encoding '{encoding}', "
+            f"falling back to utf-8-sig then latin-1"
+        )
+        # Fallback chain: try utf-8-sig (handles BOM), then latin-1 (never fails)
+        try:
+            return file_bytes.decode("utf-8-sig").encode("utf-8")
+        except UnicodeDecodeError:
+            return file_bytes.decode("latin-1").encode("utf-8")
 
 
 def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
