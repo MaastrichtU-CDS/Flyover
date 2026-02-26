@@ -161,8 +161,7 @@ class TestMultipleCsvIngestion(unittest.TestCase):
         """Ingesting a UTF-8 file and a Latin-1 file together should work."""
         # Use enough rows for chardet to reliably detect UTF-8
         utf8_csv = (
-            "name,city\n"
-            + "\n".join(f"person_{i},München" for i in range(20))
+            "name,city\n" + "\n".join(f"person_{i},München" for i in range(20))
         ).encode("utf-8")
         latin1_csv = "name,city\nBob,Zürich".encode("latin-1")
 
@@ -264,9 +263,7 @@ class TestMultipleCsvIngestion(unittest.TestCase):
         file1 = "val;amount\n1,5;2,3".encode("utf-8")
         file2 = "val;amount\n3,7;4,1".encode("latin-1")
 
-        dfs = self._ingest_multiple(
-            [file1, file2], separator=";", decimal_sign=","
-        )
+        dfs = self._ingest_multiple([file1, file2], separator=";", decimal_sign=",")
 
         self.assertEqual(len(dfs), 2)
         self.assertEqual(dfs[0]["val"].to_list(), ["1.5"])
