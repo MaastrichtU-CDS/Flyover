@@ -88,126 +88,20 @@
     <br>
 </div>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const itemsPerPage = 10;
-        let currentPage = 1;
-        const variables = Object.keys({{ variable_data | tojson }});
-        const variableItems = document.querySelectorAll('.variable-item');
-
-        function updatePaginationControls() {
-            const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
-            const pagination = document.getElementById('pagination');
-
-            if (totalPages <= 1) {
-                pagination.style.display = 'none';
-                return;
-            }
-
-            pagination.style.display = 'block';
-            document.getElementById('currentPage').textContent = currentPage;
-            document.getElementById('totalPages').textContent = totalPages;
-            document.getElementById('prevBtn').disabled = currentPage <= 1;
-            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
-        }
-
-        function getVisibleItems() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const statusFilter = document.getElementById('statusFilter').value;
-            return Array.from(variableItems).filter(item => {
-                const name = item.querySelector('.variable-name').textContent.toLowerCase();
-                const status = item.dataset.status;
-                const matchesSearch = name.includes(searchTerm);
-                const matchesStatus = statusFilter === 'all' || status === statusFilter;
-                return matchesSearch && matchesStatus;
-            });
-        }
-
-        function updateDisplay() {
-            const visibleItems = getVisibleItems();
-            const start = (currentPage - 1) * itemsPerPage;
-            const end = start + itemsPerPage;
-
-            variableItems.forEach(item => item.classList.add('hidden'));
-            visibleItems.slice(start, end).forEach(item => item.classList.remove('hidden'));
-
-            updatePaginationControls();
-        }
-
-        window.changePage = function (direction) {
-            const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
-            const newPage = currentPage + direction;
-            if (newPage >= 1 && newPage <= totalPages) {
-                currentPage = newPage;
-                updateDisplay();
-            }
-        };
-
-        // Add event listeners for filters
-        document.getElementById('searchInput').addEventListener('input', function () {
-            currentPage = 1;
-            updateDisplay();
-        });
-
-        document.getElementById('statusFilter').addEventListener('change', function () {
-            currentPage = 1;
-            updateDisplay();
-        });
-
-        // Initial setup
-        updateDisplay();
-
-        // Process annotations for described variables
-        variables.forEach(function (variableName) {
-            const safeId = variableName.replace(/\./g, '-');
-            const iconId = 'icon-' + safeId;
-            const messageId = 'message-' + safeId;
-            const item = document.querySelector(`[id="message-${safeId}"]`).closest('.variable-item');
-
-            fetch('/verify-annotation-ask', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({variable: variableName})
-            })
-                .then(response => response.json())
-                .then(data => {
-                    const icon = document.getElementById(iconId);
-                    const message = document.getElementById(messageId);
-                    if (data.success && typeof (data.valid) !== 'undefined') {
-                        if (data.valid) {
-                            icon.innerHTML = '<i class="fas fa-check-circle success"></i>';
-                            message.textContent = 'Successfully annotated';
-                            item.dataset.status = 'success';
-                        } else {
-                            icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                            message.textContent = 'Annotation failed';
-                            item.dataset.status = 'error';
-                        }
-                    } else {
-                        icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                        message.textContent = 'Error: ' + (data.error || 'Unknown error');
-                        item.dataset.status = 'error';
-                    }
-                    updateDisplay();
-                })
-                .catch(error => {
-                    const icon = document.getElementById(iconId);
-                    const message = document.getElementById(messageId);
-                    icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                    message.textContent = 'Network error';
-                    item.dataset.status = 'error';
-                    updateDisplay();
-                });
-        });
-    });
-</script>
-
 <!-- Include footer -->
 {% include 'footer.html' %}
 
+<!-- Page-specific JavaScript -->
+<script src="{{ url_for('custom_static', filename='js/pages/annotation-verify.js') }}"></script>
 <script>
     // Pass Flask variables to JavaScript for navigation header
     window.graph_exists = true; // Data exists in annotate step
+    
+    // Initialize the page with variable data from server
+    document.addEventListener('DOMContentLoaded', function() {
+        const variableData = {{ variable_data | tojson }};
+        AnnotationVerifyPage.init(variableData);
+    });
 </script>
 
 </body>
