@@ -15,180 +15,19 @@
       rel="stylesheet"
       href="{{ url_for('custom_static', filename='css/all.min.css') }}"
     />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"
+    />
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
     <style>
-      body {
-        background-color: #f8f9fa;
-      }
-
+      /* Page-specific: toggle button with float */
       .toggle-button {
-        cursor: pointer;
-        display: inline-block;
-        border: none;
-        background: none;
         font-size: 1.56rem;
         line-height: 1;
-        color: #007bff;
         float: right;
-      }
-
-      .content {
-        width: 100%;
-        transition: max-height 0.5s ease-out;
-        max-height: 0;
-        overflow-y: auto;
-      }
-
-      .content.active {
-        max-height: 500px;
-      }
-
-      .toggle-button:focus {
-        outline: none;
-      }
-
-      .variable-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 15px;
-        padding: 10px;
-        background-color: white;
-        border-radius: 5px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      }
-
-      .variable-label {
-        flex: 0 0 200px;
-        font-weight: bold;
-        margin-right: 15px;
-      }
-
-      .variable-controls {
-        flex: 1;
-        display: flex;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .variable-controls select,
-      .variable-controls input {
-        flex: 1;
-        min-width: 150px;
-      }
-
-      .column-group {
-        display: none;
-      }
-
-      .column-group.active {
-        display: block;
-      }
-
-      .pagination-controls {
-        text-align: center;
-        margin: 20px 0;
-      }
-
-      .pagination-controls button {
-        padding: 5px 15px;
-        margin: 0 5px;
-        border: none;
-        background-color: transparent;
-        color: #007bff;
-        border-radius: 50%;
-        cursor: pointer;
-        font-size: 1.5rem;
-        transition: transform 0.3s ease;
-      }
-
-      .pagination-controls button:hover {
-        transform: scale(1.2);
-      }
-
-      .pagination-controls button:disabled {
-        color: #ccc;
-        cursor: not-allowed;
-      }
-
-      .page-indicator {
-        margin: 0 10px;
-        font-size: 1rem;
-      }
-
-      .btn-primary {
-        background-color: #007bff;
-        border-color: #007bff;
-      }
-
-      .btn-primary:hover {
-        background-color: #0056b3;
-        border-color: #004085;
-      }
-
-      .ref-guide-icon {
-        margin-right: 5px !important;
-      }
-
-      .datatype-container {
-        position: relative;
-        flex: 1;
-      }
-
-      .datatype-feedback {
-        display: block;
-        margin-top: 4px;
-        font-size: 0.85em;
-        font-style: italic;
-      }
-
-      .datatype-feedback i {
-        margin-right: 4px;
-      }
-
-      .loading-icon {
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        display: inline-block;
-      }
-
-      .icon-fade-out {
-        opacity: 0;
-        transform: scale(0.8) rotate(10deg);
-      }
-
-      .icon-fade-in {
-        opacity: 1;
-        transform: scale(1.1) rotate(-5deg);
-        animation: icon-bounce 0.3s ease-out;
-      }
-
-      @keyframes icon-bounce {
-        0% {
-          transform: scale(1.1) rotate(-5deg);
-        }
-        50% {
-          transform: scale(1.2) rotate(0deg);
-        }
-        100% {
-          transform: scale(1) rotate(0deg);
-        }
-      }
-
-      #submitBtn:disabled.processing {
-        background-color: #6c757d !important;
-        border-color: #6c757d !important;
-        animation: subtle-pulse 2s infinite;
-      }
-
-      @keyframes subtle-pulse {
-        0%,
-        100% {
-          box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
-        }
-        50% {
-          box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
-        }
       }
     </style>
   </head>

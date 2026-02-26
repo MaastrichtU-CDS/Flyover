@@ -5,6 +5,7 @@
     <title>Flyover | Annotation Landing</title>
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
@@ -543,40 +544,9 @@
             reader.readAsText(file);
         });
     }
-</script><!-- Add some custom CSS -->
-<style>
-    .card {
-        border: 1px solid #dee2e6;
-        border-radius: 0.375rem;
-        margin-bottom: 20px;
-    }
+</script>
 
-    .card-header {
-        background-color: #f8f9fa;
-        border-bottom: 1px solid #dee2e6;
-    }
-
-    .input-group-text {
-        background-color: #e9ecef;
-        border-color: #ced4da;
-    }
-
-    .fas {
-        margin-right: 5px;
-    }
-
-    .alert {
-        margin-top: 15px;
-    }
-
-    .alert-info {
-        border-left: 4px solid #17a2b8;
-    }
-
-    .alert-warning {
-        border-left: 4px solid #ffc107;
-    }
-</style>
+<!-- Styles are loaded from flyover-custom.css -->
 
 <script>
     // Pass Flask variables to JavaScript for navigation header
