@@ -69,9 +69,10 @@ const IndexPage = {
      */
     bindCardClickHandlers: function() {
         $('.workflow-card').click(function(e) {
+            const target = $(this).data('target');
+            
             if ($(this).hasClass('disabled')) {
                 e.preventDefault();
-                const target = $(this).data('target');
 
                 if (target === '/describe_landing' || target === '/annotation_landing') {
                     alert('Please complete the Ingest step first by submitting your data.');
@@ -80,7 +81,6 @@ const IndexPage = {
             }
 
             // Navigate to the target URL
-            const target = $(this).data('target');
             if (target) {
                 window.location.href = target;
             }

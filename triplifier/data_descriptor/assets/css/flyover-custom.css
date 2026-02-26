@@ -680,8 +680,10 @@ body {
 }
 
 .variable-name {
-    font-weight: 500;
+    font-weight: bold;
     min-width: 200px;
+    color: #007bff;
+    font-size: 1.1em;
 }
 
 .status-badge {
@@ -999,13 +1001,13 @@ body {
     border-left: 3px solid rgba(0, 123, 255, 0.7);
 }
 
-.category-item {
-    display: flex;
-    align-items: center;
+/* Category item variant for describe variable details page */
+.categorical-section .category-item {
     margin-bottom: 10px;
     padding: 8px;
     background-color: #f8f9fa;
     border-radius: 3px;
+    border-bottom: none;
 }
 
 .category-label {
@@ -1052,12 +1054,6 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
-}
-
-.variable-name {
-    font-weight: bold;
-    color: #007bff;
-    font-size: 1.1em;
 }
 
 .variable-details {
