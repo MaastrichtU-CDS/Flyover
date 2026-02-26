@@ -6,6 +6,7 @@ import polars as pl
 import re
 import logging
 import chardet
+from io import BytesIO
 from typing import Any, Dict, List, Tuple
 
 # Setup logger for this module
@@ -58,6 +59,46 @@ def detect_and_convert_encoding(file_bytes: bytes) -> bytes:
             return file_bytes.decode("utf-8-sig").encode("utf-8")
         except UnicodeDecodeError:
             return file_bytes.decode("latin-1").encode("utf-8")
+
+
+def read_csv_with_encoding_detection(
+    file_bytes: bytes,
+    separator: str = ",",
+    decimal_sign: str = ".",
+) -> pl.DataFrame:
+    """
+    Read CSV data from raw bytes with automatic encoding detection.
+
+    Detects the file encoding, converts to UTF-8, and reads into a polars
+    DataFrame. This function is used for both single and multiple CSV file
+    ingestion to ensure consistent behavior.
+
+    Args:
+        file_bytes: Raw bytes from the CSV file
+        separator: Column separator character (default: ",")
+        decimal_sign: Decimal separator character (default: ".")
+            If not ".", all occurrences are replaced with "." in all columns.
+
+    Returns:
+        polars DataFrame with all columns as strings
+    """
+    utf8_bytes = detect_and_convert_encoding(file_bytes)
+
+    df = pl.read_csv(
+        BytesIO(utf8_bytes),
+        separator=separator,
+        infer_schema_length=0,  # Treat everything as strings
+        null_values=[],  # Don't infer nulls
+        try_parse_dates=False,  # Don't auto-parse dates
+    )
+
+    # Normalize decimal separator to "." if needed
+    if decimal_sign != ".":
+        df = df.with_columns(
+            [pl.col(c).str.replace_all(decimal_sign, ".") for c in df.columns]
+        )
+
+    return df
 
 
 def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:

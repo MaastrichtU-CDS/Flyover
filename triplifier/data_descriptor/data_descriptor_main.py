@@ -16,7 +16,7 @@ import requests
 
 import polars as pl
 
-from io import BytesIO, StringIO
+from io import StringIO
 from markupsafe import Markup
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
@@ -53,8 +53,8 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import (
-    detect_and_convert_encoding,
     preprocess_dataframe,
+    read_csv_with_encoding_detection,
     sanitise_table_name,
 )
 from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
@@ -413,38 +413,11 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                # Read raw bytes and detect/convert encoding to UTF-8.
-                # This ensures consistent behavior for both single and
-                # multiple file uploads, and handles non-UTF-8 encoded files.
-                file_bytes = csv_file.read()
-                file_bytes = detect_and_convert_encoding(file_bytes)
-
-                # Use polars to read CSV with minimal inference
-                df = pl.read_csv(
-                    BytesIO(file_bytes),
+                df = read_csv_with_encoding_detection(
+                    csv_file.read(),
                     separator=separator_sign,
-                    infer_schema_length=0,  # Treat everything as strings
-                    null_values=[],  # Don't infer nulls
-                    try_parse_dates=False,  # Don't auto-parse dates
+                    decimal_sign=decimal_sign,
                 )
-                # TODO improve this approach,
-                #  if data conversion is done in the end,
-                #  we can use data descriptions to infer datatype and set them properly
-                # Handle decimal conversion: normalize user-specified decimal separator to standard "."
-                # Note: This replaces the decimal_sign character in ALL string columns. For CSV data
-                # where the user specifies a decimal separator (e.g., "," for European formats),
-                # this ensures consistent numeric representation. Free text fields with the same
-                # character will also be affected, but this is acceptable since:
-                # 1. The user explicitly specifies this is their decimal separator
-                # 2. The original file is preserved - this is an internal representation
-                # 3. Downstream processing (triplification) expects standard "." decimals
-                if decimal_sign != ".":
-                    df = df.with_columns(
-                        [
-                            pl.col(c).str.replace_all(decimal_sign, ".")
-                            for c in df.columns
-                        ]
-                    )
                 session_cache.csvData.append(preprocess_dataframe(df))
 
         except Exception as e:
