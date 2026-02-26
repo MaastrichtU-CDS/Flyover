@@ -77,7 +77,7 @@ class TestDetectAndConvertEncoding(unittest.TestCase):
     def test_result_is_valid_utf8(self):
         """The result should always be valid UTF-8, regardless of input encoding."""
         # Create bytes with Latin-1 specific characters
-        latin1_bytes = bytes([0xe4, 0xf6, 0xfc])  # äöü in Latin-1
+        latin1_bytes = bytes([0xE4, 0xF6, 0xFC])  # äöü in Latin-1
         result = detect_and_convert_encoding(latin1_bytes)
         # Should not raise UnicodeDecodeError
         result.decode("utf-8")
