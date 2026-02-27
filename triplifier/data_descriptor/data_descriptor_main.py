@@ -914,10 +914,8 @@ def share_publish():
     Returns:
         flask.render_template: A Flask function that renders the 'share_publish.html' template.
     """
-    # For now, we'll redirect to share_landing since share_publish.html doesn't exist yet
-    # This can be updated when the actual share_publish template is created
     return render_template(
-        "share_landing.html", graphdb_location="http://localhost:7200/"
+        "share_publish.html", graphdb_location="http://localhost:7200/"
     )
 
 

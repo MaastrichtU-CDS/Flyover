@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Publish Data</title>
+</head>
+
+<body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
+<div class="container">
+    <br>
+    <h1><i class="fas fa-cloud-upload-alt"></i> Publish Your Data</h1>
+    <hr>
+
+    <p style="line-height: 1.5; margin: 0;">Share your semantically interoperable data and metadata with the broader
+        research community.</p>
+
+    <br>
+    <!-- Codebook Section - Always Visible -->
+    <div id="codeBookSection">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-book"></i> Create an Interactive Codebook
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    With your global semantic map and local semantic mappings, you can create a comprehensive codebook
+                    that provides a structured overview of your project's variables, values, and their relationships.
+                    <br>
+                    This codebook can be used to document your project's structure and semantics, making it easier
+                    for others to understand and work with your data.
+                </p>
+
+                <p class="text-muted">
+                    An example of such a codebook that is automatically generated based on a Flyover semantic map is
+                    available <a href="https://strongaya.github.io/AYA-cancer-semantic-map/"
+                                 target="_blank">here</a>.<br>
+                    This approach is free to re-use under an Apache-2 licence.<br>
+                    Feel free to check out the underlying repository
+                    <a href="https://github.com/STRONGAYA/AYA-cancer-semantic-map" target="_blank">here</a>.
+                </p>
+
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Benefits of hosting mappings in Git</strong><br>
+                    Opting to host your mappings on a Git-tracked system is a great way to keep track of changes in your
+                    mapping over time, and to easily share updates with your collaborators.<br>
+                    You can even host the various mappings of your project in different branches and gain insight into
+                    what concepts are available amongst project partners without any data access concerns.
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+
+    <!-- Health DCAT-AP Triples Section - Always Available with Upload Mechanism -->
+    <div id="healthDcatApTriplesSection">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-medical"></i> Health DCAT-AP Metadata Export
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Generate a Health DCAT-AP file that describes the metadata of your project, including variables,
+                    values, and their relationships as defined in your local semantic mapping.<br>
+                    Using the Health DCAT-AP format, you can make your F.A.I.R-ification project European Health
+                    Data Space (EHDS) compliant and share your metadata in a standardised format widely used in the
+                    health domain.
+                </p>
+
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>What is a Health DCAT-AP file?</strong><br>
+                    A Health DCAT-AP file is a standardised metadata format based on the Data Catalogue Vocabulary
+                    (DCAT) Application Profile for health data.<br>It provides a structured way to describe datasets,
+                    their variables, and the relationships between them, facilitating data sharing and interoperability
+                    in the health domain.
+                </div>
+
+                <hr>
+                <div id="jsonldUploadSection">
+                    <h6><i class="fas fa-upload"></i> JSON-LD Semantic Map</h6>
+                    <p class="text-muted mb-3">
+                        To generate Health DCAT-AP triples, we need your semantic mapping in JSON-LD format.
+                    </p>
+
+                    <div id="jsonldStatus" class="alert alert-warning d-none">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="jsonldStatusMessage">No JSON-LD semantic map found in browser storage.</span>
+                    </div>
+
+                    <div id="jsonldUploadForm" class="mb-3">
+                        <div class="custom-file mb-3">
+                            <input type="file" class="custom-file-input" id="jsonldFileInput" accept=".jsonld">
+                            <label class="custom-file-label" for="jsonldFileInput">Choose JSON-LD file...</label>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary" id="uploadJsonldBtn" disabled>
+                            <i class="fas fa-upload"></i> Upload JSON-LD
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="useStoredJsonldBtn"
+                                style="display: none;">
+                            <i class="fas fa-database"></i> Use Stored JSON-LD
+                        </button>
+                        <div class="progress mt-3 d-none" id="uploadProgress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                    </div>
+
+                    <div id="jsonldSuccess" class="alert alert-success d-none">
+                        <i class="fas fa-check-circle"></i>
+                        <strong>JSON-LD semantic map ready!</strong>
+                        <span id="jsonldSuccessMessage"></span>
+                    </div>
+
+                    <div id="healthDcatControls" class="d-none">
+                        <button type="button" class="btn btn-primary" id="generateHealthDcatBtn">
+                            <i class="fas fa-cog"></i> Generate Health DCAT-AP Triples
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="downloadHealthDcatBtn" disabled>
+                            <i class="fas fa-download"></i> Download Health DCAT-AP
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+    <a href="/share_landing" class="btn btn-light">
+        <i class="fas fa-arrow-left"></i> Return to Share Options
+    </a>
+    <br><br>
+</div>
+
+<!-- Include footer -->
+{% include 'footer.html' %}
+
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script>
+    // Global variable to track if we have a valid JSON-LD map
+    let hasValidJsonld = false;
+    let storedJsonldData = null;
+
+    async function checkStoredSemanticMap() {
+        try {
+            if (!FlyoverDB.isSupported()) {
+                console.warn('Flyover: IndexedDB not supported');
+                return false;
+            }
+
+            await FlyoverDB.initDB();
+            console.log('Flyover: IndexedDB initialized');
+
+            const result = await FlyoverDB.getData('metadata', 'semantic_map');
+
+            if (result && result.data) {
+                console.log('Flyover: Semantic map found in IndexedDB');
+                storedJsonldData = result.data;
+                return true;
+            } else {
+                console.log('Flyover: No semantic map found in IndexedDB');
+                return false;
+            }
+        } catch (error) {
+            console.error('Flyover: Error checking semantic map availability:', error);
+            return false;
+        }
+    }
+
+    function updateUIBasedOnJsonldAvailability() {
+        if (hasValidJsonld) {
+            // Show success message and controls
+            $('#jsonldStatus').addClass('d-none');
+            $('#jsonldUploadForm').addClass('d-none');
+            $('#jsonldSuccess').removeClass('d-none');
+            $('#healthDcatControls').removeClass('d-none');
+
+            // Update success message
+            if (storedJsonldData) {
+                const dbCount = Object.keys(storedJsonldData.databases || {}).length;
+                const varCount = Object.keys(storedJsonldData.variable_info || {}).length;
+                $('#jsonldSuccessMessage').text(` (${dbCount} database(s), ${varCount} variable(s) mapped)`);
+            }
+        } else {
+            // Show upload form
+            $('#jsonldStatus').removeClass('d-none');
+            $('#jsonldUploadForm').removeClass('d-none');
+            $('#jsonldSuccess').addClass('d-none');
+            $('#healthDcatControls').addClass('d-none');
+        }
+    }
+
+    // File upload handling
+    $('#jsonldFileInput').change(function (e) {
+        const file = e.target.files[0];
+        if (file) {
+            $('.custom-file-label').html(file.name);
+            $('#uploadJsonldBtn').prop('disabled', false);
+        } else {
+            $('.custom-file-label').html('Choose JSON-LD file...');
+            $('#uploadJsonldBtn').prop('disabled', true);
+        }
+    });
+
+    $('#uploadJsonldBtn').click(async function () {
+        const file = $('#jsonldFileInput')[0].files[0];
+        if (!file) return;
+
+        // Show progress bar
+        $('#uploadProgress').removeClass('d-none');
+        const progressBar = $('#uploadProgress .progress-bar');
+        progressBar.width('25%').text('25%');
+
+        try {
+            const reader = new FileReader();
+            reader.onload = async function (e) {
+                try {
+                    progressBar.width('50%').text('50%');
+
+                    const fileContent = e.target.result;
+                    const mappingData = JSON.parse(fileContent);
+
+                    progressBar.width('75%').text('75%');
+
+                    // Validate the JSON-LD structure
+                    if (mappingData && (mappingData.databases || mappingData.variable_info)) {
+                        // Store in IndexedDB
+                        await FlyoverDB.initDB();
+                        await FlyoverDB.storeData('metadata', 'semantic_map', mappingData);
+
+                        progressBar.width('100%').text('100%');
+
+                        // Update state
+                        hasValidJsonld = true;
+                        storedJsonldData = mappingData;
+
+                        setTimeout(() => {
+                            $('#uploadProgress').addClass('d-none');
+                            updateUIBasedOnJsonldAvailability();
+                        }, 500);
+                    } else {
+                        throw new Error('Invalid JSON-LD structure');
+                    }
+                } catch (error) {
+                    console.error('Error processing JSON-LD file:', error);
+                    progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
+                    setTimeout(() => {
+                        $('#uploadProgress').addClass('d-none');
+                        alert('Error processing JSON-LD file: ' + error.message);
+                    }, 1000);
+                }
+            };
+            reader.readAsText(file);
+
+        } catch (error) {
+            console.error('Error reading file:', error);
+            progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
+            setTimeout(() => {
+                $('#uploadProgress').addClass('d-none');
+                alert('Error reading file: ' + error.message);
+            }, 1000);
+        }
+    });
+
+    $('#useStoredJsonldBtn').click(function () {
+        if (storedJsonldData) {
+            hasValidJsonld = true;
+            updateUIBasedOnJsonldAvailability();
+        }
+    });
+
+    $('#generateHealthDcatBtn').click(function () {
+        // Simulate generation (this would be replaced with actual API call)
+        $('#generateHealthDcatBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generating...');
+
+        setTimeout(() => {
+            $('#generateHealthDcatBtn').prop('disabled', false).html('<i class="fas fa-check"></i> Generation Complete');
+            $('#downloadHealthDcatBtn').prop('disabled', false);
+
+            // In a real implementation, this would trigger the actual generation
+            // and enable the download button when complete
+        }, 2000);
+    });
+
+    $('#downloadHealthDcatBtn').click(function () {
+        alert('Health DCAT-AP download functionality would be implemented here.');
+        // In a real implementation, this would trigger the download of the generated file
+    });
+
+    // Initialize the page
+    $(document).ready(async function () {
+        // Check for stored semantic map
+        const hasStoredMap = await checkStoredSemanticMap();
+
+        if (hasStoredMap) {
+            hasValidJsonld = true;
+            $('#useStoredJsonldBtn').show();
+        } else {
+            $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
+        }
+
+        updateUIBasedOnJsonldAvailability();
+    });
+
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in share landing step
+</script>
+
+<!-- Custom CSS for this page -->
+<style>
+    .card-header {
+        background-color: #f8f9fa !important;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+    .custom-file-label {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .custom-file-label::after {
+        content: "Browse";
+    }
+</style>
+
+</body>
+</html>
