@@ -23,7 +23,7 @@
         On this page you will find various options to share metadata about your data in a privacy-preserving manner.</p>
 
     <br>
-    <div id="semanticMapSection">
+    <div id="semanticMapSection" style="display: none;">
         <div class="card" class="mb-4">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -56,7 +56,7 @@
         </div>
         <br>
     </div>
-    <div id="ontologySection">
+    <div id="ontologySection" style="display: none;">
         <div class="card" class="mb-4">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -132,18 +132,31 @@
 
             if (result && result.data) {
                 console.log('Flyover: Semantic map found in IndexedDB, showing download section');
-                document.getElementById('semantic-map-section').style.display = 'block';
+                document.getElementById('semanticMapSection').style.display = 'block';
             } else {
                 console.log('Flyover: No semantic map found in IndexedDB, hiding download section');
-                document.getElementById('semantic-map-section').style.display = 'none';
+                document.getElementById('semanticMapSection').style.display = 'none';
             }
         } catch (error) {
             console.error('Flyover: Error checking semantic map availability:', error);
-            document.getElementById('semantic-map-section').style.display = 'none';
+            document.getElementById('semanticMapSection').style.display = 'none';
         }
     }
 
-    document.addEventListener('DOMContentLoaded', checkSemanticMapAvailability);
+    function checkOntologyAvailability() {
+        if (window.graph_exists) {
+            console.log('Flyover: Data exists, showing ontology download section');
+            document.getElementById('ontologySection').style.display = 'block';
+        } else {
+            console.log('Flyover: No data exists, hiding ontology download section');
+            document.getElementById('ontologySection').style.display = 'none';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        checkSemanticMapAvailability();
+        checkOntologyAvailability();
+    });
 
     async function downloadSemanticMapFromIndexedDB() {
         try {
@@ -181,7 +194,7 @@
     }
 
     // Pass Flask variables to JavaScript for navigation header
-    window.graph_exists = true; // Data exists in share landing step
+    window.graph_exists = true; // Data exists in the share landing step
 </script>
 
 </body>
