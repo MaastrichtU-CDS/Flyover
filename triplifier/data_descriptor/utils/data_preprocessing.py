@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Tuple
 # Setup logger for this module
 logger = logging.getLogger(__name__)
 
-# Global registry for column mappings (since polars does not have .attrs)
+# Global registry for column mappings (since Polars does not have .attrs)
 # Defined at module level for clearer visibility
 _column_mapping_registry: Dict[int, Dict] = {}
 
@@ -69,9 +69,9 @@ def read_csv_with_encoding_detection(
     """
     Read CSV data from raw bytes with automatic encoding detection.
 
-    Detects the file encoding, converts to UTF-8, and reads into a polars
+    Detects the file encoding, converts to UTF-8, and reads into a Polars
     DataFrame. This function is used for both single and multiple CSV file
-    ingestion to ensure consistent behavior.
+    ingestion to ensure consistent behaviour.
 
     Args:
         file_bytes: Raw bytes from the CSV file
@@ -92,7 +92,7 @@ def read_csv_with_encoding_detection(
         try_parse_dates=False,  # Don't auto-parse dates
     )
 
-    # Normalize decimal separator to "." if needed
+    # Normalise the decimal separator to "." if needed
     if decimal_sign != ".":
         df = df.with_columns(
             [pl.col(c).str.replace_all(decimal_sign, ".") for c in df.columns]
@@ -106,7 +106,7 @@ def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
     Clean column names to make them HTML/JavaScript safe and meaningful.
 
     Args:
-        df: polars DataFrame with potentially problematic column names
+        df: Polars DataFrame with potentially problematic column names
 
     Returns:
         Tuple of (cleaned_columns, original_columns)
@@ -402,7 +402,7 @@ def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
 
     Returns:
         Dictionary containing:
-        - 'columns': list of unique column values (from 'column' field)
+        - 'columns': list of unique column values (from the 'column' field)
         - 'rows': list of row dicts
         - 'by_column': dict mapping column names to their rows for easy filtering
     """
