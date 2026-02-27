@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Generate Mock Data</title>
+</head>
+
+<body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
+<div class="container">
+    <br>
+    <h1><i class="fas fa-file-export"></i> Generate Mock Data</h1>
+    <hr>
+
+    <p style="line-height: 1.5; margin: 0;">
+        Generate anonymous mock data based on your semantic mapping and data structure.
+        This allows you to share realistic test data without privacy concerns.
+    </p>
+
+    <br>
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-database"></i> Mock Data Generation
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">
+                This feature generates synthetic data that maintains the structure and statistical properties
+                of your original dataset while ensuring complete anonymity.
+            </p>
+
+            <div class="alert alert-info">
+                <i class="fas fa-lightbulb"></i>
+                <strong>Mock Data Uses</strong><br>
+                <ul class="mb-0">
+                    <li>Testing data processing pipelines</li>
+                    <li>Sharing data structure examples with collaborators</li>
+                    <li>Creating demo datasets for presentations</li>
+                    <li>Developing and testing applications without privacy concerns</li>
+                </ul>
+            </div>
+
+            <hr>
+            <div id="jsonldSection">
+                <h6><i class="fas fa-sitemap"></i> JSON-LD Semantic Map</h6>
+                <p class="text-muted mb-3">
+                    To generate mock data, we need your semantic mapping in JSON-LD format.
+                </p>
+
+                <div id="jsonldStatus" class="alert alert-warning d-none">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span id="jsonldStatusMessage">Checking for existing semantic map...</span>
+                </div>
+
+                <div id="jsonldUploadForm" class="mb-4">
+                    <div class="custom-file mb-3">
+                        <input type="file" class="custom-file-input" id="jsonldFileInput" accept=".jsonld">
+                        <label class="custom-file-label" for="jsonldFileInput">Choose JSON-LD file...</label>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary" id="uploadJsonldBtn" disabled>
+                        <i class="fas fa-upload"></i> Upload JSON-LD
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="useStoredJsonldBtn" style="display: none;">
+                        <i class="fas fa-database"></i> Use Stored JSON-LD
+                    </button>
+                    <div class="progress mt-3 d-none" id="uploadProgress">
+                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                </div>
+
+                <div id="jsonldSuccess" class="alert alert-success d-none">
+                    <i class="fas fa-check-circle"></i>
+                    <strong>JSON-LD semantic map loaded successfully!</strong>
+                    <span id="jsonldSuccessMessage"></span>
+                </div>
+            </div>
+
+            <hr>
+            <div id="generationOptions" class="d-none">
+                <h6><i class="fas fa-cogs"></i> Generation Options</h6>
+
+                <div class="form-group">
+                    <label for="sampleCount"><strong>Number of Samples to Generate</strong></label>
+                    <input type="number" class="form-control" id="sampleCount" min="1" max="10000" value="100">
+                    <small class="form-text text-muted">Enter the number of rows you want in your mock dataset (1-10,000).</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="randomSeed"><strong>Random Seed (Optional)</strong></label>
+                    <input type="number" class="form-control" id="randomSeed" placeholder="Leave empty for random results">
+                    <small class="form-text text-muted">Provide a seed for reproducible results.</small>
+                </div>
+
+                <div class="form-group">
+                    <label><strong>Database and Table Selection</strong></label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="databaseSelect">Database</label>
+                            <select class="form-control" id="databaseSelect">
+                                <option value="">-- All Databases --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="tableSelect">Table</label>
+                            <select class="form-control" id="tableSelect">
+                                <option value="">-- All Tables --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">Select specific database/table or generate for all.</small>
+                </div>
+
+                <button type="button" class="btn btn-primary mt-3" id="generateMockDataBtn">
+                    <i class="fas fa-magic"></i> Generate Mock Data
+                </button>
+                
+                <div class="progress mt-3 d-none" id="generationProgress">
+                    <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                </div>
+            </div>
+
+            <div id="generationResults" class="d-none mt-4">
+                <hr>
+                <h6><i class="fas fa-check-double"></i> Generation Results</h6>
+                <div id="resultsMessage" class="alert alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <strong>Mock data generated successfully!</strong>
+                    <span id="resultsDetails"></span>
+                </div>
+
+                <div class="form-group">
+                    <label><strong>Download Generated Data</strong></label>
+                    <div id="downloadButtons" class="d-flex flex-wrap gap-2">
+                        <!-- Download buttons will be added here dynamically -->
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Data Format Notes:</strong>
+                    <ul class="mb-0">
+                        <li>Categorical variables use values from your local mappings</li>
+                        <li>Continuous variables generate random numbers (1-100 range)</li>
+                        <li>Identifier columns use sequential IDs (ID_00001, ID_00002, etc.)</li>
+                        <li>Missing values are included at ~10% probability where applicable</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <a href="/share_landing" class="btn btn-light">
+        <i class="fas fa-arrow-left"></i> Return to Share Options
+    </a>
+    <br><br>
+</div>
+
+<!-- Include footer -->
+{% include 'footer.html' %}
+
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script>
+    // Global variables
+    let storedJsonldData = null;
+    let generatedData = null;
+
+    async function checkStoredSemanticMap() {
+        try {
+            if (!FlyoverDB.isSupported()) {
+                console.warn('Flyover: IndexedDB not supported');
+                return false;
+            }
+
+            await FlyoverDB.initDB();
+            console.log('Flyover: IndexedDB initialized');
+
+            const result = await FlyoverDB.getData('metadata', 'semantic_map');
+
+            if (result && result.data) {
+                console.log('Flyover: Semantic map found in IndexedDB');
+                
+                // Validate that the stored map has the required structure
+                if (result.data.databases && Object.keys(result.data.databases).length > 0) {
+                    storedJsonldData = result.data;
+                    return true;
+                } else {
+                    console.log('Flyover: Stored semantic map is missing databases structure');
+                    return false;
+                }
+            } else {
+                console.log('Flyover: No semantic map found in IndexedDB');
+                return false;
+            }
+        } catch (error) {
+            console.error('Flyover: Error checking semantic map availability:', error);
+            return false;
+        }
+    }
+
+    function populateDatabaseTableSelects() {
+        if (!storedJsonldData) return;
+
+        const databases = storedJsonldData.databases || {};
+        const databaseSelect = $('#databaseSelect');
+        const tableSelect = $('#tableSelect');
+
+        // Clear existing options (keep the "All" option)
+        databaseSelect.find('option:not(:first)').remove();
+        tableSelect.find('option:not(:first)').remove();
+
+        // Populate databases
+        Object.keys(databases).forEach(dbId => {
+            databaseSelect.append(`<option value="${dbId}">${dbId}</option>`);
+        });
+
+        // If only one database, auto-select it
+        if (Object.keys(databases).length === 1) {
+            databaseSelect.val(Object.keys(databases)[0]);
+            updateTableOptions(Object.keys(databases)[0]);
+        }
+    }
+
+    function updateTableOptions(databaseId) {
+        if (!storedJsonldData || !databaseId) {
+            $('#tableSelect').find('option:not(:first)').remove();
+            return;
+        }
+
+        const database = storedJsonldData.databases[databaseId];
+        if (!database || !database.tables) return;
+
+        const tableSelect = $('#tableSelect');
+        tableSelect.find('option:not(:first)').remove();
+
+        Object.keys(database.tables).forEach(tableId => {
+            tableSelect.append(`<option value="${tableId}">${tableId}</option>`);
+        });
+    }
+
+    function updateUIBasedOnJsonldAvailability() {
+        if (storedJsonldData) {
+            // Show success message
+            $('#jsonldStatus').addClass('d-none');
+            $('#jsonldUploadForm').addClass('d-none');
+            $('#jsonldSuccess').removeClass('d-none');
+            
+            // Update success message with statistics
+            const dbCount = Object.keys(storedJsonldData.databases || {}).length;
+            const varCount = Object.keys(storedJsonldData.variable_info || {}).length;
+            let tableCount = 0;
+            
+            Object.values(storedJsonldData.databases || {}).forEach(db => {
+                tableCount += Object.keys(db.tables || {}).length;
+            });
+            
+            $('#jsonldSuccessMessage').text(` (${dbCount} database(s), ${tableCount} table(s), ${varCount} variable(s))`);
+            
+            // Show generation options
+            $('#generationOptions').removeClass('d-none');
+            
+            // Populate database/table selects
+            populateDatabaseTableSelects();
+            
+        } else {
+            // Show upload form
+            $('#jsonldStatus').removeClass('d-none');
+            $('#jsonldUploadForm').removeClass('d-none');
+            $('#jsonldSuccess').addClass('d-none');
+            $('#generationOptions').addClass('d-none');
+            $('#generationResults').addClass('d-none');
+            
+            $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
+        }
+    }
+
+    // File upload handling
+    $('#jsonldFileInput').change(function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            $('.custom-file-label').html(file.name);
+            $('#uploadJsonldBtn').prop('disabled', false);
+        } else {
+            $('.custom-file-label').html('Choose JSON-LD file...');
+            $('#uploadJsonldBtn').prop('disabled', true);
+        }
+    });
+
+    $('#uploadJsonldBtn').click(async function() {
+        const file = $('#jsonldFileInput')[0].files[0];
+        if (!file) return;
+
+        // Show progress bar
+        $('#uploadProgress').removeClass('d-none');
+        const progressBar = $('#uploadProgress .progress-bar');
+        progressBar.width('25%').text('25%');
+
+        try {
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    progressBar.width('50%').text('50%');
+                    
+                    const fileContent = e.target.result;
+                    const mappingData = JSON.parse(fileContent);
+
+                    progressBar.width('75%').text('75%');
+                    
+                    // Validate the JSON-LD structure
+                    if (mappingData && (mappingData.databases || mappingData.variable_info)) {
+                        // Store in IndexedDB using the correct method
+                        await FlyoverDB.initDB();
+                        await FlyoverDB.saveData('metadata', {
+                            key: 'semantic_map',
+                            data: mappingData,
+                            timestamp: new Date().toISOString()
+                        });
+                        
+                        progressBar.width('100%').text('100%');
+                        
+                        // Update state
+                        storedJsonldData = mappingData;
+                        
+                        setTimeout(() => {
+                            $('#uploadProgress').addClass('d-none');
+                            updateUIBasedOnJsonldAvailability();
+                        }, 500);
+                    } else {
+                        throw new Error('Invalid JSON-LD structure: missing databases or variable_info');
+                    }
+                } catch (error) {
+                    console.error('Error processing JSON-LD file:', error);
+                    progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
+                    setTimeout(() => {
+                        $('#uploadProgress').addClass('d-none');
+                        alert('Error processing JSON-LD file: ' + error.message);
+                    }, 1000);
+                }
+            };
+            reader.readAsText(file);
+            
+        } catch (error) {
+            console.error('Error reading file:', error);
+            progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
+            setTimeout(() => {
+                $('#uploadProgress').addClass('d-none');
+                alert('Error reading file: ' + error.message);
+            }, 1000);
+        }
+    });
+
+    $('#useStoredJsonldBtn').click(function() {
+        if (storedJsonldData) {
+            updateUIBasedOnJsonldAvailability();
+        }
+    });
+
+    // Database select change handler
+    $('#databaseSelect').change(function() {
+        const selectedDb = $(this).val();
+        updateTableOptions(selectedDb);
+    });
+
+    $('#generateMockDataBtn').click(async function() {
+        if (!storedJsonldData) {
+            alert('Please upload or select a JSON-LD semantic map first.');
+            return;
+        }
+
+        const sampleCount = parseInt($('#sampleCount').val());
+        const randomSeed = $('#randomSeed').val();
+        const databaseId = $('#databaseSelect').val() || null;
+        const tableId = $('#tableSelect').val() || null;
+
+        if (isNaN(sampleCount) || sampleCount < 1 || sampleCount > 10000) {
+            alert('Please enter a valid number of samples (1-10,000).');
+            return;
+        }
+
+        // Show generation progress
+        $('#generationProgress').removeClass('d-none');
+        const progressBar = $('#generationProgress .progress-bar');
+        progressBar.width('25%').text('Preparing generation...');
+
+        try {
+            // Call the actual backend API to generate mock data
+            const response = await fetch('/api/generate-mock-data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    jsonld_map: storedJsonldData,
+                    num_rows: sampleCount,
+                    random_seed: randomSeed ? parseInt(randomSeed) : null,
+                    database_id: databaseId,
+                    table_id: tableId
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to generate mock data');
+            }
+
+            progressBar.width('75%').text('Processing results...');
+            
+            // Store generated data
+            generatedData = result.data;
+            
+            // Show results
+            setTimeout(() => {
+                progressBar.width('100%').text('Complete!');
+                showGenerationResults(result.data);
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error generating mock data:', error);
+            progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
+            setTimeout(() => {
+                $('#generationProgress').addClass('d-none');
+                alert('Error generating mock data: ' + error.message);
+            }, 1000);
+        }
+    });
+
+    function showGenerationResults(data) {
+        // Hide generation options, show results
+        $('#generationOptions').addClass('d-none');
+        $('#generationResults').removeClass('d-none');
+        $('#generationProgress').addClass('d-none');
+        
+        // Update results message
+        const tableCount = Object.keys(data).length;
+        const sampleCount = $('#sampleCount').val();
+        
+        let details = `${tableCount} table(s) generated with ${sampleCount} samples each.`;
+        
+        if ($('#databaseSelect').val()) {
+            details += ` Database: ${$('#databaseSelect').val()}`;
+        }
+        if ($('#tableSelect').val()) {
+            details += ` Table: ${$('#tableSelect').val()}`;
+        }
+        
+        $('#resultsDetails').text(details);
+        
+        // Create download buttons
+        const downloadButtons = $('#downloadButtons');
+        downloadButtons.empty();
+        
+        Object.entries(data).forEach(([tableKey, tableData]) => {
+            const [dbId, tableId] = tableKey.split('.');
+            const button = $(`
+                <button class="btn btn-outline-secondary download-btn" 
+                        data-db="${dbId}" 
+                        data-table="${tableId}">
+                    <i class="fas fa-download"></i> ${dbId}.${tableId}.csv
+                </button>
+            `);
+            downloadButtons.append(button);
+        });
+        
+        // Add event handlers to download buttons
+        $('.download-btn').click(function() {
+            const dbId = $(this).data('db');
+            const tableId = $(this).data('table');
+            const tableKey = `${dbId}.${tableId}`;
+            
+            downloadMockDataAsCSV(generatedData[tableKey], `${dbId}_${tableId}_mock.csv`);
+        });
+    }
+
+    function downloadMockDataAsCSV(data, filename) {
+        try {
+            // Convert the mock data to CSV format
+            let csvContent = 'data:text/csv;charset=utf-8,';
+            
+            // Add headers
+            const headers = Object.keys(data[0] || {});
+            csvContent += headers.join(',') + '\r\n';
+            
+            // Add data rows
+            data.forEach(row => {
+                const rowData = headers.map(header => {
+                    // Handle different data types and escaping
+                    let value = row[header];
+                    if (value === null || value === undefined) {
+                        return '';
+                    }
+                    
+                    // Escape quotes and wrap in quotes if contains commas
+                    value = String(value).replace(/"/g, '""');
+                    if (value.includes(',')) {
+                        value = `"${value}"`;
+                    }
+                    return value;
+                });
+                csvContent += rowData.join(',') + '\r\n';
+            });
+            
+            // Create download link
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            
+            // Trigger download
+            link.click();
+            document.body.removeChild(link);
+            
+        } catch (error) {
+            console.error('Error generating CSV:', error);
+            alert('Error generating CSV download: ' + error.message);
+        }
+    }
+
+    // Helper function to convert backend response data to CSV format
+    function convertResponseDataToCSV(data) {
+        // The backend returns data in the format: { "database.table": [ { col1: val1, col2: val2 }, ... ] }
+        // We need to convert this to a format suitable for CSV download
+        return Object.entries(data).map(([tableKey, tableData]) => {
+            return {
+                tableKey: tableKey,
+                data: tableData
+            };
+        });
+    }
+
+    // Initialize the page
+    $(document).ready(async function() {
+        // Check for stored semantic map
+        const hasStoredMap = await checkStoredSemanticMap();
+        
+        if (hasStoredMap) {
+            $('#useStoredJsonldBtn').show();
+            $('#jsonldStatusMessage').text('Found existing JSON-LD semantic map in browser storage.');
+        } else {
+            $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
+        }
+        
+        updateUIBasedOnJsonldAvailability();
+    });
+
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in share landing step
+</script>
+
+<!-- Custom CSS for this page -->
+<style>
+    .card-header {
+        background-color: #f8f9fa !important;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .custom-file-label {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    
+    .custom-file-label::after {
+        content: "Browse";
+    }
+    
+    .form-text {
+        margin-top: 3px;
+    }
+</style>
+
+</body>
+</html>

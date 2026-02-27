@@ -1,6 +1,6 @@
 import random
 
-import pandas as pd
+import polars as pl
 
 from typing import Any, Dict, List, Optional, Union
 
@@ -11,13 +11,73 @@ _MISSING_VALUE_PROBABILITY = 0.1
 _IDENTIFIER_FORMAT = "ID_{:05d}"
 
 
+def preprocess_mixed_type_data(table_data: Dict[str, List[Union[str, int, float, None]]]) -> Dict[str, List[Union[str, int, float, None]]]:
+    """
+    Pre-process table data to handle mixed types by converting to appropriate types.
+    Specifically handles the case where missing values are lists like ["NULL"].
+    
+    Args:
+        table_data: Dictionary where keys are column names and values are lists of data
+        
+    Returns:
+        Processed table data with consistent types for each column
+    """
+    processed_data = {}
+    
+    for col_name, col_values in table_data.items():
+        processed_values = []
+        has_list_values = False
+        has_numeric = False
+        has_string = False
+        
+        # First pass: detect what types we have
+        for value in col_values:
+            if isinstance(value, list):
+                has_list_values = True
+            elif isinstance(value, (int, float)):
+                has_numeric = True
+            elif isinstance(value, str):
+                has_string = True
+        
+        # Second pass: convert values appropriately
+        if has_list_values:
+            # If we have list values, convert everything to string
+            for value in col_values:
+                if isinstance(value, list):
+                    # Extract single item from list or join multiple items
+                    if len(value) == 1:
+                        processed_values.append(str(value[0]))
+                    else:
+                        processed_values.append(", ".join(str(v) for v in value))
+                else:
+                    processed_values.append(str(value))
+        elif has_numeric and has_string:
+            # Mixed numeric and string - convert everything to string
+            for value in col_values:
+                processed_values.append(str(value))
+        elif has_numeric:
+            # All numeric - keep as is but handle None values
+            for value in col_values:
+                if value is None:
+                    processed_values.append(None)
+                else:
+                    processed_values.append(value)
+        else:
+            # All strings or other types - keep as is
+            processed_values = col_values
+        
+        processed_data[col_name] = processed_values
+    
+    return processed_data
+
+
 def generate_mock_data_from_semantic_map(
     jsonld_map: Dict[str, Any],
     num_rows: int = 100,
     random_seed: Optional[int] = None,
     database_id: Optional[str] = None,
     table_id: Optional[str] = None,
-) -> Dict[str, pd.DataFrame]:
+) -> Dict[str, pl.DataFrame]:
     """
     Generate mock data from a JSON-LD semantic mapping.
 
@@ -39,7 +99,7 @@ def generate_mock_data_from_semantic_map(
 
     Returns:
         A dictionary where keys are in the format "database_id.table_id" and values are
-        pandas DataFrames containing the mock data for that table.
+        polars DataFrames containing the mock data for that table.
 
     Raises:
         ValueError: If the jsonld_map is malformed or missing required keys.
@@ -58,7 +118,7 @@ def generate_mock_data_from_semantic_map(
     # Extract databases
     databases = jsonld_map.get("databases", {})
 
-    result: Dict[str, pd.DataFrame] = {}
+    result: Dict[str, pl.DataFrame] = {}
 
     # Iterate through databases
     for db_id, db_info in databases.items():
@@ -120,7 +180,7 @@ def generate_mock_data_from_semantic_map(
                 elif data_type == "continuous":
                     # Check if there's a missing/unspecified mapping
                     has_missing = "missing_or_unspecified" in local_mappings
-                    missing_value = local_mappings.get("missing_or_unspecified", "")
+                    missing_value = local_mappings.get("missing_or_unspecified", None)
 
                     # Generate random numbers or missing values
                     table_data[local_column] = [
@@ -143,7 +203,7 @@ def generate_mock_data_from_semantic_map(
                     # TODO: improve handling of standardised data; e.g. using ontology informed synthetic data
                     # For now, treat similar to continuous
                     has_missing = "missing_or_unspecified" in local_mappings
-                    missing_value = local_mappings.get("missing_or_unspecified", "")
+                    missing_value = local_mappings.get("missing_or_unspecified", None)
 
                     table_data[local_column] = [
                         (
@@ -157,7 +217,30 @@ def generate_mock_data_from_semantic_map(
                 else:
                     raise ValueError(f"Unsupported data type: {data_type}")
 
-            # Store the DataFrame with a composite key
-            result[f"{db_id}.{tbl_id}"] = pd.DataFrame(table_data)
+            # Create polars DataFrame with proper type inference
+            if table_data:  # Only create DataFrame if we have data
+                try:
+                    # Preprocess data to handle mixed types and list-type missing values
+                    processed_table_data = preprocess_mixed_type_data(table_data)
+                    
+                    # Create DataFrame with the processed data
+                    result[f"{db_id}.{tbl_id}"] = pl.DataFrame(processed_table_data)
+                except Exception as e:
+                    # If creation still fails, try with explicit schema as fallback
+                    schema_overrides = {}
+                    for col_name, col_values in processed_table_data.items():
+                        # Check if we have mixed types (e.g., integers and None)
+                        has_none = any(v is None for v in col_values)
+                        has_numeric = any(isinstance(v, (int, float)) for v in col_values if v is not None)
+                        
+                        if has_none and has_numeric:
+                            schema_overrides[col_name] = pl.Float64  # Use Float64 to handle None
+                        elif has_none:
+                            schema_overrides[col_name] = pl.Utf8  # Use string type for mixed None/string
+                    
+                    if schema_overrides:
+                        result[f"{db_id}.{tbl_id}"] = pl.DataFrame(processed_table_data, schema=schema_overrides)
+                    else:
+                        raise e
 
     return result

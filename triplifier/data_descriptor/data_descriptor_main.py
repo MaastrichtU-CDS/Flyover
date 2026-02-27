@@ -70,6 +70,7 @@ from utils.session_helpers import (
     DATABASE_NAME_PATTERN,
     get_table_names_from_mapping,
 )
+from utils.data_synthetisation import generate_mock_data_from_semantic_map
 from annotation_helper.src.miscellaneous import add_annotation
 from validation import MappingValidator
 from loaders import JSONLDMapping
@@ -899,10 +900,8 @@ def share_mock():
     Returns:
         flask.render_template: A Flask function that renders the 'share_mock.html' template.
     """
-    # For now, we'll redirect to share_landing since share_mock.html doesn't exist yet
-    # This can be updated when the actual share_mock template is created
     return render_template(
-        "share_landing.html", graphdb_location="http://localhost:7200/"
+        "share_mock.html", graphdb_location="http://localhost:7200/"
     )
 
 
@@ -1869,6 +1868,100 @@ def api_check_graph_exists():
         return jsonify({"exists": exists})
     except Exception as e:
         return jsonify({"exists": False, "error": str(e)})
+
+
+@app.route("/api/generate-mock-data", methods=["POST"])
+def api_generate_mock_data():
+    """
+    API endpoint to generate mock data from a JSON-LD semantic map.
+    
+    This endpoint uses the generate_mock_data_from_semantic_map function to create
+    synthetic data based on the provided semantic mapping.
+
+    Expects JSON payload with:
+    - jsonld_map: JSON-LD semantic mapping
+    - num_rows: Number of rows to generate (default: 100)
+    - random_seed: Optional random seed for reproducibility
+    - database_id: Optional specific database to generate for
+    - table_id: Optional specific table to generate for
+
+    Returns:
+        flask.jsonify: JSON response with success status and generated data
+    """
+    try:
+        # Get JSON data from request body
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False, 
+                "error": "No JSON data provided in request body"
+            }), 400
+
+        # Extract parameters
+        jsonld_map = data.get("jsonld_map")
+        num_rows = data.get("num_rows", 100)
+        random_seed = data.get("random_seed")
+        database_id = data.get("database_id")
+        table_id = data.get("table_id")
+
+        if not jsonld_map:
+            return jsonify({
+                "success": False,
+                "error": "No JSON-LD semantic map provided"
+            }), 400
+
+        if not isinstance(num_rows, int) or num_rows < 1 or num_rows > 10000:
+            return jsonify({
+                "success": False,
+                "error": "num_rows must be an integer between 1 and 10000"
+            }), 400
+
+        # Validate the JSON-LD structure
+        if not isinstance(jsonld_map, dict):
+            return jsonify({
+                "success": False,
+                "error": "jsonld_map must be a valid JSON object"
+            }), 400
+
+        if "databases" not in jsonld_map and "variable_info" not in jsonld_map:
+            return jsonify({
+                "success": False,
+                "error": "jsonld_map must contain 'databases' or 'variable_info'"
+            }), 400
+
+        # Call the mock data generation function
+        logger.info(f"Generating mock data with {num_rows} rows for database: {database_id}, table: {table_id}")
+        
+        generated_data = generate_mock_data_from_semantic_map(
+            jsonld_map=jsonld_map,
+            num_rows=num_rows,
+            random_seed=random_seed,
+            database_id=database_id,
+            table_id=table_id
+        )
+
+        # Convert polars DataFrames to lists of dictionaries for JSON serialization
+        result_data = {}
+        for table_key, dataframe in generated_data.items():
+            result_data[table_key] = dataframe.to_dicts()
+
+        logger.info(f"Successfully generated mock data for {len(result_data)} tables")
+
+        return jsonify({
+            "success": True,
+            "message": f"Generated mock data for {len(result_data)} tables with {num_rows} rows each",
+            "data": result_data
+        })
+
+    except Exception as e:
+        logger.error(f"Error generating mock data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": f"Failed to generate mock data: {str(e)}"
+        }), 500
 
 
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
