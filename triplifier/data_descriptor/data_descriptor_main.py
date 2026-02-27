@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 from utils.data_preprocessing import (
     preprocess_dataframe,
+    read_csv_with_encoding_detection,
     sanitise_table_name,
 )
 from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
@@ -412,32 +413,11 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                # Use polars to read CSV with minimal inference
-                df = pl.read_csv(
-                    csv_file,
+                df = read_csv_with_encoding_detection(
+                    csv_file.read(),
                     separator=separator_sign,
-                    infer_schema_length=0,  # Treat everything as strings
-                    null_values=[],  # Don't infer nulls
-                    try_parse_dates=False,  # Don't auto-parse dates
+                    decimal_sign=decimal_sign,
                 )
-                # TODO improve this approach,
-                #  if data conversion is done in the end,
-                #  we can use data descriptions to infer datatype and set them properly
-                # Handle decimal conversion: normalize user-specified decimal separator to standard "."
-                # Note: This replaces the decimal_sign character in ALL string columns. For CSV data
-                # where the user specifies a decimal separator (e.g., "," for European formats),
-                # this ensures consistent numeric representation. Free text fields with the same
-                # character will also be affected, but this is acceptable since:
-                # 1. The user explicitly specifies this is their decimal separator
-                # 2. The original file is preserved - this is an internal representation
-                # 3. Downstream processing (triplification) expects standard "." decimals
-                if decimal_sign != ".":
-                    df = df.with_columns(
-                        [
-                            pl.col(c).str.replace_all(decimal_sign, ".")
-                            for c in df.columns
-                        ]
-                    )
                 session_cache.csvData.append(preprocess_dataframe(df))
 
         except Exception as e:
@@ -483,9 +463,10 @@ def upload_file():
         if upload:
             logger.info("🚀 Initiating upload to GraphDB")
 
-            # Use different upload strategy based on file type
-            if file_type == "CSV" and session_cache.output_files:
-                # Upload multiple graphs for CSV files
+            # Use upload_multiple_graphs for both CSV and PostgreSQL
+            # This ensures consistent named graph structure: http://ontology.local/{table_or_db_name}/ and http://data.local/{table_or_db_name}/
+            if session_cache.output_files:
+                # Upload multiple graphs (works for both CSV tables and PostgreSQL database)
                 upload_success, upload_messages = upload_multiple_graphs(
                     root_dir,
                     graphdb_url,
@@ -494,7 +475,7 @@ def upload_file():
                     data_background=False,
                 )
             else:
-                # Use traditional single-graph upload for PostgreSQL
+                # Fallback to traditional single-graph upload (should rarely happen)
                 upload_success, upload_messages = upload_ontology_then_data(
                     root_dir, graphdb_url, repo, data_background=False
                 )
@@ -1763,7 +1744,7 @@ def verify_annotation_ask():
             f"{graphdb_url}/repositories/{session_cache.repo}",
             params={"query": ask_query},
             headers={"Accept": "application/sparql-results+json"},
-            timeout=30,
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
 
         if response.status_code == 200:
@@ -1902,7 +1883,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
             endpoint,
             data={query_type: query},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=30,
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
         # Return the result of the query execution
         return response.text
@@ -2656,8 +2637,25 @@ def run_triplifier(properties_file=None):
 
         elif properties_file == "triplifierSQL.properties":
             # Use Python Triplifier for PostgreSQL processing
+            # Validate that required connection details are present
+            if not session_cache.url or not session_cache.db_name:
+                return (
+                    False,
+                    "PostgreSQL connection details are missing from session cache",
+                )
+            if not session_cache.username or not session_cache.password:
+                return False, "PostgreSQL credentials are missing from session cache"
+
+            # Build database URL from session cache (without credentials - they're passed separately)
+            db_url = f"postgresql://{session_cache.url}/{session_cache.db_name}"
+
             success, message, output_files = run_triplifier_impl(
-                properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
+                properties_file=properties_file,
+                root_dir=root_dir,
+                child_dir=child_dir,
+                db_url=db_url,
+                db_user=session_cache.username,
+                db_password=session_cache.password,
             )
             session_cache.output_files = output_files
         else:
