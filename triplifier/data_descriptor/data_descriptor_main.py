@@ -442,7 +442,7 @@ def upload_file():
         success, message = run_triplifier("triplifierSQL.properties")
 
     elif file_type != "Postgres" and not any(
-        csv_file.filename for csv_file in csv_files
+            csv_file.filename for csv_file in csv_files
     ):
         success = True
         upload = False
@@ -628,7 +628,7 @@ def retrieve_descriptive_info():
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
         it renders the 'describe_variable_details.html' template with the list of variables to further specify,
-        or proceeds to 'describe_downloads' in case there are no variables to specify.
+        or proceeds to 'annotation_review' in case there are no variables to specify.
     """
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
@@ -713,8 +713,8 @@ def retrieve_descriptive_info():
     if session_cache.DescriptiveInfoDetails:
         return redirect(url_for("describe_variable_details"))
     else:
-        # Redirect to the new route after processing the POST request
-        return redirect(url_for("describe_downloads"))
+        # Redirect to annotation review after processing the POST request
+        return redirect(url_for("annotation_review"))
 
 
 @app.route("/describe_variable_details")
@@ -751,8 +751,8 @@ def describe_variable_details():
                             for category in categories:
                                 category_value = category.get("value")
                                 for (
-                                    term,
-                                    _target_class,
+                                        term,
+                                        _target_class,
                                 ) in var_info.value_mappings.items():
                                     local_term = (
                                         session_cache.jsonld_mapping.get_local_term(
@@ -808,7 +808,7 @@ def retrieve_detailed_descriptive_info():
         else:
             base = key
         if base.startswith(prefix):
-            return base[len(prefix) :]
+            return base[len(prefix):]
         return None
 
     # Iterate over each database in the session cache
@@ -836,8 +836,8 @@ def retrieve_detailed_descriptive_info():
                 key
                 for key in request.form
                 if variable in key
-                and not key.startswith("comment_")
-                and not key.startswith("count_")
+                   and not key.startswith("comment_")
+                   and not key.startswith("count_")
             ]
 
             for key in keys:
@@ -846,8 +846,8 @@ def retrieve_detailed_descriptive_info():
                     session_cache.descriptive_info[database][variable][
                         f"Category: {request.form.get(key)}"
                     ] = (
-                        f"Category {request.form.get(key)}: missing_or_unspecified"
-                        or "No missing value notation provided"
+                            f"Category {request.form.get(key)}: missing_or_unspecified"
+                            or "No missing value notation provided"
                     )
 
                 elif "_category_" in key and not key.startswith("count_"):
@@ -865,7 +865,7 @@ def retrieve_detailed_descriptive_info():
                 # Handle units
                 elif "count_" not in key:
                     session_cache.descriptive_info[database][variable]["units"] = (
-                        request.form.get(key) or "No units specified"
+                            request.form.get(key) or "No units specified"
                     )
 
             # Call the 'insert_equivalencies' function to insert equivalencies into the GraphDB repository
@@ -873,21 +873,51 @@ def retrieve_detailed_descriptive_info():
                 session_cache.descriptive_info[database], variable, database
             )
 
-    # Redirect the user to the 'download_page' URL
-    return redirect(url_for("describe_downloads"))
+    # Redirect the user to the 'annotation_review' URL
+    return redirect(url_for("annotation_review"))
 
 
-@app.route("/describe_downloads")
-def describe_downloads():
+@app.route("/share_landing")
+def share_landing():
     """
-    This function is responsible for rendering the 'describe_downloads.html' page.
+    This function is responsible for rendering the 'share_landing.html' page.
     Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
 
     Returns:
-        flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
+        flask.render_template: A Flask function that renders the 'share_landing.html' template.
     """
     return render_template(
-        "describe_downloads.html", graphdb_location="http://localhost:7200/"
+        "share_landing.html", graphdb_location="http://localhost:7200/"
+    )
+
+
+@app.route("/share_mock")
+def share_mock():
+    """
+    This function is responsible for rendering the mock data generation page.
+
+    Returns:
+        flask.render_template: A Flask function that renders the 'share_mock.html' template.
+    """
+    # For now, we'll redirect to share_landing since share_mock.html doesn't exist yet
+    # This can be updated when the actual share_mock template is created
+    return render_template(
+        "share_landing.html", graphdb_location="http://localhost:7200/"
+    )
+
+
+@app.route("/share_publish")
+def share_publish():
+    """
+    This function is responsible for rendering the publishing options page.
+
+    Returns:
+        flask.render_template: A Flask function that renders the 'share_publish.html' template.
+    """
+    # For now, we'll redirect to share_landing since share_publish.html doesn't exist yet
+    # This can be updated when the actual share_publish template is created
+    return render_template(
+        "share_landing.html", graphdb_location="http://localhost:7200/"
     )
 
 
@@ -1182,7 +1212,7 @@ def upload_annotation_json():
 
             # Ensure databases are initialised from RDF-store
             if not graph_database_ensure_backend_initialisation(
-                session_cache, execute_query
+                    session_cache, execute_query
             ):
                 os.remove(filepath)  # Clean up file
                 return (
@@ -1219,7 +1249,7 @@ def upload_annotation_json():
                     jsonify(
                         {
                             "error": "The uploaded semantic map does not contain any table definitions.<br>"
-                            "Please ensure your JSON-LD file has tables defined in the 'databases' section.",
+                                     "Please ensure your JSON-LD file has tables defined in the 'databases' section.",
                             "graphdb_databases": session_cache.databases,
                             "jsonld_databases": [],
                         }
@@ -1313,7 +1343,7 @@ def start_annotation():
 
         # Ensure databases are initialised from the RDF-store if not already populated
         if not graph_database_ensure_backend_initialisation(
-            session_cache, execute_query
+                session_cache, execute_query
         ):
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
@@ -1468,7 +1498,7 @@ def start_annotation():
             {
                 "success": True,
                 "message": f"Annotation process completed for {total_annotated_vars} "
-                f"variables across {len(session_cache.databases)} databases",
+                           f"variables across {len(session_cache.databases)} databases",
             }
         )
 
@@ -1486,12 +1516,12 @@ def annotation_verify():
     # Check if any semantic map is available
     if not has_semantic_map(session_cache):
         flash("No semantic map available.")
-        return redirect(url_for("describe_downloads"))
+        return redirect(url_for("share_landing"))
 
     # Ensure databases are initialised from the RDF-store if not already populated
     if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available.")
-        return redirect(url_for("describe_downloads"))
+        return redirect(url_for("share_landing"))
 
     map_table_names = get_table_names_from_mapping(session_cache)
 
@@ -1561,7 +1591,7 @@ def annotation_verify():
     # Set success message if annotation was successful
     success_message = None
     if annotation_status and all(
-        status.get("success") for status in annotation_status.values()
+            status.get("success") for status in annotation_status.values()
     ):
         success_message = (
             "The data processing is now complete and "
@@ -1646,9 +1676,9 @@ def verify_annotation_ask():
 
         # For legacy format: If no local definition from the formulated map, check original JSON
         if (
-            not local_definition
-            and not is_jsonld
-            and isinstance(session_cache.global_semantic_map, dict)
+                not local_definition
+                and not is_jsonld
+                and isinstance(session_cache.global_semantic_map, dict)
         ):
             original_var_info = session_cache.global_semantic_map.get(
                 "variable_info", {}
@@ -2006,8 +2036,8 @@ def formulate_local_semantic_map(database):
 
         # Reset all local_terms in value_mapping to null
         if (
-            "value_mapping" in variable_info
-            and "terms" in variable_info["value_mapping"]
+                "value_mapping" in variable_info
+                and "terms" in variable_info["value_mapping"]
         ):
             for term_key in variable_info["value_mapping"]["terms"]:
                 modified_semantic_map["variable_info"][variable_name]["value_mapping"][
@@ -2021,9 +2051,9 @@ def formulate_local_semantic_map(database):
     # Check if descriptive_info exists and has data for this database
     # If not, return the modified semantic map with all local_definitions as null
     if (
-        session_cache.descriptive_info is None
-        or database not in session_cache.descriptive_info
-        or session_cache.descriptive_info[database] is None
+            session_cache.descriptive_info is None
+            or database not in session_cache.descriptive_info
+            or session_cache.descriptive_info[database] is None
     ):
         logger.info(
             f"No descriptive info available for database '{database}'. "
@@ -2044,8 +2074,8 @@ def formulate_local_semantic_map(database):
         )
 
         if (
-            global_variable
-            and global_variable in session_cache.global_semantic_map["variable_info"]
+                global_variable
+                and global_variable in session_cache.global_semantic_map["variable_info"]
         ):
             # Handle duplicate global variables by creating new entries with suffix
             if global_variable in used_global_variables:
@@ -2098,8 +2128,8 @@ def formulate_local_semantic_map(database):
 
             # Process value mapping if it exists
             if (
-                "value_mapping"
-                in modified_semantic_map["variable_info"][new_global_variable]
+                    "value_mapping"
+                    in modified_semantic_map["variable_info"][new_global_variable]
             ):
                 original_terms = modified_semantic_map["variable_info"][
                     new_global_variable
@@ -2317,10 +2347,10 @@ def get_column_class_uri(table_name, column_name):
 
 
 def insert_fk_relation(
-    fk_predicate,
-    column_class_uri,
-    target_class_uri,
-    relationships_graph="http://relationships.local/",
+        fk_predicate,
+        column_class_uri,
+        target_class_uri,
+        relationships_graph="http://relationships.local/",
 ):
     """Insert PK/FK relationship into the relationships graph"""
     insert_query = f"""
@@ -2361,11 +2391,11 @@ def process_pk_fk_relationships():
         # Process each relationship
         for rel in session_cache.pk_fk_data:
             if not all(
-                [
-                    rel.get("foreignKey"),
-                    rel.get("foreignKeyTable"),
-                    rel.get("foreignKeyColumn"),
-                ]
+                    [
+                        rel.get("foreignKey"),
+                        rel.get("foreignKeyTable"),
+                        rel.get("foreignKeyColumn"),
+                    ]
             ):
                 continue
 
@@ -2524,10 +2554,10 @@ def get_existing_column_class_uri(table_name, column_name):
 
 
 def insert_cross_graph_relation(
-    predicate,
-    new_column_uri,
-    existing_column_uri,
-    relationships_graph="http://relationships.local/",
+        predicate,
+        new_column_uri,
+        existing_column_uri,
+        relationships_graph="http://relationships.local/",
 ):
     """Insert cross-graph relationship into the relationships graph"""
     insert_query = f"""

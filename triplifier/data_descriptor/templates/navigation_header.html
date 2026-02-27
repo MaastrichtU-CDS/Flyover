@@ -190,7 +190,7 @@
                 alwaysAccessible: true
             },
             'describe': {
-                pages: ['/describe_landing', '/describe_variables', '/describe_variable_details', '/describe_downloads'],
+                pages: ['/describe_landing', '/describe_variables', '/describe_variable_details'],
                 element: document.getElementById('describe-step'),
                 requiresData: true
             },
@@ -200,9 +200,9 @@
                 requiresData: true
             },
             'share': {
-                pages: ['/share_landing', '/share_options', '/share_publish'],
+                pages: ['/share_landing', '/share_mock', '/share_publish'],
                 element: document.getElementById('share-step'),
-                requiresData: true
+                alwaysAccessible: true
             }
         };
 
@@ -316,12 +316,19 @@
                     stepConfig.element.classList.add('disabled');
                 }
             });
+            
+            // Ensure always accessible steps are never disabled
+            Object.entries(steps).forEach(([stepName, stepConfig]) => {
+                if (stepConfig.alwaysAccessible) {
+                    stepConfig.element.classList.remove('disabled');
+                }
+            });
         }
 
         // Add click handlers for validation
         Object.entries(steps).forEach(([stepName, stepConfig]) => {
             stepConfig.element.addEventListener('click', function (e) {
-                if (this.classList.contains('disabled')) {
+                if (this.classList.contains('disabled') && !stepConfig.alwaysAccessible) {
                     e.preventDefault();
 
                     // Show user-friendly message
