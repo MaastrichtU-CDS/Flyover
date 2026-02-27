@@ -273,15 +273,13 @@ class PythonTriplifierIntegration:
                 # Use context manager for cursor to ensure proper cleanup
                 with conn.cursor() as cursor:
                     # Query to get all user tables (excluding system tables)
-                    cursor.execute(
-                        """
+                    cursor.execute("""
                         SELECT table_name 
                         FROM information_schema.tables 
                         WHERE table_schema = 'public' 
                         AND table_type = 'BASE TABLE'
                         ORDER BY table_name
-                    """
-                    )
+                    """)
                     tables = [row[0] for row in cursor.fetchall()]
 
                 if not tables:
