@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
 <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <head>
     <meta charset="UTF-8">
@@ -37,17 +38,6 @@
                 of your original dataset while ensuring complete anonymity.
             </p>
 
-            <div class="alert alert-info">
-                <i class="fas fa-lightbulb"></i>
-                <strong>Mock Data Uses</strong><br>
-                <ul class="mb-0">
-                    <li>Testing data processing pipelines</li>
-                    <li>Sharing data structure examples with collaborators</li>
-                    <li>Creating demo datasets for presentations</li>
-                    <li>Developing and testing applications without privacy concerns</li>
-                </ul>
-            </div>
-
             <hr>
             <div id="jsonldSection">
                 <h6><i class="fas fa-sitemap"></i> JSON-LD Semantic Map</h6>
@@ -68,7 +58,8 @@
                     <button type="button" class="btn btn-outline-primary" id="uploadJsonldBtn" disabled>
                         <i class="fas fa-upload"></i> Upload JSON-LD
                     </button>
-                    <button type="button" class="btn btn-outline-secondary" id="useStoredJsonldBtn" style="display: none;">
+                    <button type="button" class="btn btn-outline-secondary" id="useStoredJsonldBtn"
+                            style="display: none;">
                         <i class="fas fa-database"></i> Use Stored JSON-LD
                     </button>
                     <div class="progress mt-3 d-none" id="uploadProgress">
@@ -83,19 +74,21 @@
                 </div>
             </div>
 
-            <hr>
             <div id="generationOptions" class="d-none">
+                <hr>
                 <h6><i class="fas fa-cogs"></i> Generation Options</h6>
 
                 <div class="form-group">
                     <label for="sampleCount"><strong>Number of Samples to Generate</strong></label>
                     <input type="number" class="form-control" id="sampleCount" min="1" max="10000" value="100">
-                    <small class="form-text text-muted">Enter the number of rows you want in your mock dataset (1-10,000).</small>
+                    <small class="form-text text-muted">Enter the number of rows you want in your mock dataset
+                        (1-10,000).</small>
                 </div>
 
                 <div class="form-group">
                     <label for="randomSeed"><strong>Random Seed (Optional)</strong></label>
-                    <input type="number" class="form-control" id="randomSeed" placeholder="Leave empty for random results">
+                    <input type="number" class="form-control" id="randomSeed"
+                           placeholder="Leave empty for random results">
                     <small class="form-text text-muted">Provide a seed for reproducible results.</small>
                 </div>
 
@@ -121,7 +114,7 @@
                 <button type="button" class="btn btn-primary mt-3" id="generateMockDataBtn">
                     <i class="fas fa-magic"></i> Generate Mock Data
                 </button>
-                
+
                 <div class="progress mt-3 d-none" id="generationProgress">
                     <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
                 </div>
@@ -143,7 +136,8 @@
                     </div>
                 </div>
 
-                <div class="alert alert-info mt-3">
+                <div class="alert alert-info mt-3"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
                     <i class="fas fa-info-circle"></i>
                     <strong>Data Format Notes:</strong>
                     <ul class="mb-0">
@@ -156,7 +150,7 @@
             </div>
         </div>
     </div>
-    
+
     <a href="/share_landing" class="btn btn-light">
         <i class="fas fa-arrow-left"></i> Return to Share Options
     </a>
@@ -187,7 +181,7 @@
 
             if (result && result.data) {
                 console.log('Flyover: Semantic map found in IndexedDB');
-                
+
                 // Validate that the stored map has the required structure
                 if (result.data.databases && Object.keys(result.data.databases).length > 0) {
                     storedJsonldData = result.data;
@@ -252,24 +246,36 @@
             $('#jsonldStatus').addClass('d-none');
             $('#jsonldUploadForm').addClass('d-none');
             $('#jsonldSuccess').removeClass('d-none');
-            
+
             // Update success message with statistics
             const dbCount = Object.keys(storedJsonldData.databases || {}).length;
-            const varCount = Object.keys(storedJsonldData.variable_info || {}).length;
             let tableCount = 0;
-            
+            let columnCount = 0;
+
             Object.values(storedJsonldData.databases || {}).forEach(db => {
-                tableCount += Object.keys(db.tables || {}).length;
+                const tables = db.tables || {};
+                tableCount += Object.keys(tables).length;
+
+                // Count columns across all tables
+                Object.values(tables).forEach(table => {
+                    const columns = table.columns || {};
+                    columnCount += Object.keys(columns).length;
+                });
             });
+
+            // Use proper pluralization
+            const dbLabel = dbCount === 1 ? 'database' : 'databases';
+            const tableLabel = tableCount === 1 ? 'table' : 'tables';
+            const columnLabel = columnCount === 1 ? 'column' : 'columns';
             
-            $('#jsonldSuccessMessage').text(` (${dbCount} database(s), ${tableCount} table(s), ${varCount} variable(s))`);
-            
+            $('#jsonldSuccessMessage').text(` (${dbCount} ${dbLabel}, ${tableCount} ${tableLabel}, ${columnCount} ${columnLabel})`);
+
             // Show generation options
             $('#generationOptions').removeClass('d-none');
-            
+
             // Populate database/table selects
             populateDatabaseTableSelects();
-            
+
         } else {
             // Show upload form
             $('#jsonldStatus').removeClass('d-none');
@@ -277,13 +283,13 @@
             $('#jsonldSuccess').addClass('d-none');
             $('#generationOptions').addClass('d-none');
             $('#generationResults').addClass('d-none');
-            
+
             $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
         }
     }
 
     // File upload handling
-    $('#jsonldFileInput').change(function(e) {
+    $('#jsonldFileInput').change(function (e) {
         const file = e.target.files[0];
         if (file) {
             $('.custom-file-label').html(file.name);
@@ -294,7 +300,7 @@
         }
     });
 
-    $('#uploadJsonldBtn').click(async function() {
+    $('#uploadJsonldBtn').click(async function () {
         const file = $('#jsonldFileInput')[0].files[0];
         if (!file) return;
 
@@ -305,15 +311,15 @@
 
         try {
             const reader = new FileReader();
-            reader.onload = async function(e) {
+            reader.onload = async function (e) {
                 try {
                     progressBar.width('50%').text('50%');
-                    
+
                     const fileContent = e.target.result;
                     const mappingData = JSON.parse(fileContent);
 
                     progressBar.width('75%').text('75%');
-                    
+
                     // Validate the JSON-LD structure
                     if (mappingData && (mappingData.databases || mappingData.variable_info)) {
                         // Store in IndexedDB using the correct method
@@ -323,12 +329,12 @@
                             data: mappingData,
                             timestamp: new Date().toISOString()
                         });
-                        
+
                         progressBar.width('100%').text('100%');
-                        
+
                         // Update state
                         storedJsonldData = mappingData;
-                        
+
                         setTimeout(() => {
                             $('#uploadProgress').addClass('d-none');
                             updateUIBasedOnJsonldAvailability();
@@ -346,7 +352,7 @@
                 }
             };
             reader.readAsText(file);
-            
+
         } catch (error) {
             console.error('Error reading file:', error);
             progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
@@ -357,19 +363,19 @@
         }
     });
 
-    $('#useStoredJsonldBtn').click(function() {
+    $('#useStoredJsonldBtn').click(function () {
         if (storedJsonldData) {
             updateUIBasedOnJsonldAvailability();
         }
     });
 
     // Database select change handler
-    $('#databaseSelect').change(function() {
+    $('#databaseSelect').change(function () {
         const selectedDb = $(this).val();
         updateTableOptions(selectedDb);
     });
 
-    $('#generateMockDataBtn').click(async function() {
+    $('#generateMockDataBtn').click(async function () {
         if (!storedJsonldData) {
             alert('Please upload or select a JSON-LD semantic map first.');
             return;
@@ -417,16 +423,16 @@
             }
 
             progressBar.width('75%').text('Processing results...');
-            
+
             // Store generated data
             generatedData = result.data;
-            
+
             // Show results
             setTimeout(() => {
                 progressBar.width('100%').text('Complete!');
                 showGenerationResults(result.data);
             }, 500);
-            
+
         } catch (error) {
             console.error('Error generating mock data:', error);
             progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
@@ -442,45 +448,68 @@
         $('#generationOptions').addClass('d-none');
         $('#generationResults').removeClass('d-none');
         $('#generationProgress').addClass('d-none');
-        
+
         // Update results message
         const tableCount = Object.keys(data).length;
         const sampleCount = $('#sampleCount').val();
-        
+
         let details = `${tableCount} table(s) generated with ${sampleCount} samples each.`;
-        
+
         if ($('#databaseSelect').val()) {
             details += ` Database: ${$('#databaseSelect').val()}`;
         }
         if ($('#tableSelect').val()) {
             details += ` Table: ${$('#tableSelect').val()}`;
         }
-        
+
         $('#resultsDetails').text(details);
-        
+
         // Create download buttons
         const downloadButtons = $('#downloadButtons');
         downloadButtons.empty();
-        
-        Object.entries(data).forEach(([tableKey, tableData]) => {
+
+        // Sort table keys for consistent ordering
+        const sortedEntries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
+
+
+        // Add a "Download All as ZIP" button first (if multiple tables)
+        if (Object.keys(data).length > 1) {
+            const zipButton = $(`
+                <button class="btn btn-primary download-all-btn zip-btn-width mb-3" id="downloadAllZipBtn">
+                    <i class="fas fa-file-archive"></i> Download all as ZIP
+                </button>
+            `);
+            downloadButtons.append(zipButton);
+            
+            // Add a line break after the ZIP button
+            downloadButtons.append($('<div class="w-100 mt-2"></div>'));
+        }
+        // Add individual download buttons on the line below
+        sortedEntries.forEach(([tableKey, tableData]) => {
             const [dbId, tableId] = tableKey.split('.');
             const button = $(`
-                <button class="btn btn-outline-secondary download-btn" 
+                <button class="btn btn-outline-secondary download-btn btn-fixed-width" 
                         data-db="${dbId}" 
-                        data-table="${tableId}">
-                    <i class="fas fa-download"></i> ${dbId}.${tableId}.csv
+                        data-table="${tableId}" 
+                        title="Download ${dbId}.${tableId} as CSV">
+                    <i class="fas fa-download"></i> ${dbId}<br>${tableId}
                 </button>
             `);
             downloadButtons.append(button);
         });
-        
+
         // Add event handlers to download buttons
-        $('.download-btn').click(function() {
+        $('.download-btn').click(function () {
             const dbId = $(this).data('db');
             const tableId = $(this).data('table');
             const tableKey = `${dbId}.${tableId}`;
-            
+
             downloadMockDataAsCSV(generatedData[tableKey], `${dbId}_${tableId}_mock.csv`);
+        });
+
+        // Add event handler for ZIP download
+        $('#downloadAllZipBtn').click(async function () {
+            await downloadAllMockDataAsZIP(generatedData);
         });
     }
 
@@ -488,11 +517,11 @@
         try {
             // Convert the mock data to CSV format
             let csvContent = 'data:text/csv;charset=utf-8,';
-            
+
             // Add headers
             const headers = Object.keys(data[0] || {});
             csvContent += headers.join(',') + '\r\n';
-            
+
             // Add data rows
             data.forEach(row => {
                 const rowData = headers.map(header => {
@@ -501,7 +530,7 @@
                     if (value === null || value === undefined) {
                         return '';
                     }
-                    
+
                     // Escape quotes and wrap in quotes if contains commas
                     value = String(value).replace(/"/g, '""');
                     if (value.includes(',')) {
@@ -511,21 +540,91 @@
                 });
                 csvContent += rowData.join(',') + '\r\n';
             });
-            
-            // Create download link
+
+            // Create a download link
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement('a');
             link.setAttribute('href', encodedUri);
             link.setAttribute('download', filename);
             document.body.appendChild(link);
-            
+
             // Trigger download
             link.click();
             document.body.removeChild(link);
-            
+
         } catch (error) {
             console.error('Error generating CSV:', error);
             alert('Error generating CSV download: ' + error.message);
+        }
+    }
+
+    // Download all mock data as a ZIP file
+    async function downloadAllMockDataAsZIP(data) {
+        try {
+            // Use JSZip library (we'll need to include it)
+            if (typeof JSZip === 'undefined') {
+                console.error('JSZip library not loaded');
+                alert('ZIP download requires JSZip library. Please try individual downloads.');
+                return;
+            }
+
+            const zip = new JSZip();
+
+            // Add each table as a separate CSV file in the ZIP
+            const sortedEntries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
+
+            for (const [tableKey, tableData] of sortedEntries) {
+                const [dbId, tableId] = tableKey.split('.');
+                const filename = `${dbId}_${tableId}_mock.csv`;
+
+                // Convert table data to CSV format
+                let csvContent = '';
+
+                // Add headers
+                const headers = Object.keys(tableData[0] || {});
+                csvContent += headers.join(',') + '\r\n';
+
+                // Add data rows
+                tableData.forEach(row => {
+                    const rowData = headers.map(header => {
+                        let value = row[header];
+                        if (value === null || value === undefined) {
+                            return '';
+                        }
+
+                        // Escape quotes and wrap in quotes if contains commas
+                        value = String(value).replace(/"/g, '""');
+                        if (value.includes(',')) {
+                            value = `"${value}"`;
+                        }
+                        return value;
+                    });
+                    csvContent += rowData.join(',') + '\r\n';
+                });
+
+                zip.file(filename, csvContent);
+            }
+
+            // Generate ZIP file
+            const zipContent = await zip.generateAsync({type: 'blob'});
+
+            // Create download link
+            const url = URL.createObjectURL(zipContent);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'mock_data_export.zip';
+            document.body.appendChild(link);
+
+            // Trigger download
+            link.click();
+            document.body.removeChild(link);
+
+            // Clean up
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+
+        } catch (error) {
+            console.error('Error creating ZIP file:', error);
+            alert('Error creating ZIP download: ' + error.message);
         }
     }
 
@@ -542,17 +641,17 @@
     }
 
     // Initialize the page
-    $(document).ready(async function() {
+    $(document).ready(async function () {
         // Check for stored semantic map
         const hasStoredMap = await checkStoredSemanticMap();
-        
+
         if (hasStoredMap) {
             $('#useStoredJsonldBtn').show();
             $('#jsonldStatusMessage').text('Found existing JSON-LD semantic map in browser storage.');
         } else {
             $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
         }
-        
+
         updateUIBasedOnJsonldAvailability();
     });
 
@@ -566,19 +665,124 @@
         background-color: #f8f9fa !important;
         border-bottom: 1px solid #dee2e6;
     }
-    
+
     .custom-file-label {
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
     }
-    
+
     .custom-file-label::after {
         content: "Browse";
     }
-    
+
     .form-text {
         margin-top: 3px;
+    }
+
+    /* Download button styling */
+    .btn-fixed-width {
+        min-width: 250px;
+        width: 250px;
+        text-align: left;
+        white-space: nowrap; /* Single line only */
+        overflow: hidden; /* Hide overflow */
+        text-overflow: ellipsis; /* Show ellipsis for overflow */
+        line-height: 1.2;
+        padding: 6px 12px;
+        height: 48px; /* Fixed height for consistency */
+        min-height: 48px;
+    }
+
+    .download-btn i {
+        margin-right: 8px;
+        opacity: 0.7;
+        flex-shrink: 0;
+        align-self: flex-start;
+        margin-top: 2px;
+    }
+
+    .download-all-btn i {
+        margin-right: 8px;
+        flex-shrink: 0;
+    }
+
+    #downloadButtons {
+        gap: 8px !important;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start; /* Align items to top */
+        width: 100%; /* Match info box width */
+        max-width: 100%; /* Ensure full width */
+    }
+    
+    /* Limit individual buttons to 4 per row */
+    .download-btn {
+        flex: 0 0 calc(25% - 8px); /* 4 buttons per row with gap */
+        max-width: calc(25% - 8px); /* Ensure they don't exceed */
+    }
+    
+    /* Ensure ZIP button takes full width on its line */
+    .zip-btn-width {
+        flex: 0 0 auto; /* Don't grow/shrink */
+        width: 200px; /* Fixed width */
+    }
+
+    /* ZIP button styling - narrower than individual buttons */
+    .zip-btn-width {
+        min-width: 200px;
+        width: 200px;
+        text-align: left;
+        white-space: nowrap; /* Single line only */
+        overflow: hidden; /* Hide overflow */
+        text-overflow: ellipsis; /* Show ellipsis for overflow */
+        line-height: 1.2;
+        padding: 6px 12px;
+        height: 48px; /* Fixed height for consistency */
+        min-height: 48px;
+    }
+    
+    /* Ensure consistent button container height */
+    .btn-container {
+        display: inline-flex;
+        flex-direction: column;
+        width: 200px;
+        margin-bottom: 8px;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .btn-fixed-width {
+            min-width: 200px;
+            width: 200px;
+            font-size: 0.85rem;
+            height: 48px; /* Fixed height for consistency */
+            min-height: 48px;
+            white-space: nowrap; /* Single line only */
+            overflow: hidden; /* Hide overflow */
+            text-overflow: ellipsis; /* Show ellipsis for overflow */
+        }
+
+        .zip-btn-width {
+            min-width: 180px;
+            width: 180px;
+            font-size: 0.85rem;
+            height: 48px; /* Fixed height for consistency */
+            min-height: 48px;
+            white-space: nowrap; /* Single line only */
+            overflow: hidden; /* Hide overflow */
+            text-overflow: ellipsis; /* Show ellipsis for overflow */
+        }
+        
+        .btn-container {
+            width: 200px;
+        }
+        
+        /* Mobile: 2 buttons per row for individual downloads */
+        .download-btn {
+            flex: 0 0 calc(50% - 8px); /* 2 buttons per row on mobile */
+            max-width: calc(50% - 8px);
+        }
     }
 </style>
 
