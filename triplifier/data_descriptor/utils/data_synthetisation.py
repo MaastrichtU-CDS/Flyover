@@ -11,25 +11,27 @@ _MISSING_VALUE_PROBABILITY = 0.1
 _IDENTIFIER_FORMAT = "ID_{:05d}"
 
 
-def preprocess_mixed_type_data(table_data: Dict[str, List[Union[str, int, float, None]]]) -> Dict[str, List[Union[str, int, float, None]]]:
+def preprocess_mixed_type_data(
+    table_data: Dict[str, List[Union[str, int, float, None]]],
+) -> Dict[str, List[Union[str, int, float, None]]]:
     """
     Pre-process table data to handle mixed types by converting to appropriate types.
     Specifically handles the case where missing values are lists like ["NULL"].
-    
+
     Args:
         table_data: Dictionary where keys are column names and values are lists of data
-        
+
     Returns:
         Processed table data with consistent types for each column
     """
     processed_data = {}
-    
+
     for col_name, col_values in table_data.items():
         processed_values = []
         has_list_values = False
         has_numeric = False
         has_string = False
-        
+
         # First pass: detect what types we have
         for value in col_values:
             if isinstance(value, list):
@@ -38,7 +40,7 @@ def preprocess_mixed_type_data(table_data: Dict[str, List[Union[str, int, float,
                 has_numeric = True
             elif isinstance(value, str):
                 has_string = True
-        
+
         # Second pass: convert values appropriately
         if has_list_values:
             # If we have list values, convert everything to string
@@ -65,9 +67,9 @@ def preprocess_mixed_type_data(table_data: Dict[str, List[Union[str, int, float,
         else:
             # All strings or other types - keep as is
             processed_values = col_values
-        
+
         processed_data[col_name] = processed_values
-    
+
     return processed_data
 
 
@@ -222,7 +224,7 @@ def generate_mock_data_from_semantic_map(
                 try:
                     # Preprocess data to handle mixed types and list-type missing values
                     processed_table_data = preprocess_mixed_type_data(table_data)
-                    
+
                     # Create DataFrame with the processed data
                     result[f"{db_id}.{tbl_id}"] = pl.DataFrame(processed_table_data)
                 except Exception as e:
@@ -231,15 +233,25 @@ def generate_mock_data_from_semantic_map(
                     for col_name, col_values in processed_table_data.items():
                         # Check if we have mixed types (e.g., integers and None)
                         has_none = any(v is None for v in col_values)
-                        has_numeric = any(isinstance(v, (int, float)) for v in col_values if v is not None)
-                        
+                        has_numeric = any(
+                            isinstance(v, (int, float))
+                            for v in col_values
+                            if v is not None
+                        )
+
                         if has_none and has_numeric:
-                            schema_overrides[col_name] = pl.Float64  # Use Float64 to handle None
+                            schema_overrides[col_name] = (
+                                pl.Float64
+                            )  # Use Float64 to handle None
                         elif has_none:
-                            schema_overrides[col_name] = pl.Utf8  # Use string type for mixed None/string
-                    
+                            schema_overrides[col_name] = (
+                                pl.Utf8
+                            )  # Use string type for mixed None/string
+
                     if schema_overrides:
-                        result[f"{db_id}.{tbl_id}"] = pl.DataFrame(processed_table_data, schema=schema_overrides)
+                        result[f"{db_id}.{tbl_id}"] = pl.DataFrame(
+                            processed_table_data, schema=schema_overrides
+                        )
                     else:
                         raise e
 
