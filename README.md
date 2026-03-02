@@ -27,7 +27,7 @@ the metadata, which can then be used to create annotations.
 
 For a detailed explanation and a practical example of this tool, please refer to the following open access published [paper](https://doi.org/10.1093/bjrai/ubae005).
 
-A video showcasing the Flyover process is available in `example_data/flyover-v2.0.1.mp4` and is embedded here:
+A video showcasing the Flyover process is available in `example_data/flyover-v3.2.0.mp4` and is embedded here:
 
 https://github.com/user-attachments/assets/b4b9d8ed-24d3-415d-93fb-6969bedbbee2
 
