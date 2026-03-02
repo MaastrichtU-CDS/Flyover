@@ -88,9 +88,19 @@
                         To generate Health DCAT-AP triples, you need a Flyover semantic mapping.
                     </p>
 
-                    <div id="jsonldStatus" class="alert alert-warning d-none">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <span id="jsonldStatusMessage">No JSON-LD semantic map found in browser storage.</span>
+                    <!-- Status message for JSON-LD -->
+                    <div id="jsonldStatus" class="alert alert-info d-none">
+                        <i class="fas fa-info-circle"></i>
+                        <span id="jsonldStatusMessage"></span>
+                    </div>
+
+                    <!-- Warning when existing JSON-LD is in IndexedDB (hidden by default) -->
+                    <div id="existingJsonldWarning" class="alert alert-info" style="display: none; font-size: 0.9em;">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Existing semantic map detected!</strong><br>
+                        You already have a semantic map stored in your browser from a previous session.
+                        You can use the stored map or upload a new JSON-LD file to overwrite it.
+                        <br><small class="text-muted">Current semantic map: <span id="existingJsonldInfo">-</span></small>
                     </div>
 
                     <div id="jsonldUploadForm" class="mb-3">
@@ -120,9 +130,6 @@
                         <button type="button" class="btn btn-primary" id="generateHealthDcatBtn">
                             <i class="fas fa-cog"></i> Generate Health DCAT-AP Triples
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" id="downloadHealthDcatBtn" disabled>
-                            <i class="fas fa-download"></i> Download Health DCAT-AP
-                        </button>
                     </div>
                 </div>
             </div>
@@ -140,57 +147,48 @@
 
 <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/shared-checks.js') }}"></script>
 <script>
     // Global variable to track if we have a valid JSON-LD map
     let hasValidJsonld = false;
     let storedJsonldData = null;
+    let detectedJsonldData = null;
 
-    async function checkStoredSemanticMap() {
-        try {
-            if (!FlyoverDB.isSupported()) {
-                console.warn('Flyover: IndexedDB not supported');
-                return false;
-            }
-
-            await FlyoverDB.initDB();
-            console.log('Flyover: IndexedDB initialized');
-
-            const result = await FlyoverDB.getData('metadata', 'semantic_map');
-
-            if (result && result.data) {
-                console.log('Flyover: Semantic map found in IndexedDB');
-                storedJsonldData = result.data;
-                return true;
-            } else {
-                console.log('Flyover: No semantic map found in IndexedDB');
-                return false;
-            }
-        } catch (error) {
-            console.error('Flyover: Error checking semantic map availability:', error);
-            return false;
-        }
-    }
 
     function updateUIBasedOnJsonldAvailability() {
         if (hasValidJsonld) {
-            // Show success message and controls
+            // Hide all other notifications
             $('#jsonldStatus').addClass('d-none');
+            $('#existingJsonldWarning').hide();
             $('#jsonldUploadForm').addClass('d-none');
+            
+            // Show success message and controls
             $('#jsonldSuccess').removeClass('d-none');
             $('#healthDcatControls').removeClass('d-none');
 
             // Update success message
             if (storedJsonldData) {
-                const dbCount = Object.keys(storedJsonldData.databases || {}).length;
-                const varCount = Object.keys(storedJsonldData.variable_info || {}).length;
-                $('#jsonldSuccessMessage').text(` (${dbCount} database(s), ${varCount} variable(s) mapped)`);
+                const stats = SharedChecks.getSemanticMapStats(storedJsonldData);
+                const dbLabel = stats.dbCount === 1 ? 'database' : 'databases';
+                $('#jsonldSuccessMessage').text(' (' + stats.dbCount + ' ' + dbLabel + ' ready for Health DCAT-AP generation)');
             }
         } else {
-            // Show upload form
-            $('#jsonldStatus').removeClass('d-none');
-            $('#jsonldUploadForm').removeClass('d-none');
+            // Hide success and controls
             $('#jsonldSuccess').addClass('d-none');
             $('#healthDcatControls').addClass('d-none');
+
+            if (detectedJsonldData) {
+                // Show warning and an upload form for the detected but not active map
+                $('#existingJsonldWarning').show();
+                $('#jsonldStatus').addClass('d-none');
+                $('#jsonldUploadForm').removeClass('d-none');
+                $('#jsonldStatusMessage').text('Existing semantic map detected. You can use it or upload a new one.');
+            } else {
+                // Hide all notifications when no map exists
+                $('#existingJsonldWarning').hide();
+                $('#jsonldStatus').addClass('d-none');
+                $('#jsonldUploadForm').removeClass('d-none');
+            }
         }
     }
 
@@ -230,7 +228,11 @@
                     if (mappingData && (mappingData.databases || mappingData.variable_info)) {
                         // Store in IndexedDB
                         await FlyoverDB.initDB();
-                        await FlyoverDB.storeData('metadata', 'semantic_map', mappingData);
+                        await FlyoverDB.saveData('metadata', {
+                            key: 'semantic_map',
+                            data: mappingData,
+                            timestamp: new Date().toISOString()
+                        });
 
                         progressBar.width('100%').text('100%');
 
@@ -267,44 +269,85 @@
     });
 
     $('#useStoredJsonldBtn').click(function () {
-        if (storedJsonldData) {
+        if (detectedJsonldData) {
+            storedJsonldData = detectedJsonldData;
             hasValidJsonld = true;
+            // Clean up the warning when using the stored map
+            $('#existingJsonldWarning').hide();
             updateUIBasedOnJsonldAvailability();
         }
     });
 
     $('#generateHealthDcatBtn').click(function () {
+        // Transform the generate button into a download button
+        const $btn = $('#generateHealthDcatBtn');
+        
+        // Show generating state
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generating...');
+
         // Simulate generation (this would be replaced with actual API call)
-        $('#generateHealthDcatBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generating...');
-
         setTimeout(() => {
-            $('#generateHealthDcatBtn').prop('disabled', false).html('<i class="fas fa-check"></i> Generation Complete');
-            $('#downloadHealthDcatBtn').prop('disabled', false);
-
-            // In a real implementation, this would trigger the actual generation
-            // and enable the download button when complete
+            // Transform into download button
+            $btn.prop('disabled', false)
+               .html('<i class="fas fa-download"></i> Download Health DCAT-AP')
+               .removeClass('btn-primary').addClass('btn-success')
+               .off('click').on('click', function() {
+                   // Download functionality
+                   alert('Health DCAT-AP download functionality would be implemented here.');
+                   // In a real implementation, this would trigger the download of the generated file
+               });
         }, 2000);
     });
 
-    $('#downloadHealthDcatBtn').click(function () {
-        alert('Health DCAT-AP download functionality would be implemented here.');
-        // In a real implementation, this would trigger the download of the generated file
-    });
-
-    // Initialize the page
-    $(document).ready(async function () {
-        // Check for stored semantic map
-        const hasStoredMap = await checkStoredSemanticMap();
-
-        if (hasStoredMap) {
-            hasValidJsonld = true;
-            $('#useStoredJsonldBtn').show();
-        } else {
-            $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
+    // Simplified initialisation
+    async function initPage() {
+        try {
+            // Check for existing semantic map
+            const result = await SharedChecks.checkSemanticMapInIndexedDB();
+            
+            if (result.hasMap) {
+                // Store the data but don't automatically use it - let user choose
+                detectedJsonldData = result.mapData;
+                
+                // Show warning and populate info
+                $('#existingJsonldWarning').show();
+                
+                const stats = SharedChecks.getSemanticMapStats(result.mapData);
+                const infoText = stats.dbCount + ' ' + (stats.dbCount === 1 ? 'database' : 'databases') + ', ' +
+                               stats.tableCount + ' ' + (stats.tableCount === 1 ? 'table' : 'tables') + ', ' +
+                               stats.columnCount + ' ' + (stats.columnCount === 1 ? 'column' : 'columns') + '.' ;
+                $('#existingJsonldInfo').text(infoText);
+                
+                $('#useStoredJsonldBtn').show();
+            }
+            // If no map, just show an upload form normally (no warning)
+        } catch (error) {
+            console.error('Error checking semantic map:', error);
         }
+    }
 
-        updateUIBasedOnJsonldAvailability();
+    // Initialize the page - using both DOMContentLoaded and jQuery ready
+    // Try modern DOMContentLoaded first
+    document.addEventListener('DOMContentLoaded', async function() {
+        await initializePage();
     });
+    
+    // Also try jQuery ready as fallback
+    $(document).ready(async function() {
+        await initializePage();
+    });
+    
+    // Fallback if DOM is already loaded
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(async function() {
+            await initializePage();
+        }, 100);
+    }
+    
+    async function initializePage() {
+        await initPage();
+        updateUIBasedOnJsonldAvailability();
+    }
 
     // Pass Flask variables to JavaScript for navigation header
     window.graph_exists = true; // Data exists in share landing step

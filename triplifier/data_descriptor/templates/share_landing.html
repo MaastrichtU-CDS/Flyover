@@ -19,8 +19,7 @@
     <h1><i class="fas fa-share"></i> Share</h1>
     <hr>
 
-    <p style="line-height: 1.5; margin: 0;">TODO: introduction to page<br>
-        On this page you will find various options to share metadata about your data in a privacy-preserving manner.</p>
+    <p style="line-height: 1.5; margin: 0;">Share metadata about your data in a privacy-aware manner using the options below.</p>
 
     <br>
     <div id="semanticMapSection" style="display: none;">
@@ -144,24 +143,17 @@
 
 <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/shared-checks.js') }}"></script>
 <script>
     async function checkSemanticMapAvailability() {
         try {
-            if (!FlyoverDB.isSupported()) {
-                console.warn('Flyover: IndexedDB not supported');
-                return;
-            }
+            const result = await SharedChecks.checkSemanticMapInIndexedDB();
 
-            await FlyoverDB.initDB();
-            console.log('Flyover: IndexedDB initialized');
-
-            const result = await FlyoverDB.getData('metadata', 'semantic_map');
-
-            if (result && result.data) {
-                console.log('Flyover: Semantic map found in IndexedDB, showing download section');
+            if (result.hasMap) {
+                console.log('Flyover: Valid semantic map found in IndexedDB, showing download section');
                 document.getElementById('semanticMapSection').style.display = 'block';
             } else {
-                console.log('Flyover: No semantic map found in IndexedDB, hiding download section');
+                console.log('Flyover: No valid semantic map found in IndexedDB, hiding download section');
                 document.getElementById('semanticMapSection').style.display = 'none';
             }
         } catch (error) {
@@ -170,12 +162,19 @@
         }
     }
 
-    function checkOntologyAvailability() {
-        if (window.graph_exists) {
-            console.log('Flyover: Data exists, showing ontology download section');
-            document.getElementById('ontologySection').style.display = 'block';
-        } else {
-            console.log('Flyover: No data exists, hiding ontology download section');
+    async function checkOntologyAvailability() {
+        try {
+            const result = await SharedChecks.checkGraphsInGraphDB();
+
+            if (result.hasGraphs) {
+                console.log('Flyover: Graphs exist, showing ontology download section');
+                document.getElementById('ontologySection').style.display = 'block';
+            } else {
+                console.log('Flyover: No graphs exist, hiding ontology download section');
+                document.getElementById('ontologySection').style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Flyover: Error checking ontology availability:', error);
             document.getElementById('ontologySection').style.display = 'none';
         }
     }

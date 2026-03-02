@@ -42,12 +42,22 @@
             <div id="jsonldSection">
                 <h6><i class="fas fa-sitemap"></i> JSON-LD Semantic Map</h6>
                 <p class="text-muted mb-3">
-                    To generate mock data, we need your semantic mapping in JSON-LD format.
+                    To generate mock data, you need a Flyover semantic mapping in JSON-LD format.
                 </p>
 
-                <div id="jsonldStatus" class="alert alert-warning d-none">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span id="jsonldStatusMessage">Checking for existing semantic map...</span>
+                <!-- Status message for JSON-LD -->
+                <div id="jsonldStatus" class="alert alert-info d-none">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="jsonldStatusMessage"></span>
+                </div>
+
+                <!-- Warning when existing JSON-LD is in IndexedDB (hidden by default) -->
+                <div id="existingJsonldWarning" class="alert alert-info" style="display: none; font-size: 0.9em;">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Existing semantic map detected!</strong><br>
+                    You already have a semantic map stored in your browser from a previous session.
+                    You can use the stored map or upload a new JSON-LD file to overwrite it.
+                    <br><small class="text-muted">Current semantic map: <span id="existingJsonldInfo">-</span></small>
                 </div>
 
                 <div id="jsonldUploadForm" class="mb-4">
@@ -82,7 +92,7 @@
                     <label for="sampleCount"><strong>Number of Samples to Generate</strong></label>
                     <input type="number" class="form-control" id="sampleCount" min="1" max="10000" value="100">
                     <small class="form-text text-muted">Enter the number of rows you want in your mock dataset
-                        (1-10,000).</small>
+                        (1–10,000).</small>
                 </div>
 
                 <div class="form-group">
@@ -130,7 +140,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label><strong>Download Generated Data</strong></label>
+                    <label><strong>Download mock data</strong></label>
                     <div id="downloadButtons" class="d-flex flex-wrap gap-2">
                         <!-- Download buttons will be added here dynamically -->
                     </div>
@@ -152,7 +162,7 @@
     </div>
 
     <a href="/share_landing" class="btn btn-light">
-        <i class="fas fa-arrow-left"></i> Return to Share Options
+        <i class="fas fa-arrow-left"></i> Return to Share options
     </a>
     <br><br>
 </div>
@@ -162,45 +172,16 @@
 
 <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/shared-checks.js') }}"></script>
 <script>
     // Global variables
     let storedJsonldData = null;
+    let detectedJsonldData = null;
     let generatedData = null;
 
-    async function checkStoredSemanticMap() {
-        try {
-            if (!FlyoverDB.isSupported()) {
-                console.warn('Flyover: IndexedDB not supported');
-                return false;
-            }
-
-            await FlyoverDB.initDB();
-            console.log('Flyover: IndexedDB initialized');
-
-            const result = await FlyoverDB.getData('metadata', 'semantic_map');
-
-            if (result && result.data) {
-                console.log('Flyover: Semantic map found in IndexedDB');
-
-                // Validate that the stored map has the required structure
-                if (result.data.databases && Object.keys(result.data.databases).length > 0) {
-                    storedJsonldData = result.data;
-                    return true;
-                } else {
-                    console.log('Flyover: Stored semantic map is missing databases structure');
-                    return false;
-                }
-            } else {
-                console.log('Flyover: No semantic map found in IndexedDB');
-                return false;
-            }
-        } catch (error) {
-            console.error('Flyover: Error checking semantic map availability:', error);
-            return false;
-        }
-    }
 
     function populateDatabaseTableSelects() {
+        console.log('Flyover: Populating database and table selects');
         if (!storedJsonldData) return;
 
         const databases = storedJsonldData.databases || {};
@@ -213,7 +194,7 @@
 
         // Populate databases
         Object.keys(databases).forEach(dbId => {
-            databaseSelect.append(`<option value="${dbId}">${dbId}</option>`);
+            databaseSelect.append('<option value="' + dbId + '">' + dbId + '</option>');
         });
 
         // If only one database, auto-select it
@@ -236,39 +217,29 @@
         tableSelect.find('option:not(:first)').remove();
 
         Object.keys(database.tables).forEach(tableId => {
-            tableSelect.append(`<option value="${tableId}">${tableId}</option>`);
+            tableSelect.append('<option value="' + tableId + '">' + tableId + '</option>');
         });
     }
 
     function updateUIBasedOnJsonldAvailability() {
         if (storedJsonldData) {
-            // Show success message
+            // Hide all other notifications
             $('#jsonldStatus').addClass('d-none');
+            $('#existingJsonldWarning').hide();
             $('#jsonldUploadForm').addClass('d-none');
+            
+            // Show a success message
             $('#jsonldSuccess').removeClass('d-none');
 
-            // Update success message with statistics
-            const dbCount = Object.keys(storedJsonldData.databases || {}).length;
-            let tableCount = 0;
-            let columnCount = 0;
-
-            Object.values(storedJsonldData.databases || {}).forEach(db => {
-                const tables = db.tables || {};
-                tableCount += Object.keys(tables).length;
-
-                // Count columns across all tables
-                Object.values(tables).forEach(table => {
-                    const columns = table.columns || {};
-                    columnCount += Object.keys(columns).length;
-                });
-            });
+            // Update the success message with statistics
+            const stats = SharedChecks.getSemanticMapStats(storedJsonldData);
 
             // Use proper pluralization
-            const dbLabel = dbCount === 1 ? 'database' : 'databases';
-            const tableLabel = tableCount === 1 ? 'table' : 'tables';
-            const columnLabel = columnCount === 1 ? 'column' : 'columns';
+            const dbLabel = stats.dbCount === 1 ? 'database' : 'databases';
+            const tableLabel = stats.tableCount === 1 ? 'table' : 'tables';
+            const columnLabel = stats.columnCount === 1 ? 'column' : 'columns';
             
-            $('#jsonldSuccessMessage').text(` (${dbCount} ${dbLabel}, ${tableCount} ${tableLabel}, ${columnCount} ${columnLabel})`);
+            $('#jsonldSuccessMessage').text(' (' + stats.dbCount + ' ' + dbLabel + ', ' + stats.tableCount + ' ' + tableLabel + ', ' + stats.columnCount + ' ' + columnLabel + ')');
 
             // Show generation options
             $('#generationOptions').removeClass('d-none');
@@ -277,14 +248,23 @@
             populateDatabaseTableSelects();
 
         } else {
-            // Show upload form
-            $('#jsonldStatus').removeClass('d-none');
-            $('#jsonldUploadForm').removeClass('d-none');
+            // Hide success and generation sections
             $('#jsonldSuccess').addClass('d-none');
             $('#generationOptions').addClass('d-none');
             $('#generationResults').addClass('d-none');
 
-            $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
+            if (detectedJsonldData) {
+                // Show warning and an upload form for the detected but not active map
+                $('#existingJsonldWarning').show();
+                $('#jsonldStatus').addClass('d-none');
+                $('#jsonldUploadForm').removeClass('d-none');
+                $('#jsonldStatusMessage').text('Existing semantic map detected. You can use it or upload a new one.');
+            } else {
+                // No map at all - show upload form and info message
+                $('#existingJsonldWarning').hide();
+                $('#jsonldStatus').removeClass('d-none');
+                $('#jsonldUploadForm').removeClass('d-none');
+            }
         }
     }
 
@@ -304,7 +284,7 @@
         const file = $('#jsonldFileInput')[0].files[0];
         if (!file) return;
 
-        // Show progress bar
+        // Show a progress bar
         $('#uploadProgress').removeClass('d-none');
         const progressBar = $('#uploadProgress .progress-bar');
         progressBar.width('25%').text('25%');
@@ -364,7 +344,10 @@
     });
 
     $('#useStoredJsonldBtn').click(function () {
-        if (storedJsonldData) {
+        if (detectedJsonldData) {
+            storedJsonldData = detectedJsonldData;
+            // Clean up the warning when using the stored map
+            $('#existingJsonldWarning').hide();
             updateUIBasedOnJsonldAvailability();
         }
     });
@@ -391,6 +374,10 @@
             return;
         }
 
+        // Clean up notifications before starting generation
+        $('#jsonldSuccess').addClass('d-none');
+        $('#existingJsonldWarning').hide();
+
         // Show generation progress
         $('#generationProgress').removeClass('d-none');
         const progressBar = $('#generationProgress .progress-bar');
@@ -413,7 +400,7 @@
             });
 
             if (!response.ok) {
-                throw new Error(`Server error: ${response.status} ${response.statusText}`);
+                throw new Error('Server error: ' + response.status + ' ' + response.statusText);
             }
 
             const result = await response.json();
@@ -453,13 +440,13 @@
         const tableCount = Object.keys(data).length;
         const sampleCount = $('#sampleCount').val();
 
-        let details = `${tableCount} table(s) generated with ${sampleCount} samples each.`;
+        let details = tableCount + ' table(s) generated with ' + sampleCount + ' samples each.';
 
         if ($('#databaseSelect').val()) {
-            details += ` Database: ${$('#databaseSelect').val()}`;
+            details += ' Database: ' + $('#databaseSelect').val();
         }
         if ($('#tableSelect').val()) {
-            details += ` Table: ${$('#tableSelect').val()}`;
+            details += ' Table: ' + $('#tableSelect').val();
         }
 
         $('#resultsDetails').text(details);
@@ -474,11 +461,11 @@
 
         // Add a "Download All as ZIP" button first (if multiple tables)
         if (Object.keys(data).length > 1) {
-            const zipButton = $(`
-                <button class="btn btn-primary download-all-btn zip-btn-width mb-3" id="downloadAllZipBtn">
-                    <i class="fas fa-file-archive"></i> Download all as ZIP
-                </button>
-            `);
+            const zipButton = $(
+                '<button class="btn btn-primary download-all-btn zip-btn-width mb-3" id="downloadAllZipBtn">' +
+                '    <i class="fas fa-file-archive"></i> Download all as ZIP' +
+                '</button>'
+            );
             downloadButtons.append(zipButton);
             
             // Add a line break after the ZIP button
@@ -487,14 +474,14 @@
         // Add individual download buttons on the line below
         sortedEntries.forEach(([tableKey, tableData]) => {
             const [dbId, tableId] = tableKey.split('.');
-            const button = $(`
-                <button class="btn btn-outline-secondary download-btn btn-fixed-width" 
-                        data-db="${dbId}" 
-                        data-table="${tableId}" 
-                        title="Download ${dbId}.${tableId} as CSV">
-                    <i class="fas fa-download"></i> ${dbId}<br>${tableId}
-                </button>
-            `);
+            const button = $(
+                '<button class="btn btn-outline-secondary download-btn btn-fixed-width" ' +
+                '        data-db="' + dbId + '" ' +
+                '        data-table="' + tableId + '" ' +
+                '        title="Download ' + dbId + '.' + tableId + ' as CSV">' +
+                '    <i class="fas fa-download"></i> ' + dbId + '<br>' + tableId +
+                '</button>'
+            );
             downloadButtons.append(button);
         });
 
@@ -502,9 +489,9 @@
         $('.download-btn').click(function () {
             const dbId = $(this).data('db');
             const tableId = $(this).data('table');
-            const tableKey = `${dbId}.${tableId}`;
+            const tableKey = dbId + '.' + tableId;
 
-            downloadMockDataAsCSV(generatedData[tableKey], `${dbId}_${tableId}_mock.csv`);
+            downloadMockDataAsCSV(generatedData[tableKey], dbId + '_' + tableId + '_mock.csv');
         });
 
         // Add event handler for ZIP download
@@ -534,7 +521,7 @@
                     // Escape quotes and wrap in quotes if contains commas
                     value = String(value).replace(/"/g, '""');
                     if (value.includes(',')) {
-                        value = `"${value}"`;
+                        value = '"' + value + '"';
                     }
                     return value;
                 });
@@ -563,7 +550,7 @@
         try {
             // Use JSZip library (we'll need to include it)
             if (typeof JSZip === 'undefined') {
-                console.error('JSZip library not loaded');
+                console.error('Flyover: JSZip library not loaded');
                 alert('ZIP download requires JSZip library. Please try individual downloads.');
                 return;
             }
@@ -575,7 +562,7 @@
 
             for (const [tableKey, tableData] of sortedEntries) {
                 const [dbId, tableId] = tableKey.split('.');
-                const filename = `${dbId}_${tableId}_mock.csv`;
+                const filename = dbId + '_' + tableId + '_mock.csv';
 
                 // Convert table data to CSV format
                 let csvContent = '';
@@ -595,7 +582,7 @@
                         // Escape quotes and wrap in quotes if contains commas
                         value = String(value).replace(/"/g, '""');
                         if (value.includes(',')) {
-                            value = `"${value}"`;
+                            value = '"' + value + '"';
                         }
                         return value;
                     });
@@ -608,7 +595,7 @@
             // Generate ZIP file
             const zipContent = await zip.generateAsync({type: 'blob'});
 
-            // Create download link
+            // Create a download link
             const url = URL.createObjectURL(zipContent);
             const link = document.createElement('a');
             link.href = url;
@@ -623,7 +610,7 @@
             setTimeout(() => URL.revokeObjectURL(url), 100);
 
         } catch (error) {
-            console.error('Error creating ZIP file:', error);
+            console.error('Flyover: Error creating ZIP file:', error);
             alert('Error creating ZIP download: ' + error.message);
         }
     }
@@ -640,23 +627,58 @@
         });
     }
 
-    // Initialize the page
-    $(document).ready(async function () {
-        // Check for stored semantic map
-        const hasStoredMap = await checkStoredSemanticMap();
-
-        if (hasStoredMap) {
-            $('#useStoredJsonldBtn').show();
-            $('#jsonldStatusMessage').text('Found existing JSON-LD semantic map in browser storage.');
-        } else {
-            $('#jsonldStatusMessage').text('No JSON-LD semantic map found. Please upload your semantic mapping file.');
+    // Simplified initialisation
+    async function initPage() {
+        try {
+            // Check for an existing semantic map
+            const result = await SharedChecks.checkSemanticMapInIndexedDB();
+            
+            if (result.hasMap) {
+                // Store the data but don't automatically use it - let user choose
+                detectedJsonldData = result.mapData;
+                
+                // Show warning and populate info
+                $('#existingJsonldWarning').show();
+                
+                const stats = SharedChecks.getSemanticMapStats(result.mapData);
+                const infoText = stats.dbCount + ' ' + (stats.dbCount === 1 ? 'database' : 'databases') + ', ' +
+                               stats.tableCount + ' ' + (stats.tableCount === 1 ? 'table' : 'tables') + ', ' + 'and ' +
+                               stats.columnCount + ' ' + (stats.columnCount === 1 ? 'column' : 'columns') + '.' ;
+                $('#existingJsonldInfo').text(infoText);
+                
+                $('#useStoredJsonldBtn').show();
+            }
+            // If no map, just show the upload form normally (no warning)
+        } catch (error) {
+            console.error('Error checking semantic map:', error);
         }
+    }
 
-        updateUIBasedOnJsonldAvailability();
+    // Initialise the page - using both DOMContentLoaded and jQuery ready
+    // Try modern DOMContentLoaded first
+    document.addEventListener('DOMContentLoaded', async function() {
+        await initializePage();
     });
+    
+    // Also try jQuery ready as fallback
+    $(document).ready(async function() {
+        await initializePage();
+    });
+    
+    // Fallback if DOM is already loaded
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(async function() {
+            await initializePage();
+        }, 100);
+    }
+    
+    async function initializePage() {
+        await initPage();
+        updateUIBasedOnJsonldAvailability();
+    }
 
     // Pass Flask variables to JavaScript for navigation header
-    window.graph_exists = true; // Data exists in share landing step
+    window.graph_exists = true; // Data exists in the Share landing step
 </script>
 
 <!-- Custom CSS for this page -->
