@@ -105,14 +105,17 @@
 
                     <div id="jsonldUploadForm" class="mb-3">
                         <div class="custom-file mb-3">
-                            <input type="file" class="custom-file-input" id="jsonldFileInput" accept=".jsonld">
+                            <input type="file" class="custom-file-input" id="jsonldFileInput" accept=".jsonld" disabled>
                             <label class="custom-file-label" for="jsonldFileInput">Choose JSON-LD file...</label>
                         </div>
-                        <button type="button" class="btn btn-outline-primary" id="uploadJsonldBtn" disabled>
+                        <button type="button" class="btn btn-outline-primary disabled" id="uploadJsonldBtn" disabled
+                                data-toggle="tooltip" data-placement="top"
+                                title="This feature is under construction and will be implemented in future updates.">
                             <i class="fas fa-upload"></i> Upload JSON-LD
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" id="useStoredJsonldBtn"
-                                style="display: none;">
+                        <button type="button" class="btn btn-outline-secondary disabled" id="useStoredJsonldBtn" disabled
+                                data-toggle="tooltip" data-placement="top"
+                                title="This feature is under construction and will be implemented in future updates.">
                             <i class="fas fa-database"></i> Use Stored JSON-LD
                         </button>
                         <div class="progress mt-3 d-none" id="uploadProgress">
@@ -149,6 +152,11 @@
 <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/shared-checks.js') }}"></script>
 <script>
+    // Initialize tooltips
+    $(document).ready(function() {
+        $('[data-toggle="tooltip"]').tooltip();
+    });
+
     // Global variable to track if we have a valid JSON-LD map
     let hasValidJsonld = false;
     let storedJsonldData = null;
@@ -156,126 +164,35 @@
 
 
     function updateUIBasedOnJsonldAvailability() {
-        if (hasValidJsonld) {
-            // Hide all other notifications
-            $('#jsonldStatus').addClass('d-none');
-            $('#existingJsonldWarning').hide();
-            $('#jsonldUploadForm').addClass('d-none');
-            
-            // Show success message and controls
-            $('#jsonldSuccess').removeClass('d-none');
-            $('#healthDcatControls').removeClass('d-none');
-
-            // Update success message
-            if (storedJsonldData) {
-                const stats = SharedChecks.getSemanticMapStats(storedJsonldData);
-                const dbLabel = stats.dbCount === 1 ? 'database' : 'databases';
-                $('#jsonldSuccessMessage').text(' (' + stats.dbCount + ' ' + dbLabel + ' ready for Health DCAT-AP generation)');
-            }
-        } else {
-            // Hide success and controls
-            $('#jsonldSuccess').addClass('d-none');
-            $('#healthDcatControls').addClass('d-none');
-
-            if (detectedJsonldData) {
-                // Show warning and an upload form for the detected but not active map
-                $('#existingJsonldWarning').show();
-                $('#jsonldStatus').addClass('d-none');
-                $('#jsonldUploadForm').removeClass('d-none');
-                $('#jsonldStatusMessage').text('Existing semantic map detected. You can use it or upload a new one.');
-            } else {
-                // Hide all notifications when no map exists
-                $('#existingJsonldWarning').hide();
-                $('#jsonldStatus').addClass('d-none');
-                $('#jsonldUploadForm').removeClass('d-none');
-            }
-        }
+        // Health DCAT-AP section is completely disabled - keep everything disabled
+        $('#jsonldStatus').addClass('d-none');
+        $('#existingJsonldWarning').hide();
+        $('#jsonldSuccess').addClass('d-none');
+        $('#healthDcatControls').addClass('d-none');
+        
+        // Ensure upload form is visible but disabled
+        $('#jsonldUploadForm').removeClass('d-none');
+        
+        // Make sure Use Stored JSON-LD button is visible but disabled
+        $('#useStoredJsonldBtn').show();
     }
 
-    // File upload handling
+    // File upload handling - DISABLED for Health DCAT-AP section
     $('#jsonldFileInput').change(function (e) {
-        const file = e.target.files[0];
-        if (file) {
-            $('.custom-file-label').html(file.name);
-            $('#uploadJsonldBtn').prop('disabled', false);
-        } else {
-            $('.custom-file-label').html('Choose JSON-LD file...');
-            $('#uploadJsonldBtn').prop('disabled', true);
-        }
+        // Prevent any file selection action
+        $(this).val('');
+        $('.custom-file-label').html('Choose JSON-LD file...');
+        alert('This feature is under construction and will be implemented in future updates.');
     });
 
-    $('#uploadJsonldBtn').click(async function () {
-        const file = $('#jsonldFileInput')[0].files[0];
-        if (!file) return;
-
-        // Show progress bar
-        $('#uploadProgress').removeClass('d-none');
-        const progressBar = $('#uploadProgress .progress-bar');
-        progressBar.width('25%').text('25%');
-
-        try {
-            const reader = new FileReader();
-            reader.onload = async function (e) {
-                try {
-                    progressBar.width('50%').text('50%');
-
-                    const fileContent = e.target.result;
-                    const mappingData = JSON.parse(fileContent);
-
-                    progressBar.width('75%').text('75%');
-
-                    // Validate the JSON-LD structure
-                    if (mappingData && (mappingData.databases || mappingData.variable_info)) {
-                        // Store in IndexedDB
-                        await FlyoverDB.initDB();
-                        await FlyoverDB.saveData('metadata', {
-                            key: 'semantic_map',
-                            data: mappingData,
-                            timestamp: new Date().toISOString()
-                        });
-
-                        progressBar.width('100%').text('100%');
-
-                        // Update state
-                        hasValidJsonld = true;
-                        storedJsonldData = mappingData;
-
-                        setTimeout(() => {
-                            $('#uploadProgress').addClass('d-none');
-                            updateUIBasedOnJsonldAvailability();
-                        }, 500);
-                    } else {
-                        throw new Error('Invalid JSON-LD structure');
-                    }
-                } catch (error) {
-                    console.error('Error processing JSON-LD file:', error);
-                    progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
-                    setTimeout(() => {
-                        $('#uploadProgress').addClass('d-none');
-                        alert('Error processing JSON-LD file: ' + error.message);
-                    }, 1000);
-                }
-            };
-            reader.readAsText(file);
-
-        } catch (error) {
-            console.error('Error reading file:', error);
-            progressBar.addClass('bg-danger').removeClass('bg-success').text('Error');
-            setTimeout(() => {
-                $('#uploadProgress').addClass('d-none');
-                alert('Error reading file: ' + error.message);
-            }, 1000);
-        }
+    $('#uploadJsonldBtn').click(function () {
+        // Prevent any upload action
+        alert('This feature is under construction and will be implemented in future updates.');
     });
 
     $('#useStoredJsonldBtn').click(function () {
-        if (detectedJsonldData) {
-            storedJsonldData = detectedJsonldData;
-            hasValidJsonld = true;
-            // Clean up the warning when using the stored map
-            $('#existingJsonldWarning').hide();
-            updateUIBasedOnJsonldAvailability();
-        }
+        // Prevent any stored data usage
+        alert('This feature is under construction and will be implemented in future updates.');
     });
 
     $('#generateHealthDcatBtn').click(function () {
@@ -299,31 +216,11 @@
         }, 2000);
     });
 
-    // Simplified initialisation
+    // Simplified initialisation - Health DCAT-AP section is disabled
     async function initPage() {
-        try {
-            // Check for existing semantic map
-            const result = await SharedChecks.checkSemanticMapInIndexedDB();
-            
-            if (result.hasMap) {
-                // Store the data but don't automatically use it - let user choose
-                detectedJsonldData = result.mapData;
-                
-                // Show warning and populate info
-                $('#existingJsonldWarning').show();
-                
-                const stats = SharedChecks.getSemanticMapStats(result.mapData);
-                const infoText = stats.dbCount + ' ' + (stats.dbCount === 1 ? 'database' : 'databases') + ', ' +
-                               stats.tableCount + ' ' + (stats.tableCount === 1 ? 'table' : 'tables') + ', ' +
-                               stats.columnCount + ' ' + (stats.columnCount === 1 ? 'column' : 'columns') + '.' ;
-                $('#existingJsonldInfo').text(infoText);
-                
-                $('#useStoredJsonldBtn').show();
-            }
-            // If no map, just show an upload form normally (no warning)
-        } catch (error) {
-            console.error('Error checking semantic map:', error);
-        }
+        // No need to check for existing data since the section is completely disabled
+        // Just ensure the UI shows the disabled state properly
+        updateUIBasedOnJsonldAvailability();
     }
 
     // Initialize the page - using both DOMContentLoaded and jQuery ready
