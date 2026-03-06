@@ -70,6 +70,7 @@ from utils.session_helpers import (
     DATABASE_NAME_PATTERN,
     get_table_names_from_mapping,
 )
+from utils.data_synthetisation import generate_mock_data_from_semantic_map
 from annotation_helper.src.miscellaneous import add_annotation
 from validation import MappingValidator
 from loaders import JSONLDMapping
@@ -628,7 +629,7 @@ def retrieve_descriptive_info():
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
         it renders the 'describe_variable_details.html' template with the list of variables to further specify,
-        or proceeds to 'describe_downloads' in case there are no variables to specify.
+        or proceeds to 'annotation_review' in case there are no variables to specify.
     """
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
@@ -713,8 +714,8 @@ def retrieve_descriptive_info():
     if session_cache.DescriptiveInfoDetails:
         return redirect(url_for("describe_variable_details"))
     else:
-        # Redirect to the new route after processing the POST request
-        return redirect(url_for("describe_downloads"))
+        # Redirect to annotation review after processing the POST request
+        return redirect(url_for("annotation_review"))
 
 
 @app.route("/describe_variable_details")
@@ -873,21 +874,45 @@ def retrieve_detailed_descriptive_info():
                 session_cache.descriptive_info[database], variable, database
             )
 
-    # Redirect the user to the 'download_page' URL
-    return redirect(url_for("describe_downloads"))
+    # Redirect the user to the 'annotation_review' URL
+    return redirect(url_for("annotation_review"))
 
 
-@app.route("/describe_downloads")
-def describe_downloads():
+@app.route("/share_landing")
+def share_landing():
     """
-    This function is responsible for rendering the 'describe_downloads.html' page.
+    This function is responsible for rendering the 'share_landing.html' page.
     Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
 
     Returns:
-        flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
+        flask.render_template: A Flask function that renders the 'share_landing.html' template.
     """
     return render_template(
-        "describe_downloads.html", graphdb_location="http://localhost:7200/"
+        "share_landing.html", graphdb_location="http://localhost:7200/"
+    )
+
+
+@app.route("/share_mock")
+def share_mock():
+    """
+    This function is responsible for rendering the mock data generation page.
+
+    Returns:
+        flask.render_template: A Flask function that renders the 'share_mock.html' template.
+    """
+    return render_template("share_mock.html", graphdb_location="http://localhost:7200/")
+
+
+@app.route("/share_publish")
+def share_publish():
+    """
+    This function is responsible for rendering the publishing options page.
+
+    Returns:
+        flask.render_template: A Flask function that renders the 'share_publish.html' template.
+    """
+    return render_template(
+        "share_publish.html", graphdb_location="http://localhost:7200/"
     )
 
 
@@ -1486,12 +1511,12 @@ def annotation_verify():
     # Check if any semantic map is available
     if not has_semantic_map(session_cache):
         flash("No semantic map available.")
-        return redirect(url_for("describe_downloads"))
+        return redirect(url_for("share_landing"))
 
     # Ensure databases are initialised from the RDF-store if not already populated
     if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available.")
-        return redirect(url_for("describe_downloads"))
+        return redirect(url_for("share_landing"))
 
     map_table_names = get_table_names_from_mapping(session_cache)
 
@@ -1841,6 +1866,126 @@ def api_check_graph_exists():
         return jsonify({"exists": exists})
     except Exception as e:
         return jsonify({"exists": False, "error": str(e)})
+
+
+@app.route("/api/generate-mock-data", methods=["POST"])
+def api_generate_mock_data():
+    """
+    API endpoint to generate mock data from a JSON-LD semantic map.
+
+    This endpoint uses the generate_mock_data_from_semantic_map function to create
+    synthetic data based on the provided semantic mapping.
+
+    Expects JSON payload with:
+    - jsonld_map: JSON-LD semantic mapping
+    - num_rows: Number of rows to generate (default: 100)
+    - random_seed: Optional random seed for reproducibility
+    - database_id: Optional specific database to generate for
+    - table_id: Optional specific table to generate for
+
+    Returns:
+        flask.jsonify: JSON response with success status and generated data
+    """
+    try:
+        # Get JSON data from request body
+        data = request.get_json()
+
+        if not data:
+            return (
+                jsonify(
+                    {"success": False, "error": "No JSON data provided in request body"}
+                ),
+                400,
+            )
+
+        # Extract parameters
+        jsonld_map = data.get("jsonld_map")
+        num_rows = data.get("num_rows", 100)
+        random_seed = data.get("random_seed")
+        database_id = data.get("database_id")
+        table_id = data.get("table_id")
+
+        if not jsonld_map:
+            return (
+                jsonify(
+                    {"success": False, "error": "No JSON-LD semantic map provided"}
+                ),
+                400,
+            )
+
+        if not isinstance(num_rows, int) or num_rows < 1 or num_rows > 10000:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "num_rows must be an integer between 1 and 10000",
+                    }
+                ),
+                400,
+            )
+
+        # Validate the JSON-LD structure
+        if not isinstance(jsonld_map, dict):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "jsonld_map must be a valid JSON object",
+                    }
+                ),
+                400,
+            )
+
+        if "databases" not in jsonld_map and "variable_info" not in jsonld_map:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "jsonld_map must contain 'databases' or 'variable_info'",
+                    }
+                ),
+                400,
+            )
+
+        # Call the mock data generation function
+        logger.info(
+            f"Generating mock data with {num_rows} rows for database: {database_id}, table: {table_id}"
+        )
+
+        generated_data = generate_mock_data_from_semantic_map(
+            jsonld_map=jsonld_map,
+            num_rows=num_rows,
+            random_seed=random_seed,
+            database_id=database_id,
+            table_id=table_id,
+        )
+
+        # Convert polars DataFrames to lists of dictionaries for JSON serialization
+        result_data = {}
+        for table_key, dataframe in generated_data.items():
+            result_data[table_key] = dataframe.to_dicts()
+
+        logger.info(f"Successfully generated mock data for {len(result_data)} tables")
+
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Generated mock data for {len(result_data)} tables with {num_rows} rows each",
+                "data": result_data,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating mock data: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+        return (
+            jsonify(
+                {"success": False, "error": f"Failed to generate mock data: {str(e)}"}
+            ),
+            500,
+        )
 
 
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
