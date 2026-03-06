@@ -29,7 +29,7 @@ For a detailed explanation and a practical example of this tool, please refer to
 
 A video showcasing the Flyover process is available in `example_data/flyover-v3.2.0.mp4` and is embedded here:
 
-https://github.com/user-attachments/assets/e340dea7-c00b-4e84-881a-2b549a253c18
+https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 
 ## Components
 
