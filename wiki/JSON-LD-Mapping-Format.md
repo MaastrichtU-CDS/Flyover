@@ -1,6 +1,8 @@
 # JSON-LD Mapping Format
 
-Since Flyover v3.0.0, semantic mappings use the **JSON-LD** format (`.jsonld` files). This format separates the reusable _schema_ (variable definitions, ontology classes, reconstruction rules) from the _local mappings_ (site-specific column names and value translations).
+Since Flyover v3.0.0, semantic mappings use the **JSON-LD** format (`.jsonld` files). Each JSON-LD mapping file is **project-specific** — it declares which variables your project will map and how they relate to standardised ontologies. The format separates the reusable _schema_ (variable definitions, ontology classes, reconstruction rules) from the _local mappings_ (site-specific column names and value translations).
+
+The JSON-LD file is used during the **Describe** and **Annotate** steps of the Flyover workflow to pre-populate variable descriptions and drive the semantic annotation process.
 
 A template is available at [`example_data/mapping_template.jsonld`](https://github.com/MaastrichtU-CDS/Flyover/blob/main/example_data/mapping_template.jsonld).
 
