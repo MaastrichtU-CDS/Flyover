@@ -16,7 +16,7 @@
 
 ## Introduction
 
-Flyover is a dockerized Data FAIR-ification tool that transforms structured datasets into semantically enriched, interoperable formats. It provides a web interface that guides you through the full process — from data ingestion to semantic annotation and sharing — making your data Findable, Accessible, Interoperable, and Reusable.
+Flyover is a dockerised Data FAIR-ification tool that transforms structured datasets into semantically enriched, interoperable formats. It provides a web interface that guides you through the full process — from data ingestion to semantic annotation and sharing — making your data Findable, Accessible, Interoperable, and Reusable.
 
 Flyover works with CSV files and PostgreSQL databases, and uses linked data standards such as RDF and JSON-LD for its semantic representations.
 
@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 Clone the repository and start the services:
 
 ```bash
-docker-compose up -d
+docker-compose up -d --pull always
 ```
 
 | Service | URL | Description |
@@ -67,13 +67,15 @@ The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed do
 
 ## References
 
-- Gouthamchand, V., Hogenboom, J., Wee, L., & van Soest, J. (2024). Flyover: A model-agnostic tool to generate linked data from flat data. *BJR|AI*, 1(1), ubae005. [doi:10.1093/bjrai/ubae005](https://doi.org/10.1093/bjrai/ubae005)
-- Hogenboom, J., Gouthamchand, V., Wee, L., & van Soest, J. (2025). Local Semantic Interoperability Through a FAIR Data Pipeline: A Practical Approach. *JCO Clinical Cancer Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
+- Gouthamchand, V., Choudhury, A., ..., and Wee, L. (2024). Making head and neck cancer clinical data Findable-Accessible-Interoperable-Reusable to support multi-institutional collaboration and federated learning . *BJR|Artificial Intelligence*, 1(1), ubae005. [doi:10.1093/bjrai/ubae005](https://doi.org/10.1093/bjrai/ubae005)
+- Hogenboom, J., Gouthamchand, V., ..., and Lobo gomes, A. (2026). Knowledge Representation of a Multicenter Adolescent and Young Adult Cancer Infrastructure: Development of the STRONG AYA Knowledge Graph *JCO Clinical Cancer Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
 - Flyover software archive on Zenodo. [doi:10.5281/zenodo.17419799](https://doi.org/10.5281/zenodo.17419799)
 
 ## Developers
 
 - Varsha Gouthamchand
 - Joshi Hogenboom
+- Tim Hendriks
+- Hossein Rahmani
 - Johan van Soest
 - Leonard Wee

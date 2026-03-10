@@ -86,7 +86,7 @@ Schema reconstruction allows you to modify the graph structure around a variable
 
 ### Class Node (`schema:ClassNode`)
 
-Adds an intermediate class node to group or contextualize variables.
+Adds an intermediate class node to group or contextualise variables.
 
 ```jsonld
 "schemaReconstruction": [
