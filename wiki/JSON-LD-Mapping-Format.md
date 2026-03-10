@@ -178,24 +178,63 @@ Each key in `terms` is the value as it appears in the schema. The `targetClass` 
 
 ## Local Database Mappings
 
-The `databases` section maps your local data structure to the schema. Site-specific column names and local terminology are defined here:
+The `databases` section maps your local data structure to the schema. Site-specific column names, local terminology, and database metadata are defined here.
+
+### Database Fields
+
+- `@id` — Unique identifier for the database
+- `@type` — Always `mapping:Database`
+- `name` (optional) — Human-readable name for the database
+- `description` (optional) — Text description of the database
+- `locale` (optional) — Locale code for the data (e.g., `en_GB`, `nl_NL`)
+- `endpoint` (optional) — Database-specific endpoint override
+- `tables` — Object containing one or more table definitions
+
+### Table Fields
+
+- `@id` — Unique identifier for the table
+- `@type` — Always `mapping:Table`
+- `sourceFile` (optional) — Source file name or path
+- `description` (optional) — Text description of the table
+- `columns` — Object containing one or more column mappings
+
+### Column Mapping Fields
+
+- `mapsTo` — Reference to the schema variable this column maps to (e.g., `schema:variable/biological_sex`)
+- `localColumn` — The name of the column in your local data
+- `localMappings` (optional) — Maps schema-level term keys to your local values
+
+### Example
 
 ```jsonld
 "databases": {
-  "my_database": {
-    "@id": "mapping:database/my_database",
+  "centre_a_ehr": {
+    "@id": "mapping:database/centre_a_ehr",
     "@type": "mapping:Database",
+    "name": "Centre A EHR",
+    "description": "Main EHR database for Centre A (English)",
+    "locale": "en_GB",
     "tables": {
       "patients": {
         "@id": "mapping:table/patients",
         "@type": "mapping:Table",
+        "sourceFile": "patients",
+        "description": "Patient dataset with 150 records",
         "columns": {
-          "sex": {
-            "@type": "mapping:ColumnMapping",
+          "biological_sex": {
             "mapsTo": "schema:variable/biological_sex",
+            "localColumn": "sex",
             "localMappings": {
-              "male": { "localTerm": "M" },
-              "female": { "localTerm": "F" }
+              "male": "M",
+              "female": "F",
+              "missing_or_unspecified": ""
+            }
+          },
+          "age_at_diagnosis": {
+            "mapsTo": "schema:variable/age_at_diagnosis",
+            "localColumn": "age",
+            "localMappings": {
+              "missing_or_unspecified": ""
             }
           }
         }
@@ -204,12 +243,6 @@ The `databases` section maps your local data structure to the schema. Site-speci
   }
 }
 ```
-
-### Column Mapping Fields
-
-- `@type` — Always `mapping:ColumnMapping`
-- `mapsTo` — Reference to the schema variable this column maps to
-- `localMappings` (optional) — Maps schema-level term keys to your local values using `localTerm`
 
 ## Complete Example
 
