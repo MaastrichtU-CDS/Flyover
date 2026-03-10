@@ -46,7 +46,7 @@ See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki
 Flyover guides you through four distinct steps:
 
 1. **Ingest** — Upload your data (CSV files or connect to a PostgreSQL database). Flyover converts your data into a structured, semantic representation and stores it in the repository.
-2. **Describe** — Provide metadata for your variables: specify data types, define properties, and add semantic context to each column in your dataset. Optionally supply a [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) to pre-populate descriptions.
+2. **Describe** — Provide metadata for your variables: specify data types, define properties, and add semantic context to each column in your dataset. Optionally supply a pre-filled [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) to pre-populate descriptions.
 3. **Annotate** — Link your variables to standardised ontologies and terminologies using the built-in annotation interface. A filled-in [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) for your data model is needed to drive the annotation process. Review and verify annotations to ensure semantic correctness.
 4. **Share** — Download filled-in semantic maps, generate anonymous mock data that preserves the structure of your dataset, and share your project with a wider audience.
 
@@ -68,7 +68,7 @@ The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed do
 ## References
 
 - Gouthamchand, V., Choudhury, A., ..., and Wee, L. (2024). Making head and neck cancer clinical data Findable-Accessible-Interoperable-Reusable to support multi-institutional collaboration and federated learning . *BJR|Artificial Intelligence*, 1(1), ubae005. [doi:10.1093/bjrai/ubae005](https://doi.org/10.1093/bjrai/ubae005)
-- Hogenboom, J., Gouthamchand, V., ..., and Lobo gomes, A. (2026). Knowledge Representation of a Multicenter Adolescent and Young Adult Cancer Infrastructure: Development of the STRONG AYA Knowledge Graph *JCO Clinical Cancer Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
+- Hogenboom, J., Gouthamchand, V., ..., and Lobo Gomes, A. (2026). Knowledge Representation of a Multicenter Adolescent and Young Adult Cancer Infrastructure: Development of the STRONG AYA Knowledge Graph *JCO Clinical Cancer Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
 - Flyover software archive on Zenodo. [doi:10.5281/zenodo.17419799](https://doi.org/10.5281/zenodo.17419799)
 
 ## Developers
