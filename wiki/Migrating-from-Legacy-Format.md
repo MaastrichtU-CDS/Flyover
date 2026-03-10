@@ -9,7 +9,7 @@ Starting with Flyover v3.0.0, the mapping format changed from plain JSON to JSON
 - Separates the reusable **schema** (variable definitions) from **local mappings** (site-specific column names and values)
 - Uses standard JSON-LD context for linked data compatibility
 - Supports validation against a JSON Schema
-- Is required by the current version of Flyover and the Annotation Helper
+- Is required by the current version of Flyover
 
 ## Using the Conversion Script
 

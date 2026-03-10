@@ -19,7 +19,7 @@ This will start two services:
 | Service | URL | Description |
 |---|---|---|
 | Web interface | [http://localhost:5000](http://localhost:5000) | Upload and describe your data |
-| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the RDF store (GraphDB) |
+| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (GraphDB) |
 
 ## Docker Compose Configuration
 
@@ -40,12 +40,12 @@ environment:
 
 ## Workflow
 
-Flyover guides you through a multi-step process:
+Flyover guides you through four distinct steps:
 
-1. **Ingest** — Upload your data (CSV files or connect to a PostgreSQL database). The Triplifier converts them into RDF triples and stores them in the RDF repository.
-2. **Describe** — Describe your variables, their data types, and semantics through the web interface.
-3. **Annotate** — Apply semantic annotations to your data using JSON-LD mapping files, either through the UI or the [Annotation Helper](Annotation-Helper.md) script.
-4. **Share** — Publish anonymous metadata and generate mock data for sharing.
+1. **Ingest** — Upload your data (CSV files or connect to a PostgreSQL database) and optionally supply a [JSON-LD semantic map](JSON-LD-Mapping-Format.md). Flyover converts your data into a structured, semantic representation and stores it in the repository.
+2. **Describe** — Provide metadata for your variables: specify data types, define properties, and add semantic context to each column in your dataset.
+3. **Annotate** — Link your variables to standardised ontologies and terminologies using the built-in annotation interface. Review and verify annotations to ensure semantic correctness.
+4. **Share** — Download your semantic map, generate anonymous mock data that preserves the structure of your dataset, and create interactive codebooks for documentation.
 
 ## Next Steps
 

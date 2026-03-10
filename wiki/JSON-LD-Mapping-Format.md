@@ -65,10 +65,10 @@ Each variable in the `schema.variables` object describes a semantic concept. The
 
 | `@type` | `dataType` | Description |
 |---|---|---|
-| `schema:IdentifierVariable` | `identifier` | Unique patient/record identifier |
+| `schema:IdentifierVariable` | `identifier` | Unique record identifier |
 | `schema:CategoricalVariable` | `categorical` | Discrete categories (e.g., male/female) |
 | `schema:ContinuousVariable` | `continuous` | Numeric measurements (e.g., age, weight) |
-| `schema:OrdinalVariable` | `ordinal` | Ordered categories (e.g., staging) |
+| `schema:OrdinalVariable` | `ordinal` | Ordered categories (e.g., severity levels) |
 | `schema:DateVariable` | `date` | Date values |
 | `schema:TextVariable` | `text` | Free-text values |
 
@@ -78,7 +78,7 @@ Each variable in the `schema.variables` object describes a semantic concept. The
 - `@type` — One of the supported variable types above
 - `dataType` — String matching the variable type
 - `predicate` — The RDF predicate linking the individual to the variable (e.g., `sio:SIO_000008`)
-- `class` — The ontology class for this variable (e.g., `ncit:C28421` for biological sex)
+- `class` — The ontology class for this variable (e.g., `ncit:C28421`)
 
 ## Schema Reconstruction
 

@@ -7,15 +7,15 @@ The `example_data/` folder contains sample datasets and mapping files that demon
 | File / Folder | Description |
 |---|---|
 | `mapping_template.jsonld` | A blank JSON-LD mapping template to use as a starting point |
-| `centre_a_english/synthetic_english_150.csv` | Synthetic clinical dataset (150 rows, English terminology) |
+| `centre_a_english/synthetic_english_150.csv` | Synthetic dataset (150 rows, English terminology) |
 | `centre_a_english/mapping_centre_a.jsonld` | JSON-LD mapping for Centre A |
-| `centre_b_dutch/synthetic_dutch_150.csv` | Synthetic clinical dataset (150 rows, Dutch terminology) |
+| `centre_b_dutch/synthetic_dutch_150.csv` | Synthetic dataset (150 rows, Dutch terminology) |
 | `centre_b_dutch/mapping_centre_b.jsonld` | JSON-LD mapping for Centre B |
 | `flyover-v3.2.0.mp4` | Video demonstrating the Flyover workflow |
 
 ## Two-Centre Scenario
 
-The example data simulates a multi-centre scenario with two fictitious hospitals:
+The example data simulates a multi-centre scenario with two fictitious organisations:
 
 - **Centre A** uses English terminology (e.g., `male`, `female`, `oropharynx`)
 - **Centre B** uses Dutch terminology (e.g., `man`, `vrouw`, `orofarynx`)
@@ -37,7 +37,6 @@ The example mapping files demonstrate all supported features:
 2. Open the web interface at [http://localhost:5000](http://localhost:5000)
 3. Upload one of the CSV files (e.g., `centre_a_english/synthetic_english_150.csv`)
 4. Follow the workflow to describe and annotate your data
-5. Alternatively, use the [Annotation Helper](Annotation-Helper.md) script with one of the `.jsonld` mapping files
 
 ## Data Generation
 

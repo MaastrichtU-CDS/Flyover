@@ -16,9 +16,9 @@
 
 ## Introduction
 
-Flyover is a dockerized Data FAIR-ification tool that converts clinical datasets (CSV or PostgreSQL) into Resource Descriptor Format (RDF). It provides a web interface for uploading, describing, annotating, and sharing your data using semantic web standards.
+Flyover is a dockerized Data FAIR-ification tool that transforms structured datasets into semantically enriched, interoperable formats. It provides a web interface that guides you through the full process — from data ingestion to semantic annotation and sharing — making your data Findable, Accessible, Interoperable, and Reusable.
 
-For a detailed explanation, please refer to the published [paper](https://doi.org/10.1093/bjrai/ubae005).
+Flyover works with CSV files and PostgreSQL databases, and uses linked data standards such as RDF and JSON-LD for its semantic representations.
 
 > 📖 **For detailed documentation, see the [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki).**
 
@@ -35,32 +35,20 @@ docker-compose up -d
 | Service | URL | Description |
 |---|---|---|
 | Web interface | [http://localhost:5000](http://localhost:5000) | Upload and describe your data |
-| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the RDF store (GraphDB) |
+| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (GraphDB) |
 
 > **Note:** On Windows, please use WSL2 with Docker. On macOS/Linux, Docker can be used directly.
 
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details on configuration and environment variables.
 
-## Components
+## Workflow
 
-### Data Descriptor Module
+Flyover guides you through four distinct steps:
 
-A web interface that guides you through a multi-step process:
-
-1. **Ingest** — Upload CSV files or connect to a PostgreSQL database. The Triplifier converts your data into RDF triples and stores them in the RDF repository.
-2. **Describe** — Describe your variables, their data types, and semantics.
-3. **Annotate** — Apply semantic annotations using [JSON-LD mapping files](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format).
-4. **Share** — Publish anonymous metadata and generate mock data for sharing.
-
-### Annotation Helper Script
-
-A Python script that automates semantic annotation by reading a JSON-LD mapping file and generating SPARQL queries against the RDF repository.
-
-```bash
-python triplifier/data_descriptor/annotation_helper/main.py
-```
-
-See the wiki's [Annotation Helper](https://github.com/MaastrichtU-CDS/Flyover/wiki/Annotation-Helper) page for usage details, and the [JSON-LD Mapping Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) page for how to write mapping files.
+1. **Ingest** — Upload your data (CSV files or connect to a PostgreSQL database) and optionally supply a [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format). Flyover converts your data into a structured, semantic representation and stores it in the repository.
+2. **Describe** — Provide metadata for your variables: specify data types, define properties, and add semantic context to each column in your dataset.
+3. **Annotate** — Link your variables to standardised ontologies and terminologies using the built-in annotation interface. Review and verify annotations to ensure semantic correctness.
+4. **Share** — Download your semantic map, generate anonymous mock data that preserves the structure of your dataset, and create interactive codebooks for documentation.
 
 ### Example Data
 
@@ -74,9 +62,14 @@ The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed do
 
 - [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) — Setup, configuration, and workflow
 - [JSON-LD Mapping Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) — Variable definitions, schema reconstruction, and value mapping
-- [Annotation Helper](https://github.com/MaastrichtU-CDS/Flyover/wiki/Annotation-Helper) — Running the annotation script
 - [Example Data](https://github.com/MaastrichtU-CDS/Flyover/wiki/Example-Data) — Bundled example datasets
 - [Migrating from Legacy Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/Migrating-from-Legacy-Format) — Converting old JSON mappings to JSON-LD
+
+## References
+
+- Gouthamchand, V., Hogenboom, J., Wee, L., & van Soest, J. (2024). Flyover: A model-agnostic tool to generate linked data from flat data. *BJR|AI*, 1(1), ubae005. [doi:10.1093/bjrai/ubae005](https://doi.org/10.1093/bjrai/ubae005)
+- Hogenboom, J., Gouthamchand, V., Wee, L., & van Soest, J. (2025). Local Semantic Interoperability Through a FAIR Data Pipeline: A Practical Approach. *JCO Clinical Cancer Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
+- Flyover software archive on Zenodo. [doi:10.5281/zenodo.17419799](https://doi.org/10.5281/zenodo.17419799)
 
 ## Developers
 
