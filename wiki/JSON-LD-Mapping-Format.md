@@ -291,3 +291,10 @@ A full example variable combining all features (for biological sex):
 ```
 
 For complete working examples, see the [Example Data](Example-Data.md) page.
+
+## Next Steps
+
+- Learn [how to get started using Flyover](Getting-Started.md)
+- Explore the [Example Data](Example-Data.md) bundled with the repository
+- If you have existing mappings in the old JSON format, see [Migrating from Legacy Format](Migrating-from-Legacy-Format.md)
+

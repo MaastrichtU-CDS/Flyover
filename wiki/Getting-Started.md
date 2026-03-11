@@ -11,7 +11,7 @@
 Clone the repository (or download it), then start the services from the project folder:
 
 ```bash
-docker-compose up -d
+docker-compose up -d --pull always
 ```
 
 This will start two services:
@@ -37,15 +37,6 @@ environment:
   - GUNICORN_TIMEOUT=300       # Web server timeout (seconds)
   - RDF_REQUEST_TIMEOUT=3600   # RDF store request timeout (seconds)
 ```
-
-## Workflow
-
-Flyover guides you through four distinct steps:
-
-1. **Ingest** — Upload your data (CSV files or connect to a PostgreSQL database). Flyover converts your data into a structured, semantic representation and stores it in the repository.
-2. **Describe** — Provide metadata for your variables: specify data types, define properties, and add semantic context to each column in your dataset. Optionally supply a [JSON-LD semantic map](JSON-LD-Mapping-Format.md) to pre-populate descriptions.
-3. **Annotate** — Link your variables to standardised ontologies and terminologies using the built-in annotation interface. A filled-in [JSON-LD semantic map](JSON-LD-Mapping-Format.md) for your data model is needed to drive the annotation process. Review and verify annotations to ensure semantic correctness.
-4. **Share** — Download filled-in semantic maps, generate anonymous mock data that preserves the structure of your dataset, and share your project with a wider audience.
 
 ## Next Steps
 

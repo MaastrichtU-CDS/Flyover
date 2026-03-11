@@ -31,13 +31,6 @@ The example mapping files demonstrate all supported features:
 - **Value mapping**: mapping local categorical values to ontology classes
 - **Local database mappings**: site-specific column names and local terms
 
-## How to Use
-
-1. Start Flyover: `docker-compose up -d`
-2. Open the web interface at [http://localhost:5000](http://localhost:5000)
-3. Upload one of the CSV files (e.g., `centre_a_english/synthetic_english_150.csv`)
-4. Follow the workflow to describe and annotate your data
-
 ## Data Generation
 
 The synthetic datasets were generated using the MOSTLY AI Data Intelligence Platform, guided by the data semantic maps to ensure realistic variable distributions and value ranges.

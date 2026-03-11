@@ -1,4 +1,5 @@
 # Flyover
+
 <p align="center">
 <a href="https://doi.org/10.5281/zenodo.17419799"><img alt="DOI: 10.5281/zenodo.17419799" src="https://zenodo.org/badge/DOI/10.5281/zenodo.17419799.svg"></a>
 <a href="https://opensource.org/licenses/Apache-2.0"><img alt="Licence: Apache 2.0" src="https://img.shields.io/badge/Licence-Apache%202.0-blue.svg"></a>
@@ -16,9 +17,12 @@
 
 ## Introduction
 
-Flyover is a dockerised Data FAIR-ification tool that transforms structured datasets into semantically enriched, interoperable formats. It provides a web interface that guides you through the full process — from data ingestion to semantic annotation and sharing — making your data Findable, Accessible, Interoperable, and Reusable.
+Flyover is a dockerised Data FAIR-ification tool that transforms structured datasets into semantically enriched,
+interoperable formats. It provides a web interface that guides you through the full process — from data ingestion to
+semantic annotation and sharing — making your data Findable, Accessible, Interoperable, and Reusable.
 
-Flyover works with CSV files and PostgreSQL databases, and uses linked data standards such as RDF and JSON-LD for its semantic representations.
+Flyover works with CSV files and relational databases, and uses linked data standards such as RDF and JSON-LD for its
+semantic representations.
 
 > 📖 **For detailed documentation, see the [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki).**
 
@@ -32,43 +36,63 @@ Clone the repository and start the services:
 docker-compose up -d --pull always
 ```
 
-| Service | URL | Description |
-|---|---|---|
-| Web interface | [http://localhost:5000](http://localhost:5000) | Upload and describe your data |
+| Service        | URL                                            | Description                         |
+|----------------|------------------------------------------------|-------------------------------------|
+| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data       |
 | RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (GraphDB) |
 
 > **Note:** On Windows, please use WSL2 with Docker. On macOS/Linux, Docker can be used directly.
 
-See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details on configuration and environment variables.
+See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
+on configuration and environment variables.
 
 ## Workflow
 
 Flyover guides you through four distinct steps:
 
-1. **Ingest** — Upload your data (CSV files or connect to a PostgreSQL database). Flyover converts your data into a structured, semantic representation and stores it in the repository.
-2. **Describe** — Provide metadata for your variables: specify data types, define properties, and add semantic context to each column in your dataset. Optionally supply a pre-filled [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) to pre-populate descriptions.
-3. **Annotate** — Link your variables to standardised ontologies and terminologies using the built-in annotation interface. A filled-in [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) for your data model is needed to drive the annotation process. Review and verify annotations to ensure semantic correctness.
-4. **Share** — Download filled-in semantic maps, generate anonymous mock data that preserves the structure of your dataset, and share your project with a wider audience.
+1. **Ingest** — Upload your data (CSV files or connect to a relational database). Flyover converts your data into a
+   structured, semantic representation and stores it in the graph database.
+2. **Describe** — Provide metadata for your variables: specify data types and add semantic context to each variable in
+   your dataset. Optionally supply a
+   pre-filled [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) to
+   pre-populate descriptions.
+3. **Annotate** — Use the information you supplied in the **Describe** step to link your variables to standardised
+   ontologies and terminologies using the built-in annotation interface and your project-specific JSON-LD semantic map.
+   Alternatively you can use a
+   filled-in [JSON-LD semantic map](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) for your
+   data model is needed to drive the annotation process. Review and verify annotations to ensure semantic correctness.
+4. **Share** — Download filled-in semantic maps, generate anonymous mock data that preserves the structure of your
+   dataset, and share your project with a wider audience.
 
 ### Example Data
 
-The `example_data/` folder contains synthetic datasets and JSON-LD mapping files for two fictitious centres, demonstrating all supported features. See the wiki's [Example Data](https://github.com/MaastrichtU-CDS/Flyover/wiki/Example-Data) page for details.
+The `example_data/` folder contains synthetic datasets and JSON-LD mapping files for two fictitious centres,
+demonstrating all supported features. See the
+wiki's [Example Data](https://github.com/MaastrichtU-CDS/Flyover/wiki/Example-Data) page for details.
 
-> **Migrating from the old JSON format?** See [Migrating from Legacy Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/Migrating-from-Legacy-Format).
+> **Migrating from the old JSON format?**
+> See [Migrating from Legacy Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/Migrating-from-Legacy-Format).
 
 ## Wiki
 
 The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed documentation on:
 
-- [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) — Setup, configuration, and workflow
-- [JSON-LD Mapping Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) — Variable definitions, schema reconstruction, and value mapping
+- [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) — Setup, configuration, and
+  workflow
+- [JSON-LD Mapping Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/JSON-LD-Mapping-Format) — Variable
+  definitions, schema reconstruction, and value mapping
 - [Example Data](https://github.com/MaastrichtU-CDS/Flyover/wiki/Example-Data) — Bundled example datasets
-- [Migrating from Legacy Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/Migrating-from-Legacy-Format) — Converting old JSON mappings to JSON-LD
+- [Migrating from Legacy Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/Migrating-from-Legacy-Format) —
+  Converting old JSON mappings to JSON-LD
 
 ## References
 
-- Gouthamchand, V., Choudhury, A., ..., and Wee, L. (2024). Making head and neck cancer clinical data Findable-Accessible-Interoperable-Reusable to support multi-institutional collaboration and federated learning . *BJR|Artificial Intelligence*, 1(1), ubae005. [doi:10.1093/bjrai/ubae005](https://doi.org/10.1093/bjrai/ubae005)
-- Hogenboom, J., Gouthamchand, V., ..., and Lobo Gomes, A. (2026). Knowledge Representation of a Multicenter Adolescent and Young Adult Cancer Infrastructure: Development of the STRONG AYA Knowledge Graph *JCO Clinical Cancer Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
+- Gouthamchand, V., Choudhury, A., ..., and Wee, L. (2024). Making head and neck cancer clinical data
+  Findable-Accessible-Interoperable-Reusable to support multi-institutional collaboration and federated learning .
+  *BJR|Artificial Intelligence*, 1(1), ubae005. [doi:10.1093/bjrai/ubae005](https://doi.org/10.1093/bjrai/ubae005)
+- Hogenboom, J., Gouthamchand, V., ..., and Lobo Gomes, A. (2026). Knowledge Representation of a Multicenter Adolescent
+  and Young Adult Cancer Infrastructure: Development of the STRONG AYA Knowledge Graph *JCO Clinical Cancer
+  Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
 - Flyover software archive on Zenodo. [doi:10.5281/zenodo.17419799](https://doi.org/10.5281/zenodo.17419799)
 
 ## Developers
