@@ -84,6 +84,7 @@ The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed do
 - [Example Data](https://github.com/MaastrichtU-CDS/Flyover/wiki/Example-Data) — Bundled example datasets
 - [Migrating from Legacy Format](https://github.com/MaastrichtU-CDS/Flyover/wiki/Migrating-from-Legacy-Format) —
   Converting old JSON mappings to JSON-LD
+- [Flyover architecture](https://github.com/MaastrichtU-CDS/Flyover/wiki/Flyover-architecture/Architecture.md) — Flyover's internal architecture 
 
 ## References
 
