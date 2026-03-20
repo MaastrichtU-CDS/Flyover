@@ -1,0 +1,29 @@
+# Materialization query: template_mapping.rq ?term → rdf:type
+# For each ?term class defined in the value mapping (template_mapping.rq),
+# this query finds instances that match the owl:equivalentClass restriction
+# and materializes rdf:type ?term for those instances.
+
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+
+INSERT {
+    GRAPH <MATERIALIZED_GRAPH_URI> {
+        ?instance rdf:type ?term .
+    }
+}
+WHERE {
+    GRAPH <ANNOTATION_GRAPH_URI> {
+        ?term rdf:type owl:Class ;
+              rdfs:subClassOf ?superClass ;
+              owl:equivalentClass ?eqClass .
+        ?eqClass owl:intersectionOf ?list .
+        ?list rdf:rest*/rdf:first ?valueRestriction .
+        ?valueRestriction owl:onProperty dbo:has_value ;
+                          owl:hasValue ?localValue .
+    }
+    ?parent rdf:type ?superClass .
+    ?parent dbo:has_cell ?instance .
+    ?instance dbo:has_value ?localValue .
+}

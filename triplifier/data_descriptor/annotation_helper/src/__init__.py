@@ -1,6 +1,7 @@
 from .miscellaneous import (
     add_annotation,
     add_mapping,
+    materialize_inferences,
     read_file,
     write_file,
     check_predicate,
@@ -11,6 +12,7 @@ from .miscellaneous import (
 __all__ = [
     "add_annotation",
     "add_mapping",
+    "materialize_inferences",
     "read_file",
     "write_file",
     "check_predicate",
