@@ -176,48 +176,7 @@ class Cache:
 session_cache = Cache()
 
 
-@app.route("/")
-def landing():
-    """
-    Render the landing page that provides an overview of the three-step workflow.
-    This serves as the main entry point describing the Ingest, Describe, Annotate process.
-    """
-    return render_template("index.html")
 
-
-@app.route("/ingest")
-def index():
-    """
-    This function is responsible for rendering the ingest.html page.
-    It is mapped to the root URL ("/") of the Flask application.
-
-    The function first checks if a data graph already exists in the GraphDB repository.
-    If it does, the ingest.html page is rendered with a flag indicating that the graph exists.
-    If the graph does not exist or if an error occurs during the check,
-    the ingest.html page is rendered without the flag.
-
-    Returns:
-        flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'ingest.html' template.
-
-    Raises:
-        Exception: If an error occurs while checking if the data graph exists,
-        an exception is raised, and its error message is flashed to the user.
-    """
-    # Check whether a data graph already exists
-    try:
-        if check_any_data_graph_exists(session_cache.repo, graphdb_url):
-            # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
-            session_cache.existing_graph = True
-            return render_template(
-                "ingest.html", graph_exists=session_cache.existing_graph
-            )
-    except Exception as e:
-        # If an error occurs, flash the error message to the user
-        flash(f"Failed to check if the a data graph already exists, error: {e}")
-
-    # If the data graph does not exist or if an error occurs, render the ingest.html page without the flag
-    return render_template("ingest.html")
 
 
 @app.route("/upload-semantic-map", methods=["POST"])
