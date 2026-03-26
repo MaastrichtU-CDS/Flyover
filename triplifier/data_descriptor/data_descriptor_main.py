@@ -1142,6 +1142,29 @@ def run_triplifier(properties_file=None):
         return False, f"Unexpected error attempting to run the Triplifier, error: {e}"
 
 
+# Register controller blueprints
+from controllers import ingest_bp, describe_bp, annotate_bp, download_bp
+
+app.register_blueprint(ingest_bp)
+app.register_blueprint(describe_bp)
+app.register_blueprint(annotate_bp)
+app.register_blueprint(download_bp)
+
+# Set up application context with required functions and services
+app.config["APP_CONTEXT"] = {
+    "session_cache": session_cache,
+    "graphdb_service": None,  # Will be initialized later if needed
+    "name_matcher": None,  # Will be initialized later if needed
+    "upload_folder": app.config["UPLOAD_FOLDER"],
+    "run_triplifier": run_triplifier,
+    "upload_func": upload_multiple_graphs,
+    "start_background": lambda sc: [
+        gevent.spawn(background_pk_fk_processing),
+        gevent.spawn(background_cross_graph_processing)
+    ],
+    "handle_postgres": handle_postgres_data,
+}
+
 if __name__ == "__main__":
     # Use 0.0.0.0 in Docker (safe within container network), 127.0.0.1 for local dev
     is_docker = os.getenv("FLYOVER_GRAPHDB_URL") is not None
