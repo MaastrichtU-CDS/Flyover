@@ -2710,6 +2710,8 @@ app.config["APP_CONTEXT"] = {
     "graphdb_service": None,  # Will be initialized later if needed
     "name_matcher": None,  # Will be initialized later if needed
     "upload_folder": app.config["UPLOAD_FOLDER"],
+    "root_dir": root_dir,
+    "child_dir": child_dir,
     "run_triplifier": run_triplifier,
     "upload_func": upload_multiple_graphs,
     "start_background": lambda sc: [
