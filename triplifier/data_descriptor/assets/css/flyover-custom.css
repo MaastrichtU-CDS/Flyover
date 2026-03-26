@@ -661,6 +661,33 @@ body {
     transform: scale(1.1);
 }
 
+/* Fix for bootstrap-select dropdown z-index issues */
+.bootstrap-select {
+    z-index: 10000 !important;
+    position: relative !important;
+}
+
+.bootstrap-select .dropdown-menu {
+    z-index: 10000 !important;
+    position: absolute !important;
+}
+
+.bootstrap-select.open {
+    z-index: 10000 !important;
+}
+
+/* Ensure dropdowns appear above all other content */
+.bootstrap-select .dropdown-menu.inner {
+    position: relative;
+    overflow: auto;
+    z-index: 10000 !important;
+}
+
+/* Fix for dropdown positioning */
+.bootstrap-select.btn-group {
+    position: relative;
+}
+
 .toggle-button:focus {
     outline: none;
 }
