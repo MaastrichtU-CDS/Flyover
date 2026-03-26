@@ -317,7 +317,13 @@ const DescribeVariablesPage = {
 
             if (suggestedDatatype) {
                 if (datatypeSelect.val() === '' || !this.manualOverrides.has(fieldKey)) {
-                    datatypeSelect.selectpicker('val', suggestedDatatype);
+                    try {
+                    if (datatypeSelect.length > 0) {
+                        datatypeSelect.selectpicker('val', suggestedDatatype);
+                    }
+                } catch (e) {
+                    console.error('Failed to set datatype value:', e);
+                }
                     this.autoFilledFields.add(fieldKey);
 
                     feedback.show();
@@ -328,7 +334,13 @@ const DescribeVariablesPage = {
             }
         } else {
             if (this.autoFilledFields.has(fieldKey) && !this.manualOverrides.has(fieldKey)) {
-                datatypeSelect.selectpicker('val', '');
+                try {
+                    if (datatypeSelect.length > 0) {
+                        datatypeSelect.selectpicker('val', '');
+                    }
+                } catch (e) {
+                    console.error('Failed to clear datatype value:', e);
+                }
                 this.autoFilledFields.delete(fieldKey);
                 feedback.hide();
             }
@@ -464,7 +476,14 @@ const DescribeVariablesPage = {
             });
         });
 
-        container.find('.selectpicker').selectpicker();
+        // Initialize selectpicker with error handling
+        try {
+            if (container.find('.selectpicker').length > 0) {
+                container.find('.selectpicker').selectpicker();
+            }
+        } catch (e) {
+            console.error('Failed to initialize selectpicker:', e);
+        }
 
         for (let i = startIdx; i < endIdx; i++) {
             const item = columns[i];
@@ -578,7 +597,13 @@ const DescribeVariablesPage = {
 
             if (key in preselectedDescriptions && !(key in self.formStateCache)) {
                 const value = preselectedDescriptions[key];
-                $select.selectpicker('val', value);
+                try {
+                    if ($select.length > 0) {
+                        $select.selectpicker('val', value);
+                    }
+                } catch (e) {
+                    console.error('Failed to set select value:', e);
+                }
             }
         });
 
@@ -590,7 +615,13 @@ const DescribeVariablesPage = {
 
             if (key in preselectedDatatypes && !(key in self.formStateCache)) {
                 const value = preselectedDatatypes[key];
-                $select.selectpicker('val', value);
+                try {
+                    if ($select.length > 0) {
+                        $select.selectpicker('val', value);
+                    }
+                } catch (e) {
+                    console.error('Failed to set select value:', e);
+                }
             }
         });
     },
