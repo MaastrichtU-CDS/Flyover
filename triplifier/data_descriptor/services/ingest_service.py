@@ -8,6 +8,7 @@ data validation, and triplification.
 import json
 import logging
 import os
+import requests
 from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
@@ -236,6 +237,62 @@ class IngestService:
                 )
 
         return success, messages
+
+    def upload_file_to_graphdb(
+        self,
+        file_path: str,
+        url: str,
+        content_type: str,
+        wait_for_completion: bool = True,
+        timeout_seconds: int = 300,
+    ) -> Tuple[bool, str, str]:
+        """
+        Upload a file to GraphDB using the Workbench API.
+
+        Args:
+            file_path: Path to the file to upload
+            url: GraphDB Workbench URL
+            content_type: Content type of the file
+            wait_for_completion: Whether to wait for upload completion
+            timeout_seconds: Timeout for the upload operation
+
+        Returns:
+            Tuple of (success, status_message, error_message)
+        """
+        try:
+            # Check if file exists
+            if not os.path.exists(file_path):
+                return False, "", f"File not found: {file_path}"
+
+            # Read the file content
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+
+            # Prepare headers
+            headers = {
+                'Content-Type': content_type,
+            }
+
+            # Upload the file
+            response = requests.post(
+                url,
+                data=file_content,
+                headers=headers,
+                timeout=timeout_seconds
+            )
+
+            # Check response
+            if response.status_code in [200, 201, 202]:
+                return True, f"Upload successful: {response.text}", ""
+            else:
+                return False, "", f"Upload failed with status {response.status_code}: {response.text}"
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"GraphDB upload failed: {e}")
+            return False, "", f"Request exception: {e}"
+        except Exception as e:
+            logger.error(f"GraphDB upload error: {e}")
+            return False, "", f"Unexpected error: {e}"
 
     def background_pk_fk_processing(self, session_cache: Any) -> None:
         """
