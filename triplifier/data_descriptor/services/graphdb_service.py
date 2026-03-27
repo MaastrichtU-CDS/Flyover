@@ -6,6 +6,7 @@ providing higher-level business operations.
 """
 
 import logging
+import requests
 from typing import Any, Dict, List, Optional, Tuple
 
 from repositories import GraphDBRepository
@@ -273,3 +274,45 @@ class GraphDBService:
         return self.repository.verify_annotation(
             database, local_definition, var_class, value_mapping, additional_prefixes
         )
+
+    def execute_query(
+        self,
+        query: str,
+        query_type: str = "query",
+        endpoint_appendices: str = "",
+    ) -> str:
+        """
+        Execute a SPARQL query on GraphDB.
+
+        Args:
+            query: SPARQL query to execute
+            query_type: Type of query (query, update, etc.)
+            endpoint_appendices: Additional endpoint parameters
+
+        Returns:
+            Query result as string
+
+        Raises:
+            Exception: If query execution fails
+        """
+        try:
+            # Construct the endpoint URL
+            endpoint = f"{self.graphdb_url}/repositories/" + self.repo + endpoint_appendices
+            
+            # Execute the query
+            response = requests.post(
+                endpoint,
+                data={query_type: query},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=30,
+            )
+            
+            # Check for successful response
+            response.raise_for_status()
+            
+            # Return the result
+            return response.text
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"GraphDB query execution failed: {e}")
+            raise Exception(f"GraphDB query execution failed: {e}")

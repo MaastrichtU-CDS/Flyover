@@ -351,6 +351,77 @@ class DescribeService:
             return default_names
 
     @staticmethod
+    def retrieve_categories(graphdb_service, column_name: str) -> Optional[str]:
+        """
+        Retrieve categories for a given column from GraphDB.
+
+        Args:
+            graphdb_service: GraphDB service instance
+            column_name: Name of the column to get categories for
+
+        Returns:
+            Optional[str]: Categories data or None if not found
+        """
+        try:
+            # Construct SPARQL query to get categories
+            query = f"""
+            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            SELECT ?value (COUNT(?value) AS ?count)
+            WHERE {{
+                ?uri dbo:column "{column_name}" .
+                ?uri dbo:category ?value .
+            }}
+            GROUP BY ?value
+            ORDER BY DESC(?count)
+            """
+            
+            result = graphdb_service.execute_query(query)
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve categories for {column_name}: {e}")
+            return None
+
+    @staticmethod
+    def retrieve_global_variable_names(jsonld_mapping: Any = None) -> List[str]:
+        """
+        Retrieve global variable names from semantic map or return defaults.
+
+        Args:
+            jsonld_mapping: Optional JSON-LD mapping object
+
+        Returns:
+            List[str]: Global variable names
+        """
+        default_names = [
+            "Research subject identifier",
+            "Biological sex",
+            "Age at inclusion",
+            "Other",
+        ]
+
+        try:
+            # Check if we have a semantic map
+            if jsonld_mapping:
+                # Extract variable names from the semantic map
+                variable_keys = list(jsonld_mapping.get_variable_names())
+                
+                # Format the names nicely
+                formatted_names = []
+                for key in variable_keys:
+                    # Capitalize and replace underscores with spaces
+                    formatted = key.replace('_', ' ').title()
+                    formatted_names.append(formatted)
+                
+                return formatted_names if formatted_names else default_names
+            
+            return default_names
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve global variable names: {e}")
+            return default_names
+
+    @staticmethod
     def get_preselected_values(
         jsonld_mapping: Any,
         descriptive_info_details: Dict[str, List[Any]],
