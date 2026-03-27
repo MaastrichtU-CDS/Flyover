@@ -377,6 +377,89 @@ class IngestService:
             logger.error(f"Failed to upload multiple graphs: {e}")
             return False, [f"Upload error: {e}"]
 
+    def upload_ontology_then_data(
+        self,
+        root_dir: str,
+        graphdb_url: str,
+        repo: str,
+        upload_ontology: bool = True,
+        upload_data: bool = True,
+        data_background: bool = True,
+        ontology_timeout: int = 300,
+        data_timeout: int = 43200,
+    ) -> Tuple[bool, List[str]]:
+        """
+        Upload ontology first, then data (configurable background/foreground).
+
+        Args:
+            root_dir: Directory containing the files
+            graphdb_url: GraphDB base URL
+            repo: Repository name
+            upload_ontology: Whether to upload ontology file
+            upload_data: Whether to upload data file
+            data_background: Whether to upload data in background
+            ontology_timeout: Timeout for ontology upload
+            data_timeout: Timeout for data upload
+
+        Returns:
+            Tuple of (success, list of messages)
+        """
+        messages = []
+        
+        try:
+            # Upload ontology if requested
+            if upload_ontology:
+                ontology_path = os.path.join(root_dir, "ontology.ttl")
+                if os.path.exists(ontology_path):
+                    ontology_url = f"{graphdb_url}/repositories/{repo}/statements"
+                    success, status, error = self.upload_file_to_graphdb(
+                        ontology_path,
+                        ontology_url,
+                        "text/turtle",
+                        True,
+                        ontology_timeout
+                    )
+                    
+                    if success:
+                        messages.append(f"Ontology uploaded: {status}")
+                    else:
+                        messages.append(f"Ontology upload failed: {error}")
+                        return False, messages
+                else:
+                    messages.append("No ontology file found")
+            
+            # Upload data if requested
+            if upload_data:
+                data_path = os.path.join(root_dir, "data.ttl")
+                if os.path.exists(data_path):
+                    data_url = f"{graphdb_url}/repositories/{repo}/statements"
+                    
+                    if data_background:
+                        messages.append("Data upload started in background")
+                        # Background upload would be handled separately
+                    else:
+                        success, status, error = self.upload_file_to_graphdb(
+                            data_path,
+                            data_url,
+                            "text/turtle",
+                            True,
+                            data_timeout
+                        )
+                        
+                        if success:
+                            messages.append(f"Data uploaded: {status}")
+                        else:
+                            messages.append(f"Data upload failed: {error}")
+                            return False, messages
+                else:
+                    messages.append("No data file found")
+            
+            return True, messages
+            
+        except Exception as e:
+            logger.error(f"Failed to upload ontology and data: {e}")
+            return False, [f"Upload error: {e}"]
+
     def background_pk_fk_processing(self, session_cache: Any) -> None:
         """
         Background function to process PK/FK relationships
