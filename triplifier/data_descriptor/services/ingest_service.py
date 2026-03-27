@@ -277,3 +277,134 @@ class IngestService:
                 f"{new_table}.{cross_graph_data['newColumnName']} -> "
                 f"{existing_table}.{cross_graph_data['existingColumnName']}"
             )
+
+    def get_column_class_uri(self, table_name: str, column_name: str) -> Optional[str]:
+        """
+        Get the class URI for a specific column in a table.
+
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column
+
+        Returns:
+            Optional[str]: Class URI or None if not found
+        """
+        try:
+            query = f"""
+            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            SELECT ?class_uri
+            WHERE {{
+                ?uri dbo:table_name "{table_name}" .
+                ?uri dbo:column "{column_name}" .
+                ?uri dbo:class_uri ?class_uri .
+            }}
+            """
+            
+            result = self.execute_query(query)
+            if result and result.strip():
+                # Parse the result to extract the class URI
+                lines = result.strip().split('\n')
+                if len(lines) > 1:
+                    # Skip header line and get the first result
+                    return lines[1].split('|')[0].strip()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get class URI for {table_name}.{column_name}: {e}")
+            return None
+
+    def insert_fk_relation(
+        self,
+        fk_table: str,
+        fk_column: str,
+        pk_table: str,
+        pk_column: str,
+    ) -> bool:
+        """
+        Insert a foreign key relationship between tables.
+
+        Args:
+            fk_table: Foreign key table name
+            fk_column: Foreign key column name
+            pk_table: Primary key table name
+            pk_column: Primary key column name
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Get class URIs for both columns
+            fk_class_uri = self.get_column_class_uri(fk_table, fk_column)
+            pk_class_uri = self.get_column_class_uri(pk_table, pk_column)
+            
+            if not fk_class_uri or not pk_class_uri:
+                logger.warning(f"Could not find URIs for FK relationship: {fk_table}.{fk_column} -> {pk_table}.{pk_column}")
+                return False
+
+            # Insert the relationship
+            predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
+            result = self.graphdb_service.process_pk_fk_relationship(
+                predicate, fk_class_uri, pk_class_uri
+            )
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Failed to insert FK relationship: {fk_table}.{fk_column} -> {pk_table}.{pk_column}: {e}")
+            return False
+
+    def process_pk_fk_relationships(self, pk_fk_data: List[Dict]) -> Tuple[bool, List[str]]:
+        """
+        Process all PK/FK relationships from the given data.
+
+        Args:
+            pk_fk_data: List of relationship definitions
+
+        Returns:
+            Tuple of (overall_success, list of messages)
+        """
+        if not pk_fk_data:
+            return True, []
+
+        messages = []
+        success = True
+
+        # Create mapping of files with their PK/FK info
+        file_map = {rel["fileName"]: rel for rel in pk_fk_data}
+
+        for rel in pk_fk_data:
+            if not all([
+                rel.get("foreignKey"),
+                rel.get("foreignKeyTable"),
+                rel.get("foreignKeyColumn"),
+            ]):
+                continue
+
+            # Find the target table's PK info
+            target_file = rel["foreignKeyTable"]
+            target_rel = file_map.get(target_file)
+
+            if not target_rel or not target_rel.get("primaryKey"):
+                continue
+
+            # Sanitise table names
+            fk_table = sanitise_table_name(rel["fileName"])
+            pk_table = sanitise_table_name(target_file)
+
+            result = self.insert_fk_relation(
+                fk_table,
+                rel["foreignKey"],
+                pk_table,
+                target_rel["primaryKey"],
+            )
+
+            if result:
+                messages.append(
+                    f"Created FK relationship: {fk_table}.{rel['foreignKey']} -> {pk_table}.{target_rel['primaryKey']}"
+                )
+            else:
+                success = False
+                messages.append(
+                    f"Failed FK relationship: {fk_table}.{rel['foreignKey']} -> {pk_table}.{target_rel['primaryKey']}"
+                )
+
+        return success, messages
