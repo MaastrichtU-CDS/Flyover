@@ -237,6 +237,58 @@ class IngestService:
 
         return success, messages
 
+    def background_pk_fk_processing(self, session_cache: Any) -> None:
+        """
+        Background function to process PK/FK relationships
+
+        Args:
+            session_cache: Session cache object
+        """
+        try:
+            # Small delay to ensure GraphDB has processed the uploaded data
+            import time
+            time.sleep(3)
+            
+            # Get PK/FK data from session
+            pk_fk_data = session_cache.pk_fk_data if hasattr(session_cache, 'pk_fk_data') else []
+            
+            if pk_fk_data:
+                success, messages = self.process_pk_fk_relationships(pk_fk_data)
+                session_cache.pk_fk_status = "completed" if success else "failed"
+                session_cache.pk_fk_messages = messages
+            else:
+                session_cache.pk_fk_status = "no_data"
+                
+        except Exception as e:
+            logger.error(f"Background PK/FK processing error: {e}")
+            session_cache.pk_fk_status = "failed"
+
+    def background_cross_graph_processing(self, session_cache: Any) -> None:
+        """
+        Background function to process cross-graph relationships
+
+        Args:
+            session_cache: Session cache object
+        """
+        try:
+            # Small delay to ensure GraphDB has processed the uploaded data
+            import time
+            time.sleep(3)
+            
+            # Get cross-graph data from session
+            cross_graph_data = session_cache.cross_graph_link_data if hasattr(session_cache, 'cross_graph_link_data') else None
+            
+            if cross_graph_data:
+                success, message = self.process_cross_graph_relationships(cross_graph_data)
+                session_cache.cross_graph_status = "completed" if success else "failed"
+                session_cache.cross_graph_message = message
+            else:
+                session_cache.cross_graph_status = "no_data"
+                
+        except Exception as e:
+            logger.error(f"Background cross-graph processing error: {e}")
+            session_cache.cross_graph_status = "failed"
+
     @staticmethod
     def process_cross_graph_relationships(
         cross_graph_data: Dict,
