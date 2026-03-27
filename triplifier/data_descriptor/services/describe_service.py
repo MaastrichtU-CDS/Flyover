@@ -100,6 +100,52 @@ class DescribeService:
                 return base[len(prefix) :]
             return None
 
+    @staticmethod
+    def is_jsonld_semantic_map(semantic_map: dict) -> bool:
+        """
+        Check if a semantic map is in JSON-LD format.
+
+        Args:
+            semantic_map: The semantic map dictionary
+
+        Returns:
+            bool: True if JSON-LD format, False otherwise
+        """
+        if not isinstance(semantic_map, dict):
+            return False
+        return "@context" in semantic_map or "databases" in semantic_map
+
+    @staticmethod
+    def process_variable_for_annotation(
+        var_name: str,
+        var_data: Dict[str, Any],
+        global_semantic_map: Optional[Dict[str, Any]],
+    ) -> Tuple[Dict[str, Any], bool]:
+        """
+        Process a variable for annotation by adding local definition if needed.
+
+        Args:
+            var_name: Variable name
+            var_data: Variable data dictionary
+            global_semantic_map: Global semantic map
+
+        Returns:
+            Tuple of (processed variable data, has_local_def)
+        """
+        # Make a copy to avoid modifying the original
+        processed_var = var_data.copy()
+        has_local_def = var_data.get("local_definition") is not None
+
+        if not has_local_def and isinstance(global_semantic_map, dict):
+            # Try to find a matching global variable
+            for global_var, global_data in global_semantic_map.get("variable_info", {}).items():
+                if global_var.lower() == var_name.lower():
+                    processed_var["local_definition"] = var_name
+                    has_local_def = True
+                    break
+
+        return processed_var, has_local_def
+
         # Get keys for this database
         keys = []
         for key in form_data:
