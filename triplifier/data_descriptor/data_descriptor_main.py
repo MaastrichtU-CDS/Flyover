@@ -53,13 +53,9 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 from services.ingest_service import (
-    upload_ontology_then_data,
-    upload_multiple_graphs,
+    IngestService,
 )
-from services.describe_service import (
-    has_semantic_map,
-    get_database_name_from_mapping,
-)
+from services.describe_service import DescribeService
 from utils.data_preprocessing import (
     preprocess_dataframe,
     sanitise_table_name,
@@ -459,17 +455,37 @@ def upload_file():
             os.path.splitext(secure_filename(csv_file.filename))[0]
             for csv_file in csv_files
         ]
-        success, message = run_triplifier("triplifierCSV.properties")
+        success, message, output_files = IngestService().run_triplifier(
+            "triplifierCSV.properties",
+            root_dir,
+            child_dir,
+            csv_data_list=session_cache.csvData,
+            csv_table_names=session_cache.csvTableNames,
+        )
+        session_cache.output_files = output_files
 
     elif file_type == "Postgres":
-        handle_postgres_data(
+        # Handle PostgreSQL connection using service
+        postgres_success, postgres_error = IngestService().handle_postgres_connection(
             request.form.get("username"),
             request.form.get("password"),
             request.form.get("POSTGRES_URL"),
             request.form.get("POSTGRES_DB"),
             request.form.get("table"),
+            root_dir,
+            child_dir,
         )
-        success, message = run_triplifier("triplifierSQL.properties")
+        
+        if not postgres_success:
+            flash(f"PostgreSQL connection error: {postgres_error}")
+            return render_template("ingest.html", error=True)
+            
+        success, message, output_files = IngestService().run_triplifier(
+            "triplifierSQL.properties",
+            root_dir,
+            child_dir,
+        )
+        session_cache.output_files = output_files
 
     elif file_type != "Postgres" and not any(
         csv_file.filename for csv_file in csv_files
@@ -496,7 +512,7 @@ def upload_file():
             # Use different upload strategy based on file type
             if file_type == "CSV" and session_cache.output_files:
                 # Upload multiple graphs for CSV files
-                upload_success, upload_messages = upload_multiple_graphs(
+                upload_success, upload_messages = IngestService().upload_multiple_graphs(
                     root_dir,
                     graphdb_url,
                     repo,
@@ -505,7 +521,7 @@ def upload_file():
                 )
             else:
                 # Use traditional single-graph upload for PostgreSQL
-                upload_success, upload_messages = upload_ontology_then_data(
+                upload_success, upload_messages = IngestService().upload_ontology_then_data(
                     root_dir, graphdb_url, repo, data_background=False
                 )
 
@@ -1337,7 +1353,7 @@ def start_annotation():
     """
     try:
         # Check if any semantic map is available
-        if not has_semantic_map(session_cache):
+        if not DescribeService.has_semantic_map(session_cache):
             return jsonify({"success": False, "error": "No semantic map available"})
 
         # Ensure databases are initialised from the RDF-store if not already populated
@@ -1513,7 +1529,7 @@ def annotation_verify():
     Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
     """
     # Check if any semantic map is available
-    if not has_semantic_map(session_cache):
+    if not DescribeService.has_semantic_map(session_cache):
         flash("No semantic map available.")
         return redirect(url_for("describe_downloads"))
 
@@ -2217,19 +2233,6 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         )
         return render_template("ingest.html", error=True)
 
-    # Write connection details to the properties file
-    with open(f"{root_dir}{child_dir}/triplifierSQL.properties", "w") as f:
-        f.write(
-            f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
-            f"jdbc.user = {session_cache.username}\n"
-            f"jdbc.password = {session_cache.password}\n"
-            f"jdbc.driver = org.postgresql.Driver\n\n"
-            # f"repo.type = rdf4j\n"
-            # f"repo.url = {graphdb_url}\n"
-            # f"repo.id = {repo}"
-        )
-
-
 def insert_equivalencies(descriptive_info, variable, database):
     """
     This function inserts equivalencies into a GraphDB repository.
@@ -2640,69 +2643,6 @@ def background_cross_graph_processing():
         session_cache.cross_graph_link_status = "failed"
 
 
-def run_triplifier(properties_file=None):
-    """
-    This function runs the Python Triplifier and checks if it ran successfully.
-    Wrapper function that calls the actual implementation in python_triplifier_integration.py
-    """
-    try:
-        from utils.python_triplifier_integration import (
-            run_triplifier as run_triplifier_impl,
-        )
-
-        if properties_file == "triplifierCSV.properties":
-            # Use Python Triplifier for CSV processing
-            # DataFrames are loaded directly into SQLite, no need to save CSV files
-            success, message, output_files = run_triplifier_impl(
-                properties_file=properties_file,
-                root_dir=root_dir,
-                child_dir=child_dir,
-                csv_data_list=session_cache.csvData,
-                csv_table_names=session_cache.csvTableNames,
-            )
-
-            # Store output files in session cache for later use
-            session_cache.output_files = output_files
-
-        elif properties_file == "triplifierSQL.properties":
-            # Use Python Triplifier for PostgreSQL processing
-            success, message, output_files = run_triplifier_impl(
-                properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
-            )
-            session_cache.output_files = output_files
-        else:
-            return False, f"Unknown properties file: {properties_file}"
-
-        if success:
-            # Note: Background PK/FK and cross-graph processing are now started
-            # after upload completes (in upload_file function) to ensure data
-            # is available in GraphDB before relationships are processed
-
-            return True, Markup(
-                "The data you have submitted was triplified successfully and "
-                "is now available in GraphDB."
-                "<br>"
-                "You can now proceed to describe your data, "
-                "but please note that this requires in-depth knowledge of the data."
-                "<br><br>"
-                "<i>In case you do not yet wish to describe your data, "
-                "or you would like to add more data, "
-                "please return to the ingest page.</i>"
-                "<br>"
-                "<i>You can always return to Flyover to "
-                "describe the data that is present in GraphDB.</i>"
-            )
-        else:
-            return False, message
-
-    except Exception as e:
-        logger.error(f"Unexpected error attempting to run the Python Triplifier: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False, f"Unexpected error attempting to run the Triplifier, error: {e}"
-
-
 # Register controller blueprints
 from controllers import ingest_bp, describe_bp, annotate_bp, download_bp
 
@@ -2719,13 +2659,35 @@ app.config["APP_CONTEXT"] = {
     "upload_folder": app.config["UPLOAD_FOLDER"],
     "root_dir": root_dir,
     "child_dir": child_dir,
-    "run_triplifier": run_triplifier,
-    "upload_func": upload_multiple_graphs,
+    "run_triplifier": lambda properties_file: (
+        IngestService().run_triplifier(
+            properties_file, root_dir, child_dir,
+            csv_data_list=session_cache.csvData if hasattr(session_cache, 'csvData') else None,
+            csv_table_names=session_cache.csvTableNames if hasattr(session_cache, 'csvTableNames') else None
+        )
+    ),
+    "upload_func": lambda file_type, output_files: IngestService().upload_multiple_graphs(
+        root_dir, graphdb_url, repo, output_files, data_background=False
+    ) if file_type == "CSV" else IngestService().upload_ontology_then_data(
+        root_dir, graphdb_url, repo, data_background=False
+    ),
     "start_background": lambda sc: [
         gevent.spawn(background_pk_fk_processing),
         gevent.spawn(background_cross_graph_processing)
     ],
-    "handle_postgres": handle_postgres_data,
+    "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
+        IngestService().handle_postgres_connection(
+            username, password, postgres_url, postgres_db, table, root_dir, child_dir
+        )
+    ),
+    "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
+    "get_semantic_map": lambda sc, db_key=None: DescribeService.get_semantic_map_for_annotation(sc, db_key),
+    "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
+    "get_table_names": lambda sc: DescribeService.get_table_names_from_mapping(sc),
+    "name_matcher": lambda map_db, target_db: DescribeService.graph_database_find_name_match(map_db, target_db),
+    "get_semantic_map_for_annotation": lambda sc, db_key=None: (
+        __import__('utils.session_helpers').get_semantic_map_for_annotation(sc, db_key)
+    ),
 }
 
 if __name__ == "__main__":
