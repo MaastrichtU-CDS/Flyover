@@ -6,6 +6,7 @@ from .data_preprocessing import (
     clean_column_names,
     preprocess_dataframe,
     get_original_column_name,
+    sanitise_table_name,
 )
 
 

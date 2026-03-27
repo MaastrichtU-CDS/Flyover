@@ -249,11 +249,11 @@ class IngestService:
         """
         try:
             try:
-                from ..utils.python_triplifier_integration import (
+                from ..services.conversion_service import (
                     run_triplifier as run_triplifier_impl,
                 )
             except ImportError:
-                from utils.python_triplifier_integration import (
+                from services.conversion_service import (
                     run_triplifier as run_triplifier_impl,
                 )
 
