@@ -30,6 +30,8 @@ services:
       # Optional: Override default timeout settings
       # - GUNICORN_TIMEOUT=300
       # - RDF_REQUEST_TIMEOUT=3600
+      # Optional: Enable manual materialization of inferred triples in a separate graph
+      # - FLYOVER_MATERIALIZE_INFERENCES=true
     hostname: "data.local"
     networks:
       - proxynet

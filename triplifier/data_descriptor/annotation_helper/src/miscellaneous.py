@@ -11,6 +11,9 @@ template_dir = os.path.join(script_dir, "sparql_templates")
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
 dry_run = False
 
+# specify whether to materialize inferences in a separate graph
+materialize = os.environ.get("FLYOVER_MATERIALIZE_INFERENCES", "false").lower() == "true"
+
 # not a beauty but works
 _database = "databasename"
 _variable_definition = "localvariable"
@@ -29,6 +32,7 @@ _class_iri_label = "reconstructioniri"
 
 _prefixes_to_add = "PREFIX PLACEHOLDER: <>"
 _annotation_graph_uri = "ANNOTATION_GRAPH_URI"
+_materialized_graph_uri = "MATERIALIZED_GRAPH_URI"
 
 
 def add_annotation(
@@ -597,6 +601,13 @@ def add_annotation(
         response = None
         construction_success = True
         annotation_success = None
+
+    # materialize inferences if enabled
+    if materialize and dry_run is False:
+        materialize_inferences(
+            endpoint=endpoint,
+            database_name=database,
+        )
 
 
 def get_unique_prefixes(query, prefixes):
@@ -1278,6 +1289,142 @@ def _remove_component(
         query = query.replace(old, new)
 
     # run the query
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def materialize_inferences(endpoint, database_name):
+    """
+    Materialize inferred triples into a separate graph.
+    This generates explicit rdf:type statements that would otherwise
+    require a reasoner to infer.
+
+    Two specific materializations are performed:
+    1. owl:equivalentClass → rdf:type: for each equivalentClass relationship,
+       instances of the local class also get rdf:type for the equivalent class.
+    2. template_mapping.rq ?term → rdf:type: for value mapping terms defined
+       with owl:equivalentClass restrictions, matching instances get rdf:type ?term.
+
+    :param str endpoint: endpoint to post the materialization queries to
+    :param str database_name: database name used to construct graph URIs
+    """
+    logging.info(
+        f"Materializing inferences for database {database_name} on endpoint {endpoint}"
+    )
+
+    annotation_graph_uri = f"http://annotation.local/{database_name}/"
+    materialized_graph_uri = f"http://materialized.local/{database_name}/"
+
+    # materialize owl:equivalentClass as rdf:type
+    eq_response, eq_query = _materialize_equivalent_class(
+        endpoint=endpoint,
+        annotation_graph_uri=annotation_graph_uri,
+        materialized_graph_uri=materialized_graph_uri,
+    )
+
+    if eq_response is not None and 200 <= eq_response.status_code < 300:
+        logging.info(
+            "Successfully materialized owl:equivalentClass as rdf:type statements."
+        )
+    else:
+        status = eq_response.status_code if eq_response is not None else "N/A"
+        logging.warning(
+            f"Materialization of owl:equivalentClass may have failed. "
+            f"HTTP status: {status}."
+        )
+
+    # materialize template_mapping.rq ?term as rdf:type
+    vm_response, vm_query = _materialize_value_mapping(
+        endpoint=endpoint,
+        annotation_graph_uri=annotation_graph_uri,
+        materialized_graph_uri=materialized_graph_uri,
+    )
+
+    if vm_response is not None and 200 <= vm_response.status_code < 300:
+        logging.info(
+            "Successfully materialized value mapping ?term as rdf:type statements."
+        )
+    else:
+        status = vm_response.status_code if vm_response is not None else "N/A"
+        logging.warning(
+            f"Materialization of value mapping ?term may have failed. "
+            f"HTTP status: {status}."
+        )
+
+    return eq_response, eq_query, vm_response, vm_query
+
+
+def _materialize_equivalent_class(
+    endpoint, annotation_graph_uri, materialized_graph_uri, template_file=None
+):
+    """
+    Materialize owl:equivalentClass relationships as rdf:type statements.
+    For each A owl:equivalentClass B (where B is not a blank node) found
+    in the annotation graph, instances of type A also get rdf:type B
+    in the materialized graph.
+
+    :param str endpoint: endpoint to post the query to
+    :param str annotation_graph_uri: URI of the annotation graph to read from
+    :param str materialized_graph_uri: URI of the materialized graph to write to
+    :param str template_file: optional override for the template file path
+    :return: tuple of (response, query)
+    """
+    logging.debug("Materializing owl:equivalentClass as rdf:type statements.")
+
+    if not isinstance(template_file, str):
+        template_file = os.path.join(
+            template_dir, "template_materialize_equivalent_class.rq"
+        )
+
+    query = read_file(template_file)
+
+    replacements = {
+        _annotation_graph_uri: annotation_graph_uri,
+        _materialized_graph_uri: materialized_graph_uri,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def _materialize_value_mapping(
+    endpoint, annotation_graph_uri, materialized_graph_uri, template_file=None
+):
+    """
+    Materialize value mapping ?term classes as rdf:type statements.
+    For each ?term class defined via template_mapping.rq with an
+    owl:equivalentClass restriction (intersection of cell_of and has_value),
+    instances matching the restriction pattern get rdf:type ?term
+    in the materialized graph.
+
+    :param str endpoint: endpoint to post the query to
+    :param str annotation_graph_uri: URI of the annotation graph to read from
+    :param str materialized_graph_uri: URI of the materialized graph to write to
+    :param str template_file: optional override for the template file path
+    :return: tuple of (response, query)
+    """
+    logging.debug("Materializing value mapping ?term as rdf:type statements.")
+
+    if not isinstance(template_file, str):
+        template_file = os.path.join(
+            template_dir, "template_materialize_value_mapping.rq"
+        )
+
+    query = read_file(template_file)
+
+    replacements = {
+        _annotation_graph_uri: annotation_graph_uri,
+        _materialized_graph_uri: materialized_graph_uri,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
     response = __post_query(endpoint, query)
 
     return response, query

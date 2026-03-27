@@ -1,0 +1,20 @@
+# Materialization query: owl:equivalentClass → rdf:type
+# For each owl:equivalentClass triple in the annotation graph,
+# this query finds all instances typed as the local class
+# and materializes an additional rdf:type for the equivalent class.
+
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+INSERT {
+    GRAPH <MATERIALIZED_GRAPH_URI> {
+        ?instance rdf:type ?equivalentClass .
+    }
+}
+WHERE {
+    GRAPH <ANNOTATION_GRAPH_URI> {
+        ?class owl:equivalentClass ?equivalentClass .
+        FILTER(!isBlank(?equivalentClass))
+    }
+    ?instance rdf:type ?class .
+}
