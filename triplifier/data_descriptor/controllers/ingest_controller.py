@@ -23,8 +23,17 @@ ingest_bp = Blueprint("ingest", __name__)
 def get_app_context():
     """Get application context (session_cache, graphdb_url, etc.)."""
     from flask import current_app
+    from services import GraphDBService
 
-    return current_app.config.get("APP_CONTEXT", {})
+    ctx = current_app.config.get("APP_CONTEXT", {})
+
+    # Ensure graphdb_service is initialized if graphdb_url and repo are available
+    if not ctx.get("graphdb_service") and "graphdb_url" in current_app.config:
+        ctx["graphdb_service"] = GraphDBService(
+            current_app.config["graphdb_url"], current_app.config["repo"]
+        )
+
+    return ctx
 
 
 @ingest_bp.route("/")
@@ -52,14 +61,20 @@ def index():
     session_cache = ctx.get("session_cache")
     graphdb_service = ctx.get("graphdb_service")
 
+    graph_exists = False
     try:
         if graphdb_service and graphdb_service.check_data_exists():
+            graph_exists = True
             session_cache.existing_graph = True
-            return render_template("ingest.html", graph_exists=True)
+        else:
+            session_cache.existing_graph = False
     except Exception as e:
-        flash(f"Failed to check if data graph exists: {e}")
+        logger.error(f"Failed to check if data graph exists: {e}")
+        # Don't flash on initial landing if it's just a network issue
+        # but keep session_cache state consistent
+        session_cache.existing_graph = False
 
-    return render_template("ingest.html")
+    return render_template("ingest.html", graph_exists=graph_exists)
 
 
 @ingest_bp.route("/upload-semantic-map", methods=["POST"])

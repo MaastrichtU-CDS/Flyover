@@ -9,8 +9,11 @@ import json
 import logging
 import os
 import requests
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import gevent
+from gevent import subprocess as gevent_subprocess
 import polars as pl
 from psycopg2 import connect
 from werkzeug.utils import secure_filename
@@ -366,52 +369,204 @@ class IngestService:
         timeout_seconds: int = 300,
     ) -> Tuple[bool, str, str]:
         """
-        Upload a file to GraphDB using the Workbench API.
+        Upload a single file to GraphDB with an intelligent fallback strategy.
+        Uses gevent subprocess for better integration with gevent worker.
 
         Args:
             file_path: Path to the file to upload
-            url: GraphDB Workbench URL
-            content_type: Content type of the file
+            url: GraphDB endpoint URL
+            content_type: MIME type (e.g. 'application/rdf+xml')
             wait_for_completion: Whether to wait for upload completion
-            timeout_seconds: Timeout for the upload operation
+            timeout_seconds: Timeout for each upload attempt
 
         Returns:
-            Tuple of (success, status_message, error_message)
+            Tuple of (success: bool, message: str, method_used: str)
         """
-        try:
-            # Check if file exists
-            if not os.path.exists(file_path):
-                return False, "", f"File not found: {file_path}"
+        if not os.path.exists(file_path):
+            error_msg = f"File not found: {file_path}"
+            logger.error(error_msg)
+            return False, error_msg, "none"
 
-            # Read the file content
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
+        # Get file info
+        file_name = os.path.basename(file_path)
 
-            # Prepare headers
-            headers = {
-                'Content-Type': content_type,
-            }
-
-            # Upload the file
-            response = requests.post(
+        if not wait_for_completion:
+            # Start upload in background using gevent spawn
+            logger.info(f"🚀 Starting background upload for {file_name}")
+            gevent.spawn(
+                self._background_upload_with_fallback,
+                file_path,
                 url,
-                data=file_content,
-                headers=headers,
-                timeout=timeout_seconds
+                content_type,
+                timeout_seconds,
+                file_name,
+            )
+            return True, f"Background upload started for {file_name}", "background"
+
+        # Synchronous upload with fallback
+        return self._synchronous_upload_with_fallback(
+            file_path, url, content_type, timeout_seconds, file_name
+        )
+
+    def _background_upload_with_fallback(
+        self,
+        file_path: str,
+        url: str,
+        content_type: str,
+        timeout_seconds: int,
+        file_name: str,
+    ) -> None:
+        """Execute upload in background using gevent greenlet"""
+        try:
+            start_time = time.time()
+            logger.info(f"🔄 Background upload: trying data-binary first for {file_name}")
+
+            success, message = self._try_data_binary_upload(
+                file_path, url, content_type, timeout_seconds
             )
 
-            # Check response
-            if response.status_code in [200, 201, 202]:
-                return True, f"Upload successful: {response.text}", ""
+            if success:
+                elapsed = time.time() - start_time
+                logger.info(
+                    f"✅ Background upload (data-binary) successful for {file_name} in {elapsed:.1f}s"
+                )
+                return
             else:
-                return False, "", f"Upload failed with status {response.status_code}: {response.text}"
+                logger.warning(
+                    f"⚠️ Background data-binary failed for {file_name}: {message}"
+                )
+                logger.info(
+                    f"🔄 Background upload: falling back to streaming for {file_name}"
+                )
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"GraphDB upload failed: {e}")
-            return False, "", f"Request exception: {e}"
+            # Fallback to streaming upload
+            success, message = self._try_streaming_upload(
+                file_path, url, content_type, timeout_seconds
+            )
+            elapsed = time.time() - start_time
+
+            if success:
+                logger.info(
+                    f"✅ Background upload (streaming) successful for {file_name} in {elapsed:.1f}s"
+                )
+            else:
+                logger.error(
+                    f"❌ Background upload (both methods) failed for {file_name} after {elapsed:.1f}s: {message}"
+                )
+
         except Exception as e:
-            logger.error(f"GraphDB upload error: {e}")
-            return False, "", f"Unexpected error: {e}"
+            logger.error(f"❌ Background upload crashed for {file_name}: {str(e)}")
+
+    def _synchronous_upload_with_fallback(
+        self,
+        file_path: str,
+        url: str,
+        content_type: str,
+        timeout_seconds: int,
+        file_name: str,
+    ) -> Tuple[bool, str, str]:
+        """Execute synchronous upload with intelligent fallback using gevent"""
+        start_time = time.time()
+
+        logger.info(f"Attempting --data-binary upload for {file_name}")
+        success, message = self._try_data_binary_upload(
+            file_path, url, content_type, timeout_seconds
+        )
+
+        if success:
+            elapsed = time.time() - start_time
+            logger.info(
+                f"✅ --data-binary upload successful for {file_name} in {elapsed:.1f}s"
+            )
+            return True, message, "data-binary"
+        else:
+            logger.warning(f"⚠️ --data-binary failed for {file_name}: {message}")
+            logger.info(f"🔄 Falling back to streaming upload for {file_name}")
+
+        # Fallback to streaming upload
+        success, message = self._try_streaming_upload(
+            file_path, url, content_type, timeout_seconds
+        )
+        elapsed = time.time() - start_time
+
+        if success:
+            logger.info(f"✅ Streaming upload successful for {file_name} in {elapsed:.1f}s")
+            return True, message, "streaming"
+        else:
+            logger.error(
+                f"❌ Both upload methods failed for {file_name} after {elapsed:.1f}s"
+            )
+            return False, f"All upload methods failed. Last error: {message}", "failed"
+
+    def _try_data_binary_upload(
+        self, file_path: str, url: str, content_type: str, timeout_seconds: int
+    ) -> Tuple[bool, str]:
+        """Attempt upload using the --data-binary method with gevent subprocess"""
+        try:
+            result = gevent_subprocess.run(
+                [
+                    "curl",
+                    "-X",
+                    "POST",
+                    "-H",
+                    f"Content-Type: {content_type}",
+                    "--data-binary",
+                    f"@{file_path}",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+
+            if result.returncode == 0:
+                return True, "Upload successful via data-binary method"
+            else:
+                error_msg = result.stderr.strip() or "Unknown curl error"
+                return False, f"curl data-binary failed: {error_msg}"
+
+        except gevent_subprocess.TimeoutExpired:
+            return False, "Upload timeout (data-binary method)"
+        except Exception as e:
+            return False, f"Unexpected error (data-binary method): {str(e)}"
+
+    def _try_streaming_upload(
+        self, file_path: str, url: str, content_type: str, timeout_seconds: int
+    ) -> Tuple[bool, str]:
+        """Attempt upload using -T streaming method with gevent subprocess"""
+        try:
+            result = gevent_subprocess.run(
+                [
+                    "curl",
+                    "-X",
+                    "POST",
+                    "-H",
+                    f"Content-Type: {content_type}",
+                    "-T",
+                    file_path,
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+
+            if result.returncode == 0:
+                return True, "Upload successful via streaming method"
+            else:
+                error_msg = result.stderr.strip() or "Unknown curl error"
+                return False, f"curl streaming failed: {error_msg}"
+
+        except gevent_subprocess.TimeoutExpired:
+            return False, "Upload timeout (streaming method)"
+        except Exception as e:
+            return False, f"Unexpected error (streaming method): {str(e)}"
 
     def upload_multiple_graphs(
         self,
@@ -440,58 +595,63 @@ class IngestService:
             Tuple of (success, list of messages)
         """
         messages = []
-        
+        overall_success = True
+
         try:
             for file_info in output_files:
-                data_file = file_info.get('data_file')
-                ontology_file = file_info.get('ontology_file')
-                table_name = file_info.get('table_name')
-                
-                if not data_file or not ontology_file:
+                table_name = file_info.get("table_name")
+                ontology_path = file_info.get("ontology_file")
+                data_path = file_info.get("data_file")
+
+                if not data_path or not ontology_path:
                     messages.append(f"Missing files for table {table_name}")
                     continue
-                
+
                 # Upload ontology file
-                ontology_path = os.path.join(root_dir, ontology_file)
-                ontology_url = f"{graphdb_url}/repositories/{repo}/statements"
-                
-                success, status, error = self.upload_file_to_graphdb(
+                ontology_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/{table_name}/"
+
+                success, status, method = self.upload_file_to_graphdb(
                     ontology_path,
                     ontology_url,
                     "application/rdf+xml",
                     True,
-                    ontology_timeout
+                    ontology_timeout,
                 )
-                
+
                 if success:
-                    messages.append(f"Ontology uploaded for {table_name}: {status}")
-                else:
-                    messages.append(f"Ontology upload failed for {table_name}: {error}")
-                    continue
-                
-                # Upload data file
-                if data_background:
-                    # Background upload would go here
-                    messages.append(f"Data upload started in background for {table_name}")
-                else:
-                    data_path = os.path.join(root_dir, data_file)
-                    data_url = f"{graphdb_url}/repositories/{repo}/statements"
-                    
-                    success, status, error = self.upload_file_to_graphdb(
-                        data_path,
-                        data_url,
-                        "text/turtle",
-                        True,
-                        data_timeout
+                    messages.append(
+                        f"Ontology uploaded for {table_name} ({method}): {status}"
                     )
-                    
-                    if success:
-                        messages.append(f"Data uploaded for {table_name}: {status}")
-                    else:
-                        messages.append(f"Data upload failed for {table_name}: {error}")
-            
-            return True, messages
-            
+                else:
+                    messages.append(
+                        f"Ontology upload failed for {table_name} ({method}): {status}"
+                    )
+                    overall_success = False
+                    continue
+
+                # Upload data file
+                data_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/{table_name}/"
+
+                success, status, method = self.upload_file_to_graphdb(
+                    data_path,
+                    data_url,
+                    "application/x-turtle",
+                    not data_background,
+                    data_timeout,
+                )
+
+                if success:
+                    messages.append(
+                        f"Data upload started for {table_name} ({method}): {status}"
+                    )
+                else:
+                    messages.append(
+                        f"Data upload failed for {table_name} ({method}): {status}"
+                    )
+                    overall_success = False
+
+            return overall_success, messages
+
         except Exception as e:
             logger.error(f"Failed to upload multiple graphs: {e}")
             return False, [f"Upload error: {e}"]
@@ -524,57 +684,54 @@ class IngestService:
             Tuple of (success, list of messages)
         """
         messages = []
-        
+        overall_success = True
+
         try:
-            # Upload ontology if requested
+            # Step 1: Upload ontology and WAIT for completion
             if upload_ontology:
-                ontology_path = os.path.join(root_dir, "ontology.ttl")
+                ontology_path = os.path.join(root_dir, "ontology.owl")
                 if os.path.exists(ontology_path):
-                    ontology_url = f"{graphdb_url}/repositories/{repo}/statements"
-                    success, status, error = self.upload_file_to_graphdb(
+                    ontology_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"
+                    success, status, method = self.upload_file_to_graphdb(
                         ontology_path,
                         ontology_url,
-                        "text/turtle",
+                        "application/rdf+xml",
                         True,
-                        ontology_timeout
+                        ontology_timeout,
                     )
-                    
+
                     if success:
-                        messages.append(f"Ontology uploaded: {status}")
+                        messages.append(f"Ontology uploaded ({method}): {status}")
                     else:
-                        messages.append(f"Ontology upload failed: {error}")
+                        messages.append(f"Ontology upload failed ({method}): {status}")
                         return False, messages
                 else:
-                    messages.append("No ontology file found")
-            
-            # Upload data if requested
+                    messages.append("No ontology file found (ontology.owl)")
+
+            # Step 2: Upload data (background/foreground configurable)
             if upload_data:
-                data_path = os.path.join(root_dir, "data.ttl")
+                data_path = os.path.join(root_dir, "output.ttl")
                 if os.path.exists(data_path):
-                    data_url = f"{graphdb_url}/repositories/{repo}/statements"
-                    
-                    if data_background:
-                        messages.append("Data upload started in background")
-                        # Background upload would be handled separately
+                    data_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"
+
+                    success, status, method = self.upload_file_to_graphdb(
+                        data_path,
+                        data_url,
+                        "application/x-turtle",
+                        not data_background,
+                        data_timeout,
+                    )
+
+                    if success:
+                        messages.append(f"Data upload started ({method}): {status}")
                     else:
-                        success, status, error = self.upload_file_to_graphdb(
-                            data_path,
-                            data_url,
-                            "text/turtle",
-                            True,
-                            data_timeout
-                        )
-                        
-                        if success:
-                            messages.append(f"Data uploaded: {status}")
-                        else:
-                            messages.append(f"Data upload failed: {error}")
-                            return False, messages
+                        messages.append(f"Data upload failed ({method}): {status}")
+                        overall_success = False
                 else:
-                    messages.append("No data file found")
-            
-            return True, messages
-            
+                    messages.append("No data file found (output.ttl)")
+
+            return overall_success, messages
+
         except Exception as e:
             logger.error(f"Failed to upload ontology and data: {e}")
             return False, [f"Upload error: {e}"]

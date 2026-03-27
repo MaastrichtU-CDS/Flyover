@@ -2651,6 +2651,10 @@ app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
 app.register_blueprint(download_bp)
 
+# Set up application config
+app.config["graphdb_url"] = graphdb_url
+app.config["repo"] = repo
+
 # Set up application context with required functions and services
 app.config["APP_CONTEXT"] = {
     "session_cache": session_cache,
