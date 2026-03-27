@@ -52,11 +52,18 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
+from services.ingest_service import (
+    upload_ontology_then_data,
+    upload_multiple_graphs,
+)
+from services.describe_service import (
+    has_semantic_map,
+    get_database_name_from_mapping,
+)
 from utils.data_preprocessing import (
     preprocess_dataframe,
     sanitise_table_name,
 )
-from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
 from utils.session_helpers import (
     check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
