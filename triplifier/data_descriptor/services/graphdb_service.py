@@ -324,6 +324,9 @@ class GraphDBService:
         """
         Get existing column class URI from GraphDB.
 
+        Uses the same SPARQL query as get_column_class_uri since both
+        new and existing columns share the same URI lookup mechanism.
+
         Args:
             table_name: Name of the table
             column_name: Name of the column
@@ -331,41 +334,18 @@ class GraphDBService:
         Returns:
             Optional[str]: Existing column URI or None if not found
         """
-        try:
-            query = f"""
-            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-            SELECT ?uri WHERE {{
-                ?uri dbo:column '{column_name}' .
-                FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
-            }}
-            LIMIT 1
-            """
-
-            result = self.execute_query(query)
-
-            if not result or result.strip() == "":
-                logger.info(f"No existing results found for column {table_name}.{column_name}")
-                return None
-
-            # Parse the result to extract the URI
-            lines = result.strip().split('\n')
-            if len(lines) > 1:
-                return lines[1].split('|')[0].strip()
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Failed to get existing column URI for {table_name}.{column_name}: {e}")
-            return None
+        return self.repository.get_column_class_uri(table_name, column_name)
 
     def process_cross_graph_relationships(self, cross_graph_data: Dict[str, str]) -> Tuple[bool, str]:
         """
         Process cross-graph relationships between tables.
 
+        Delegates to process_cross_graph_relationship (singular) which
+        handles URI lookup and relationship insertion via the repository.
+
         Args:
-            cross_graph_data: Dictionary containing relationship data
+            cross_graph_data: Dictionary containing relationship data with keys:
+                newTableName, newColumnName, existingTableName, existingColumnName
 
         Returns:
             Tuple of (success, message)
@@ -374,38 +354,26 @@ class GraphDBService:
             return True, ""
 
         try:
-            print("Starting cross-graph relationship processing...")
-            
-            # Get URIs for new and existing columns
-            new_column_uri = self.get_column_class_uri(
-                cross_graph_data["newTableName"], cross_graph_data["newColumnName"]
-            )
+            new_table = cross_graph_data["newTableName"]
+            new_column = cross_graph_data["newColumnName"]
+            existing_table = cross_graph_data["existingTableName"]
+            existing_column = cross_graph_data["existingColumnName"]
 
-            existing_column_uri = self.get_existing_column_class_uri(
-                cross_graph_data["existingTableName"],
-                cross_graph_data["existingColumnName"],
-            )
-
-            if not new_column_uri or not existing_column_uri:
-                return False, f"Could not find URIs for cross-graph relationship: {cross_graph_data['newTableName']}.{cross_graph_data['newColumnName']} -> {cross_graph_data['existingTableName']}.{cross_graph_data['existingColumnName']}"
-
-            # Create the relationship
-            predicate = "http://um-cds/ontologies/databaseontology/cross_graph_refers_to"
             result = self.process_cross_graph_relationship(
-                predicate, new_column_uri, existing_column_uri
+                new_table, new_column, existing_table, existing_column
             )
 
             if result:
                 return True, (
                     f"Created cross-graph relationship: "
-                    f"{cross_graph_data['newTableName']}.{cross_graph_data['newColumnName']} -> "
-                    f"{cross_graph_data['existingTableName']}.{cross_graph_data['existingColumnName']}"
+                    f"{new_table}.{new_column} -> "
+                    f"{existing_table}.{existing_column}"
                 )
             else:
                 return False, (
                     f"Failed cross-graph relationship: "
-                    f"{cross_graph_data['newTableName']}.{cross_graph_data['newColumnName']} -> "
-                    f"{cross_graph_data['existingTableName']}.{cross_graph_data['existingColumnName']}"
+                    f"{new_table}.{new_column} -> "
+                    f"{existing_table}.{existing_column}"
                 )
 
         except Exception as e:

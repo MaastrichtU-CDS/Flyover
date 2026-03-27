@@ -736,57 +736,81 @@ class IngestService:
             logger.error(f"Failed to upload ontology and data: {e}")
             return False, [f"Upload error: {e}"]
 
-    def background_pk_fk_processing(self, session_cache: Any) -> None:
+    @staticmethod
+    def background_pk_fk_processing(session_cache: Any, graphdb_service: Any) -> None:
         """
-        Background function to process PK/FK relationships
+        Background function to process PK/FK relationships.
+
+        Waits briefly for GraphDB to process uploaded data, then
+        delegates to process_pk_fk_relationships.
 
         Args:
-            session_cache: Session cache object
+            session_cache: Session cache object with pk_fk_data attribute
+            graphdb_service: GraphDBService instance for database operations
         """
         try:
-            # Small delay to ensure GraphDB has processed the uploaded data
-            import time
             time.sleep(3)
-            
-            # Get PK/FK data from session
-            pk_fk_data = session_cache.pk_fk_data if hasattr(session_cache, 'pk_fk_data') else []
-            
-            if pk_fk_data:
-                success, messages = self.process_pk_fk_relationships(pk_fk_data)
-                session_cache.pk_fk_status = "completed" if success else "failed"
-                session_cache.pk_fk_messages = messages
-            else:
-                session_cache.pk_fk_status = "no_data"
-                
+
+            pk_fk_data = getattr(session_cache, 'pk_fk_data', None)
+            if not pk_fk_data:
+                return
+
+            logger.info("Starting PK/FK relationship processing...")
+            session_cache.pk_fk_status = "processing"
+
+            success, messages = IngestService.process_pk_fk_relationships(
+                pk_fk_data, graphdb_service
+            )
+
+            session_cache.pk_fk_status = "success" if success else "failed"
+            for msg in messages:
+                logger.info(msg)
+
+            if success:
+                logger.info("PK/FK relationship processing completed successfully.")
+
         except Exception as e:
             logger.error(f"Background PK/FK processing error: {e}")
             session_cache.pk_fk_status = "failed"
 
-    def background_cross_graph_processing(self, session_cache: Any) -> None:
+    @staticmethod
+    def background_cross_graph_processing(session_cache: Any, graphdb_service: Any) -> None:
         """
-        Background function to process cross-graph relationships
+        Background function to process cross-graph relationships.
+
+        Waits briefly for GraphDB to process uploaded data (slightly
+        longer than PK/FK to ensure ordering), then delegates to
+        process_cross_graph_relationships.
 
         Args:
-            session_cache: Session cache object
+            session_cache: Session cache object with cross_graph_link_data attribute
+            graphdb_service: GraphDBService instance for database operations
         """
         try:
-            # Small delay to ensure GraphDB has processed the uploaded data
-            import time
-            time.sleep(3)
-            
-            # Get cross-graph data from session
-            cross_graph_data = session_cache.cross_graph_link_data if hasattr(session_cache, 'cross_graph_link_data') else None
-            
-            if cross_graph_data:
-                success, message = self.process_cross_graph_relationships(cross_graph_data)
-                session_cache.cross_graph_status = "completed" if success else "failed"
-                session_cache.cross_graph_message = message
-            else:
-                session_cache.cross_graph_status = "no_data"
-                
+            # Slightly longer delay than PK/FK to ensure it runs after
+            time.sleep(5)
+
+            cross_graph_data = getattr(session_cache, 'cross_graph_link_data', None)
+            if not cross_graph_data:
+                return
+
+            logger.info("Starting cross-graph relationship processing...")
+            session_cache.cross_graph_link_status = "processing"
+
+            success, message = IngestService.process_cross_graph_relationships(
+                cross_graph_data, graphdb_service
+            )
+
+            session_cache.cross_graph_link_status = "success" if success else "failed"
+            if message:
+                logger.info(message)
+
+            if success:
+                logger.info("Cross-graph relationship processing completed successfully.")
+
         except Exception as e:
             logger.error(f"Background cross-graph processing error: {e}")
-            session_cache.cross_graph_status = "failed"
+            session_cache.cross_graph_link_status = "failed"
 
     @staticmethod
     def process_cross_graph_relationships(
@@ -829,133 +853,3 @@ class IngestService:
                 f"{existing_table}.{cross_graph_data['existingColumnName']}"
             )
 
-    def get_column_class_uri(self, table_name: str, column_name: str) -> Optional[str]:
-        """
-        Get the class URI for a specific column in a table.
-
-        Args:
-            table_name: Name of the table
-            column_name: Name of the column
-
-        Returns:
-            Optional[str]: Class URI or None if not found
-        """
-        try:
-            query = f"""
-            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            SELECT ?class_uri
-            WHERE {{
-                ?uri dbo:table_name "{table_name}" .
-                ?uri dbo:column "{column_name}" .
-                ?uri dbo:class_uri ?class_uri .
-            }}
-            """
-            
-            result = self.execute_query(query)
-            if result and result.strip():
-                # Parse the result to extract the class URI
-                lines = result.strip().split('\n')
-                if len(lines) > 1:
-                    # Skip header line and get the first result
-                    return lines[1].split('|')[0].strip()
-            return None
-            
-        except Exception as e:
-            logger.error(f"Failed to get class URI for {table_name}.{column_name}: {e}")
-            return None
-
-    def insert_fk_relation(
-        self,
-        fk_table: str,
-        fk_column: str,
-        pk_table: str,
-        pk_column: str,
-    ) -> bool:
-        """
-        Insert a foreign key relationship between tables.
-
-        Args:
-            fk_table: Foreign key table name
-            fk_column: Foreign key column name
-            pk_table: Primary key table name
-            pk_column: Primary key column name
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            # Get class URIs for both columns
-            fk_class_uri = self.get_column_class_uri(fk_table, fk_column)
-            pk_class_uri = self.get_column_class_uri(pk_table, pk_column)
-            
-            if not fk_class_uri or not pk_class_uri:
-                logger.warning(f"Could not find URIs for FK relationship: {fk_table}.{fk_column} -> {pk_table}.{pk_column}")
-                return False
-
-            # Insert the relationship
-            predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
-            result = self.graphdb_service.process_pk_fk_relationship(
-                predicate, fk_class_uri, pk_class_uri
-            )
-            return result is not None
-            
-        except Exception as e:
-            logger.error(f"Failed to insert FK relationship: {fk_table}.{fk_column} -> {pk_table}.{pk_column}: {e}")
-            return False
-
-    def process_pk_fk_relationships(self, pk_fk_data: List[Dict]) -> Tuple[bool, List[str]]:
-        """
-        Process all PK/FK relationships from the given data.
-
-        Args:
-            pk_fk_data: List of relationship definitions
-
-        Returns:
-            Tuple of (overall_success, list of messages)
-        """
-        if not pk_fk_data:
-            return True, []
-
-        messages = []
-        success = True
-
-        # Create mapping of files with their PK/FK info
-        file_map = {rel["fileName"]: rel for rel in pk_fk_data}
-
-        for rel in pk_fk_data:
-            if not all([
-                rel.get("foreignKey"),
-                rel.get("foreignKeyTable"),
-                rel.get("foreignKeyColumn"),
-            ]):
-                continue
-
-            # Find the target table's PK info
-            target_file = rel["foreignKeyTable"]
-            target_rel = file_map.get(target_file)
-
-            if not target_rel or not target_rel.get("primaryKey"):
-                continue
-
-            # Sanitise table names
-            fk_table = sanitise_table_name(rel["fileName"])
-            pk_table = sanitise_table_name(target_file)
-
-            result = self.insert_fk_relation(
-                fk_table,
-                rel["foreignKey"],
-                pk_table,
-                target_rel["primaryKey"],
-            )
-
-            if result:
-                messages.append(
-                    f"Created FK relationship: {fk_table}.{rel['foreignKey']} -> {pk_table}.{target_rel['primaryKey']}"
-                )
-            else:
-                success = False
-                messages.append(
-                    f"Failed FK relationship: {fk_table}.{rel['foreignKey']} -> {pk_table}.{target_rel['primaryKey']}"
-                )
-
-        return success, messages

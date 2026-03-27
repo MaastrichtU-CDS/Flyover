@@ -56,6 +56,7 @@ from services.ingest_service import (
     IngestService,
 )
 from services.describe_service import DescribeService
+from services.graphdb_service import GraphDBService
 from utils.data_preprocessing import (
     preprocess_dataframe,
     sanitise_table_name,
@@ -535,13 +536,19 @@ def upload_file():
                     logger.info(
                         "Upload complete. Starting background PK/FK processing..."
                     )
-                    gevent.spawn(background_pk_fk_processing)
+                    gevent.spawn(
+                        IngestService.background_pk_fk_processing,
+                        session_cache, graphdb_service,
+                    )
 
                 if session_cache.cross_graph_link_data:
                     logger.info(
                         "Upload complete. Starting background cross-graph processing..."
                     )
-                    gevent.spawn(background_cross_graph_processing)
+                    gevent.spawn(
+                        IngestService.background_cross_graph_processing,
+                        session_cache, graphdb_service,
+                    )
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for("data_submission"))
@@ -2306,341 +2313,7 @@ def insert_equivalencies(descriptive_info, variable, database):
     return execute_query(session_cache.repo, query, "update", "/statements")
 
 
-def get_column_class_uri(table_name, column_name):
-    """Retrieve column class URI"""
-    query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?uri WHERE {{
-        ?uri dbo:column '{column_name}' .
-        FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
-    }}
-    LIMIT 1
-    """
-
-    try:
-        query_result = execute_query(session_cache.repo, query)
-
-        if not query_result or query_result.strip() == "":
-            print(f"No results found for column {table_name}.{column_name}")
-            return None
-
-        column_info = pl.read_csv(
-            StringIO(query_result),
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
-        )
-
-        if column_info.is_empty():
-            print(f"Empty result set for column {table_name}.{column_name}")
-            return None
-
-        if "uri" not in column_info.columns:
-            print("Query result format error: no 'uri' column found")
-            return None
-
-        return column_info.get_column("uri")[0]
-
-    except Exception as e:
-        print(f"Error fetching column URI for {table_name}.{column_name}: {e}")
-        return None
-
-
-def insert_fk_relation(
-    fk_predicate,
-    column_class_uri,
-    target_class_uri,
-    relationships_graph="http://relationships.local/",
-):
-    """Insert PK/FK relationship into the relationships graph"""
-    insert_query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-    INSERT {{
-        GRAPH <{relationships_graph}> {{
-            ?sources <{fk_predicate}> ?targets .
-        }}
-    }} WHERE {{
-        ?sources rdf:type <{column_class_uri}> ;
-                 dbo:has_cell ?sourceCell .
-        ?sourceCell dbo:has_value ?columnValue .
-
-        ?targets rdf:type <{target_class_uri}> ;
-                 dbo:has_cell ?targetCell .
-        ?targetCell dbo:has_value ?columnValue .
-    }}
-    """
-
-    return execute_query(session_cache.repo, insert_query, "update", "/statements")
-
-
-def process_pk_fk_relationships():
-    """Process all PK/FK relationships after successful triplification"""
-    if not session_cache.pk_fk_data:
-        return True
-
-    try:
-        print("Starting PK/FK relationship processing...")
-        session_cache.pk_fk_status = "processing"
-
-        # Create mapping of files with their PK/FK info
-        file_map = {rel["fileName"]: rel for rel in session_cache.pk_fk_data}
-
-        # Process each relationship
-        for rel in session_cache.pk_fk_data:
-            if not all(
-                [
-                    rel.get("foreignKey"),
-                    rel.get("foreignKeyTable"),
-                    rel.get("foreignKeyColumn"),
-                ]
-            ):
-                continue
-
-            # Find the target table's PK info
-            target_file = rel["foreignKeyTable"]
-            target_rel = file_map.get(target_file)
-
-            if not target_rel or not target_rel.get("primaryKey"):
-                continue
-
-            # Generate FK configuration - sanitise table name before handling
-            fk_config = {
-                "foreignKeyTable": sanitise_table_name(rel["fileName"]),
-                "foreignKeyColumn": rel["foreignKey"],
-                "primaryKeyTable": sanitise_table_name(target_file),
-                "primaryKeyColumn": target_rel["primaryKey"],
-            }
-
-            source_uri = get_column_class_uri(
-                fk_config["foreignKeyTable"], fk_config["foreignKeyColumn"]
-            )
-
-            target_uri = get_column_class_uri(
-                fk_config["primaryKeyTable"], fk_config["primaryKeyColumn"]
-            )
-
-            if not source_uri or not target_uri:
-                print(f"Could not find URIs for FK relationship: {fk_config}")
-                continue
-
-            fk_predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
-
-            # Insert the relationship
-            insert_fk_relation(fk_predicate, source_uri, target_uri)
-            print(
-                f"Created FK relationship: "
-                f"{fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> "
-                f"{fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}"
-            )
-
-        session_cache.pk_fk_status = "success"
-        print("PK/FK relationship processing completed successfully.")
-        return True
-
-    except Exception as e:
-        print(f"Error processing PK/FK relationships: {e}")
-        session_cache.pk_fk_status = "failed"
-        return False
-
-
-def background_pk_fk_processing():
-    """Background function to process PK/FK relationships"""
-    try:
-        # Small delay to ensure GraphDB has processed the uploaded data
-        time.sleep(3)
-        process_pk_fk_relationships()
-    except Exception as e:
-        print(f"Background PK/FK processing error: {e}")
-        session_cache.pk_fk_status = "failed"
-
-
-@app.route("/get-existing-graph-structure", methods=["GET"])
-def get_existing_graph_structure():
-    """
-    Get the structure of existing graph data for linking purposes
-    """
-    try:
-        # Query to get existing tables and their columns
-        structure_query = """
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        SELECT ?uri ?column
-        WHERE {
-                ?uri dbo:column ?column .
-            }
-        """
-
-        result = execute_query(session_cache.repo, structure_query)
-
-        if not result or result.strip() == "":
-            return {"tables": [], "tableColumns": {}}
-
-        # Parse the result using polars
-        structure_info = pl.read_csv(
-            StringIO(result),
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
-        )
-
-        if structure_info.is_empty():
-            return {"tables": [], "tableColumns": {}}
-
-        # Extract table names from URIs and organise by table
-        structure_info = structure_info.with_columns(
-            pl.col("uri")
-            .str.extract(r".*/(.*?)\.", 1)
-            .fill_null("unknown")
-            .alias("table")
-        )
-
-        # Get unique tables
-        tables = structure_info.get_column("table").unique().to_list()
-
-        # Create table-column mapping
-        table_columns = {}
-        for table in tables:
-            columns = (
-                structure_info.filter(pl.col("table") == table)
-                .get_column("column")
-                .to_list()
-            )
-            table_columns[table] = columns
-
-        return jsonify({"tables": tables, "tableColumns": table_columns})
-
-    except Exception as e:
-        print(f"Error getting existing graph structure: {e}")
-        return {"tables": [], "tableColumns": {}}
-
-
-def get_existing_column_class_uri(table_name, column_name):
-    """Retrieve existing column class URI from the existing graph"""
-    query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?uri WHERE {{
-            ?uri dbo:column '{column_name}' .
-            FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
-    }}
-    LIMIT 1
-    """
-
-    try:
-        query_result = execute_query(session_cache.repo, query)
-
-        if not query_result or query_result.strip() == "":
-            print(f"No existing results found for column {table_name}.{column_name}")
-            return None
-
-        column_info = pl.read_csv(
-            StringIO(query_result),
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
-        )
-
-        if column_info.is_empty() or "uri" not in column_info.columns:
-            return None
-
-        return column_info.get_column("uri")[0]
-
-    except Exception as e:
-        print(f"Error fetching existing column URI for {table_name}.{column_name}: {e}")
-        return None
-
-
-def insert_cross_graph_relation(
-    predicate,
-    new_column_uri,
-    existing_column_uri,
-    relationships_graph="http://relationships.local/",
-):
-    """Insert cross-graph relationship into the relationships graph"""
-    insert_query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-    INSERT {{
-        GRAPH <{relationships_graph}> {{
-            ?newSources <{predicate}> ?existingSources .
-        }}
-    }} WHERE {{
-        ?newSources rdf:type <{new_column_uri}> ;
-                    dbo:has_cell ?newCell .
-        ?newCell dbo:has_value ?columnValue .
-
-        ?existingSources rdf:type <{existing_column_uri}> ;
-                         dbo:has_cell ?existingCell .
-        ?existingCell dbo:has_value ?columnValue .
-    }}
-    """
-
-    return execute_query(session_cache.repo, insert_query, "update", "/statements")
-
-
-def process_cross_graph_relationships():
-    """Process cross-graph relationships after successful triplification"""
-    if not session_cache.cross_graph_link_data:
-        return True
-
-    try:
-        print("Starting cross-graph relationship processing...")
-        session_cache.cross_graph_link_status = "processing"
-
-        link_data = session_cache.cross_graph_link_data
-
-        # Get URIs for new and existing columns
-        new_column_uri = get_column_class_uri(
-            sanitise_table_name(link_data["newTableName"]), link_data["newColumnName"]
-        )
-
-        existing_column_uri = get_existing_column_class_uri(
-            sanitise_table_name(link_data["existingTableName"]),
-            link_data["existingColumnName"],
-        )
-
-        if not new_column_uri or not existing_column_uri:
-            print(f"Could not find URIs for cross-graph relationship: {link_data}")
-            session_cache.cross_graph_link_status = "failed"
-            return False
-
-        predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
-
-        # Insert the relationship
-        insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)
-
-        print(
-            f"Created cross-graph relationship: "
-            f"{link_data['newTableName']}.{link_data['newColumnName']} -> "
-            f"{link_data['existingTableName']}.{link_data['existingColumnName']}"
-        )
-
-        session_cache.cross_graph_link_status = "success"
-        print("Cross-graph relationship processing completed successfully.")
-        return True
-
-    except Exception as e:
-        print(f"Error processing cross-graph relationships: {e}")
-        session_cache.cross_graph_link_status = "failed"
-        return False
-
-
-def background_cross_graph_processing():
-    """Background function to process cross-graph relationships"""
-    try:
-        # Small delay to ensure GraphDB has processed the uploaded data
-        time.sleep(5)  # Slightly longer delay than PK/FK to ensure it runs after
-        process_cross_graph_relationships()
-    except Exception as e:
-        print(f"Background cross-graph processing error: {e}")
-        session_cache.cross_graph_link_status = "failed"
+graphdb_service = GraphDBService(graphdb_url, repo)
 
 
 # Register controller blueprints
@@ -2658,7 +2331,7 @@ app.config["repo"] = repo
 # Set up application context with required functions and services
 app.config["APP_CONTEXT"] = {
     "session_cache": session_cache,
-    "graphdb_service": None,  # Will be initialized later if needed
+    "graphdb_service": graphdb_service,
     "name_matcher": None,  # Will be initialized later if needed
     "upload_folder": app.config["UPLOAD_FOLDER"],
     "root_dir": root_dir,
@@ -2676,8 +2349,8 @@ app.config["APP_CONTEXT"] = {
         root_dir, graphdb_url, repo, data_background=False
     ),
     "start_background": lambda sc: [
-        gevent.spawn(background_pk_fk_processing),
-        gevent.spawn(background_cross_graph_processing)
+        gevent.spawn(IngestService.background_pk_fk_processing, sc, graphdb_service),
+        gevent.spawn(IngestService.background_cross_graph_processing, sc, graphdb_service)
     ],
     "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
         IngestService().handle_postgres_connection(
