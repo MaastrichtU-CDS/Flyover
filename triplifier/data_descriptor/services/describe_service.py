@@ -337,6 +337,63 @@ class DescribeService:
                 logger.error(f"Error reading JSON-LD mapping: {e}")
                 return default_names
 
+    @staticmethod
+    def has_semantic_map(semantic_map: Any) -> bool:
+        """
+        Check if a semantic map exists and is valid.
+
+        Args:
+            semantic_map: Semantic map to check
+
+        Returns:
+            bool: True if valid semantic map exists, False otherwise
+        """
+        try:
+            if not semantic_map:
+                return False
+            
+            # Check if it has the expected structure
+            if isinstance(semantic_map, dict):
+                # Check for basic semantic map structure
+                return "databases" in semantic_map or "database_name" in semantic_map
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to check semantic map: {e}")
+            return False
+
+    @staticmethod
+    def get_database_name_from_mapping(semantic_map: Any) -> Optional[str]:
+        """
+        Extract database name from semantic map.
+
+        Args:
+            semantic_map: Semantic map object
+
+        Returns:
+            Optional[str]: Database name or None if not found
+        """
+        try:
+            if not semantic_map:
+                return None
+            
+            # Try different possible locations for database name
+            if isinstance(semantic_map, dict):
+                if "database_name" in semantic_map:
+                    return semantic_map["database_name"]
+                elif "databases" in semantic_map:
+                    # Return first database if multiple exist
+                    databases = semantic_map["databases"]
+                    if databases and isinstance(databases, dict):
+                        return next(iter(databases.keys()))
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get database name from mapping: {e}")
+            return None
+
         # Fall back to global_semantic_map
         if not isinstance(global_semantic_map, dict):
             return default_names
