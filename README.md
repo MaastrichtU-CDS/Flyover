@@ -96,6 +96,17 @@ The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed do
   Informatics*. [doi:10.1200/CCI-25-00177](https://doi.org/10.1200/CCI-25-00177)
 - Flyover software archive on Zenodo. [doi:10.5281/zenodo.17419799](https://doi.org/10.5281/zenodo.17419799)
 
+## Architecture
+
+For a detailed description of the software architecture with modular transformation design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+The architecture document covers:
+- High-level system overview
+- Core components and their responsibilities
+- Transformation pipeline stages (Ingest → Triplify → Describe → Annotate)
+- Module interfaces and extension points
+- Data flow diagrams
+
 ## Developers
 
 - Varsha Gouthamchand
