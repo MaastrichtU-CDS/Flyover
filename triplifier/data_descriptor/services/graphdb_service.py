@@ -9,7 +9,10 @@ import logging
 import requests
 from typing import Any, Dict, List, Optional, Tuple
 
-from repositories import GraphDBRepository
+try:
+    from ..repositories import GraphDBRepository
+except ImportError:
+    from repositories import GraphDBRepository
 
 logger = logging.getLogger(__name__)
 

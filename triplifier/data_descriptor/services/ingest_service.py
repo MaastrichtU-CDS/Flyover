@@ -12,9 +12,13 @@ import requests
 from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
+from psycopg2 import connect
 from werkzeug.utils import secure_filename
 
-from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
+try:
+    from ..utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
+except ImportError:
+    from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +168,121 @@ class IngestService:
         except Exception as e:
             logger.error(f"Error parsing cross-graph data: {e}")
             return None
+
+    def handle_postgres_connection(
+        self,
+        username: str,
+        password: str,
+        postgres_url: str,
+        postgres_db: str,
+        table: str,
+        root_dir: str,
+        child_dir: str,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Handle PostgreSQL connection and properties file creation.
+
+        Args:
+            username: PostgreSQL username
+            password: PostgreSQL password
+            postgres_url: PostgreSQL URL
+            postgres_db: PostgreSQL database name
+            table: Table name
+            root_dir: Root directory for file paths
+            child_dir: Child directory for file paths
+
+        Returns:
+            Tuple of (success, error_message)
+        """
+        try:
+            # Test PostgreSQL connection
+            conn = connect(
+                dbname=postgres_db,
+                user=username,
+                host=postgres_url,
+                password=password,
+            )
+            conn.close()  # Close connection after testing
+            logger.info("PostgreSQL connection successful")
+
+            # Write connection details to properties file
+            properties_path = os.path.join(root_dir, child_dir, "triplifierSQL.properties")
+            os.makedirs(os.path.dirname(properties_path), exist_ok=True)
+
+            with open(properties_path, "w") as f:
+                f.write(
+                    f"jdbc.url = jdbc:postgresql://{postgres_url}/{postgres_db}\n"
+                    f"jdbc.user = {username}\n"
+                    f"jdbc.password = {password}\n"
+                    f"jdbc.driver = org.postgresql.Driver\n\n"
+                )
+
+            return True, None
+
+        except Exception as e:
+            logger.error(f"PostgreSQL connection error: {e}")
+            return False, f"PostgreSQL connection failed: {e}"
+
+    def run_triplifier(
+        self,
+        properties_file: str,
+        root_dir: str,
+        child_dir: str,
+        csv_data_list: Optional[List[pl.DataFrame]] = None,
+        csv_table_names: Optional[List[str]] = None,
+    ) -> Tuple[bool, str, Optional[List[dict]]]:
+        """
+        Run the Python Triplifier for data processing.
+
+        Args:
+            properties_file: Name of properties file (triplifierCSV.properties or triplifierSQL.properties)
+            root_dir: Root directory for file paths
+            child_dir: Child directory for file paths
+            csv_data_list: List of CSV DataFrames (for CSV processing)
+            csv_table_names: List of CSV table names (for CSV processing)
+
+        Returns:
+            Tuple of (success, message, output_files)
+        """
+        try:
+            try:
+                from ..utils.python_triplifier_integration import (
+                    run_triplifier as run_triplifier_impl,
+                )
+            except ImportError:
+                from utils.python_triplifier_integration import (
+                    run_triplifier as run_triplifier_impl,
+                )
+
+            if properties_file == "triplifierCSV.properties":
+                # Use Python Triplifier for CSV processing
+                success, message, output_files = run_triplifier_impl(
+                    properties_file=properties_file,
+                    root_dir=root_dir,
+                    child_dir=child_dir,
+                    csv_data_list=csv_data_list,
+                    csv_table_names=csv_table_names,
+                )
+
+            elif properties_file == "triplifierSQL.properties":
+                # Use Python Triplifier for PostgreSQL processing
+                success, message, output_files = run_triplifier_impl(
+                    properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
+                )
+            else:
+                return False, f"Unknown properties file: {properties_file}", None
+
+            if success:
+                return True, (
+                    "The data you have submitted was triplified successfully and "
+                    "is now available in GraphDB."
+                ), output_files
+            else:
+                return False, message, None
+
+        except Exception as e:
+            logger.error(f"Unexpected error attempting to run the Python Triplifier: {e}")
+            return False, f"Unexpected error attempting to run the Triplifier, error: {e}", None
 
     @staticmethod
     def process_pk_fk_relationships(

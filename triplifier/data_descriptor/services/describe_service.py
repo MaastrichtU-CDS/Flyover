@@ -8,7 +8,7 @@ data types, and metadata management.
 import copy
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -384,31 +384,29 @@ class DescribeService:
                 return default_names
 
     @staticmethod
-    def has_semantic_map(semantic_map: Any) -> bool:
+    @staticmethod
+    @staticmethod
+    def has_semantic_map(session_cache: Any) -> bool:
         """
-        Check if a semantic map exists and is valid.
+        Check if any semantic map (jsonld_mapping or global_semantic_map) is available.
 
         Args:
-            semantic_map: Semantic map to check
+            session_cache: The session cache object
 
         Returns:
-            bool: True if valid semantic map exists, False otherwise
+            bool: True if a semantic map is available, False otherwise
         """
         try:
-            if not semantic_map:
-                return False
-            
-            # Check if it has the expected structure
-            if isinstance(semantic_map, dict):
-                # Check for basic semantic map structure
-                return "databases" in semantic_map or "database_name" in semantic_map
-            
+            if session_cache.jsonld_mapping is not None:
+                return True
+            if isinstance(session_cache.global_semantic_map, dict):
+                return True
             return False
-            
         except Exception as e:
             logger.error(f"Failed to check semantic map: {e}")
             return False
 
+    @staticmethod
     @staticmethod
     def get_database_name_from_mapping(semantic_map: Any) -> Optional[str]:
         """
