@@ -316,3 +316,95 @@ class GraphDBService:
         except requests.exceptions.RequestException as e:
             logger.error(f"GraphDB query execution failed: {e}")
             raise Exception(f"GraphDB query execution failed: {e}")
+
+    def get_existing_column_class_uri(self, table_name: str, column_name: str) -> Optional[str]:
+        """
+        Get existing column class URI from GraphDB.
+
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column
+
+        Returns:
+            Optional[str]: Existing column URI or None if not found
+        """
+        try:
+            query = f"""
+            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+            SELECT ?uri WHERE {{
+                ?uri dbo:column '{column_name}' .
+                FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
+            }}
+            LIMIT 1
+            """
+
+            result = self.execute_query(query)
+
+            if not result or result.strip() == "":
+                logger.info(f"No existing results found for column {table_name}.{column_name}")
+                return None
+
+            # Parse the result to extract the URI
+            lines = result.strip().split('\n')
+            if len(lines) > 1:
+                return lines[1].split('|')[0].strip()
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get existing column URI for {table_name}.{column_name}: {e}")
+            return None
+
+    def process_cross_graph_relationships(self, cross_graph_data: Dict[str, str]) -> Tuple[bool, str]:
+        """
+        Process cross-graph relationships between tables.
+
+        Args:
+            cross_graph_data: Dictionary containing relationship data
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if not cross_graph_data:
+            return True, ""
+
+        try:
+            print("Starting cross-graph relationship processing...")
+            
+            # Get URIs for new and existing columns
+            new_column_uri = self.get_column_class_uri(
+                cross_graph_data["newTableName"], cross_graph_data["newColumnName"]
+            )
+
+            existing_column_uri = self.get_existing_column_class_uri(
+                cross_graph_data["existingTableName"],
+                cross_graph_data["existingColumnName"],
+            )
+
+            if not new_column_uri or not existing_column_uri:
+                return False, f"Could not find URIs for cross-graph relationship: {cross_graph_data['newTableName']}.{cross_graph_data['newColumnName']} -> {cross_graph_data['existingTableName']}.{cross_graph_data['existingColumnName']}"
+
+            # Create the relationship
+            predicate = "http://um-cds/ontologies/databaseontology/cross_graph_refers_to"
+            result = self.process_cross_graph_relationship(
+                predicate, new_column_uri, existing_column_uri
+            )
+
+            if result:
+                return True, (
+                    f"Created cross-graph relationship: "
+                    f"{cross_graph_data['newTableName']}.{cross_graph_data['newColumnName']} -> "
+                    f"{cross_graph_data['existingTableName']}.{cross_graph_data['existingColumnName']}"
+                )
+            else:
+                return False, (
+                    f"Failed cross-graph relationship: "
+                    f"{cross_graph_data['newTableName']}.{cross_graph_data['newColumnName']} -> "
+                    f"{cross_graph_data['existingTableName']}.{cross_graph_data['existingColumnName']}"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to process cross-graph relationship: {e}")
+            return False, f"Error processing cross-graph relationship: {e}"
