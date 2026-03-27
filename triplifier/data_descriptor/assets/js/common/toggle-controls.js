@@ -24,6 +24,7 @@ const ToggleControls = {
             }
             $(this).toggleClass('open');
             $(this).next('.content').toggleClass('active');
+            $(this).next('.content').removeClass('hidden');
         });
     },
 

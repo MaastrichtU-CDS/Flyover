@@ -164,6 +164,7 @@ const DescribeVariablesPage = {
             }
             $(this).toggleClass('open');
             content.toggleClass('active');
+            content.removeClass('hidden');
         });
     },
 
