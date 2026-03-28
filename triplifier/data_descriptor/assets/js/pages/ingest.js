@@ -416,7 +416,7 @@ const IngestPage = {
 
     /**
      * Collect PK/FK configuration data
-     * @returns {Object[]} PK/FK data for each file
+     * @returns {Object[]} PK/FK data for each file (only includes files with actual PK/FK data)
      */
     collectPkFkData: function() {
         let pkFkData = [];
@@ -427,13 +427,16 @@ const IngestPage = {
             const fkTable = $(`#fkTable_${index}`).val();
             const fkColumn = $(`#fkColumn_${index}`).val();
 
-            pkFkData.push({
-                fileName: file.name,
-                primaryKey: pk || null,
-                foreignKey: fk || null,
-                foreignKeyTable: fkTable || null,
-                foreignKeyColumn: fkColumn || null
-            });
+            // Only include files that have actual PK/FK data configured
+            if (pk || fk) {
+                pkFkData.push({
+                    fileName: file.name,
+                    primaryKey: pk || null,
+                    foreignKey: fk || null,
+                    foreignKeyTable: fkTable || null,
+                    foreignKeyColumn: fkColumn || null
+                });
+            }
         });
 
         return pkFkData;

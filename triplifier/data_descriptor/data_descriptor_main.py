@@ -532,7 +532,12 @@ def upload_file():
             # START BACKGROUND PK/FK AND CROSS-GRAPH PROCESSING AFTER UPLOAD
             # This ensures data is in GraphDB before relationships are processed
             if file_type == "CSV":
-                if session_cache.pk_fk_data:
+                # Only process PK/FK if there's actual relationship data configured
+                has_pk_fk_data = session_cache.pk_fk_data and any(
+                    item.get('primaryKey') or item.get('foreignKey')
+                    for item in session_cache.pk_fk_data
+                )
+                if has_pk_fk_data:
                     logger.info(
                         "Upload complete. Starting background PK/FK processing..."
                     )
