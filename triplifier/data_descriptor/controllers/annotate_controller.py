@@ -337,14 +337,14 @@ def annotation_verify():
 
     if not has_semantic_map(session_cache):
         flash("No semantic map available.")
-        return redirect(url_for("download.describe_downloads"))
+        return redirect(url_for("share.describe_downloads"))
 
     databases = graphdb_service.get_databases() if graphdb_service else []
     session_cache.databases = databases
 
     if not databases:
         flash("No databases available.")
-        return redirect(url_for("download.describe_downloads"))
+        return redirect(url_for("share.describe_downloads"))
 
     map_table_names = get_table_names(session_cache)
 

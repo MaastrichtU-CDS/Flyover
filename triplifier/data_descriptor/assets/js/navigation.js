@@ -14,7 +14,7 @@ const FlyoverNavigation = {
             completedIcon: 'fa-check'
         },
         'describe': {
-            pages: ['/describe_landing', '/describe_variables', '/describe_variable_details', '/describe_downloads'],
+            pages: ['/describe_landing', '/describe_variables', '/describe_variable_details'],
             elementId: 'describe-step',
             requiresData: true,
             icon: 'fa-edit',
@@ -26,6 +26,12 @@ const FlyoverNavigation = {
             requiresData: true,
             icon: 'fa-tags',
             completedIcon: 'fa-check'
+        },
+        'share': {
+            pages: ['/share_landing', '/share_mock', '/share_publish'],
+            elementId: 'share-step',
+            alwaysAccessible: true,
+            icon: 'fa-share-alt',
         }
     },
 

@@ -21,18 +21,19 @@
 <!-- Include navigation header -->
 {% include 'navigation_header.html' %}
 
-<div class="container">
+<div class="container-fluid">
     <!-- Hero Section -->
     <div class="hero-section">
         <h1 class="hero-title">Welcome to Flyover</h1>
-        <p class="hero-subtitle">Your Data F.A.I.R.-ification Tool - Bridging Data Incompatibilities</p>
-        <p class="mb-0">Transform your data into semantically interoperable Resource Description Framework (RDF) format
-            through our guided three-step process</p>
+        <p class="hero-subtitle">A privacy-aware tool to transform your data into F.A.I.R. semantically interoperable resources</p>
+        <p class="mb-0">Transform your data into F.A.I.R. semantically interoperable Resource Description Framework
+            (RDF) triples
+            through our guided four-step process</p>
     </div>
 
     <!-- Workflow Overview -->
     <div class="row">
-        <div class="col-lg-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
             <div class="workflow-card" id="ingest-card" data-target="/ingest">
                 <div class="step-icon ingest-icon">
                     <i class="fas fa-cookie-bite"></i>
@@ -41,15 +42,15 @@
                 <p class="step-description">Upload and process your datasets to prepare them for semantic
                     annotation and interoperability.</p>
                 <ul class="step-features">
-                    <li><i class="fas fa-check"></i> CSV and PostgreSQL support</li>
+                    <li><i class="fas fa-check"></i> CSV and DB support</li>
+                    <li><i class="fas fa-check"></i> Automatic conversion</li>
                     <li><i class="fas fa-check"></i> Data grooming</li>
-                    <li><i class="fas fa-check"></i> Automatic RDF conversion</li>
                     <li><i class="fas fa-check"></i> Link multiple graphs</li>
                 </ul>
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
             <div class="workflow-card" id="describe-card" data-target="/describe_landing">
                 <div class="step-icon describe-icon">
                     <i class="fas fa-edit"></i>
@@ -58,27 +59,44 @@
                 <p class="step-description">Provide metadata and descriptions for your data variables to enhance
                     semantic meaning.</p>
                 <ul class="step-features">
-                    <li><i class="fas fa-check"></i> Variable categorisation</li>
+                    <li><i class="fas fa-check"></i> Data type specifications</li>
                     <li><i class="fas fa-check"></i> Unit specifications</li>
                     <li><i class="fas fa-check"></i> Local definitions</li>
-                    <li><i class="fas fa-check"></i> Data type mapping</li>
+                    <li><i class="fas fa-check"></i> Variable labelling</li>
                 </ul>
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
             <div class="workflow-card" id="annotate-card" data-target="/annotation_landing">
                 <div class="step-icon annotate-icon">
                     <i class="fas fa-tags"></i>
                 </div>
                 <h3 class="step-title">3. Annotate</h3>
-                <p class="step-description">Apply semantic annotations using standardised ontologies to make your data more
-                    F.A.I.R.</p>
+                <p class="step-description">Annotate your data using standardised ontologies to make your data
+                    semantically interoperable.</p>
                 <ul class="step-features">
-                    <li><i class="fas fa-check"></i> Ontology-based annotations</li>
-                    <li><i class="fas fa-check"></i> Value mapping to terminologies</li>
+                    <li><i class="fas fa-check"></i> Ontological annotations</li>
                     <li><i class="fas fa-check"></i> Semantic interoperability</li>
-                    <li><i class="fas fa-check"></i> Increase data F.A.I.R.-ness</li>
+                    <li><i class="fas fa-check"></i> Metadata-driven</li>
+                    <li><i class="fas fa-check"></i> Value mapping</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-lg-3 col-md-6 mb-4">
+            <div class="workflow-card" id="share-card" data-target="/share_landing">
+                <div class="step-icon share-icon">
+                    <i class="fas fa-share"></i>
+                </div>
+                <h3 class="step-title">4. Share</h3>
+                <p class="step-description">Share (meta-)data of your semantically interoperable data and speed up your
+                    collaborations.</p>
+                <ul class="step-features">
+                    <li><i class="fas fa-check"></i> Archive mapping</li>
+                    <li><i class="fas fa-check"></i> Generate mock data</li>
+                    <li><i class="fas fa-check"></i> Increase findability</li>
+                    <li><i class="fas fa-person-digging"></i> DCAT-AP export</li>
                 </ul>
             </div>
         </div>

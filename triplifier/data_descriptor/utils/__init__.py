@@ -7,8 +7,8 @@ from .data_preprocessing import (
     preprocess_dataframe,
     get_original_column_name,
     sanitise_table_name,
+    preprocess_mixed_type_data
 )
-
 
 from .session_helpers import (
     check_any_data_graph_exists,
@@ -26,6 +26,7 @@ __all__ = [
     "preprocess_dataframe",
     "get_original_column_name",
     "sanitise_table_name",
+    "preprocess_mixed_type_data",
     "check_any_data_graph_exists",
     "graph_database_ensure_backend_initialisation",
     "graph_database_fetch_from_rdf",

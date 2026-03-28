@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Share</title>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+</head>
+
+<body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
+<div class="container">
+    <br>
+    <h1><i class="fas fa-share"></i> Share</h1>
+    <hr>
+
+    <p style="line-height: 1.5; margin: 0;">Share metadata about your data in a privacy-aware manner using the options
+        below.</p>
+
+    <br>
+    <div id="semanticMapSection" style="display: none;">
+        <div class="card" class="mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-project-diagram"></i> Download your local semantic mapping
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Given you have previously uploaded a Flyover semantic map JSON-LD file, you can now download your
+                    local semantic mapping.<br>
+                    <br>
+                    You can use this file to archive your mapping work and to share it with others. <br>
+                    We strongly recommend archiving your mapping properly, as it can be easily be re-purposed in case
+                    your data and or mapping needs to be updated.<br>
+                </p>
+                <button class="btn btn-outline-secondary" id="download-semantic-map-btn">
+                    <i class="fas fa-download"></i> Download local semantic map
+                </button>
+                <br><br>
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>What is a 'local semantic map'?</strong><br>
+                    A local semantic map defines how your data's terminology maps to the global semantic map, which
+                    defines standardised variable definitions, data types, and value mappings
+                    that can be consistently applied across different datasets to ensure semantic interoperability.
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+    <div id="ontologySection" style="display: none;">
+        <div class="card" class="mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-pen"></i> Download your local ontology file
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Ran into variables you could not directly map to the global mapping, or have not used a global map
+                    at all?<br>
+                    In that case we recommend that you download your local ontology.
+                </p>
+                <a href="/downloadOntology" download="local_ontology.owl">
+                    <button class="btn btn-outline-secondary"><i class="fas fa-download"></i> Download local
+                        ontology
+                    </button>
+                </a>
+                <br><br>
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>What is an 'ontology file'?</strong><br>
+                    The ontology file describes your data structure, meaning it shows what your column names exactly
+                    are, even if you did not describe or map them.<br>
+                    This can be incredibly useful if you have added data that does not directly correspond to any
+                    concepts in a global semantic map.<br>
+                    The ontology file only contains variable names, value names and counts, and the file does not
+                    contain
+                    any row-level data.<br>
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+    <div id="shareMoreSection">
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-file-export"></i> Generate Mock Data
+                        </h5>
+                    </div>
+                    <div class="card-body d-flex flex-column">
+                        <p class="text-muted flex-grow-1">
+                            Generate anonymous mock data based on your semantic mapping and data structure.
+                            This allows you to share realistic test data without privacy concerns.
+                        </p>
+                        <a href="/share_mock" class="btn btn-outline-secondary mt-3">
+                            <i class="fas fa-arrow-right"></i> Generate Mock Data
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cloud-upload-alt"></i> Publish to Repository
+                        </h5>
+                    </div>
+                    <div class="card-body d-flex flex-column">
+                        <p class="text-muted flex-grow-1">
+                            Publish your semantically interoperable data to external repositories.
+                            Share your metadata and mappings with the broader research community.
+                        </p>
+                        <a href="/share_publish" class="btn btn-outline-secondary mt-3">
+                            <i class="fas fa-arrow-right"></i> Publish Data
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+    <a href="/" class="btn btn-light">
+        <i class="fas fa-home"></i> Return to Home
+    </a>
+    <br><br>
+</div>
+
+<!-- Include footer -->
+{% include 'footer.html' %}
+
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/pages/share-landing.js') }}"></script>
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in the share landing step
+</script>
+
+<!-- Share pages CSS -->
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/share.css') }}">
+
+</body>
+</html>

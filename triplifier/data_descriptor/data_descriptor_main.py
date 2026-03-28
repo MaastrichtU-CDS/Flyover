@@ -59,6 +59,7 @@ from services.describe_service import DescribeService
 from services.graphdb_service import GraphDBService
 from utils.data_preprocessing import (
     preprocess_dataframe,
+    read_csv_with_encoding_detection,
     sanitise_table_name,
 )
 from utils.session_helpers import (
@@ -73,6 +74,7 @@ from utils.session_helpers import (
     DATABASE_NAME_PATTERN,
     get_table_names_from_mapping,
 )
+
 from annotation_helper.src.miscellaneous import add_annotation
 from validation import MappingValidator
 from loaders import JSONLDMapping
@@ -419,32 +421,11 @@ def upload_file():
 
             session_cache.csvData = []
             for csv_file in csv_files:
-                # Use polars to read CSV with minimal inference
-                df = pl.read_csv(
-                    csv_file,
+                df = read_csv_with_encoding_detection(
+                    csv_file.read(),
                     separator=separator_sign,
-                    infer_schema_length=0,  # Treat everything as strings
-                    null_values=[],  # Don't infer nulls
-                    try_parse_dates=False,  # Don't auto-parse dates
+                    decimal_sign=decimal_sign,
                 )
-                # TODO improve this approach,
-                #  if data conversion is done in the end,
-                #  we can use data descriptions to infer datatype and set them properly
-                # Handle decimal conversion: normalize user-specified decimal separator to standard "."
-                # Note: This replaces the decimal_sign character in ALL string columns. For CSV data
-                # where the user specifies a decimal separator (e.g., "," for European formats),
-                # this ensures consistent numeric representation. Free text fields with the same
-                # character will also be affected, but this is acceptable since:
-                # 1. The user explicitly specifies this is their decimal separator
-                # 2. The original file is preserved - this is an internal representation
-                # 3. Downstream processing (triplification) expects standard "." decimals
-                if decimal_sign != ".":
-                    df = df.with_columns(
-                        [
-                            pl.col(c).str.replace_all(decimal_sign, ".")
-                            for c in df.columns
-                        ]
-                    )
                 session_cache.csvData.append(preprocess_dataframe(df))
 
         except Exception as e:
@@ -476,11 +457,11 @@ def upload_file():
             root_dir,
             child_dir,
         )
-        
+
         if not postgres_success:
             flash(f"PostgreSQL connection error: {postgres_error}")
             return render_template("ingest.html", error=True)
-            
+
         success, message, output_files = IngestService().run_triplifier(
             "triplifierSQL.properties",
             root_dir,
@@ -685,7 +666,7 @@ def retrieve_descriptive_info():
     Returns:
         flask.render_template: A Flask function that renders a template. In this case,
         it renders the 'describe_variable_details.html' template with the list of variables to further specify,
-        or proceeds to 'describe_downloads' in case there are no variables to specify.
+        or proceeds to 'annotation_review' in case there are no variables to specify.
     """
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
@@ -770,8 +751,8 @@ def retrieve_descriptive_info():
     if session_cache.DescriptiveInfoDetails:
         return redirect(url_for("describe_variable_details"))
     else:
-        # Redirect to the new route after processing the POST request
-        return redirect(url_for("describe_downloads"))
+        # Redirect to annotation review after processing the POST request
+        return redirect(url_for("annotation_review"))
 
 
 @app.route("/describe_variable_details")
@@ -930,256 +911,14 @@ def retrieve_detailed_descriptive_info():
                 session_cache.descriptive_info[database], variable, database
             )
 
-    # Redirect the user to the 'download_page' URL
-    return redirect(url_for("describe_downloads"))
+    # Redirect the user to the 'annotation_review' URL
+    return redirect(url_for("annotation_review"))
 
 
-@app.route("/describe_downloads")
-def describe_downloads():
-    """
-    This function is responsible for rendering the 'describe_downloads.html' page.
-    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
-
-    Returns:
-        flask.render_template: A Flask function that renders the 'describe_downloads.html' template.
-    """
-    return render_template(
-        "describe_downloads.html", graphdb_location="http://localhost:7200/"
-    )
 
 
-@app.route("/downloadSemanticMap", methods=["GET"])
-def download_semantic_map():
-    """
-    Download the semantic map in JSON-LD format (preferred) or legacy JSON format (fallback).
-
-    If jsonld_mapping is available, downloads a single JSON-LD file that supports
-    multi-database natively. This deprecates the previous multi-JSON zip download approach.
-
-    For backward compatibility, if only global_semantic_map is available, falls back
-    to the legacy format using formulate_local_semantic_map.
-
-    Returns:
-        flask.Response: A Flask response object containing the semantic map as JSON-LD or JSON.
-    """
-    try:
-        # Prefer JSON-LD format if jsonld_mapping is available
-        if session_cache.jsonld_mapping is not None:
-            # JSON-LD supports multi-database natively, so we output a single file
-            mapping_dict = session_cache.jsonld_mapping.to_dict()
-            filename = "semantic_mapping.jsonld"
-
-            return Response(
-                json.dumps(mapping_dict, indent=2, ensure_ascii=False),
-                mimetype="application/ld+json",
-                headers={"Content-Disposition": f"attachment;filename={filename}"},
-            )
-
-        # Fall back to legacy format if only global_semantic_map is available
-        # NOTE: Multi-JSON zip download is deprecated in favor of JSON-LD multi-database support
-        if len(session_cache.databases) > 1:
-            _filename = "local_semantic_maps.zip"
-            # Loop through each database
-            for database in session_cache.databases:
-                filename = f"local_semantic_map_{database}.json"
-
-                # Open the zip file in the 'append' mode
-                with zipfile.ZipFile(_filename, "a") as zipf:
-                    # Generate a modified version of the global semantic map by adding local definitions to it
-                    modified_semantic_map = formulate_local_semantic_map(database)
-
-                    # Write the modified semantic map to the zip file
-                    zipf.writestr(filename, json.dumps(modified_semantic_map, indent=4))
-
-            # Define a function to remove the zip file after the request has been handled
-            @after_this_request
-            def remove_file(response):
-                try:
-                    os.remove(_filename)
-                except Exception as error:
-                    app.logger.error(
-                        "Error removing or closing downloaded file handle", error
-                    )
-                return response
-
-            # Open the zip file in binary mode and return it as a response
-            with open(_filename, "rb") as f:
-                return Response(
-                    f.read(),
-                    mimetype="application/zip",
-                    headers={"Content-Disposition": f"attachment;filename={_filename}"},
-                )
-        else:
-            # If there is only one database
-            database = session_cache.databases[0]
-            filename = f"local_semantic_map_{database}.json"
-
-            try:
-                # Generate a modified version of the global semantic map by adding local definitions to it
-                modified_semantic_map = formulate_local_semantic_map(database)
-
-                # Return the modified semantic map as a JSON response
-                return Response(
-                    json.dumps(modified_semantic_map, indent=4),
-                    mimetype="application/json",
-                    headers={"Content-Disposition": f"attachment;filename={filename}"},
-                )
-            except Exception as e:
-                abort(
-                    500,
-                    description=f"An error occurred while processing the semantic map, error: {str(e)}",
-                )
-
-    except Exception as e:
-        abort(
-            500,
-            description=f"An error occurred while processing the semantic map, error: {str(e)}",
-        )
 
 
-@app.route("/downloadOntology", methods=["GET"])
-def download_ontology(named_graph="http://ontology.local/", filename=None):
-    """
-    This function downloads ontology files from GraphDB and returns them as a response.
-    For multiple ontologies, it creates a zip file containing all ontologies.
-
-    Parameters:
-    named_graph (str): The base URL of the graph from which the ontology is to be downloaded.
-    Defaults to "http://ontology.local/".
-    filename (str): The name of the file to be downloaded. Defaults to 'local_ontology_{database_name}.nt'.
-
-    Returns:
-        flask.Response: A Flask response object containing the ontology as a string (single ontology)
-                        or a zip file (multiple ontologies) if the download is successful,
-                        or an error message if the download fails.
-    """
-    try:
-        # Check if we have multiple databases (either from session or need to query GraphDB)
-        databases_to_process = []
-
-        # First, try to get databases from session cache
-        if session_cache.databases and len(session_cache.databases) > 1:
-            databases_to_process = session_cache.databases
-        else:
-            # Query GraphDB to find all ontology graphs
-            query_graphs = """
-                SELECT DISTINCT ?g WHERE {
-                    GRAPH ?g {
-                        ?s ?p ?o .
-                    }
-                    FILTER(STRSTARTS(STR(?g), "http://ontology.local/"))
-                }
-            """
-            result = execute_query(session_cache.repo, query_graphs)
-
-            if result and result.strip():
-                graphs_df = pl.read_csv(
-                    StringIO(result),
-                    infer_schema_length=0,
-                    null_values=[],
-                    try_parse_dates=False,
-                )
-
-                if not graphs_df.is_empty() and "g" in graphs_df.columns:
-                    # Extract database names from graph URIs
-                    for graph_uri in graphs_df.get_column("g").to_list():
-                        # Extract database name from URI like "http://ontology.local/database_name/"
-                        db_name = graph_uri.replace(named_graph, "").rstrip("/")
-                        if db_name:
-                            databases_to_process.append(db_name)
-
-        # If we have multiple databases, create a zip file
-        if len(databases_to_process) > 1:
-            _filename = "local_ontologies.zip"
-
-            # Create a new zip file and loop through each database
-            files_added = 0
-            with zipfile.ZipFile(_filename, "w") as zipf:
-                for database in databases_to_process:
-                    # Construct the graph URI for this database
-                    table_graph = f"{named_graph}{database}/"
-                    ontology_filename = f"local_ontology_{database}.nt"
-
-                    # Fetch the ontology for this database
-                    response = requests.get(
-                        f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-                        params={"graph": table_graph},
-                        headers={"Accept": "application/n-triples"},
-                    )
-
-                    if response.status_code == 200 and response.text.strip():
-                        zipf.writestr(ontology_filename, response.text)
-                        files_added += 1
-                    else:
-                        logger.warning(
-                            f"No ontology data found for graph: {table_graph}"
-                        )
-
-            # Check if the zip file was created successfully and contains data
-            if files_added == 0 or not os.path.exists(_filename):
-                # No files were added or zip file doesn't exist
-                if os.path.exists(_filename):
-                    os.remove(_filename)
-                abort(
-                    404,
-                    description="No ontology data found for any of the specified graphs.",
-                )
-
-            # Define a function to remove the zip file after the request has been handled
-            @after_this_request
-            def remove_file(response):
-                try:
-                    os.remove(_filename)
-                except Exception as error:
-                    app.logger.error(
-                        "Error removing or closing downloaded file handle", error
-                    )
-                return response
-
-            # Open the zip file in binary mode and return it as a response
-            with open(_filename, "rb") as f:
-                return Response(
-                    f.read(),
-                    mimetype="application/zip",
-                    headers={"Content-Disposition": f"attachment;filename={_filename}"},
-                )
-
-        else:
-            # Single ontology: download directly
-            if len(databases_to_process) == 1:
-                # Use the single database name
-                database = databases_to_process[0]
-                ontology_graph = f"{named_graph}{database}/"
-                filename = f"local_ontology_{database}.nt"
-            else:
-                # Fallback to default graph
-                ontology_graph = named_graph
-                if filename is None:
-                    filename = "local_ontology.nt"
-
-            response = requests.get(
-                f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-                params={"graph": ontology_graph},
-                headers={"Accept": "application/n-triples"},
-            )
-
-            if response.status_code == 200:
-                return Response(
-                    response.text,
-                    mimetype="application/n-triples",
-                    headers={"Content-Disposition": f"attachment;filename={filename}"},
-                )
-            else:
-                abort(
-                    500,
-                    description=f"Failed to download ontology. Status code: {response.status_code}",
-                )
-
-    except Exception as e:
-        abort(
-            500,
-            description=f"An error occurred while downloading the ontology, error: {str(e)}",
-        )
 
 
 @app.route("/annotation_landing")
@@ -1543,12 +1282,12 @@ def annotation_verify():
     # Check if any semantic map is available
     if not DescribeService.has_semantic_map(session_cache):
         flash("No semantic map available.")
-        return redirect(url_for("describe_downloads"))
+        return redirect(url_for("share_landing"))
 
     # Ensure databases are initialised from the RDF-store if not already populated
     if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
         flash("No databases available.")
-        return redirect(url_for("describe_downloads"))
+        return redirect(url_for("share_landing"))
 
     map_table_names = get_table_names_from_mapping(session_cache)
 
@@ -1801,7 +1540,7 @@ def verify_annotation_ask():
             f"{graphdb_url}/repositories/{session_cache.repo}",
             params={"query": ask_query},
             headers={"Accept": "application/sparql-results+json"},
-            timeout=30,
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
 
         if response.status_code == 200:
@@ -1900,6 +1639,9 @@ def api_check_graph_exists():
         return jsonify({"exists": False, "error": str(e)})
 
 
+
+
+
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
     """
     This function executes a SPARQL query on a specified GraphDB repository.
@@ -1940,7 +1682,7 @@ def execute_query(repo, query, query_type=None, endpoint_appendices=None):
             endpoint,
             data={query_type: query},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=30,
+            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
         # Return the result of the query execution
         return response.text
@@ -2322,12 +2064,12 @@ graphdb_service = GraphDBService(graphdb_url, repo)
 
 
 # Register controller blueprints
-from controllers import ingest_bp, describe_bp, annotate_bp, download_bp
+from controllers import ingest_bp, describe_bp, annotate_bp, share_bp
 
 app.register_blueprint(ingest_bp)
 app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
-app.register_blueprint(download_bp)
+app.register_blueprint(share_bp)
 
 # Set up application config
 app.config["graphdb_url"] = graphdb_url

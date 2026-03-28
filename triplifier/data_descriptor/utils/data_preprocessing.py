@@ -5,14 +5,100 @@ Data preprocessing utilities for cleaning and preparing data for the Flyover app
 import polars as pl
 import re
 import logging
+import chardet
+from io import BytesIO
 from typing import Any, Dict, List, Tuple
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
 
-# Global registry for column mappings (since polars does not have .attrs)
+# Global registry for column mappings (since Polars does not have .attrs)
 # Defined at module level for clearer visibility
 _column_mapping_registry: Dict[int, Dict] = {}
+
+
+def detect_and_convert_encoding(file_bytes: bytes) -> bytes:
+    """
+    Detect the encoding of file bytes and convert to UTF-8 if necessary.
+
+    Uses chardet for encoding detection. If the file is already UTF-8 or ASCII,
+    the original bytes are returned unchanged. Otherwise, the bytes are decoded
+    using the detected encoding and re-encoded as UTF-8.
+
+    Args:
+        file_bytes: Raw bytes from a file
+
+    Returns:
+        UTF-8 encoded bytes
+    """
+    detected = chardet.detect(file_bytes)
+    encoding = (detected.get("encoding") or "utf-8").lower()
+    logger.debug(
+        f"Detected encoding: {encoding} "
+        f"(confidence: {detected.get('confidence', 0):.0%})"
+    )
+
+    # If already UTF-8 or ASCII compatible, return as-is
+    if encoding in ("utf-8", "ascii"):
+        return file_bytes
+
+    # Handle UTF-8 with BOM
+    if encoding == "utf-8-sig":
+        return file_bytes.decode("utf-8-sig").encode("utf-8")
+
+    # Convert non-UTF-8 encoding to UTF-8
+    try:
+        return file_bytes.decode(encoding).encode("utf-8")
+    except (UnicodeDecodeError, LookupError):
+        logger.warning(
+            f"Failed to decode with detected encoding '{encoding}', "
+            f"falling back to utf-8-sig then latin-1"
+        )
+        # Fallback chain: try utf-8-sig (handles BOM), then latin-1 (never fails)
+        try:
+            return file_bytes.decode("utf-8-sig").encode("utf-8")
+        except UnicodeDecodeError:
+            return file_bytes.decode("latin-1").encode("utf-8")
+
+
+def read_csv_with_encoding_detection(
+        file_bytes: bytes,
+        separator: str = ",",
+        decimal_sign: str = ".",
+) -> pl.DataFrame:
+    """
+    Read CSV data from raw bytes with automatic encoding detection.
+
+    Detects the file encoding, converts to UTF-8, and reads into a Polars
+    DataFrame. This function is used for both single and multiple CSV file
+    ingestion to ensure consistent behaviour.
+
+    Args:
+        file_bytes: Raw bytes from the CSV file
+        separator: Column separator character (default: ",")
+        decimal_sign: Decimal separator character (default: ".")
+            If not ".", all occurrences are replaced with "." in all columns.
+
+    Returns:
+        polars DataFrame with all columns as strings
+    """
+    utf8_bytes = detect_and_convert_encoding(file_bytes)
+
+    df = pl.read_csv(
+        BytesIO(utf8_bytes),
+        separator=separator,
+        infer_schema_length=0,  # Treat everything as strings
+        null_values=[],  # Don't infer nulls
+        try_parse_dates=False,  # Don't auto-parse dates
+    )
+
+    # Normalise the decimal separator to "." if needed
+    if decimal_sign != ".":
+        df = df.with_columns(
+            [pl.col(c).str.replace_all(decimal_sign, ".") for c in df.columns]
+        )
+
+    return df
 
 
 def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
@@ -20,7 +106,7 @@ def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
     Clean column names to make them HTML/JavaScript safe and meaningful.
 
     Args:
-        df: polars DataFrame with potentially problematic column names
+        df: Polars DataFrame with potentially problematic column names
 
     Returns:
         Tuple of (cleaned_columns, original_columns)
@@ -36,10 +122,10 @@ def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
     for i, col in enumerate(original_columns):
         # Handle empty, None, or problematic column names
         if (
-            col is None
-            or str(col).strip() == ""
-            or str(col) == "nan"
-            or str(col).startswith("Unnamed:")
+                col is None
+                or str(col).strip() == ""
+                or str(col) == "nan"
+                or str(col).startswith("Unnamed:")
         ):
             cleaned_col = f"column_{i + 1}"
             problematic_count += 1
@@ -269,8 +355,8 @@ def get_original_column_name(df: pl.DataFrame, cleaned_name: str) -> str:
     """
     df_id = id(df)
     if (
-        df_id in _column_mapping_registry
-        and "column_mapping" in _column_mapping_registry[df_id]
+            df_id in _column_mapping_registry
+            and "column_mapping" in _column_mapping_registry[df_id]
     ):
         original_name = _column_mapping_registry[df_id]["column_mapping"].get(
             cleaned_name, cleaned_name
@@ -297,8 +383,8 @@ def get_column_mapping(df: pl.DataFrame) -> Dict[str, str]:
     """
     df_id = id(df)
     if (
-        df_id in _column_mapping_registry
-        and "column_mapping" in _column_mapping_registry[df_id]
+            df_id in _column_mapping_registry
+            and "column_mapping" in _column_mapping_registry[df_id]
     ):
         return _column_mapping_registry[df_id]["column_mapping"]
     return {}
@@ -316,7 +402,7 @@ def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
 
     Returns:
         Dictionary containing:
-        - 'columns': list of unique column values (from 'column' field)
+        - 'columns': list of unique column values (from the 'column' field)
         - 'rows': list of row dicts
         - 'by_column': dict mapping column names to their rows for easy filtering
     """
@@ -340,3 +426,65 @@ def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
         "rows": rows,
         "by_column": by_column,
     }
+
+
+def preprocess_mixed_type_data(
+        table_data: Dict[str, List[Union[str, int, float, None]]],
+) -> Dict[str, List[Union[str, int, float, None]]]:
+    """
+    Pre-process table data to handle mixed types by converting to appropriate types.
+    Specifically handles the case where missing values are lists like ["NULL"].
+
+    Args:
+        table_data: Dictionary where keys are column names and values are lists of data
+
+    Returns:
+        Processed table data with consistent types for each column
+    """
+    processed_data = {}
+
+    for col_name, col_values in table_data.items():
+        processed_values = []
+        has_list_values = False
+        has_numeric = False
+        has_string = False
+
+        # First pass: detect what types we have
+        for value in col_values:
+            if isinstance(value, list):
+                has_list_values = True
+            elif isinstance(value, (int, float)):
+                has_numeric = True
+            elif isinstance(value, str):
+                has_string = True
+
+        # Second pass: convert values appropriately
+        if has_list_values:
+            # If we have list values, convert everything to string
+            for value in col_values:
+                if isinstance(value, list):
+                    # Extract single item from list or join multiple items
+                    if len(value) == 1:
+                        processed_values.append(str(value[0]))
+                    else:
+                        processed_values.append(", ".join(str(v) for v in value))
+                else:
+                    processed_values.append(str(value))
+        elif has_numeric and has_string:
+            # Mixed numeric and string - convert everything to string
+            for value in col_values:
+                processed_values.append(str(value))
+        elif has_numeric:
+            # All numeric - keep as is but handle None values
+            for value in col_values:
+                if value is None:
+                    processed_values.append(None)
+                else:
+                    processed_values.append(value)
+        else:
+            # All strings or other types - keep as is
+            processed_values = col_values
+
+        processed_data[col_name] = processed_values
+
+    return processed_data

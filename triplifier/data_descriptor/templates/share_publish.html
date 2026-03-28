@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/html">
+<head>
+    <meta charset="UTF-8">
+    <title>Flyover | Publish Data</title>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+</head>
+
+<body>
+<!-- Include navigation header -->
+{% include 'navigation_header.html' %}
+
+<div class="container">
+    <br>
+    <h1><i class="fas fa-cloud-upload-alt"></i> Publish Your Data</h1>
+    <hr>
+
+    <p style="line-height: 1.5; margin: 0;">Share your semantically interoperable data and metadata with the broader
+        research community.</p>
+
+    <br>
+    <!-- Codebook Section - Always Visible -->
+    <div id="codeBookSection">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-book"></i> Create an Interactive Codebook
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Create a comprehensive codebook documenting your project's variables, values, and relationships
+                    using your semantic mappings.<br> This structured overview helps others understand and work with
+                    your data.
+                </p>
+
+                <p class="text-muted">
+                    See an example codebook <a href="https://strongaya.github.io/AYA-cancer-semantic-map/"
+                                               target="_blank">here</a> (Apache-2 licenced). Repository available
+                    <a href="https://github.com/STRONGAYA/AYA-cancer-semantic-map" target="_blank">here</a>.
+                </p>
+
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Benefits of hosting mappings in Git</strong><br>
+                    Opting to host your mappings on a Git-tracked system is a great way to keep track of changes in your
+                    mapping over time, and to easily share updates with your collaborators.<br>
+                    You can even host the various mappings of your project in different branches and gain insight into
+                    what concepts are available amongst project partners without any data access concerns.
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+
+    <!-- Health DCAT-AP Triples Section - Always Available with Upload Mechanism -->
+    <div id="healthDcatApTriplesSection">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-medical"></i> Health DCAT-AP Metadata Export - under construction
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Generate Health DCAT-AP metadata describing your project's variables, values, and relationships.<br>
+                    This format ensures EHDS compliance and enables standardised health data sharing.
+                </p>
+
+                <div class="alert alert-info"
+                     style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>What is a Health DCAT-AP file?</strong><br>
+                    A Health DCAT-AP file is a standardised metadata format based on the Data Catalogue Vocabulary
+                    (DCAT) Application Profile for health data.<br>It provides a structured way to describe datasets,
+                    their variables, and the relationships between them, facilitating data sharing and interoperability
+                    in the health domain.
+                </div>
+
+                <hr>
+                <div id="jsonldUploadSection">
+                    <h6><i class="fas fa-upload"></i> JSON-LD Semantic Map</h6>
+                    <p class="text-muted mb-3">
+                        To generate Health DCAT-AP triples, you need a Flyover semantic mapping.
+                    </p>
+
+                    <!-- Status message for JSON-LD -->
+                    <div id="jsonldStatus" class="alert alert-info d-none">
+                        <i class="fas fa-info-circle"></i>
+                        <span id="jsonldStatusMessage"></span>
+                    </div>
+
+                    <!-- Warning when existing JSON-LD is in IndexedDB (hidden by default) -->
+                    <div id="existingJsonldWarning" class="alert alert-warning"
+                         style="display: none; font-size: 0.9em;">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Existing semantic map detected!</strong><br>
+                        You already have a semantic map stored in your browser from a previous session.
+                        You can use the stored map or upload a new JSON-LD file to overwrite it.
+                        <br><small class="text-muted">Current semantic map: <span
+                            id="existingJsonldInfo">-</span></small>
+                    </div>
+
+                    <div id="jsonldUploadForm" class="mb-3">
+                        <div class="custom-file mb-3">
+                            <input type="file" class="custom-file-input" id="jsonldFileInput" accept=".jsonld" disabled>
+                            <label class="custom-file-label" for="jsonldFileInput">Choose JSON-LD file...</label>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary disabled" id="uploadJsonldBtn" disabled
+                                data-toggle="tooltip" data-placement="top"
+                                title="This feature is under construction and will be implemented in future updates.">
+                            <i class="fas fa-upload"></i> Upload JSON-LD
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary disabled" id="useStoredJsonldBtn"
+                                disabled
+                                data-toggle="tooltip" data-placement="top"
+                                title="This feature is under construction and will be implemented in future updates.">
+                            <i class="fas fa-database"></i> Use Stored JSON-LD
+                        </button>
+                        <div class="progress mt-3 d-none" id="uploadProgress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                    </div>
+
+                    <div id="jsonldSuccess" class="alert alert-success d-none">
+                        <i class="fas fa-check-circle"></i>
+                        <strong>JSON-LD semantic map ready!</strong>
+                        <span id="jsonldSuccessMessage"></span>
+                    </div>
+
+                    <div id="healthDcatControls" class="d-none">
+                        <button type="button" class="btn btn-primary" id="generateHealthDcatBtn">
+                            <i class="fas fa-cog"></i> Generate Health DCAT-AP Triples
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <br>
+    </div>
+    <a href="/share_landing" class="btn btn-light">
+        <i class="fas fa-arrow-left"></i> Return to Share Options
+    </a>
+    <br><br>
+</div>
+
+<!-- Include footer -->
+{% include 'footer.html' %}
+
+<script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/shared-checks.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/pages/share-publish.js') }}"></script>
+<script>
+    // Pass Flask variables to JavaScript for navigation header
+    window.graph_exists = true; // Data exists in the share publish step
+</script>
+
+<!-- Custom CSS moved to share.css -->
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/share.css') }}">
+
+</body>
+</html>

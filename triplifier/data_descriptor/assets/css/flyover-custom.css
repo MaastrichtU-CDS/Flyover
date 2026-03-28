@@ -205,6 +205,11 @@
     background: linear-gradient(45deg, #d36500, #FF9800);
 }
 
+.share-icon {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+}
+
+
 .step-title {
     font-size: 1.8rem;
     font-weight: bold;

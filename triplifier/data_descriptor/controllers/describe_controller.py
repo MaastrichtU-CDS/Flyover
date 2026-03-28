@@ -160,7 +160,7 @@ def retrieve_descriptive_info():
     if session_cache.DescriptiveInfoDetails:
         return redirect(url_for("describe.describe_variable_details"))
     else:
-        return redirect(url_for("download.describe_downloads"))
+        return redirect(url_for("share.describe_downloads"))
 
 
 @describe_bp.route("/describe_variable_details")
@@ -224,4 +224,4 @@ def retrieve_detailed_descriptive_info():
                 variable, database, updated_info.get(variable, {})
             )
 
-    return redirect(url_for("download.describe_downloads"))
+    return redirect(url_for("share.describe_downloads"))

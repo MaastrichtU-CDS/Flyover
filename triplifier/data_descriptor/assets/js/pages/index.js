@@ -62,6 +62,9 @@ const IndexPage = {
                 .removeAttr('data-toggle data-placement title')
                 .tooltip('dispose');
         }
+        // Ingest card is always accessible
+        $('#share-card').removeClass('disabled')
+            .removeAttr('data-toggle data-placement title');
     },
 
     /**

@@ -11,5 +11,6 @@ from .ingest_service import IngestService
 from .describe_service import DescribeService
 from .annotate_service import AnnotateService
 from .conversion_service import PythonTriplifierIntegration, run_triplifier
+from .share_service import ShareService
 
-__all__ = ["GraphDBService", "IngestService", "DescribeService", "AnnotateService", "PythonTriplifierIntegration", "run_triplifier"]
+__all__ = ["GraphDBService", "IngestService", "DescribeService", "AnnotateService", "PythonTriplifierIntegration", "run_triplifier", "ShareService"]

@@ -69,8 +69,8 @@
         <button id="startAnnotation" class="btn btn-primary" onclick="startAnnotationProcess()">
             <i class="fas fa-play"></i> Start Annotation Process
         </button>
-        <a href="/describe_downloads" class="btn btn-light">
-            <i class="fas fa-arrow-left"></i> Back to Downloads
+        <a href="/describe_variable_details" class="btn btn-light">
+            <i class="fas fa-backward"></i> Back to Describe Variable Details
         </a>
         <br>
         <div class="mt-4">
@@ -247,9 +247,10 @@
                 <strong>Cannot proceed with annotation</strong><br>
                 ${message}
                 <br><br>
-                <a href="/describe_landing" class="btn btn-primary">Go to Describe</a>
-                <a href="/ingest" class="btn btn-secondary">Go to Ingest</a>
-                <a href="/" class="btn btn-light">Return to Home</a>
+                <a href="/describe_landing" class="btn btn-primary"> <i class="fas fa-backward"></i> Go to Describe</a>
+                <a href="/ingest" class="btn btn-secondary"><i class="fas fa-fast-backward"></i> Go to Ingest</a>
+                <a href="/ingest" class="btn btn-secondary"><i class="fas fa-play">Go to Share</a>
+                <a href="/" class="btn btn-light"><i class="fas fa-home"></i> Return to Home</a>
             `;
         }
     }
@@ -461,10 +462,8 @@
                     if (!colData.localColumn) continue;
 
                     // Extract variable name from mapsTo
-                    let varName = colData.variable;
-                    if (!varName && colData.mapsTo) {
-                        varName = colData.mapsTo.split('/').pop();
-                    }
+                    if (!colData.mapsTo) continue;
+                    const varName = colData.mapsTo.split('/').pop();
                     if (!varName) continue;
 
                     // Get the schema variable info
