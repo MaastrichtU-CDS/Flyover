@@ -124,6 +124,10 @@ class IngestService:
             if not separator or len(separator) != 1:
                 return [], [], "CSV separator must be a single character"
 
+            # Validate decimal - must be a single character
+            if not decimal or len(decimal) != 1:
+                return [], [], "Decimal separator must be a single character"
+
             for csv_file in files:
                 # Read CSV with minimal inference
                 df = pl.read_csv(

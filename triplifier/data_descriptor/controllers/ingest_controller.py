@@ -243,6 +243,10 @@ def upload_file():
         if not separator or len(separator) != 1:
             separator = ","
 
+        # Ensure decimal is a valid single character
+        if not decimal or len(decimal) != 1:
+            decimal = "."
+
         dataframes, table_names, error = IngestService.parse_csv_files(
             csv_files, separator, decimal
         )
