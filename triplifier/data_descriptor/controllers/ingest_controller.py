@@ -235,17 +235,9 @@ def upload_file():
             flash(error)
             return render_template("ingest.html", error=True)
 
-        # Parse CSV files
+        # Parse CSV files - let the service handle validation
         separator = request.form.get("csv_separator_sign", ",")
         decimal = request.form.get("csv_decimal_sign", ".")
-
-        # Ensure separator is a valid single character
-        if not separator or len(separator) != 1:
-            separator = ","
-
-        # Ensure decimal is a valid single character
-        if not decimal or len(decimal) != 1:
-            decimal = "."
 
         dataframes, table_names, error = IngestService.parse_csv_files(
             csv_files, separator, decimal

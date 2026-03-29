@@ -120,13 +120,15 @@ class IngestService:
         table_names = []
 
         try:
-            # Validate separator - must be a single character
-            if not separator or len(separator) != 1:
-                return [], [], "CSV separator must be a single character"
+            # Validate and clean separator - must be a single non-whitespace character
+            separator = separator.strip() if separator else ","
+            if len(separator) != 1 or separator.isspace():
+                separator = ","  # Default to comma if invalid
 
-            # Validate decimal - must be a single character
-            if not decimal or len(decimal) != 1:
-                return [], [], "Decimal separator must be a single character"
+            # Validate and clean decimal - must be a single non-whitespace character
+            decimal = decimal.strip() if decimal else "."
+            if len(decimal) != 1 or decimal.isspace():
+                decimal = "."  # Default to period if invalid
 
             for csv_file in files:
                 # Read CSV with minimal inference
