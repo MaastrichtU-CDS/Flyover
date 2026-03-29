@@ -35,8 +35,8 @@ def get_app_context():
     return current_app.config.get("APP_CONTEXT", {})
 
 
-@share_bp.route("/describe_downloads")
-def describe_downloads():
+@share_bp.route("/share_landing")
+def share_landing():
     """
     Render the Share landing page.
 
@@ -118,19 +118,6 @@ def custom_static(filename):
     child_dir = ctx.get("child_dir", ".")
 
     return send_from_directory(f"{root_dir}{child_dir}/assets", filename)
-
-
-@share_bp.route("/share_landing")
-def share_landing():
-    """
-    Render the Share landing page.
-
-    Returns:
-        Rendered share_landing.html template.
-    """
-    return render_template(
-        "share_landing.html", graphdb_location="http://localhost:7200/"
-    )
 
 
 @share_bp.route("/share_mock")
