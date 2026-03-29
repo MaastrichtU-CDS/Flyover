@@ -300,8 +300,10 @@ class GraphDBService:
         """
         try:
             # Construct the endpoint URL
-            endpoint = f"{self.graphdb_url}/repositories/" + self.repo + endpoint_appendices
-            
+            endpoint = (
+                f"{self.graphdb_url}/repositories/" + self.repo + endpoint_appendices
+            )
+
             # Execute the query
             response = requests.post(
                 endpoint,
@@ -309,18 +311,20 @@ class GraphDBService:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=30,
             )
-            
+
             # Check for successful response
             response.raise_for_status()
-            
+
             # Return the result
             return response.text
-            
+
         except requests.exceptions.RequestException as e:
             logger.error(f"GraphDB query execution failed: {e}")
             raise Exception(f"GraphDB query execution failed: {e}")
 
-    def get_existing_column_class_uri(self, table_name: str, column_name: str) -> Optional[str]:
+    def get_existing_column_class_uri(
+        self, table_name: str, column_name: str
+    ) -> Optional[str]:
         """
         Get existing column class URI from GraphDB.
 
@@ -336,7 +340,9 @@ class GraphDBService:
         """
         return self.repository.get_column_class_uri(table_name, column_name)
 
-    def process_cross_graph_relationships(self, cross_graph_data: Dict[str, str]) -> Tuple[bool, str]:
+    def process_cross_graph_relationships(
+        self, cross_graph_data: Dict[str, str]
+    ) -> Tuple[bool, str]:
         """
         Process cross-graph relationships between tables.
 

@@ -7,7 +7,7 @@ from .data_preprocessing import (
     preprocess_dataframe,
     get_original_column_name,
     sanitise_table_name,
-    preprocess_mixed_type_data
+    preprocess_mixed_type_data,
 )
 
 from .session_helpers import (

@@ -175,10 +175,7 @@ def generate_mock_data():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({
-                "success": False,
-                "error": "No JSON data provided"
-            }), 400
+            return jsonify({"success": False, "error": "No JSON data provided"}), 400
 
         jsonld_map = data.get("jsonld_map")
         num_rows = data.get("num_rows", 100)
@@ -187,10 +184,7 @@ def generate_mock_data():
         table_id = data.get("table_id")
 
         if not jsonld_map:
-            return jsonify({
-                "success": False,
-                "error": "No semantic map provided"
-            }), 400
+            return jsonify({"success": False, "error": "No semantic map provided"}), 400
 
         # Generate mock data using the service
         result = ShareService.generate_mock_data_from_semantic_map(
@@ -198,22 +192,19 @@ def generate_mock_data():
             num_rows=num_rows,
             random_seed=random_seed,
             database_id=database_id,
-            table_id=table_id
+            table_id=table_id,
         )
 
         if result["success"]:
             response = jsonify(result)
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers.add("Access-Control-Allow-Origin", "*")
             return response, 200
         else:
             response = jsonify(result)
-            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers.add("Access-Control-Allow-Origin", "*")
             return response, 500
 
     except Exception as e:
-        response = jsonify({
-            "success": False,
-            "error": f"Server error: {str(e)}"
-        })
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        response = jsonify({"success": False, "error": f"Server error: {str(e)}"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 500

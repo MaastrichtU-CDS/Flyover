@@ -32,11 +32,11 @@ _IDENTIFIER_FORMAT = "ID_{:05d}"
 
 
 def generate_mock_data_from_semantic_map(
-        jsonld_map: Dict[str, Any],
-        num_rows: int = 100,
-        random_seed: Optional[int] = None,
-        database_id: Optional[str] = None,
-        table_id: Optional[str] = None,
+    jsonld_map: Dict[str, Any],
+    num_rows: int = 100,
+    random_seed: Optional[int] = None,
+    database_id: Optional[str] = None,
+    table_id: Optional[str] = None,
 ) -> Dict[str, pl.DataFrame]:
     """
     Generate mock data from a JSON-LD semantic mapping.
@@ -147,7 +147,7 @@ def generate_mock_data_from_semantic_map(
                         (
                             random.randint(_DEFAULT_MIN_VALUE, _DEFAULT_MAX_VALUE)
                             if random.random() > _MISSING_VALUE_PROBABILITY
-                               or not has_missing
+                            or not has_missing
                             else missing_value
                         )
                         for _ in range(num_rows)
@@ -169,7 +169,7 @@ def generate_mock_data_from_semantic_map(
                         (
                             random.randint(_DEFAULT_MIN_VALUE, _DEFAULT_MAX_VALUE)
                             if random.random() > _MISSING_VALUE_PROBABILITY
-                               or not has_missing
+                            or not has_missing
                             else missing_value
                         )
                         for _ in range(num_rows)
@@ -262,7 +262,9 @@ class ShareService:
             abort(500, description=f"Error processing semantic map: {e}")
 
     @staticmethod
-    def _download_multiple_semantic_maps(session_cache, formulate_local_map) -> Response:
+    def _download_multiple_semantic_maps(
+        session_cache, formulate_local_map
+    ) -> Response:
         """Create zip file with multiple semantic maps."""
         zip_filename = "local_semantic_maps.zip"
 
@@ -305,11 +307,11 @@ class ShareService:
 
     @staticmethod
     def download_ontology(
-            session_cache,
-            graphdb_service,
-            graphdb_url: str,
-            named_graph: str = "http://ontology.local/",
-            filename: str = None
+        session_cache,
+        graphdb_service,
+        graphdb_url: str,
+        named_graph: str = "http://ontology.local/",
+        filename: str = None,
     ) -> Response:
         """
         Download ontology files from GraphDB.
@@ -347,15 +349,17 @@ class ShareService:
                     # Parse result to extract database names
                     # This is a simplified version - actual implementation would parse the CSV result
                     # For now, we'll use a basic approach
-                    lines = result.strip().split('\n')
+                    lines = result.strip().split("\n")
                     if len(lines) > 1:  # Skip header
                         for line in lines[1:]:
                             if line.strip():
-                                parts = line.split(',')
+                                parts = line.split(",")
                                 if len(parts) > 0:
                                     graph_uri = parts[0].strip('"')
                                     # Extract database name from URI like "http://ontology.local/database_name/"
-                                    db_name = graph_uri.replace(named_graph, "").rstrip("/")
+                                    db_name = graph_uri.replace(named_graph, "").rstrip(
+                                        "/"
+                                    )
                                     if db_name:
                                         databases_to_process.append(db_name)
 
@@ -374,10 +378,7 @@ class ShareService:
 
     @staticmethod
     def _download_multiple_ontologies(
-            databases: list,
-            graphdb_service,
-            named_graph: str,
-            graphdb_url: str
+        databases: list, graphdb_service, named_graph: str, graphdb_url: str
     ) -> Response:
         """Create zip file with multiple ontologies."""
         zip_filename = "local_ontologies.zip"
@@ -388,7 +389,9 @@ class ShareService:
                 table_graph = f"{named_graph}{database}/"
                 ontology_filename = f"local_ontology_{database}.nt"
 
-                content, status = graphdb_service.repository.download_ontology(table_graph)
+                content, status = graphdb_service.repository.download_ontology(
+                    table_graph
+                )
 
                 if status == 200 and content and content.strip():
                     zipf.writestr(ontology_filename, content)
@@ -418,10 +421,7 @@ class ShareService:
 
     @staticmethod
     def _download_single_ontology(
-            databases: list,
-            graphdb_service,
-            named_graph: str,
-            filename: str = None
+        databases: list, graphdb_service, named_graph: str, filename: str = None
     ) -> Response:
         """Download single ontology."""
         if len(databases) == 1:
@@ -445,11 +445,11 @@ class ShareService:
 
     @staticmethod
     def generate_mock_data_from_semantic_map(
-            semantic_map_data: dict,
-            num_rows: int = 100,
-            random_seed: int = None,
-            database_id: str = None,
-            table_id: str = None
+        semantic_map_data: dict,
+        num_rows: int = 100,
+        random_seed: int = None,
+        database_id: str = None,
+        table_id: str = None,
     ) -> dict:
         """
         Generate mock data based on semantic map structure using the data_synthetisation utility.
@@ -471,7 +471,7 @@ class ShareService:
                 num_rows=num_rows,
                 random_seed=random_seed,
                 database_id=database_id,
-                table_id=table_id
+                table_id=table_id,
             )
 
             # Convert DataFrames to JSON-serializable format
@@ -486,8 +486,8 @@ class ShareService:
                     "generated_from": "semantic_map",
                     "privacy_preserving": True,
                     "row_count": num_rows,
-                    "tables_generated": len(json_serializable_result)
-                }
+                    "tables_generated": len(json_serializable_result),
+                },
             }
 
         except Exception as e:
@@ -496,6 +496,6 @@ class ShareService:
                 "error": str(e),
                 "metadata": {
                     "generated_from": "semantic_map",
-                    "privacy_preserving": True
-                }
+                    "privacy_preserving": True,
+                },
             }

@@ -182,9 +182,6 @@ class Cache:
 session_cache = Cache()
 
 
-
-
-
 @app.route("/upload-semantic-map", methods=["POST"])
 def upload_semantic_map():
     """
@@ -494,7 +491,10 @@ def upload_file():
             # Use different upload strategy based on file type
             if file_type == "CSV" and session_cache.output_files:
                 # Upload multiple graphs for CSV files
-                upload_success, upload_messages = IngestService().upload_multiple_graphs(
+                (
+                    upload_success,
+                    upload_messages,
+                ) = IngestService().upload_multiple_graphs(
                     root_dir,
                     graphdb_url,
                     repo,
@@ -503,7 +503,10 @@ def upload_file():
                 )
             else:
                 # Use traditional single-graph upload for PostgreSQL
-                upload_success, upload_messages = IngestService().upload_ontology_then_data(
+                (
+                    upload_success,
+                    upload_messages,
+                ) = IngestService().upload_ontology_then_data(
                     root_dir, graphdb_url, repo, data_background=False
                 )
 
@@ -515,7 +518,7 @@ def upload_file():
             if file_type == "CSV":
                 # Only process PK/FK if there's actual relationship data configured
                 has_pk_fk_data = session_cache.pk_fk_data and any(
-                    item.get('primaryKey') or item.get('foreignKey')
+                    item.get("primaryKey") or item.get("foreignKey")
                     for item in session_cache.pk_fk_data
                 )
                 if has_pk_fk_data:
@@ -524,7 +527,8 @@ def upload_file():
                     )
                     gevent.spawn(
                         IngestService.background_pk_fk_processing,
-                        session_cache, graphdb_service,
+                        session_cache,
+                        graphdb_service,
                     )
 
                 if session_cache.cross_graph_link_data:
@@ -533,7 +537,8 @@ def upload_file():
                     )
                     gevent.spawn(
                         IngestService.background_cross_graph_processing,
-                        session_cache, graphdb_service,
+                        session_cache,
+                        graphdb_service,
                     )
 
         # Redirect to the new route after processing the POST request
@@ -913,12 +918,6 @@ def retrieve_detailed_descriptive_info():
 
     # Redirect the user to the 'annotation_review' URL
     return redirect(url_for("annotation_review"))
-
-
-
-
-
-
 
 
 @app.route("/annotation_landing")
@@ -1639,9 +1638,6 @@ def api_check_graph_exists():
         return jsonify({"exists": False, "error": str(e)})
 
 
-
-
-
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
     """
     This function executes a SPARQL query on a specified GraphDB repository.
@@ -1987,6 +1983,7 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         )
         return render_template("ingest.html", error=True)
 
+
 def insert_equivalencies(descriptive_info, variable, database):
     """
     This function inserts equivalencies into a GraphDB repository.
@@ -2085,19 +2082,33 @@ app.config["APP_CONTEXT"] = {
     "child_dir": child_dir,
     "run_triplifier": lambda properties_file: (
         IngestService().run_triplifier(
-            properties_file, root_dir, child_dir,
-            csv_data_list=session_cache.csvData if hasattr(session_cache, 'csvData') else None,
-            csv_table_names=session_cache.csvTableNames if hasattr(session_cache, 'csvTableNames') else None
+            properties_file,
+            root_dir,
+            child_dir,
+            csv_data_list=(
+                session_cache.csvData if hasattr(session_cache, "csvData") else None
+            ),
+            csv_table_names=(
+                session_cache.csvTableNames
+                if hasattr(session_cache, "csvTableNames")
+                else None
+            ),
         )
     ),
-    "upload_func": lambda file_type, output_files: IngestService().upload_multiple_graphs(
-        root_dir, graphdb_url, repo, output_files, data_background=False
-    ) if file_type == "CSV" else IngestService().upload_ontology_then_data(
-        root_dir, graphdb_url, repo, data_background=False
+    "upload_func": lambda file_type, output_files: (
+        IngestService().upload_multiple_graphs(
+            root_dir, graphdb_url, repo, output_files, data_background=False
+        )
+        if file_type == "CSV"
+        else IngestService().upload_ontology_then_data(
+            root_dir, graphdb_url, repo, data_background=False
+        )
     ),
     "start_background": lambda sc: [
         gevent.spawn(IngestService.background_pk_fk_processing, sc, graphdb_service),
-        gevent.spawn(IngestService.background_cross_graph_processing, sc, graphdb_service)
+        gevent.spawn(
+            IngestService.background_cross_graph_processing, sc, graphdb_service
+        ),
     ],
     "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
         IngestService().handle_postgres_connection(
@@ -2105,12 +2116,16 @@ app.config["APP_CONTEXT"] = {
         )
     ),
     "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
-    "get_semantic_map": lambda sc, db_key=None: DescribeService.get_semantic_map_for_annotation(sc, db_key),
+    "get_semantic_map": lambda sc, db_key=None: DescribeService.get_semantic_map_for_annotation(
+        sc, db_key
+    ),
     "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
     "get_table_names": lambda sc: DescribeService.get_table_names_from_mapping(sc),
-    "name_matcher": lambda map_db, target_db: DescribeService.graph_database_find_name_match(map_db, target_db),
+    "name_matcher": lambda map_db, target_db: DescribeService.graph_database_find_name_match(
+        map_db, target_db
+    ),
     "get_semantic_map_for_annotation": lambda sc, db_key=None: (
-        __import__('utils.session_helpers').get_semantic_map_for_annotation(sc, db_key)
+        __import__("utils.session_helpers").get_semantic_map_for_annotation(sc, db_key)
     ),
 }
 

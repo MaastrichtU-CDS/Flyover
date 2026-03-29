@@ -209,7 +209,9 @@ class IngestService:
             logger.info("PostgreSQL connection successful")
 
             # Write connection details to properties file
-            properties_path = os.path.join(root_dir, child_dir, "triplifierSQL.properties")
+            properties_path = os.path.join(
+                root_dir, child_dir, "triplifierSQL.properties"
+            )
             os.makedirs(os.path.dirname(properties_path), exist_ok=True)
 
             with open(properties_path, "w") as f:
@@ -270,22 +272,34 @@ class IngestService:
             elif properties_file == "triplifierSQL.properties":
                 # Use Python Triplifier for PostgreSQL processing
                 success, message, output_files = run_triplifier_impl(
-                    properties_file=properties_file, root_dir=root_dir, child_dir=child_dir
+                    properties_file=properties_file,
+                    root_dir=root_dir,
+                    child_dir=child_dir,
                 )
             else:
                 return False, f"Unknown properties file: {properties_file}", None
 
             if success:
-                return True, (
-                    "The data you have submitted was triplified successfully and "
-                    "is now available in GraphDB."
-                ), output_files
+                return (
+                    True,
+                    (
+                        "The data you have submitted was triplified successfully and "
+                        "is now available in GraphDB."
+                    ),
+                    output_files,
+                )
             else:
                 return False, message, None
 
         except Exception as e:
-            logger.error(f"Unexpected error attempting to run the Python Triplifier: {e}")
-            return False, f"Unexpected error attempting to run the Triplifier, error: {e}", None
+            logger.error(
+                f"Unexpected error attempting to run the Python Triplifier: {e}"
+            )
+            return (
+                False,
+                f"Unexpected error attempting to run the Triplifier, error: {e}",
+                None,
+            )
 
     @staticmethod
     def process_pk_fk_relationships(
@@ -419,7 +433,9 @@ class IngestService:
         """Execute upload in background using gevent greenlet"""
         try:
             start_time = time.time()
-            logger.info(f"🔄 Background upload: trying data-binary first for {file_name}")
+            logger.info(
+                f"🔄 Background upload: trying data-binary first for {file_name}"
+            )
 
             success, message = self._try_data_binary_upload(
                 file_path, url, content_type, timeout_seconds
@@ -490,7 +506,9 @@ class IngestService:
         elapsed = time.time() - start_time
 
         if success:
-            logger.info(f"✅ Streaming upload successful for {file_name} in {elapsed:.1f}s")
+            logger.info(
+                f"✅ Streaming upload successful for {file_name} in {elapsed:.1f}s"
+            )
             return True, message, "streaming"
         else:
             logger.error(
@@ -751,7 +769,7 @@ class IngestService:
         try:
             time.sleep(3)
 
-            pk_fk_data = getattr(session_cache, 'pk_fk_data', None)
+            pk_fk_data = getattr(session_cache, "pk_fk_data", None)
             if not pk_fk_data:
                 return
 
@@ -774,7 +792,9 @@ class IngestService:
             session_cache.pk_fk_status = "failed"
 
     @staticmethod
-    def background_cross_graph_processing(session_cache: Any, graphdb_service: Any) -> None:
+    def background_cross_graph_processing(
+        session_cache: Any, graphdb_service: Any
+    ) -> None:
         """
         Background function to process cross-graph relationships.
 
@@ -790,7 +810,7 @@ class IngestService:
             # Slightly longer delay than PK/FK to ensure it runs after
             time.sleep(5)
 
-            cross_graph_data = getattr(session_cache, 'cross_graph_link_data', None)
+            cross_graph_data = getattr(session_cache, "cross_graph_link_data", None)
             if not cross_graph_data:
                 return
 
@@ -806,7 +826,9 @@ class IngestService:
                 logger.info(message)
 
             if success:
-                logger.info("Cross-graph relationship processing completed successfully.")
+                logger.info(
+                    "Cross-graph relationship processing completed successfully."
+                )
 
         except Exception as e:
             logger.error(f"Background cross-graph processing error: {e}")
@@ -852,4 +874,3 @@ class IngestService:
                 f"{new_table}.{cross_graph_data['newColumnName']} -> "
                 f"{existing_table}.{cross_graph_data['existingColumnName']}"
             )
-
