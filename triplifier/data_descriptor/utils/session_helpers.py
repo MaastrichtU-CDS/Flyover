@@ -15,6 +15,13 @@ import polars as pl
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+# Import GraphDBService for the name matching function
+try:
+    from services.graphdb_service import GraphDBService
+except ImportError:
+    # Fallback for when running in different contexts
+    from ..services.graphdb_service import GraphDBService
+
 logger = logging.getLogger(__name__)
 
 # Constants for SPARQL queries and regex patterns used in database initialisation
@@ -156,53 +163,6 @@ def graph_database_fetch_from_rdf(
         return None
 
 
-def graph_database_find_name_match(
-    map_database_name: Optional[str], target_database: str
-) -> bool:
-    """
-    Check if a semantic map's database_name matches a target database.
-
-    This function implements strict matching with a fallback for .csv extension handling.
-    If map_database_name is None or empty, the map is considered a global template
-    and applies to all databases.
-
-    Args:
-        map_database_name: The database_name field from the semantic map JSON (can be None)
-        target_database: The database name to match against
-
-    Returns:
-        bool: True if the map should apply to this database, False otherwise
-    """
-    # If map_database_name is None or empty, it's a global template - applies to all
-    if map_database_name is None or map_database_name == "":
-        return True
-
-    # Strict exact match first
-    if map_database_name == target_database:
-        return True
-
-    # Fallback: try matching with/without .csv extension
-    map_name_no_ext = (
-        map_database_name.rstrip(".csv")
-        if map_database_name.endswith(".csv")
-        else map_database_name
-    )
-    target_no_ext = (
-        target_database.rstrip(".csv")
-        if target_database.endswith(".csv")
-        else target_database
-    )
-
-    if map_name_no_ext == target_no_ext:
-        logger.debug(
-            f"Database name matched with .csv extension fallback: "
-            f"'{map_database_name}' matches '{target_database}'"
-        )
-        return True
-
-    return False
-
-
 def graph_database_find_matching(
     map_database_name: Optional[str], available_databases
 ) -> Optional[str]:
@@ -224,103 +184,10 @@ def graph_database_find_matching(
         return str(available_databases[0]) if len(available_databases) > 0 else None
 
     for db in available_databases:
-        if graph_database_find_name_match(map_database_name, str(db)):
+        if GraphDBService.graph_database_find_name_match(map_database_name, str(db)):
             return str(db)
 
     return None
-
-
-def get_table_names_from_mapping(session_cache) -> List[str]:
-    """
-    Get table names from the available semantic map for matching against RDF store databases.
-
-    For JSON-LD:  extracts sourceFile from databases → tables → sourceFile
-    For legacy JSON: returns database_name as a single-item list
-
-    Args:
-        session_cache: The session cache object
-
-    Returns:
-        list: List of table names to match against RDF store databases
-    """
-    # Prefer jsonld_mapping when available
-    if session_cache.jsonld_mapping is not None:
-        # Try to get table names from the jsonld_mapping object
-        # If it has a method for this, use it; otherwise extract from raw data
-        if hasattr(session_cache.jsonld_mapping, "get_table_names"):
-            return session_cache.jsonld_mapping.get_table_names()
-        # Fallback:  extract from the raw jsonld data if available
-        if hasattr(session_cache.jsonld_mapping, "raw_data"):
-            return get_table_names_from_jsonld(session_cache.jsonld_mapping.raw_data)
-        # Last resort: try to_legacy_format and check for sourceFile info
-        try:
-            legacy = session_cache.jsonld_mapping.to_legacy_format()
-            if isinstance(legacy, dict) and "databases" in legacy:
-                return get_table_names_from_jsonld(legacy)
-        except Exception:
-            pass
-
-    # Check global_semantic_map for JSON-LD format
-    if isinstance(session_cache.global_semantic_map, dict):
-        if is_jsonld_semantic_map(session_cache.global_semantic_map):
-            table_names = get_table_names_from_jsonld(session_cache.global_semantic_map)
-            if table_names:
-                return table_names
-
-        # Legacy format:  return database_name as a list
-        database_name = session_cache.global_semantic_map.get("database_name")
-        if isinstance(database_name, str) and database_name:
-            return [database_name]
-
-    return []
-
-
-def get_table_names_from_jsonld(semantic_map: dict) -> list:
-    """
-    Extract all table names (sourceFile values) from a JSON-LD semantic map.
-
-    Args:
-        semantic_map: The semantic map dictionary (could be JSON or JSON-LD format)
-
-    Returns:
-        list: List of table names (sourceFile values) from all databases/tables
-    """
-    table_names = []
-
-    # Check if this is JSON-LD format (has 'databases' key)
-    databases = semantic_map.get("databases")
-    if not isinstance(databases, dict):
-        return table_names
-
-    for db_key, db_data in databases.items():
-        if not isinstance(db_data, dict):
-            continue
-        tables = db_data.get("tables")
-        if not isinstance(tables, dict):
-            continue
-        for table_key, table_data in tables.items():
-            if not isinstance(table_data, dict):
-                continue
-            source_file = table_data.get("sourceFile")
-            if isinstance(source_file, str) and source_file:
-                table_names.append(source_file)
-
-    return table_names
-
-
-def is_jsonld_semantic_map(semantic_map: dict) -> bool:
-    """
-    Check if a semantic map is in JSON-LD format.
-
-    Args:
-        semantic_map: The semantic map dictionary
-
-    Returns:
-        bool: True if JSON-LD format, False otherwise
-    """
-    if not isinstance(semantic_map, dict):
-        return False
-    return "@context" in semantic_map or "databases" in semantic_map
 
 
 def process_variable_for_annotation(
