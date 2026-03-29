@@ -94,6 +94,9 @@ else:
     root_dir = ""
     child_dir = "."
 
+# Initialize GraphDB service for use in route handlers
+graphdb_service = GraphDBService(graphdb_url, repo)
+
 app.secret_key = "secret_key"
 app.config["UPLOAD_FOLDER"] = os.path.join(child_dir, "static", "files")
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
@@ -341,7 +344,7 @@ def get_graphdb_databases():
     """
     try:
         # Fetch databases from GraphDB
-        if graph_database_ensure_backend_initialisation(session_cache, execute_query):
+        if graph_database_ensure_backend_initialisation(session_cache, graphdb_service):
             return jsonify({"success": True, "databases": session_cache.databases})
         else:
             return jsonify(
@@ -976,7 +979,7 @@ def upload_annotation_json():
 
             # Ensure databases are initialised from RDF-store
             if not graph_database_ensure_backend_initialisation(
-                session_cache, execute_query
+                session_cache, graphdb_service
             ):
                 os.remove(filepath)  # Clean up file
                 return (
@@ -1107,7 +1110,7 @@ def start_annotation():
 
         # Ensure databases are initialised from the RDF-store if not already populated
         if not graph_database_ensure_backend_initialisation(
-            session_cache, execute_query
+            session_cache, graphdb_service
         ):
             return jsonify(
                 {"success": False, "error": "No databases available for annotation"}
@@ -1285,7 +1288,7 @@ def annotation_verify():
         return redirect(url_for("share_landing"))
 
     # Ensure databases are initialised from the RDF-store if not already populated
-    if not graph_database_ensure_backend_initialisation(session_cache, execute_query):
+    if not graph_database_ensure_backend_initialisation(session_cache, graphdb_service):
         flash("No databases available.")
         return redirect(url_for("share_landing"))
 
@@ -1894,9 +1897,6 @@ def insert_equivalencies(descriptive_info, variable, database):
                 }}
             """
     return graphdb_service.execute_query(query, "update", "/statements")
-
-
-graphdb_service = GraphDBService(graphdb_url, repo)
 
 
 # Register controller blueprints

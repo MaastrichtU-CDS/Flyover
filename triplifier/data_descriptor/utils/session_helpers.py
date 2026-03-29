@@ -90,19 +90,19 @@ def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
 
 
 def graph_database_ensure_backend_initialisation(
-    session_cache, execute_query_func: Callable[[str, str], str]
+    session_cache, graphdb_service: GraphDBService
 ) -> bool:
     """
     Ensure that session_cache.databases is populated from the RDF-store.
 
     Args:
         session_cache: The session cache object
-        execute_query_func: The function to execute SPARQL queries
+        graphdb_service: The GraphDB service instance for executing queries
 
     Returns:
         bool: True if databases are available, False otherwise
     """
-    databases = graph_database_fetch_from_rdf(session_cache.repo, execute_query_func)
+    databases = graph_database_fetch_from_rdf(session_cache.repo, graphdb_service)
 
     if databases is None or len(databases) == 0:
         return False
@@ -112,7 +112,7 @@ def graph_database_ensure_backend_initialisation(
 
 
 def graph_database_fetch_from_rdf(
-    repo: str, execute_query_func: Callable[[str, str], str]
+    repo: str, graphdb_service: GraphDBService
 ) -> Optional[List[str]]:
     """
     Fetch database names from the RDF-store.
@@ -123,14 +123,14 @@ def graph_database_fetch_from_rdf(
 
     Args:
         repo: The repository name to query
-        execute_query_func: The function to execute SPARQL queries
+        graphdb_service: The GraphDB service instance for executing queries
 
     Returns:
         List[str] or None: List of unique database names, or None if fetching fails
     """
     try:
         # Execute the query and read the results into a polars DataFrame
-        query_result = execute_query_func(repo, DATABASE_NAME_QUERY)
+        query_result = graphdb_service.execute_query(DATABASE_NAME_QUERY)
         database_info = pl.read_csv(
             StringIO(query_result),
             infer_schema_length=0,
