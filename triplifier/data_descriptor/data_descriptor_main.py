@@ -523,7 +523,9 @@ app.config["APP_CONTEXT"] = {
         )
     ),
     "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
-    "get_semantic_map": lambda sc, db_key=None: DescribeService.get_semantic_map_for_annotation(sc, db_key),
+    "get_semantic_map": lambda sc, db_key=None: (
+        __import__('utils.session_helpers').get_semantic_map_for_annotation(sc, db_key)
+    ),
     "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
     "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
     "name_matcher": lambda map_db, target_db: GraphDBService.graph_database_find_name_match(map_db, target_db),
