@@ -100,6 +100,67 @@ class DescribeService:
                 return base[len(prefix) :]
             return None
 
+        # Iterate over each database and process form data
+        for database in all_databases:
+            keys = []
+            for key in form_data:
+                if not key.startswith(f"{database}_"):
+                    continue
+                matching_dbs = [
+                    db for db in all_databases if key.startswith(f"{db}_")
+                ]
+                if matching_dbs and max(matching_dbs, key=len) == database:
+                    keys.append(key)
+
+            variables = []
+            for key in keys:
+                var = extract_variable_from_key(key, database)
+                if var:
+                    variables.append(var)
+
+            # Iterate over each unique variable
+            for variable in set(variables):
+                # Initialize variable entry if not exists
+                if variable not in existing_info:
+                    existing_info[variable] = {}
+
+                # Retrieve all keys from the form data that contain the variable name
+                keys = [
+                    key
+                    for key in form_data
+                    if variable in key
+                    and not key.startswith("comment_")
+                    and not key.startswith("count_")
+                ]
+
+                for key in keys:
+                    if "_notation_missing_or_unspecified" in key:
+                        existing_info[variable][
+                            f"Category: {form_data.get(key)}"
+                        ] = (
+                            f"Category {form_data.get(key)}: missing_or_unspecified"
+                            or "No missing value notation provided"
+                        )
+
+                    elif "_category_" in key and not key.startswith("count_"):
+                        # Retrieve the category and the associated value and comment
+                        category = key.split('_category_"')[1].split('"')[0]
+                        count_form = f'count_{database}_{variable}_category_"{category}"'
+                        existing_info[variable][
+                            f"Category: {category}"
+                        ] = (
+                            f"Category {category}: {form_data.get(key)}, comment: "
+                            f'{form_data.get(f"comment_{key}") or "No comment provided"},  '
+                            f'count: {form_data.get(count_form) or "No count available"}'
+                        )
+                    # Handle units
+                    elif "count_" not in key:
+                        existing_info[variable]["units"] = (
+                            form_data.get(key) or "No units specified"
+                        )
+
+        return existing_info
+
     @staticmethod
     def is_jsonld_semantic_map(semantic_map: dict) -> bool:
         """
