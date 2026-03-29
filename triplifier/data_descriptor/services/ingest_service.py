@@ -19,9 +19,24 @@ from psycopg2 import connect
 from werkzeug.utils import secure_filename
 
 try:
+    # Try relative import first
     from ..utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
-except ImportError:
-    from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
+except (ImportError, ValueError):
+    try:
+        # Try direct import (works when running from data_descriptor directory)
+        from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
+    except ImportError:
+        try:
+            # Try absolute import from current working directory
+            import sys
+            import os
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
+        except ImportError:
+            # Final fallback - import specific functions and handle missing ones
+            import sys
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+            from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +186,99 @@ class IngestService:
         except Exception as e:
             logger.error(f"Error parsing cross-graph data: {e}")
             return None
+
+    @staticmethod
+    def is_jsonld_semantic_map(semantic_map: dict) -> bool:
+        """
+        Check if a semantic map is in JSON-LD format.
+
+        Args:
+            semantic_map: The semantic map dictionary
+
+        Returns:
+            bool: True if JSON-LD format, False otherwise
+        """
+        if not isinstance(semantic_map, dict):
+            return False
+        return "@context" in semantic_map or "databases" in semantic_map
+
+    @staticmethod
+    def get_table_names_from_mapping(session_cache: Any) -> List[str]:
+        """
+        Get table names from the available semantic map for matching against RDF store databases.
+
+        For JSON-LD: extracts sourceFile from databases → tables → sourceFile
+        For legacy JSON: returns database_name as a single-item list
+
+        Args:
+            session_cache: The session cache object
+
+        Returns:
+            list: List of table names to match against RDF store databases
+        """
+        # Prefer jsonld_mapping when available
+        if session_cache.jsonld_mapping is not None:
+            # Try to get table names from the jsonld_mapping object
+            # If it has a method for this, use it; otherwise extract from raw data
+            if hasattr(session_cache.jsonld_mapping, "get_table_names"):
+                return session_cache.jsonld_mapping.get_table_names()
+            # Fallback: extract from the raw jsonld data if available
+            if hasattr(session_cache.jsonld_mapping, "raw_data"):
+                return IngestService.get_table_names_from_jsonld(session_cache.jsonld_mapping.raw_data)
+            # Last resort: try to_legacy_format and check for sourceFile info
+            try:
+                legacy = session_cache.jsonld_mapping.to_legacy_format()
+                if isinstance(legacy, dict) and "databases" in legacy:
+                    return IngestService.get_table_names_from_jsonld(legacy)
+            except Exception:
+                pass
+
+        # Check global_semantic_map for JSON-LD format
+        if isinstance(session_cache.global_semantic_map, dict):
+            if IngestService.is_jsonld_semantic_map(session_cache.global_semantic_map):
+                table_names = IngestService.get_table_names_from_jsonld(session_cache.global_semantic_map)
+                if table_names:
+                    return table_names
+
+            # Legacy format: return database_name as a list
+            database_name = session_cache.global_semantic_map.get("database_name")
+            if isinstance(database_name, str) and database_name:
+                return [database_name]
+
+        return []
+
+    @staticmethod
+    def get_table_names_from_jsonld(semantic_map: dict) -> list:
+        """
+        Extract all table names (sourceFile values) from a JSON-LD semantic map.
+
+        Args:
+            semantic_map: The semantic map dictionary (could be JSON or JSON-LD format)
+
+        Returns:
+            list: List of table names (sourceFile values) from all databases/tables
+        """
+        table_names = []
+
+        # Check if this is JSON-LD format (has 'databases' key)
+        databases = semantic_map.get("databases")
+        if not isinstance(databases, dict):
+            return table_names
+
+        for db_key, db_data in databases.items():
+            if not isinstance(db_data, dict):
+                continue
+            tables = db_data.get("tables")
+            if not isinstance(tables, dict):
+                continue
+            for table_key, table_data in tables.items():
+                if not isinstance(table_data, dict):
+                    continue
+                source_file = table_data.get("sourceFile")
+                if isinstance(source_file, str) and source_file:
+                    table_names.append(source_file)
+
+        return table_names
 
     def handle_postgres_connection(
         self,

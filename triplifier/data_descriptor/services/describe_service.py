@@ -464,16 +464,18 @@ class DescribeService:
             Optional[str]: Categories data or None if not found
         """
         try:
-            # Construct SPARQL query to get categories
+            # Construct SPARQL query to get categories (1:1 with original)
             query = f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            SELECT ?value (COUNT(?value) AS ?count)
-            WHERE {{
-                ?uri dbo:column "{column_name}" .
-                ?uri dbo:category ?value .
+            SELECT ?value (COUNT(?value) as ?count)
+            WHERE
+            {{
+               ?a a ?v.
+               ?v dbo:column '{column_name}'.
+               ?a dbo:has_cell ?cell.
+               ?cell dbo:has_value ?value
             }}
-            GROUP BY ?value
-            ORDER BY DESC(?count)
+            GROUP BY (?value)
             """
             
             result = graphdb_service.execute_query(query)

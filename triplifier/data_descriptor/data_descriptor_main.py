@@ -65,14 +65,12 @@ from utils.data_preprocessing import (
 from utils.session_helpers import (
     check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
-    graph_database_find_name_match,
     graph_database_find_matching,
     process_variable_for_annotation,
     get_semantic_map_for_annotation,
     has_semantic_map,
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
-    get_table_names_from_mapping,
 )
 
 from annotation_helper.src.miscellaneous import add_annotation
@@ -620,7 +618,7 @@ def describe_landing():
 @app.route("/describe_variables", methods=["GET", "POST"])
 def describe_variables():
     column_info = pl.read_csv(
-        StringIO(execute_query(session_cache.repo, COLUMN_INFO_QUERY)),
+        StringIO(graphdb_service.execute_query(COLUMN_INFO_QUERY)),
         infer_schema_length=0,
         null_values=[],
         try_parse_dates=False,
@@ -703,7 +701,7 @@ def retrieve_descriptive_info():
                 # If the data type of the local variable is 'categorical',
                 # retrieve the categories for the local variable and store them in the session cache
                 if data_type == "categorical":
-                    cat = retrieve_categories(session_cache.repo, local_variable_name)
+                    cat = DescribeService.retrieve_categories(graphdb_service, local_variable_name)
                     df = pl.read_csv(
                         StringIO(cat),
                         separator=",",
@@ -772,7 +770,7 @@ def describe_variable_details():
 
     if session_cache.jsonld_mapping and session_cache.DescriptiveInfoDetails:
         for database, variables in session_cache.DescriptiveInfoDetails.items():
-            if not graph_database_find_name_match(map_database_name, database):
+            if not GraphDBService.graph_database_find_name_match(map_database_name, database):
                 continue
 
             for variable in variables:
@@ -1128,14 +1126,14 @@ def start_annotation():
         total_annotated_vars = 0
 
         # Get table names from the mapping (handles both JSON-LD and legacy formats)
-        map_table_names = get_table_names_from_mapping(session_cache)
+        map_table_names = IngestService.get_table_names_from_mapping(session_cache)
 
         # Process each database separately using its semantic map
         for database in session_cache.databases:
             # Check if this database matches any table name from the semantic map
             matches_any_table = False
             for table_name in map_table_names:
-                if graph_database_find_name_match(table_name, database):
+                if GraphDBService.graph_database_find_name_match(table_name, database):
                     matches_any_table = True
                     break
 
@@ -1170,7 +1168,9 @@ def start_annotation():
                 variable_info = semantic_map.get("variable_info", {})
                 prefixes = semantic_map.get("prefixes", "")
             else:
-                local_semantic_map = formulate_local_semantic_map(database)
+                local_semantic_map = DescribeService.formulate_local_semantic_map(
+                    session_cache.global_semantic_map, database, session_cache.descriptive_info.get(database)
+                )
                 variable_info = local_semantic_map.get("variable_info", {})
                 prefixes = local_semantic_map.get(
                     "prefixes",
@@ -1289,7 +1289,7 @@ def annotation_verify():
         flash("No databases available.")
         return redirect(url_for("share_landing"))
 
-    map_table_names = get_table_names_from_mapping(session_cache)
+    map_table_names = IngestService.get_table_names_from_mapping(session_cache)
 
     annotated_variables = []
     unannotated_variables = []
@@ -1298,7 +1298,7 @@ def annotation_verify():
     for database in session_cache.databases:
         matches_any_table = False
         for table_name in map_table_names:
-            if graph_database_find_name_match(table_name, database):
+            if GraphDBService.graph_database_find_name_match(table_name, database):
                 matches_any_table = True
                 break
 
@@ -1324,7 +1324,9 @@ def annotation_verify():
             variable_info = semantic_map.get("variable_info", {})
             prefixes = semantic_map.get("prefixes", "")
         else:
-            local_semantic_map = formulate_local_semantic_map(database)
+            local_semantic_map = DescribeService.formulate_local_semantic_map(
+                session_cache.global_semantic_map, database, session_cache.descriptive_info.get(database)
+            )
             variable_info = local_semantic_map.get("variable_info", {})
             prefixes = local_semantic_map.get("prefixes", "")
 
@@ -1423,7 +1425,9 @@ def verify_annotation_ask():
         if is_jsonld:
             variable_info = semantic_map.get("variable_info", {})
         else:
-            local_semantic_map = formulate_local_semantic_map(database)
+            local_semantic_map = DescribeService.formulate_local_semantic_map(
+                session_cache.global_semantic_map, database, session_cache.descriptive_info.get(database)
+            )
             variable_info = local_semantic_map.get("variable_info", {})
 
         var_data = variable_info.get(var_name)
@@ -1642,140 +1646,13 @@ def api_check_graph_exists():
 
 
 
-def execute_query(repo, query, query_type=None, endpoint_appendices=None):
-    """
-    This function executes a SPARQL query on a specified GraphDB repository.
-
-    Parameters:
-    repo (str): The name of the GraphDB repository on which the query is to be executed.
-    query (str): The SPARQL query to be executed.
-    query_type (str, optional): The type of the SPARQL query. Defaults to "query".
-    endpoint_appendices (str, optional): Additional endpoint parameters. Defaults to "".
-
-    Returns:
-    str: The result of the query execution as a string if the execution is successful.
-    flask.render_template: A Flask function that renders the 'ingest.html' template
-    if an error occurs during the query execution.
-
-    Raises:
-    Exception: If an error occurs during the query execution,
-    an exception is raised, and its error message is flashed to the user.
-
-    The function performs the following steps:
-    1. Checks if query_type and endpoint_appendices are None. If they are, set them to their default values.
-    2. Constructs the endpoint URL using the provided repository name and endpoint_appendices.
-    3. Executes the SPARQL query on the constructed endpoint URL.
-    4. If the query execution is successful, it returns the result as a string.
-    5. If an error occurs during the query execution,
-    flashes an error message to the user and renders the 'ingest.html' template.
-    """
-    if query_type is None:
-        query_type = "query"
-
-    if endpoint_appendices is None:
-        endpoint_appendices = ""
-    try:
-        # Construct the endpoint URL
-        endpoint = f"{graphdb_url}/repositories/" + repo + endpoint_appendices
-        # Execute the query
-        response = requests.post(
-            endpoint,
-            data={query_type: query},
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
-        )
-        # Return the result of the query execution
-        return response.text
-    except Exception as e:
-        # If an error occurs, flash the error message to the user and render the 'ingest.html' template
-        flash(f"Unexpected error when connecting to GraphDB, error: {e}.")
-        return render_template("ingest.html")
 
 
-def retrieve_categories(repo, column_name):
-    """
-    This function executes a SPARQL query on a specified GraphDB repository
-    to retrieve the categories of a given column.
-
-    Parameters:
-    repo (str): The name of the GraphDB repository on which the query is to be executed.
-    column_name (str): The name of the column for which the categories are to be retrieved.
-
-    Returns:
-    str: The result of the query execution as a string if the execution is successful.
-
-    The function performs the following steps:
-    1. Constructs a SPARQL query that selects the value and count of each category in the specified column.
-    2. Executes the query on the specified GraphDB repository using the execute_query function.
-    3. Returns the result of the query execution.
-
-    The SPARQL query works as follows:
-    1. It selects the value and count of each category in the specified column.
-    2. It groups the results by the value of the category.
-    """
-    query_categories = f"""
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        PREFIX db: <http://{repo}.local/rdf/ontology/>
-        PREFIX roo: <http://www.cancerdata.org/roo/>
-        SELECT ?value (COUNT(?value) as ?count)
-        WHERE
-        {{
-           ?a a ?v.
-           ?v dbo:column '{column_name}'.
-           ?a dbo:has_cell ?cell.
-           ?cell dbo:has_value ?value
-        }}
-        GROUP BY (?value)
-    """
-    return execute_query(repo, query_categories)
 
 
-def retrieve_global_names():
-    """
-    This function retrieves the names of global variables from the session cache.
 
-    The function first checks if a semantic map is available (jsonld_mapping or global_semantic_map).
-    If not, it returns a list of default global variable names.
-    If a semantic map is available, it attempts to retrieve the variable keys,
-    capitalise them, replace underscores with spaces, and return them as a list.
-    If an error occurs during this process,
-    it flashes an error message to the user and renders the 'ingest.html' template.
 
-    Returns:
-        list: A list of strings representing the names of the global variables.
-        flask.render_template: A Flask function that renders a template.
-        In this case, it renders the 'ingest.html' template if an error occurs.
-    """
-    default_names = [
-        "Research subject identifier",
-        "Biological sex",
-        "Age at inclusion",
-        "Other",
-    ]
 
-    # Prefer jsonld_mapping when available
-    if session_cache.jsonld_mapping is not None:
-        try:
-            return [
-                name.capitalize().replace("_", " ")
-                for name in session_cache.jsonld_mapping.get_all_variable_keys()
-            ] + ["Other"]
-        except Exception as e:
-            flash(f"Failed to read the JSON-LD mapping. Error: {e}")
-            return render_template("ingest.html", error=True)
-
-    # Fall back to global_semantic_map
-    if not isinstance(session_cache.global_semantic_map, dict):
-        return default_names
-    else:
-        try:
-            return [
-                name.capitalize().replace("_", " ")
-                for name in session_cache.global_semantic_map["variable_info"].keys()
-            ] + ["Other"]
-        except Exception as e:
-            flash(f"Failed to read the global semantic map. Error: {e}")
-            return render_template("ingest.html", error=True)
 
 
 def formulate_local_semantic_map(database):
@@ -1944,48 +1821,7 @@ def formulate_local_semantic_map(database):
     return modified_semantic_map
 
 
-def handle_postgres_data(username, password, postgres_url, postgres_db, table):
-    """
-    This function handles the PostgreSQL data. It caches the provided information,
-    establishes a connection to the PostgreSQL database, and writes the connection details to a properties file.
 
-    Parameters:
-    username (str): The username for the PostgreSQL database.
-    password (str): The password for the PostgreSQL database.
-    postgres_url (str): The URL of the PostgreSQL database.
-    postgres_db (str): The name of the PostgreSQL database.
-    table (str): The name of the table in the PostgreSQL database.
-
-    Returns:
-    flask.Response: A Flask response object containing the rendered 'ingest.html' template if
-                    the connection to the PostgreSQL database fails.
-    None: If the connection to the PostgreSQL database is successful.
-    """
-    # Cache information
-    (
-        session_cache.username,
-        session_cache.password,
-        session_cache.url,
-        session_cache.db_name,
-        session_cache.table,
-    ) = (username, password, postgres_url, postgres_db, table)
-
-    try:
-        # Establish PostgreSQL connection
-        session_cache.conn = connect(
-            dbname=session_cache.db_name,
-            user=session_cache.username,
-            host=session_cache.url,
-            password=session_cache.password,
-        )
-        print("Connection:", session_cache.conn)
-    except Exception as err:
-        print("connect() ERROR:", err)
-        session_cache.conn = None
-        flash(
-            "Attempting to connect to PostgreSQL datasource unsuccessful. Please check your details!"
-        )
-        return render_template("ingest.html", error=True)
 
 def insert_equivalencies(descriptive_info, variable, database):
     """
@@ -2057,7 +1893,7 @@ def insert_equivalencies(descriptive_info, variable, database):
                     ?s dbo:column '{variable}'.
                 }}
             """
-    return execute_query(session_cache.repo, query, "update", "/statements")
+    return graphdb_service.execute_query(query, "update", "/statements")
 
 
 graphdb_service = GraphDBService(graphdb_url, repo)
@@ -2107,8 +1943,8 @@ app.config["APP_CONTEXT"] = {
     "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
     "get_semantic_map": lambda sc, db_key=None: DescribeService.get_semantic_map_for_annotation(sc, db_key),
     "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
-    "get_table_names": lambda sc: DescribeService.get_table_names_from_mapping(sc),
-    "name_matcher": lambda map_db, target_db: DescribeService.graph_database_find_name_match(map_db, target_db),
+    "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
+    "name_matcher": lambda map_db, target_db: GraphDBService.graph_database_find_name_match(map_db, target_db),
     "get_semantic_map_for_annotation": lambda sc, db_key=None: (
         __import__('utils.session_helpers').get_semantic_map_for_annotation(sc, db_key)
     ),

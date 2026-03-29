@@ -296,29 +296,12 @@ class GraphDBService:
             Query result as string
 
         Raises:
-            Exception: If query execution fails
+            Exception: If query execution fails or repository returns None
         """
-        try:
-            # Construct the endpoint URL
-            endpoint = f"{self.graphdb_url}/repositories/" + self.repo + endpoint_appendices
-            
-            # Execute the query
-            response = requests.post(
-                endpoint,
-                data={query_type: query},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=30,
-            )
-            
-            # Check for successful response
-            response.raise_for_status()
-            
-            # Return the result
-            return response.text
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"GraphDB query execution failed: {e}")
-            raise Exception(f"GraphDB query execution failed: {e}")
+        result = self.repository.execute_query(query, query_type, endpoint_appendices)
+        if result is None:
+            raise Exception("GraphDB query execution failed")
+        return result
 
     def get_existing_column_class_uri(self, table_name: str, column_name: str) -> Optional[str]:
         """
@@ -379,3 +362,50 @@ class GraphDBService:
         except Exception as e:
             logger.error(f"Failed to process cross-graph relationship: {e}")
             return False, f"Error processing cross-graph relationship: {e}"
+
+    @staticmethod
+    def graph_database_find_name_match(
+        map_database_name: Optional[str], target_database: str
+    ) -> bool:
+        """
+        Check if a semantic map's database_name matches a target database.
+
+        This function implements strict matching with a fallback for .csv extension handling.
+        If map_database_name is None or empty, the map is considered a global template
+        and applies to all databases.
+
+        Args:
+            map_database_name: The database_name field from the semantic map JSON (can be None)
+            target_database: The database name to match against
+
+        Returns:
+            bool: True if the map should apply to this database, False otherwise
+        """
+        # If map_database_name is None or empty, it's a global template - applies to all
+        if map_database_name is None or map_database_name == "":
+            return True
+
+        # Strict exact match first
+        if map_database_name == target_database:
+            return True
+
+        # Fallback: try matching with/without .csv extension
+        map_name_no_ext = (
+            map_database_name.rstrip(".csv")
+            if map_database_name.endswith(".csv")
+            else map_database_name
+        )
+        target_no_ext = (
+            target_database.rstrip(".csv")
+            if target_database.endswith(".csv")
+            else target_database
+        )
+
+        if map_name_no_ext == target_no_ext:
+            logger.debug(
+                f"Database name matched with .csv extension fallback: "
+                f"'{map_database_name}' matches '{target_database}'"
+            )
+            return True
+
+        return False
