@@ -37,6 +37,9 @@ from flask import (
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Import utility functions for app context
+from utils.session_helpers import get_semantic_map_for_annotation
+
 
 def setup_logging():
     """Setup centralised logging with timestamp format"""
@@ -492,6 +495,7 @@ app.config["repo"] = repo
 app.config["APP_CONTEXT"] = {
     "session_cache": session_cache,
     "graphdb_service": graphdb_service,
+    "graphdb_url": graphdb_url,
     "name_matcher": None,  # Will be initialized later if needed
     "upload_folder": app.config["UPLOAD_FOLDER"],
     "root_dir": root_dir,
@@ -523,15 +527,10 @@ app.config["APP_CONTEXT"] = {
         )
     ),
     "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
-    "get_semantic_map": lambda sc, database_key=None: (
-        __import__('utils.session_helpers').get_semantic_map_for_annotation(sc, database_key)
-    ),
     "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
     "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
     "name_matcher": lambda map_db, target_db: GraphDBService.graph_database_find_name_match(map_db, target_db),
-    "get_semantic_map_for_annotation": lambda sc, db_key=None: (
-        __import__('utils.session_helpers').get_semantic_map_for_annotation(sc, db_key)
-    ),
+    "get_semantic_map": lambda sc, database_key=None: get_semantic_map_for_annotation(sc, database_key),
 }
 
 if __name__ == "__main__":
