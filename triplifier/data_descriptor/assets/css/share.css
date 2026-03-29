@@ -1,0 +1,148 @@
+/**
+ * Share Pages Specific Styles
+ * CSS for share_landing, share_mock, and share_publish pages
+ */
+
+/* ===== Share Mock Page Styles ===== */
+.share-mock-page .card-header {
+    background-color: #f8f9fa !important;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.share-mock-page .custom-file-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.share-mock-page .custom-file-label::after {
+    content: "Browse";
+}
+
+.share-mock-page .form-text {
+    margin-top: 3px;
+}
+
+/* Download button styling */
+.share-mock-page .btn-fixed-width {
+    min-width: 250px;
+    width: 250px;
+    text-align: left;
+    white-space: nowrap; /* Single line only */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis for overflow */
+    line-height: 1.2;
+    padding: 6px 12px;
+    height: 48px; /* Fixed height for consistency */
+    min-height: 48px;
+}
+
+.share-mock-page .download-btn i {
+    margin-right: 8px;
+    opacity: 0.7;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+.share-mock-page .download-all-btn i {
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.share-mock-page #downloadButtons {
+    gap: 8px !important;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start; /* Align items to top */
+    width: 100%; /* Match info box width */
+    max-width: 100%; /* Ensure full width */
+}
+
+/* Limit individual buttons to 4 per row */
+.share-mock-page .download-btn {
+    flex: 0 0 calc(25% - 8px); /* 4 buttons per row with gap */
+    max-width: calc(25% - 8px); /* Ensure they don't exceed */
+}
+
+/* Ensure ZIP button takes full width on its line */
+.share-mock-page .zip-btn-width {
+    flex: 0 0 auto; /* Don't grow/shrink */
+    width: 200px; /* Fixed width */
+}
+
+/* ZIP button styling - narrower than individual buttons */
+.share-mock-page .zip-btn-width {
+    min-width: 200px;
+    width: 200px;
+    text-align: left;
+    white-space: nowrap; /* Single line only */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis for overflow */
+    line-height: 1.2;
+    padding: 6px 12px;
+    height: 48px; /* Fixed height for consistency */
+    min-height: 48px;
+}
+
+/* Ensure consistent button container height */
+.share-mock-page .btn-container {
+    display: inline-flex;
+    flex-direction: column;
+    width: 200px;
+    margin-bottom: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .share-mock-page .btn-fixed-width {
+        min-width: 200px;
+        width: 200px;
+        font-size: 0.85rem;
+        height: 48px; /* Fixed height for consistency */
+        min-height: 48px;
+        white-space: nowrap; /* Single line only */
+        overflow: hidden; /* Hide overflow */
+        text-overflow: ellipsis; /* Show ellipsis for overflow */
+    }
+
+    .share-mock-page .zip-btn-width {
+        min-width: 180px;
+        width: 180px;
+        font-size: 0.85rem;
+        height: 48px; /* Fixed height for consistency */
+        min-height: 48px;
+        white-space: nowrap; /* Single line only */
+        overflow: hidden; /* Hide overflow */
+        text-overflow: ellipsis; /* Show ellipsis for overflow */
+    }
+    
+    .share-mock-page .btn-container {
+        width: 200px;
+    }
+    
+    /* Mobile: 2 buttons per row for individual downloads */
+    .share-mock-page .download-btn {
+        flex: 0 0 calc(50% - 8px); /* 2 buttons per row on mobile */
+        max-width: calc(50% - 8px);
+    }
+}
+
+/* ===== Share Landing Page Styles ===== */
+/* Add share landing specific styles here if needed */
+
+/* ===== Share Publish Page Styles ===== */
+.share-publish-page .card-header {
+    background-color: #f8f9fa !important;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.share-publish-page .custom-file-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.share-publish-page .custom-file-label::after {
+    content: "Browse";
+}

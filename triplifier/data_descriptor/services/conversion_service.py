@@ -1,3 +1,10 @@
+"""
+Conversion service for data transformation operations.
+
+This service handles business logic for data conversion tools
+like triplifiers and other data transformation utilities.
+"""
+
 import os
 import sqlite3
 import yaml
@@ -13,7 +20,10 @@ from pythonTool.main_app import run_triplifier as triplifier_run
 from typing import List, Tuple, Union
 
 # Import table name sanitization function to avoid duplication
-from .data_preprocessing import sanitise_table_name
+try:
+    from ..utils.data_preprocessing import sanitise_table_name
+except ImportError:
+    from utils.data_preprocessing import sanitise_table_name
 
 logger = logging.getLogger(__name__)
 

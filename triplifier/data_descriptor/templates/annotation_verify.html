@@ -5,111 +5,9 @@
     <title>Flyover | Annotation Verification</title>
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}">
     <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-    <style>
-        .variable-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 12px;
-            padding: 10px 20px;
-            background: #fff;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-        }
-
-        .variable-name {
-            font-weight: bold;
-            flex-grow: 1;
-            min-width: 200px;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            min-width: 200px;
-            margin-left: auto;
-        }
-
-        .status-icon {
-            font-size: 1.2em;
-            margin-left: 10px;
-        }
-
-        .status-message {
-            font-size: 1em;
-            text-align: right;
-        }
-
-        .spinner {
-            animation: spin 1s linear infinite;
-            color: #007bff;
-        }
-
-        .success {
-            color: #28a745;
-        }
-
-        .error {
-            color: #dc3545;
-        }
-
-        .filter-section {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-
-        .pagination-controls {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .pagination-controls button {
-            padding: 5px 15px;
-            margin: 0 5px;
-            border: none;
-            background-color: transparent;
-            color: #007bff;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 1.5rem;
-            transition: transform 0.3s ease;
-        }
-
-        .pagination-controls button:hover {
-            transform: scale(1.2);
-        }
-
-        .pagination-controls button:disabled {
-            color: #ccc;
-            cursor: not-allowed;
-        }
-
-        .page-indicator {
-            margin: 0 10px;
-            font-size: 1rem;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .unannotated {
-            background: #f8f9fa;
-        }
-
-        @keyframes spin {
-            from {
-                transform: rotate(0deg);
-            }
-            to {
-                transform: rotate(360deg);
-            }
-        }
-    </style>
 </head>
 <body>
 <!-- Include navigation header -->
@@ -190,126 +88,20 @@
     <br>
 </div>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const itemsPerPage = 10;
-        let currentPage = 1;
-        const variables = Object.keys({{ variable_data | tojson }});
-        const variableItems = document.querySelectorAll('.variable-item');
-
-        function updatePaginationControls() {
-            const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
-            const pagination = document.getElementById('pagination');
-
-            if (totalPages <= 1) {
-                pagination.style.display = 'none';
-                return;
-            }
-
-            pagination.style.display = 'block';
-            document.getElementById('currentPage').textContent = currentPage;
-            document.getElementById('totalPages').textContent = totalPages;
-            document.getElementById('prevBtn').disabled = currentPage <= 1;
-            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
-        }
-
-        function getVisibleItems() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const statusFilter = document.getElementById('statusFilter').value;
-            return Array.from(variableItems).filter(item => {
-                const name = item.querySelector('.variable-name').textContent.toLowerCase();
-                const status = item.dataset.status;
-                const matchesSearch = name.includes(searchTerm);
-                const matchesStatus = statusFilter === 'all' || status === statusFilter;
-                return matchesSearch && matchesStatus;
-            });
-        }
-
-        function updateDisplay() {
-            const visibleItems = getVisibleItems();
-            const start = (currentPage - 1) * itemsPerPage;
-            const end = start + itemsPerPage;
-
-            variableItems.forEach(item => item.classList.add('hidden'));
-            visibleItems.slice(start, end).forEach(item => item.classList.remove('hidden'));
-
-            updatePaginationControls();
-        }
-
-        window.changePage = function (direction) {
-            const totalPages = Math.ceil(getVisibleItems().length / itemsPerPage);
-            const newPage = currentPage + direction;
-            if (newPage >= 1 && newPage <= totalPages) {
-                currentPage = newPage;
-                updateDisplay();
-            }
-        };
-
-        // Add event listeners for filters
-        document.getElementById('searchInput').addEventListener('input', function () {
-            currentPage = 1;
-            updateDisplay();
-        });
-
-        document.getElementById('statusFilter').addEventListener('change', function () {
-            currentPage = 1;
-            updateDisplay();
-        });
-
-        // Initial setup
-        updateDisplay();
-
-        // Process annotations for described variables
-        variables.forEach(function (variableName) {
-            const safeId = variableName.replace(/\./g, '-');
-            const iconId = 'icon-' + safeId;
-            const messageId = 'message-' + safeId;
-            const item = document.querySelector(`[id="message-${safeId}"]`).closest('.variable-item');
-
-            fetch('/verify-annotation-ask', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({variable: variableName})
-            })
-                .then(response => response.json())
-                .then(data => {
-                    const icon = document.getElementById(iconId);
-                    const message = document.getElementById(messageId);
-                    if (data.success && typeof (data.valid) !== 'undefined') {
-                        if (data.valid) {
-                            icon.innerHTML = '<i class="fas fa-check-circle success"></i>';
-                            message.textContent = 'Successfully annotated';
-                            item.dataset.status = 'success';
-                        } else {
-                            icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                            message.textContent = 'Annotation failed';
-                            item.dataset.status = 'error';
-                        }
-                    } else {
-                        icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                        message.textContent = 'Error: ' + (data.error || 'Unknown error');
-                        item.dataset.status = 'error';
-                    }
-                    updateDisplay();
-                })
-                .catch(error => {
-                    const icon = document.getElementById(iconId);
-                    const message = document.getElementById(messageId);
-                    icon.innerHTML = '<i class="fas fa-times-circle error"></i>';
-                    message.textContent = 'Network error';
-                    item.dataset.status = 'error';
-                    updateDisplay();
-                });
-        });
-    });
-</script>
-
 <!-- Include footer -->
 {% include 'footer.html' %}
 
+<!-- Page-specific JavaScript -->
+<script src="{{ url_for('custom_static', filename='js/pages/annotation-verify.js') }}"></script>
 <script>
     // Pass Flask variables to JavaScript for navigation header
     window.graph_exists = true; // Data exists in annotate step
+    
+    // Initialize the page with variable data from server
+    document.addEventListener('DOMContentLoaded', function() {
+        const variableData = {{ variable_data | tojson }};
+        AnnotationVerifyPage.init(variableData);
+    });
 </script>
 
 </body>

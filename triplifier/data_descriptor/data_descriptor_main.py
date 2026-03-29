@@ -52,12 +52,16 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger(__name__)
 
+from services.ingest_service import (
+    IngestService,
+)
+from services.describe_service import DescribeService
+from services.graphdb_service import GraphDBService
 from utils.data_preprocessing import (
     preprocess_dataframe,
     read_csv_with_encoding_detection,
     sanitise_table_name,
 )
-from utils.data_ingest import upload_ontology_then_data, upload_multiple_graphs
 from utils.session_helpers import (
     check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
@@ -70,7 +74,7 @@ from utils.session_helpers import (
     DATABASE_NAME_PATTERN,
     get_table_names_from_mapping,
 )
-from utils.data_synthetisation import generate_mock_data_from_semantic_map
+
 from annotation_helper.src.miscellaneous import add_annotation
 from validation import MappingValidator
 from loaders import JSONLDMapping
@@ -99,83 +103,83 @@ if not os.path.exists(app.config["UPLOAD_FOLDER"]):
 
 
 class Cache:
+    """
+    Session cache for storing application state.
+
+    This class holds session-specific data for the Flyover application,
+    including database connections, semantic mappings, and processing status.
+
+    Attributes:
+        repo: GraphDB repository name
+        table: PostgreSQL table name (for SQL data sources)
+        url: PostgreSQL URL
+        username: PostgreSQL username
+        password: PostgreSQL password
+        db_name: PostgreSQL database name
+        conn: PostgreSQL connection object
+        csvData: List of parsed CSV dataframes
+        csvTableNames: List of table names derived from CSV filenames
+        global_semantic_map: DEPRECATED - Legacy JSON semantic map (for backward compatibility)
+        jsonld_mapping: JSONLDMapping object for JSON-LD format semantic maps
+        existing_graph: Boolean indicating if data graph exists
+        databases: List of database names from GraphDB
+        descriptive_info: Variable description metadata by database
+        DescriptiveInfoDetails: Detailed variable info (categories, units) by database
+        StatusToDisplay: Message to display on status pages
+        pk_fk_data: Primary key/foreign key relationship data
+        pk_fk_status: PK/FK processing status ("processing", "success", "failed")
+        cross_graph_link_data: Cross-graph linking relationship data
+        cross_graph_link_status: Cross-graph processing status
+        annotation_status: Annotation results by variable
+        annotation_json_path: Path to uploaded annotation JSON file
+        output_files: List of output files from triplification
+    """
+
     def __init__(self):
+        # GraphDB configuration
         self.repo = repo
-        self.file_path = None
+
+        # PostgreSQL connection details
         self.table = None
         self.url = None
         self.username = None
         self.password = None
         self.db_name = None
         self.conn = None
-        self.col_cursor = None
+
+        # CSV data storage
         self.csvData = None
         self.csvTableNames = None
-        self.uploaded_file = None
+
+        # Semantic mapping storage
         # DEPRECATED: global_semantic_map is deprecated in favor of jsonld_mapping.
         # Kept for backward compatibility with legacy JSON uploads.
         # Scheduled for removal in a future version.
         self.global_semantic_map = None
         self.jsonld_mapping = None  # Store JSONLDMapping object for JSON-LD format
+
+        # Application state
         self.existing_graph = False
         self.databases = None
         self.descriptive_info = None
         self.DescriptiveInfoDetails = None
         self.StatusToDisplay = None
+
+        # Relationship processing
         self.pk_fk_data = None
         self.pk_fk_status = None  # "processing", "success", "failed"
         self.cross_graph_link_data = None
         self.cross_graph_link_status = None
+
+        # Annotation state
         self.annotation_status = None  # Store annotation results
         self.annotation_json_path = None  # Store path to the uploaded JSON file
-        self.output_files = None  # Store output files list for CSV uploads
+
+        # Output files from triplification
+        self.output_files = None
 
 
 session_cache = Cache()
-
-
-@app.route("/")
-def landing():
-    """
-    Render the landing page that provides an overview of the three-step workflow.
-    This serves as the main entry point describing the Ingest, Describe, Annotate process.
-    """
-    return render_template("index.html")
-
-
-@app.route("/ingest")
-def index():
-    """
-    This function is responsible for rendering the ingest.html page.
-    It is mapped to the root URL ("/") of the Flask application.
-
-    The function first checks if a data graph already exists in the GraphDB repository.
-    If it does, the ingest.html page is rendered with a flag indicating that the graph exists.
-    If the graph does not exist or if an error occurs during the check,
-    the ingest.html page is rendered without the flag.
-
-    Returns:
-        flask.render_template: A Flask function that renders a template. In this case,
-        it renders the 'ingest.html' template.
-
-    Raises:
-        Exception: If an error occurs while checking if the data graph exists,
-        an exception is raised, and its error message is flashed to the user.
-    """
-    # Check whether a data graph already exists
-    try:
-        if check_any_data_graph_exists(session_cache.repo, graphdb_url):
-            # If the data graph exists, render the ingest.html page with a flag indicating that the graph exists
-            session_cache.existing_graph = True
-            return render_template(
-                "ingest.html", graph_exists=session_cache.existing_graph
-            )
-    except Exception as e:
-        # If an error occurs, flash the error message to the user
-        flash(f"Failed to check if the a data graph already exists, error: {e}")
-
-    # If the data graph does not exist or if an error occurs, render the ingest.html page without the flag
-    return render_template("ingest.html")
 
 
 @app.route("/upload-semantic-map", methods=["POST"])
@@ -430,17 +434,37 @@ def upload_file():
             os.path.splitext(secure_filename(csv_file.filename))[0]
             for csv_file in csv_files
         ]
-        success, message = run_triplifier("triplifierCSV.properties")
+        success, message, output_files = IngestService().run_triplifier(
+            "triplifierCSV.properties",
+            root_dir,
+            child_dir,
+            csv_data_list=session_cache.csvData,
+            csv_table_names=session_cache.csvTableNames,
+        )
+        session_cache.output_files = output_files
 
     elif file_type == "Postgres":
-        handle_postgres_data(
+        # Handle PostgreSQL connection using service
+        postgres_success, postgres_error = IngestService().handle_postgres_connection(
             request.form.get("username"),
             request.form.get("password"),
             request.form.get("POSTGRES_URL"),
             request.form.get("POSTGRES_DB"),
             request.form.get("table"),
+            root_dir,
+            child_dir,
         )
-        success, message = run_triplifier("triplifierSQL.properties")
+
+        if not postgres_success:
+            flash(f"PostgreSQL connection error: {postgres_error}")
+            return render_template("ingest.html", error=True)
+
+        success, message, output_files = IngestService().run_triplifier(
+            "triplifierSQL.properties",
+            root_dir,
+            child_dir,
+        )
+        session_cache.output_files = output_files
 
     elif file_type != "Postgres" and not any(
         csv_file.filename for csv_file in csv_files
@@ -464,11 +488,13 @@ def upload_file():
         if upload:
             logger.info("🚀 Initiating upload to GraphDB")
 
-            # Use upload_multiple_graphs for both CSV and PostgreSQL
-            # This ensures consistent named graph structure: http://ontology.local/{table_or_db_name}/ and http://data.local/{table_or_db_name}/
-            if session_cache.output_files:
-                # Upload multiple graphs (works for both CSV tables and PostgreSQL database)
-                upload_success, upload_messages = upload_multiple_graphs(
+            # Use different upload strategy based on file type
+            if file_type == "CSV" and session_cache.output_files:
+                # Upload multiple graphs for CSV files
+                (
+                    upload_success,
+                    upload_messages,
+                ) = IngestService().upload_multiple_graphs(
                     root_dir,
                     graphdb_url,
                     repo,
@@ -476,8 +502,11 @@ def upload_file():
                     data_background=False,
                 )
             else:
-                # Fallback to traditional single-graph upload (should rarely happen)
-                upload_success, upload_messages = upload_ontology_then_data(
+                # Use traditional single-graph upload for PostgreSQL
+                (
+                    upload_success,
+                    upload_messages,
+                ) = IngestService().upload_ontology_then_data(
                     root_dir, graphdb_url, repo, data_background=False
                 )
 
@@ -487,17 +516,30 @@ def upload_file():
             # START BACKGROUND PK/FK AND CROSS-GRAPH PROCESSING AFTER UPLOAD
             # This ensures data is in GraphDB before relationships are processed
             if file_type == "CSV":
-                if session_cache.pk_fk_data:
+                # Only process PK/FK if there's actual relationship data configured
+                has_pk_fk_data = session_cache.pk_fk_data and any(
+                    item.get("primaryKey") or item.get("foreignKey")
+                    for item in session_cache.pk_fk_data
+                )
+                if has_pk_fk_data:
                     logger.info(
                         "Upload complete. Starting background PK/FK processing..."
                     )
-                    gevent.spawn(background_pk_fk_processing)
+                    gevent.spawn(
+                        IngestService.background_pk_fk_processing,
+                        session_cache,
+                        graphdb_service,
+                    )
 
                 if session_cache.cross_graph_link_data:
                     logger.info(
                         "Upload complete. Starting background cross-graph processing..."
                     )
-                    gevent.spawn(background_cross_graph_processing)
+                    gevent.spawn(
+                        IngestService.background_cross_graph_processing,
+                        session_cache,
+                        graphdb_service,
+                    )
 
         # Redirect to the new route after processing the POST request
         return redirect(url_for("data_submission"))
@@ -878,278 +920,6 @@ def retrieve_detailed_descriptive_info():
     return redirect(url_for("annotation_review"))
 
 
-@app.route("/share_landing")
-def share_landing():
-    """
-    This function is responsible for rendering the 'share_landing.html' page.
-    Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
-
-    Returns:
-        flask.render_template: A Flask function that renders the 'share_landing.html' template.
-    """
-    return render_template(
-        "share_landing.html", graphdb_location="http://localhost:7200/"
-    )
-
-
-@app.route("/share_mock")
-def share_mock():
-    """
-    This function is responsible for rendering the mock data generation page.
-
-    Returns:
-        flask.render_template: A Flask function that renders the 'share_mock.html' template.
-    """
-    return render_template("share_mock.html", graphdb_location="http://localhost:7200/")
-
-
-@app.route("/share_publish")
-def share_publish():
-    """
-    This function is responsible for rendering the publishing options page.
-
-    Returns:
-        flask.render_template: A Flask function that renders the 'share_publish.html' template.
-    """
-    return render_template(
-        "share_publish.html", graphdb_location="http://localhost:7200/"
-    )
-
-
-@app.route("/downloadSemanticMap", methods=["GET"])
-def download_semantic_map():
-    """
-    Download the semantic map in JSON-LD format (preferred) or legacy JSON format (fallback).
-
-    If jsonld_mapping is available, downloads a single JSON-LD file that supports
-    multi-database natively. This deprecates the previous multi-JSON zip download approach.
-
-    For backward compatibility, if only global_semantic_map is available, falls back
-    to the legacy format using formulate_local_semantic_map.
-
-    Returns:
-        flask.Response: A Flask response object containing the semantic map as JSON-LD or JSON.
-    """
-    try:
-        # Prefer JSON-LD format if jsonld_mapping is available
-        if session_cache.jsonld_mapping is not None:
-            # JSON-LD supports multi-database natively, so we output a single file
-            mapping_dict = session_cache.jsonld_mapping.to_dict()
-            filename = "semantic_mapping.jsonld"
-
-            return Response(
-                json.dumps(mapping_dict, indent=2, ensure_ascii=False),
-                mimetype="application/ld+json",
-                headers={"Content-Disposition": f"attachment;filename={filename}"},
-            )
-
-        # Fall back to legacy format if only global_semantic_map is available
-        # NOTE: Multi-JSON zip download is deprecated in favor of JSON-LD multi-database support
-        if len(session_cache.databases) > 1:
-            _filename = "local_semantic_maps.zip"
-            # Loop through each database
-            for database in session_cache.databases:
-                filename = f"local_semantic_map_{database}.json"
-
-                # Open the zip file in the 'append' mode
-                with zipfile.ZipFile(_filename, "a") as zipf:
-                    # Generate a modified version of the global semantic map by adding local definitions to it
-                    modified_semantic_map = formulate_local_semantic_map(database)
-
-                    # Write the modified semantic map to the zip file
-                    zipf.writestr(filename, json.dumps(modified_semantic_map, indent=4))
-
-            # Define a function to remove the zip file after the request has been handled
-            @after_this_request
-            def remove_file(response):
-                try:
-                    os.remove(_filename)
-                except Exception as error:
-                    app.logger.error(
-                        "Error removing or closing downloaded file handle", error
-                    )
-                return response
-
-            # Open the zip file in binary mode and return it as a response
-            with open(_filename, "rb") as f:
-                return Response(
-                    f.read(),
-                    mimetype="application/zip",
-                    headers={"Content-Disposition": f"attachment;filename={_filename}"},
-                )
-        else:
-            # If there is only one database
-            database = session_cache.databases[0]
-            filename = f"local_semantic_map_{database}.json"
-
-            try:
-                # Generate a modified version of the global semantic map by adding local definitions to it
-                modified_semantic_map = formulate_local_semantic_map(database)
-
-                # Return the modified semantic map as a JSON response
-                return Response(
-                    json.dumps(modified_semantic_map, indent=4),
-                    mimetype="application/json",
-                    headers={"Content-Disposition": f"attachment;filename={filename}"},
-                )
-            except Exception as e:
-                abort(
-                    500,
-                    description=f"An error occurred while processing the semantic map, error: {str(e)}",
-                )
-
-    except Exception as e:
-        abort(
-            500,
-            description=f"An error occurred while processing the semantic map, error: {str(e)}",
-        )
-
-
-@app.route("/downloadOntology", methods=["GET"])
-def download_ontology(named_graph="http://ontology.local/", filename=None):
-    """
-    This function downloads ontology files from GraphDB and returns them as a response.
-    For multiple ontologies, it creates a zip file containing all ontologies.
-
-    Parameters:
-    named_graph (str): The base URL of the graph from which the ontology is to be downloaded.
-    Defaults to "http://ontology.local/".
-    filename (str): The name of the file to be downloaded. Defaults to 'local_ontology_{database_name}.nt'.
-
-    Returns:
-        flask.Response: A Flask response object containing the ontology as a string (single ontology)
-                        or a zip file (multiple ontologies) if the download is successful,
-                        or an error message if the download fails.
-    """
-    try:
-        # Check if we have multiple databases (either from session or need to query GraphDB)
-        databases_to_process = []
-
-        # First, try to get databases from session cache
-        if session_cache.databases and len(session_cache.databases) > 1:
-            databases_to_process = session_cache.databases
-        else:
-            # Query GraphDB to find all ontology graphs
-            query_graphs = """
-                SELECT DISTINCT ?g WHERE {
-                    GRAPH ?g {
-                        ?s ?p ?o .
-                    }
-                    FILTER(STRSTARTS(STR(?g), "http://ontology.local/"))
-                }
-            """
-            result = execute_query(session_cache.repo, query_graphs)
-
-            if result and result.strip():
-                graphs_df = pl.read_csv(
-                    StringIO(result),
-                    infer_schema_length=0,
-                    null_values=[],
-                    try_parse_dates=False,
-                )
-
-                if not graphs_df.is_empty() and "g" in graphs_df.columns:
-                    # Extract database names from graph URIs
-                    for graph_uri in graphs_df.get_column("g").to_list():
-                        # Extract database name from URI like "http://ontology.local/database_name/"
-                        db_name = graph_uri.replace(named_graph, "").rstrip("/")
-                        if db_name:
-                            databases_to_process.append(db_name)
-
-        # If we have multiple databases, create a zip file
-        if len(databases_to_process) > 1:
-            _filename = "local_ontologies.zip"
-
-            # Create a new zip file and loop through each database
-            files_added = 0
-            with zipfile.ZipFile(_filename, "w") as zipf:
-                for database in databases_to_process:
-                    # Construct the graph URI for this database
-                    table_graph = f"{named_graph}{database}/"
-                    ontology_filename = f"local_ontology_{database}.nt"
-
-                    # Fetch the ontology for this database
-                    response = requests.get(
-                        f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-                        params={"graph": table_graph},
-                        headers={"Accept": "application/n-triples"},
-                    )
-
-                    if response.status_code == 200 and response.text.strip():
-                        zipf.writestr(ontology_filename, response.text)
-                        files_added += 1
-                    else:
-                        logger.warning(
-                            f"No ontology data found for graph: {table_graph}"
-                        )
-
-            # Check if the zip file was created successfully and contains data
-            if files_added == 0 or not os.path.exists(_filename):
-                # No files were added or zip file doesn't exist
-                if os.path.exists(_filename):
-                    os.remove(_filename)
-                abort(
-                    404,
-                    description="No ontology data found for any of the specified graphs.",
-                )
-
-            # Define a function to remove the zip file after the request has been handled
-            @after_this_request
-            def remove_file(response):
-                try:
-                    os.remove(_filename)
-                except Exception as error:
-                    app.logger.error(
-                        "Error removing or closing downloaded file handle", error
-                    )
-                return response
-
-            # Open the zip file in binary mode and return it as a response
-            with open(_filename, "rb") as f:
-                return Response(
-                    f.read(),
-                    mimetype="application/zip",
-                    headers={"Content-Disposition": f"attachment;filename={_filename}"},
-                )
-
-        else:
-            # Single ontology: download directly
-            if len(databases_to_process) == 1:
-                # Use the single database name
-                database = databases_to_process[0]
-                ontology_graph = f"{named_graph}{database}/"
-                filename = f"local_ontology_{database}.nt"
-            else:
-                # Fallback to default graph
-                ontology_graph = named_graph
-                if filename is None:
-                    filename = "local_ontology.nt"
-
-            response = requests.get(
-                f"{graphdb_url}/repositories/{session_cache.repo}/rdf-graphs/service",
-                params={"graph": ontology_graph},
-                headers={"Accept": "application/n-triples"},
-            )
-
-            if response.status_code == 200:
-                return Response(
-                    response.text,
-                    mimetype="application/n-triples",
-                    headers={"Content-Disposition": f"attachment;filename={filename}"},
-                )
-            else:
-                abort(
-                    500,
-                    description=f"Failed to download ontology. Status code: {response.status_code}",
-                )
-
-    except Exception as e:
-        abort(
-            500,
-            description=f"An error occurred while downloading the ontology, error: {str(e)}",
-        )
-
-
 @app.route("/annotation_landing")
 def annotation_landing():
     """
@@ -1333,7 +1103,7 @@ def start_annotation():
     """
     try:
         # Check if any semantic map is available
-        if not has_semantic_map(session_cache):
+        if not DescribeService.has_semantic_map(session_cache):
             return jsonify({"success": False, "error": "No semantic map available"})
 
         # Ensure databases are initialised from the RDF-store if not already populated
@@ -1509,7 +1279,7 @@ def annotation_verify():
     Supports both jsonld_mapping (preferred) and global_semantic_map (fallback).
     """
     # Check if any semantic map is available
-    if not has_semantic_map(session_cache):
+    if not DescribeService.has_semantic_map(session_cache):
         flash("No semantic map available.")
         return redirect(url_for("share_landing"))
 
@@ -1868,126 +1638,6 @@ def api_check_graph_exists():
         return jsonify({"exists": False, "error": str(e)})
 
 
-@app.route("/api/generate-mock-data", methods=["POST"])
-def api_generate_mock_data():
-    """
-    API endpoint to generate mock data from a JSON-LD semantic map.
-
-    This endpoint uses the generate_mock_data_from_semantic_map function to create
-    synthetic data based on the provided semantic mapping.
-
-    Expects JSON payload with:
-    - jsonld_map: JSON-LD semantic mapping
-    - num_rows: Number of rows to generate (default: 100)
-    - random_seed: Optional random seed for reproducibility
-    - database_id: Optional specific database to generate for
-    - table_id: Optional specific table to generate for
-
-    Returns:
-        flask.jsonify: JSON response with success status and generated data
-    """
-    try:
-        # Get JSON data from request body
-        data = request.get_json()
-
-        if not data:
-            return (
-                jsonify(
-                    {"success": False, "error": "No JSON data provided in request body"}
-                ),
-                400,
-            )
-
-        # Extract parameters
-        jsonld_map = data.get("jsonld_map")
-        num_rows = data.get("num_rows", 100)
-        random_seed = data.get("random_seed")
-        database_id = data.get("database_id")
-        table_id = data.get("table_id")
-
-        if not jsonld_map:
-            return (
-                jsonify(
-                    {"success": False, "error": "No JSON-LD semantic map provided"}
-                ),
-                400,
-            )
-
-        if not isinstance(num_rows, int) or num_rows < 1 or num_rows > 10000:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "num_rows must be an integer between 1 and 10000",
-                    }
-                ),
-                400,
-            )
-
-        # Validate the JSON-LD structure
-        if not isinstance(jsonld_map, dict):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "jsonld_map must be a valid JSON object",
-                    }
-                ),
-                400,
-            )
-
-        if "databases" not in jsonld_map and "variable_info" not in jsonld_map:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "jsonld_map must contain 'databases' or 'variable_info'",
-                    }
-                ),
-                400,
-            )
-
-        # Call the mock data generation function
-        logger.info(
-            f"Generating mock data with {num_rows} rows for database: {database_id}, table: {table_id}"
-        )
-
-        generated_data = generate_mock_data_from_semantic_map(
-            jsonld_map=jsonld_map,
-            num_rows=num_rows,
-            random_seed=random_seed,
-            database_id=database_id,
-            table_id=table_id,
-        )
-
-        # Convert polars DataFrames to lists of dictionaries for JSON serialization
-        result_data = {}
-        for table_key, dataframe in generated_data.items():
-            result_data[table_key] = dataframe.to_dicts()
-
-        logger.info(f"Successfully generated mock data for {len(result_data)} tables")
-
-        return jsonify(
-            {
-                "success": True,
-                "message": f"Generated mock data for {len(result_data)} tables with {num_rows} rows each",
-                "data": result_data,
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error generating mock data: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return (
-            jsonify(
-                {"success": False, "error": f"Failed to generate mock data: {str(e)}"}
-            ),
-            500,
-        )
-
-
 def execute_query(repo, query, query_type=None, endpoint_appendices=None):
     """
     This function executes a SPARQL query on a specified GraphDB repository.
@@ -2333,18 +1983,6 @@ def handle_postgres_data(username, password, postgres_url, postgres_db, table):
         )
         return render_template("ingest.html", error=True)
 
-    # Write connection details to the properties file
-    with open(f"{root_dir}{child_dir}/triplifierSQL.properties", "w") as f:
-        f.write(
-            f"jdbc.url = jdbc:postgresql://{session_cache.url}/{session_cache.db_name}\n"
-            f"jdbc.user = {session_cache.username}\n"
-            f"jdbc.password = {session_cache.password}\n"
-            f"jdbc.driver = org.postgresql.Driver\n\n"
-            # f"repo.type = rdf4j\n"
-            # f"repo.url = {graphdb_url}\n"
-            # f"repo.id = {repo}"
-        )
-
 
 def insert_equivalencies(descriptive_info, variable, database):
     """
@@ -2419,422 +2057,77 @@ def insert_equivalencies(descriptive_info, variable, database):
     return execute_query(session_cache.repo, query, "update", "/statements")
 
 
-def get_column_class_uri(table_name, column_name):
-    """Retrieve column class URI"""
-    query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+graphdb_service = GraphDBService(graphdb_url, repo)
 
-    SELECT ?uri WHERE {{
-        ?uri dbo:column '{column_name}' .
-        FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
-    }}
-    LIMIT 1
-    """
 
-    try:
-        query_result = execute_query(session_cache.repo, query)
+# Register controller blueprints
+from controllers import ingest_bp, describe_bp, annotate_bp, share_bp
 
-        if not query_result or query_result.strip() == "":
-            print(f"No results found for column {table_name}.{column_name}")
-            return None
+app.register_blueprint(ingest_bp)
+app.register_blueprint(describe_bp)
+app.register_blueprint(annotate_bp)
+app.register_blueprint(share_bp)
 
-        column_info = pl.read_csv(
-            StringIO(query_result),
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
+# Set up application config
+app.config["graphdb_url"] = graphdb_url
+app.config["repo"] = repo
+
+# Set up application context with required functions and services
+app.config["APP_CONTEXT"] = {
+    "session_cache": session_cache,
+    "graphdb_service": graphdb_service,
+    "name_matcher": None,  # Will be initialized later if needed
+    "upload_folder": app.config["UPLOAD_FOLDER"],
+    "root_dir": root_dir,
+    "child_dir": child_dir,
+    "run_triplifier": lambda properties_file: (
+        IngestService().run_triplifier(
+            properties_file,
+            root_dir,
+            child_dir,
+            csv_data_list=(
+                session_cache.csvData if hasattr(session_cache, "csvData") else None
+            ),
+            csv_table_names=(
+                session_cache.csvTableNames
+                if hasattr(session_cache, "csvTableNames")
+                else None
+            ),
         )
-
-        if column_info.is_empty():
-            print(f"Empty result set for column {table_name}.{column_name}")
-            return None
-
-        if "uri" not in column_info.columns:
-            print("Query result format error: no 'uri' column found")
-            return None
-
-        return column_info.get_column("uri")[0]
-
-    except Exception as e:
-        print(f"Error fetching column URI for {table_name}.{column_name}: {e}")
-        return None
-
-
-def insert_fk_relation(
-    fk_predicate,
-    column_class_uri,
-    target_class_uri,
-    relationships_graph="http://relationships.local/",
-):
-    """Insert PK/FK relationship into the relationships graph"""
-    insert_query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-    INSERT {{
-        GRAPH <{relationships_graph}> {{
-            ?sources <{fk_predicate}> ?targets .
-        }}
-    }} WHERE {{
-        ?sources rdf:type <{column_class_uri}> ;
-                 dbo:has_cell ?sourceCell .
-        ?sourceCell dbo:has_value ?columnValue .
-
-        ?targets rdf:type <{target_class_uri}> ;
-                 dbo:has_cell ?targetCell .
-        ?targetCell dbo:has_value ?columnValue .
-    }}
-    """
-
-    return execute_query(session_cache.repo, insert_query, "update", "/statements")
-
-
-def process_pk_fk_relationships():
-    """Process all PK/FK relationships after successful triplification"""
-    if not session_cache.pk_fk_data:
-        return True
-
-    try:
-        print("Starting PK/FK relationship processing...")
-        session_cache.pk_fk_status = "processing"
-
-        # Create mapping of files with their PK/FK info
-        file_map = {rel["fileName"]: rel for rel in session_cache.pk_fk_data}
-
-        # Process each relationship
-        for rel in session_cache.pk_fk_data:
-            if not all(
-                [
-                    rel.get("foreignKey"),
-                    rel.get("foreignKeyTable"),
-                    rel.get("foreignKeyColumn"),
-                ]
-            ):
-                continue
-
-            # Find the target table's PK info
-            target_file = rel["foreignKeyTable"]
-            target_rel = file_map.get(target_file)
-
-            if not target_rel or not target_rel.get("primaryKey"):
-                continue
-
-            # Generate FK configuration - sanitise table name before handling
-            fk_config = {
-                "foreignKeyTable": sanitise_table_name(rel["fileName"]),
-                "foreignKeyColumn": rel["foreignKey"],
-                "primaryKeyTable": sanitise_table_name(target_file),
-                "primaryKeyColumn": target_rel["primaryKey"],
-            }
-
-            source_uri = get_column_class_uri(
-                fk_config["foreignKeyTable"], fk_config["foreignKeyColumn"]
-            )
-
-            target_uri = get_column_class_uri(
-                fk_config["primaryKeyTable"], fk_config["primaryKeyColumn"]
-            )
-
-            if not source_uri or not target_uri:
-                print(f"Could not find URIs for FK relationship: {fk_config}")
-                continue
-
-            fk_predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
-
-            # Insert the relationship
-            insert_fk_relation(fk_predicate, source_uri, target_uri)
-            print(
-                f"Created FK relationship: "
-                f"{fk_config['foreignKeyTable']}.{fk_config['foreignKeyColumn']} -> "
-                f"{fk_config['primaryKeyTable']}.{fk_config['primaryKeyColumn']}"
-            )
-
-        session_cache.pk_fk_status = "success"
-        print("PK/FK relationship processing completed successfully.")
-        return True
-
-    except Exception as e:
-        print(f"Error processing PK/FK relationships: {e}")
-        session_cache.pk_fk_status = "failed"
-        return False
-
-
-def background_pk_fk_processing():
-    """Background function to process PK/FK relationships"""
-    try:
-        # Small delay to ensure GraphDB has processed the uploaded data
-        time.sleep(3)
-        process_pk_fk_relationships()
-    except Exception as e:
-        print(f"Background PK/FK processing error: {e}")
-        session_cache.pk_fk_status = "failed"
-
-
-@app.route("/get-existing-graph-structure", methods=["GET"])
-def get_existing_graph_structure():
-    """
-    Get the structure of existing graph data for linking purposes
-    """
-    try:
-        # Query to get existing tables and their columns
-        structure_query = """
-        PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-        SELECT ?uri ?column
-        WHERE {
-                ?uri dbo:column ?column .
-            }
-        """
-
-        result = execute_query(session_cache.repo, structure_query)
-
-        if not result or result.strip() == "":
-            return {"tables": [], "tableColumns": {}}
-
-        # Parse the result using polars
-        structure_info = pl.read_csv(
-            StringIO(result),
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
+    ),
+    "upload_func": lambda file_type, output_files: (
+        IngestService().upload_multiple_graphs(
+            root_dir, graphdb_url, repo, output_files, data_background=False
         )
-
-        if structure_info.is_empty():
-            return {"tables": [], "tableColumns": {}}
-
-        # Extract table names from URIs and organise by table
-        structure_info = structure_info.with_columns(
-            pl.col("uri")
-            .str.extract(r".*/(.*?)\.", 1)
-            .fill_null("unknown")
-            .alias("table")
+        if file_type == "CSV"
+        else IngestService().upload_ontology_then_data(
+            root_dir, graphdb_url, repo, data_background=False
         )
-
-        # Get unique tables
-        tables = structure_info.get_column("table").unique().to_list()
-
-        # Create table-column mapping
-        table_columns = {}
-        for table in tables:
-            columns = (
-                structure_info.filter(pl.col("table") == table)
-                .get_column("column")
-                .to_list()
-            )
-            table_columns[table] = columns
-
-        return jsonify({"tables": tables, "tableColumns": table_columns})
-
-    except Exception as e:
-        print(f"Error getting existing graph structure: {e}")
-        return {"tables": [], "tableColumns": {}}
-
-
-def get_existing_column_class_uri(table_name, column_name):
-    """Retrieve existing column class URI from the existing graph"""
-    query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?uri WHERE {{
-            ?uri dbo:column '{column_name}' .
-            FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{table_name}')))
-    }}
-    LIMIT 1
-    """
-
-    try:
-        query_result = execute_query(session_cache.repo, query)
-
-        if not query_result or query_result.strip() == "":
-            print(f"No existing results found for column {table_name}.{column_name}")
-            return None
-
-        column_info = pl.read_csv(
-            StringIO(query_result),
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
+    ),
+    "start_background": lambda sc: [
+        gevent.spawn(IngestService.background_pk_fk_processing, sc, graphdb_service),
+        gevent.spawn(
+            IngestService.background_cross_graph_processing, sc, graphdb_service
+        ),
+    ],
+    "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
+        IngestService().handle_postgres_connection(
+            username, password, postgres_url, postgres_db, table, root_dir, child_dir
         )
-
-        if column_info.is_empty() or "uri" not in column_info.columns:
-            return None
-
-        return column_info.get_column("uri")[0]
-
-    except Exception as e:
-        print(f"Error fetching existing column URI for {table_name}.{column_name}: {e}")
-        return None
-
-
-def insert_cross_graph_relation(
-    predicate,
-    new_column_uri,
-    existing_column_uri,
-    relationships_graph="http://relationships.local/",
-):
-    """Insert cross-graph relationship into the relationships graph"""
-    insert_query = f"""
-    PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-    INSERT {{
-        GRAPH <{relationships_graph}> {{
-            ?newSources <{predicate}> ?existingSources .
-        }}
-    }} WHERE {{
-        ?newSources rdf:type <{new_column_uri}> ;
-                    dbo:has_cell ?newCell .
-        ?newCell dbo:has_value ?columnValue .
-
-        ?existingSources rdf:type <{existing_column_uri}> ;
-                         dbo:has_cell ?existingCell .
-        ?existingCell dbo:has_value ?columnValue .
-    }}
-    """
-
-    return execute_query(session_cache.repo, insert_query, "update", "/statements")
-
-
-def process_cross_graph_relationships():
-    """Process cross-graph relationships after successful triplification"""
-    if not session_cache.cross_graph_link_data:
-        return True
-
-    try:
-        print("Starting cross-graph relationship processing...")
-        session_cache.cross_graph_link_status = "processing"
-
-        link_data = session_cache.cross_graph_link_data
-
-        # Get URIs for new and existing columns
-        new_column_uri = get_column_class_uri(
-            sanitise_table_name(link_data["newTableName"]), link_data["newColumnName"]
-        )
-
-        existing_column_uri = get_existing_column_class_uri(
-            sanitise_table_name(link_data["existingTableName"]),
-            link_data["existingColumnName"],
-        )
-
-        if not new_column_uri or not existing_column_uri:
-            print(f"Could not find URIs for cross-graph relationship: {link_data}")
-            session_cache.cross_graph_link_status = "failed"
-            return False
-
-        predicate = "http://um-cds/ontologies/databaseontology/fk_refers_to"
-
-        # Insert the relationship
-        insert_cross_graph_relation(predicate, new_column_uri, existing_column_uri)
-
-        print(
-            f"Created cross-graph relationship: "
-            f"{link_data['newTableName']}.{link_data['newColumnName']} -> "
-            f"{link_data['existingTableName']}.{link_data['existingColumnName']}"
-        )
-
-        session_cache.cross_graph_link_status = "success"
-        print("Cross-graph relationship processing completed successfully.")
-        return True
-
-    except Exception as e:
-        print(f"Error processing cross-graph relationships: {e}")
-        session_cache.cross_graph_link_status = "failed"
-        return False
-
-
-def background_cross_graph_processing():
-    """Background function to process cross-graph relationships"""
-    try:
-        # Small delay to ensure GraphDB has processed the uploaded data
-        time.sleep(5)  # Slightly longer delay than PK/FK to ensure it runs after
-        process_cross_graph_relationships()
-    except Exception as e:
-        print(f"Background cross-graph processing error: {e}")
-        session_cache.cross_graph_link_status = "failed"
-
-
-def run_triplifier(properties_file=None):
-    """
-    This function runs the Python Triplifier and checks if it ran successfully.
-    Wrapper function that calls the actual implementation in python_triplifier_integration.py
-    """
-    try:
-        from utils.python_triplifier_integration import (
-            run_triplifier as run_triplifier_impl,
-        )
-
-        if properties_file == "triplifierCSV.properties":
-            # Use Python Triplifier for CSV processing
-            # DataFrames are loaded directly into SQLite, no need to save CSV files
-            success, message, output_files = run_triplifier_impl(
-                properties_file=properties_file,
-                root_dir=root_dir,
-                child_dir=child_dir,
-                csv_data_list=session_cache.csvData,
-                csv_table_names=session_cache.csvTableNames,
-            )
-
-            # Store output files in session cache for later use
-            session_cache.output_files = output_files
-
-        elif properties_file == "triplifierSQL.properties":
-            # Use Python Triplifier for PostgreSQL processing
-            # Validate that required connection details are present
-            if not session_cache.url or not session_cache.db_name:
-                return (
-                    False,
-                    "PostgreSQL connection details are missing from session cache",
-                )
-            if not session_cache.username or not session_cache.password:
-                return False, "PostgreSQL credentials are missing from session cache"
-
-            # Build database URL from session cache (without credentials - they're passed separately)
-            db_url = f"postgresql://{session_cache.url}/{session_cache.db_name}"
-
-            success, message, output_files = run_triplifier_impl(
-                properties_file=properties_file,
-                root_dir=root_dir,
-                child_dir=child_dir,
-                db_url=db_url,
-                db_user=session_cache.username,
-                db_password=session_cache.password,
-            )
-            session_cache.output_files = output_files
-        else:
-            return False, f"Unknown properties file: {properties_file}"
-
-        if success:
-            # Note: Background PK/FK and cross-graph processing are now started
-            # after upload completes (in upload_file function) to ensure data
-            # is available in GraphDB before relationships are processed
-
-            return True, Markup(
-                "The data you have submitted was triplified successfully and "
-                "is now available in GraphDB."
-                "<br>"
-                "You can now proceed to describe your data, "
-                "but please note that this requires in-depth knowledge of the data."
-                "<br><br>"
-                "<i>In case you do not yet wish to describe your data, "
-                "or you would like to add more data, "
-                "please return to the ingest page.</i>"
-                "<br>"
-                "<i>You can always return to Flyover to "
-                "describe the data that is present in GraphDB.</i>"
-            )
-        else:
-            return False, message
-
-    except Exception as e:
-        logger.error(f"Unexpected error attempting to run the Python Triplifier: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False, f"Unexpected error attempting to run the Triplifier, error: {e}"
-
+    ),
+    "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
+    "get_semantic_map": lambda sc, db_key=None: DescribeService.get_semantic_map_for_annotation(
+        sc, db_key
+    ),
+    "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
+    "get_table_names": lambda sc: DescribeService.get_table_names_from_mapping(sc),
+    "name_matcher": lambda map_db, target_db: DescribeService.graph_database_find_name_match(
+        map_db, target_db
+    ),
+    "get_semantic_map_for_annotation": lambda sc, db_key=None: (
+        __import__("utils.session_helpers").get_semantic_map_for_annotation(sc, db_key)
+    ),
+}
 
 if __name__ == "__main__":
     # Use 0.0.0.0 in Docker (safe within container network), 127.0.0.1 for local dev

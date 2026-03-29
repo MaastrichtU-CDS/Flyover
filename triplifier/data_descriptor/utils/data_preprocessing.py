@@ -426,3 +426,65 @@ def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
         "rows": rows,
         "by_column": by_column,
     }
+
+
+def preprocess_mixed_type_data(
+    table_data: Dict[str, List[Union[str, int, float, None]]],
+) -> Dict[str, List[Union[str, int, float, None]]]:
+    """
+    Pre-process table data to handle mixed types by converting to appropriate types.
+    Specifically handles the case where missing values are lists like ["NULL"].
+
+    Args:
+        table_data: Dictionary where keys are column names and values are lists of data
+
+    Returns:
+        Processed table data with consistent types for each column
+    """
+    processed_data = {}
+
+    for col_name, col_values in table_data.items():
+        processed_values = []
+        has_list_values = False
+        has_numeric = False
+        has_string = False
+
+        # First pass: detect what types we have
+        for value in col_values:
+            if isinstance(value, list):
+                has_list_values = True
+            elif isinstance(value, (int, float)):
+                has_numeric = True
+            elif isinstance(value, str):
+                has_string = True
+
+        # Second pass: convert values appropriately
+        if has_list_values:
+            # If we have list values, convert everything to string
+            for value in col_values:
+                if isinstance(value, list):
+                    # Extract single item from list or join multiple items
+                    if len(value) == 1:
+                        processed_values.append(str(value[0]))
+                    else:
+                        processed_values.append(", ".join(str(v) for v in value))
+                else:
+                    processed_values.append(str(value))
+        elif has_numeric and has_string:
+            # Mixed numeric and string - convert everything to string
+            for value in col_values:
+                processed_values.append(str(value))
+        elif has_numeric:
+            # All numeric - keep as is but handle None values
+            for value in col_values:
+                if value is None:
+                    processed_values.append(None)
+                else:
+                    processed_values.append(value)
+        else:
+            # All strings or other types - keep as is
+            processed_values = col_values
+
+        processed_data[col_name] = processed_values
+
+    return processed_data

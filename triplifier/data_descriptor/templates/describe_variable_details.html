@@ -1,205 +1,22 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
-
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Variable details</title>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
-
+        /* Page-specific: toggle button with larger font size */
         .toggle-button {
-            cursor: pointer;
-            display: inline-block;
-            border: none;
-            background: none;
             font-size: 1.56rem;
             line-height: 1;
-            color: #007bff;
             float: right;
         }
-
-        .item-toggle-button {
-            cursor: pointer;
-            display: inline-block;
-            border: none;
-            background: none;
-            font-size: 0.91rem;
-            line-height: 1;
-            color: #007bff;
-            float: right;
-        }
-
-        .item-toggle-button:before {
-            content: 'Show more +';
-        }
-
-        .item-toggle-button.open:before {
-            content: 'Show less −';
-        }
-
-        .toggle-content {
-            display: none;
-        }
-
-        .toggle-content.active {
-            display: block;
-        }
-
-        .content {
-            width: 100%;
-            transition: max-height 0.2s ease-out;
-            max-height: 0;
-            overflow-y: auto;
-        }
-
-        .content.active {
-            max-height: 500px;
-        }
-
-        .toggle-content {
-            width: 100%;
-            transition: max-height 0.2s ease-out;
-            max-height: 0;
-            overflow-y: auto;
-        }
-
-        .toggle-content.active {
-            max-height: 500px;
-        }
-
-        .toggle-button:focus, .item-toggle-button:focus {
-            outline: none;
-        }
-
-        /* Variable row styling to match describe_variables.html */
-        .variable-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .variable-label {
-            flex: 0 0 200px;
-            font-weight: bold;
-            margin-right: 15px;
-        }
-
-        .variable-controls {
-            flex: 1;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .variable-controls select,
-        .variable-controls input {
-            flex: 1;
-            min-width: 150px;
-        }
-
-        /* Missing description styling */
-        .missing-description {
-            color: #dc3545;
-            font-style: italic;
-        }
-
-        .missing-description::before {
-            content: "⚠️ ";
-            margin-right: 5px;
-        }
-
-        /* Categorical variable styling */
-        .categorical-section {
-            margin-top: 20px;
-            margin-bottom: 20px;
-            margin-left: 20px;
-            padding-left: 20px;
-            border-left: 3px solid rgba(0, 123, 255, 0.7);
-        }
-
-        .category-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-            padding: 8px;
-            background-color: #f8f9fa;
-            border-radius: 3px;
-        }
-
-        .category-label {
-            flex: 0 0 180px;
-            font-size: 0.9em;
-            margin-right: 10px;
-        }
-
-        .category-controls {
-            flex: 1;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .category-controls .bootstrap-select {
-            width: 300px !important;
-        }
-
-        /* Smooth loading animation styles */
-        .loading-icon {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            display: inline-block;
-        }
-
-        .icon-fade-out {
-            opacity: 0;
-            transform: scale(0.8) rotate(10deg);
-        }
-
-        .icon-fade-in {
-            opacity: 1;
-            transform: scale(1.1) rotate(-5deg);
-            animation: icon-bounce 0.3s ease-out;
-        }
-
-        @keyframes icon-bounce {
-            0% {
-                transform: scale(1.1) rotate(-5deg);
-            }
-            50% {
-                transform: scale(1.2) rotate(0deg);
-            }
-            100% {
-                transform: scale(1) rotate(0deg);
-            }
-        }
-
-        /* Add a subtle pulse effect to the processing button */
-        .btn-primary:disabled.processing {
-            background-color: #6c757d !important;
-            border-color: #6c757d !important;
-            animation: subtle-pulse 2s infinite;
-        }
-
-        @keyframes subtle-pulse {
-            0%, 100% {
-                box-shadow: 0 0 0 0 rgba(108, 117, 125, 0.4);
-            }
-            50% {
-                box-shadow: 0 0 0 4px rgba(108, 117, 125, 0.1);
-            }
-        }
-
     </style>
 </head>
 
@@ -598,6 +415,7 @@
                 }
                 $(this).toggleClass('open');
                 $(this).next('.content').toggleClass('active');
+                $(this).next('.content').removeClass('hidden');
             });
 
             $('.item-toggle-button').off('click').on('click', function () {

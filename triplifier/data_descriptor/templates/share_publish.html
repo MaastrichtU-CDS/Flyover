@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/html">
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-<script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-<script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Publish Data</title>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
 </head>
 
 <body>
@@ -34,12 +36,13 @@
             <div class="card-body">
                 <p class="text-muted">
                     Create a comprehensive codebook documenting your project's variables, values, and relationships
-                    using your semantic mappings.<br> This structured overview helps others understand and work with your data.
+                    using your semantic mappings.<br> This structured overview helps others understand and work with
+                    your data.
                 </p>
 
                 <p class="text-muted">
                     See an example codebook <a href="https://strongaya.github.io/AYA-cancer-semantic-map/"
-                    target="_blank">here</a> (Apache-2 licenced). Repository available
+                                               target="_blank">here</a> (Apache-2 licenced). Repository available
                     <a href="https://github.com/STRONGAYA/AYA-cancer-semantic-map" target="_blank">here</a>.
                 </p>
 
@@ -95,12 +98,14 @@
                     </div>
 
                     <!-- Warning when existing JSON-LD is in IndexedDB (hidden by default) -->
-                    <div id="existingJsonldWarning" class="alert alert-warning" style="display: none; font-size: 0.9em;">
+                    <div id="existingJsonldWarning" class="alert alert-warning"
+                         style="display: none; font-size: 0.9em;">
                         <i class="fas fa-info-circle"></i>
                         <strong>Existing semantic map detected!</strong><br>
                         You already have a semantic map stored in your browser from a previous session.
                         You can use the stored map or upload a new JSON-LD file to overwrite it.
-                        <br><small class="text-muted">Current semantic map: <span id="existingJsonldInfo">-</span></small>
+                        <br><small class="text-muted">Current semantic map: <span
+                            id="existingJsonldInfo">-</span></small>
                     </div>
 
                     <div id="jsonldUploadForm" class="mb-3">
@@ -113,7 +118,8 @@
                                 title="This feature is under construction and will be implemented in future updates.">
                             <i class="fas fa-upload"></i> Upload JSON-LD
                         </button>
-                        <button type="button" class="btn btn-outline-secondary disabled" id="useStoredJsonldBtn" disabled
+                        <button type="button" class="btn btn-outline-secondary disabled" id="useStoredJsonldBtn"
+                                disabled
                                 data-toggle="tooltip" data-placement="top"
                                 title="This feature is under construction and will be implemented in future updates.">
                             <i class="fas fa-database"></i> Use Stored JSON-LD
@@ -151,122 +157,14 @@
 <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
 <script src="{{ url_for('custom_static', filename='js/shared-checks.js') }}"></script>
+<script src="{{ url_for('custom_static', filename='js/pages/share-publish.js') }}"></script>
 <script>
-    // Initialize tooltips
-    $(document).ready(function() {
-        $('[data-toggle="tooltip"]').tooltip();
-    });
-
-    // Global variable to track if we have a valid JSON-LD map
-    let hasValidJsonld = false;
-    let storedJsonldData = null;
-    let detectedJsonldData = null;
-
-
-    function updateUIBasedOnJsonldAvailability() {
-        // Health DCAT-AP section is completely disabled - keep everything disabled
-        $('#jsonldStatus').addClass('d-none');
-        $('#existingJsonldWarning').hide();
-        $('#jsonldSuccess').addClass('d-none');
-        $('#healthDcatControls').addClass('d-none');
-        
-        // Ensure upload form is visible but disabled
-        $('#jsonldUploadForm').removeClass('d-none');
-        
-        // Make sure Use Stored JSON-LD button is visible but disabled
-        $('#useStoredJsonldBtn').show();
-    }
-
-    // File upload handling - DISABLED for Health DCAT-AP section
-    $('#jsonldFileInput').change(function (e) {
-        // Prevent any file selection action
-        $(this).val('');
-        $('.custom-file-label').html('Choose JSON-LD file...');
-        alert('This feature is under construction and will be implemented in future updates.');
-    });
-
-    $('#uploadJsonldBtn').click(function () {
-        // Prevent any upload action
-        alert('This feature is under construction and will be implemented in future updates.');
-    });
-
-    $('#useStoredJsonldBtn').click(function () {
-        // Prevent any stored data usage
-        alert('This feature is under construction and will be implemented in future updates.');
-    });
-
-    $('#generateHealthDcatBtn').click(function () {
-        // Transform the generate button into a download button
-        const $btn = $('#generateHealthDcatBtn');
-        
-        // Show generating state
-        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generating...');
-
-        // Simulate generation (this would be replaced with actual API call)
-        setTimeout(() => {
-            // Transform into download button
-            $btn.prop('disabled', false)
-               .html('<i class="fas fa-download"></i> Download Health DCAT-AP')
-               .removeClass('btn-primary').addClass('btn-success')
-               .off('click').on('click', function() {
-                   // Download functionality
-                   alert('Health DCAT-AP download functionality would be implemented here.');
-                   // In a real implementation, this would trigger the download of the generated file
-               });
-        }, 2000);
-    });
-
-    // Simplified initialisation - Health DCAT-AP section is disabled
-    async function initPage() {
-        // No need to check for existing data since the section is completely disabled
-        // Just ensure the UI shows the disabled state properly
-        updateUIBasedOnJsonldAvailability();
-    }
-
-    // Initialize the page - using both DOMContentLoaded and jQuery ready
-    // Try modern DOMContentLoaded first
-    document.addEventListener('DOMContentLoaded', async function() {
-        await initializePage();
-    });
-    
-    // Also try jQuery ready as fallback
-    $(document).ready(async function() {
-        await initializePage();
-    });
-    
-    // Fallback if DOM is already loaded
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(async function() {
-            await initializePage();
-        }, 100);
-    }
-    
-    async function initializePage() {
-        await initPage();
-        updateUIBasedOnJsonldAvailability();
-    }
-
     // Pass Flask variables to JavaScript for navigation header
-    window.graph_exists = true; // Data exists in share landing step
+    window.graph_exists = true; // Data exists in the share publish step
 </script>
 
-<!-- Custom CSS for this page -->
-<style>
-    .card-header {
-        background-color: #f8f9fa !important;
-        border-bottom: 1px solid #dee2e6;
-    }
-
-    .custom-file-label {
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-    }
-
-    .custom-file-label::after {
-        content: "Browse";
-    }
-</style>
+<!-- Custom CSS moved to share.css -->
+<link rel="stylesheet" href="{{ url_for('custom_static', filename='css/share.css') }}">
 
 </body>
 </html>
