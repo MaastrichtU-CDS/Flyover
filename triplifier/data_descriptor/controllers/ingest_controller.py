@@ -239,6 +239,10 @@ def upload_file():
         separator = request.form.get("csv_separator_sign", ",")
         decimal = request.form.get("csv_decimal_sign", ".")
 
+        # Ensure separator is a valid single character
+        if not separator or len(separator) != 1:
+            separator = ","
+
         dataframes, table_names, error = IngestService.parse_csv_files(
             csv_files, separator, decimal
         )

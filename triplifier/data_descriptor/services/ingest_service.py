@@ -120,6 +120,10 @@ class IngestService:
         table_names = []
 
         try:
+            # Validate separator - must be a single character
+            if not separator or len(separator) != 1:
+                return [], [], "CSV separator must be a single character"
+
             for csv_file in files:
                 # Read CSV with minimal inference
                 df = pl.read_csv(
