@@ -1,32 +1,46 @@
 services:
+  # rdf-store:
+  #   image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
+  #   # If preferred, the graphdb image can be built from the Dockerfile in the graphdb directory
+  #   #build:
+  #   #  context: ./graphdb
+  #   ports:
+  #     - "127.0.0.1:7200:7200"
+  #   volumes:
+  #     - ./graphdb/data:/opt/graphdb/home
+  #   environment:
+  #     - GDB_HEAP_SIZE=8g
+  #     - GDB_MIN_MEM=4g
+  #     - GDB_MAX_MEM=12g
+  #   networks:
+  #     - proxynet
+  #   container_name: rdf-store
+
   rdf-store:
-    image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
-    # If preferred, the graphdb image can be built from the Dockerfile in the graphdb directory
-    #build:
-    #  context: ./graphdb
+    image: eclipse/rdf4j-workbench:latest #:5.2.1-tomcat
     ports:
-      - "127.0.0.1:7200:7200"
-    volumes:
-      - ./graphdb/data:/opt/graphdb/home
+      - "8080:8080"
+    # volumes:
+    #   - ./rdf4j/data:/var/rdf4j
+    #   - ./rdf4j/logs:/usr/local/tomcat/logs
     environment:
-      - GDB_HEAP_SIZE=8g
-      - GDB_MIN_MEM=4g
-      - GDB_MAX_MEM=12g
+      - "JAVA_OPTS=-Xms4g -Xmx12g"
     networks:
       - proxynet
     container_name: rdf-store
-
+  
   triplifier:
-    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    # image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    #build:
-    #   context: ./triplifier
+    build:
+      context: ./triplifier
     ports:
       - "127.0.0.1:5000:5000"
     environment:
-      - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
+      - FLYOVER_GRAPHDB_URL=http://rdf-store:8080/rdf4j-server
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
+      - FLYOVER_MATERIALIZE_INFERENCES=true
       # Optional: Override default timeout settings
       # - GUNICORN_TIMEOUT=300
       # - RDF_REQUEST_TIMEOUT=3600
