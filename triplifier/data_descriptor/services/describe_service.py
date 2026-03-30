@@ -106,9 +106,7 @@ class DescribeService:
             for key in form_data:
                 if not key.startswith(f"{database}_"):
                     continue
-                matching_dbs = [
-                    db for db in all_databases if key.startswith(f"{db}_")
-                ]
+                matching_dbs = [db for db in all_databases if key.startswith(f"{db}_")]
                 if matching_dbs and max(matching_dbs, key=len) == database:
                     keys.append(key)
 
@@ -135,9 +133,7 @@ class DescribeService:
 
                 for key in keys:
                     if "_notation_missing_or_unspecified" in key:
-                        existing_info[variable][
-                            f"Category: {form_data.get(key)}"
-                        ] = (
+                        existing_info[variable][f"Category: {form_data.get(key)}"] = (
                             f"Category {form_data.get(key)}: missing_or_unspecified"
                             or "No missing value notation provided"
                         )
@@ -145,10 +141,10 @@ class DescribeService:
                     elif "_category_" in key and not key.startswith("count_"):
                         # Retrieve the category and the associated value and comment
                         category = key.split('_category_"')[1].split('"')[0]
-                        count_form = f'count_{database}_{variable}_category_"{category}"'
-                        existing_info[variable][
-                            f"Category: {category}"
-                        ] = (
+                        count_form = (
+                            f'count_{database}_{variable}_category_"{category}"'
+                        )
+                        existing_info[variable][f"Category: {category}"] = (
                             f"Category {category}: {form_data.get(key)}, comment: "
                             f'{form_data.get(f"comment_{key}") or "No comment provided"},  '
                             f'count: {form_data.get(count_form) or "No count available"}'
@@ -199,7 +195,9 @@ class DescribeService:
 
         if not has_local_def and isinstance(global_semantic_map, dict):
             # Try to find a matching global variable
-            for global_var, global_data in global_semantic_map.get("variable_info", {}).items():
+            for global_var, global_data in global_semantic_map.get(
+                "variable_info", {}
+            ).items():
                 if global_var.lower() == var_name.lower():
                     processed_var["local_definition"] = var_name
                     has_local_def = True
@@ -482,7 +480,7 @@ class DescribeService:
         try:
             if not semantic_map:
                 return None
-            
+
             # Try different possible locations for database name
             if isinstance(semantic_map, dict):
                 if "database_name" in semantic_map:
@@ -492,9 +490,9 @@ class DescribeService:
                     databases = semantic_map["databases"]
                     if databases and isinstance(databases, dict):
                         return next(iter(databases.keys()))
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Failed to get database name from mapping: {e}")
             return None
@@ -538,10 +536,10 @@ class DescribeService:
             }}
             GROUP BY (?value)
             """
-            
+
             result = graphdb_service.execute_query(query)
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to retrieve categories for {column_name}: {e}")
             return None
@@ -569,18 +567,18 @@ class DescribeService:
             if jsonld_mapping:
                 # Extract variable names from the semantic map
                 variable_keys = list(jsonld_mapping.get_variable_names())
-                
+
                 # Format the names nicely
                 formatted_names = []
                 for key in variable_keys:
                     # Capitalize and replace underscores with spaces
-                    formatted = key.replace('_', ' ').title()
+                    formatted = key.replace("_", " ").title()
                     formatted_names.append(formatted)
-                
+
                 return formatted_names if formatted_names else default_names
-            
+
             return default_names
-            
+
         except Exception as e:
             logger.error(f"Failed to retrieve global variable names: {e}")
             return default_names

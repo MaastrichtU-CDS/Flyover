@@ -186,33 +186,6 @@ class Cache:
 session_cache = Cache()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def allowed_file(filename, allowed_extensions):
     """
     This function checks if the uploaded file has an allowed extension.
@@ -225,7 +198,6 @@ def allowed_file(filename, allowed_extensions):
     bool: True if the file has an allowed extension, False otherwise.
     """
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
-
 
 
 def formulate_local_semantic_map(database):
@@ -394,8 +366,6 @@ def formulate_local_semantic_map(database):
     return modified_semantic_map
 
 
-
-
 def insert_equivalencies(descriptive_info, variable, database):
     """
     This function inserts equivalencies into a GraphDB repository.
@@ -477,6 +447,7 @@ app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
 
+
 # Add compatibility endpoint for custom_static (templates expect this name)
 @app.route("/data_descriptor/assets/<path:filename>")
 def custom_static(filename):
@@ -486,6 +457,7 @@ def custom_static(filename):
     It delegates to the share blueprint's custom_static implementation.
     """
     return share_bp.view_functions["custom_static"](filename)
+
 
 # Set up application config
 app.config["graphdb_url"] = graphdb_url
@@ -501,25 +473,38 @@ app.config["APP_CONTEXT"] = {
     "root_dir": root_dir,
     "child_dir": child_dir,
     "run_triplifier": lambda properties_file: (
-        lambda result: (
-            setattr(session_cache, 'output_files', result[2]),
-            result[:2]
-        )[1]
+        lambda result: (setattr(session_cache, "output_files", result[2]), result[:2])[
+            1
+        ]
     )(
         IngestService().run_triplifier(
-            properties_file, root_dir, child_dir,
-            csv_data_list=session_cache.csvData if hasattr(session_cache, 'csvData') else None,
-            csv_table_names=session_cache.csvTableNames if hasattr(session_cache, 'csvTableNames') else None
+            properties_file,
+            root_dir,
+            child_dir,
+            csv_data_list=(
+                session_cache.csvData if hasattr(session_cache, "csvData") else None
+            ),
+            csv_table_names=(
+                session_cache.csvTableNames
+                if hasattr(session_cache, "csvTableNames")
+                else None
+            ),
         )
     ),
-    "upload_func": lambda file_type, output_files: IngestService().upload_multiple_graphs(
-        root_dir, graphdb_url, repo, output_files, data_background=False
-    ) if file_type == "CSV" else IngestService().upload_ontology_then_data(
-        root_dir, graphdb_url, repo, data_background=False
+    "upload_func": lambda file_type, output_files: (
+        IngestService().upload_multiple_graphs(
+            root_dir, graphdb_url, repo, output_files, data_background=False
+        )
+        if file_type == "CSV"
+        else IngestService().upload_ontology_then_data(
+            root_dir, graphdb_url, repo, data_background=False
+        )
     ),
     "start_background": lambda sc: [
         gevent.spawn(IngestService.background_pk_fk_processing, sc, graphdb_service),
-        gevent.spawn(IngestService.background_cross_graph_processing, sc, graphdb_service)
+        gevent.spawn(
+            IngestService.background_cross_graph_processing, sc, graphdb_service
+        ),
     ],
     "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
         IngestService().handle_postgres_connection(
@@ -529,8 +514,12 @@ app.config["APP_CONTEXT"] = {
     "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
     "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
     "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
-    "name_matcher": lambda map_db, target_db: GraphDBService.graph_database_find_name_match(map_db, target_db),
-    "get_semantic_map": lambda sc, database_key=None: get_semantic_map_for_annotation(sc, database_key),
+    "name_matcher": lambda map_db, target_db: GraphDBService.graph_database_find_name_match(
+        map_db, target_db
+    ),
+    "get_semantic_map": lambda sc, database_key=None: get_semantic_map_for_annotation(
+        sc, database_key
+    ),
 }
 
 if __name__ == "__main__":

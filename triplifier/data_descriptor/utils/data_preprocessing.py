@@ -62,9 +62,9 @@ def detect_and_convert_encoding(file_bytes: bytes) -> bytes:
 
 
 def read_csv_with_encoding_detection(
-        file_bytes: bytes,
-        separator: str = ",",
-        decimal_sign: str = ".",
+    file_bytes: bytes,
+    separator: str = ",",
+    decimal_sign: str = ".",
 ) -> pl.DataFrame:
     """
     Read CSV data from raw bytes with automatic encoding detection.
@@ -122,10 +122,10 @@ def clean_column_names(df: pl.DataFrame) -> Tuple[List[str], List[str]]:
     for i, col in enumerate(original_columns):
         # Handle empty, None, or problematic column names
         if (
-                col is None
-                or str(col).strip() == ""
-                or str(col) == "nan"
-                or str(col).startswith("Unnamed:")
+            col is None
+            or str(col).strip() == ""
+            or str(col) == "nan"
+            or str(col).startswith("Unnamed:")
         ):
             cleaned_col = f"column_{i + 1}"
             problematic_count += 1
@@ -327,11 +327,8 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     return processed_df
 
 
-
-
-
 def preprocess_mixed_type_data(
-        table_data: Dict[str, List[Union[str, int, float, None]]],
+    table_data: Dict[str, List[Union[str, int, float, None]]],
 ) -> Dict[str, List[Union[str, int, float, None]]]:
     """
     Pre-process table data to handle mixed types by converting to appropriate types.

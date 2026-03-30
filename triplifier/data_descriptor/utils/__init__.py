@@ -6,7 +6,7 @@ from .data_preprocessing import (
     clean_column_names,
     preprocess_dataframe,
     sanitise_table_name,
-    preprocess_mixed_type_data
+    preprocess_mixed_type_data,
 )
 
 from .session_helpers import (
