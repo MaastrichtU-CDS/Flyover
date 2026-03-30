@@ -443,8 +443,6 @@ class DescribeService:
                 return default_names
 
     @staticmethod
-    @staticmethod
-    @staticmethod
     def has_semantic_map(session_cache: Any) -> bool:
         """
         Check if any semantic map (jsonld_mapping or global_semantic_map) is available.
@@ -465,7 +463,6 @@ class DescribeService:
             logger.error(f"Failed to check semantic map: {e}")
             return False
 
-    @staticmethod
     @staticmethod
     def get_database_name_from_mapping(semantic_map: Any) -> Optional[str]:
         """
@@ -496,19 +493,6 @@ class DescribeService:
         except Exception as e:
             logger.error(f"Failed to get database name from mapping: {e}")
             return None
-
-        # Fall back to global_semantic_map
-        if not isinstance(global_semantic_map, dict):
-            return default_names
-
-        try:
-            return [
-                name.capitalize().replace("_", " ")
-                for name in global_semantic_map.get("variable_info", {}).keys()
-            ] + ["Other"]
-        except Exception as e:
-            logger.error(f"Error reading semantic map: {e}")
-            return default_names
 
     @staticmethod
     def retrieve_global_variable_names(jsonld_mapping: Any = None) -> List[str]:

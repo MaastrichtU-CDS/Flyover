@@ -329,6 +329,7 @@
 .alert-warning {
     background-color: #fff3e0;
     border-color: #ffcc80;
+    border-left: 4px solid #ffc107;
     color: #e65100;
 }
 
@@ -427,11 +428,6 @@ body {
 /* ==========================================================================
    Card and Form Styles
    ========================================================================== */
-
-.card-header {
-    background-color: #f8f9fa !important;
-    border-bottom: 1px solid #dee2e6;
-}
 
 .form-group label {
     margin-bottom: 5px;
@@ -657,7 +653,9 @@ body {
     display: inline-block;
     border: none;
     background: none;
-    font-size: 1rem;
+    font-size: 1.56rem;
+    line-height: 1;
+    float: right;
     transition: transform 0.2s ease;
     color: #007bff;
 }
@@ -761,14 +759,6 @@ body {
 }
 
 /* ==========================================================================
-   Alert Warning Left Border
-   ========================================================================== */
-
-.alert-warning {
-    border-left: 4px solid #ffc107;
-}
-
-/* ==========================================================================
    Card Margin Bottom
    ========================================================================== */
 
@@ -790,7 +780,7 @@ body {
 }
 
 .content.active {
-    max-height: 500px;
+    max-height: none;
 }
 
 .variable-row {

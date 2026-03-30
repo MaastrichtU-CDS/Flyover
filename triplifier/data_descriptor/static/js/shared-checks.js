@@ -169,11 +169,15 @@ const SharedChecks = {
     },
 
     /**
-     * Escape HTML to prevent XSS
+     * Escape HTML to prevent XSS.
+     * Delegates to StatusMessages.escapeHtml if available, otherwise uses local fallback.
      * @param {string} text - Text to escape
      * @returns {string} - Escaped text
      */
     escapeHtml(text) {
+        if (typeof StatusMessages !== 'undefined' && StatusMessages.escapeHtml) {
+            return StatusMessages.escapeHtml(text);
+        }
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;

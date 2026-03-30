@@ -1,9 +1,27 @@
 /**
  * Status Messages Module
- * Provides reusable status message/alert functionality.
+ * Provides reusable status message/alert and HTML utility functionality.
  */
 
 const StatusMessages = {
+    // Alert type to CSS class mapping
+    ALERT_CLASSES: {
+        'error': 'alert-danger',
+        'danger': 'alert-danger',
+        'info': 'alert-info',
+        'warning': 'alert-warning',
+        'success': 'alert-success'
+    },
+
+    // Alert type to FontAwesome icon mapping
+    ICON_CLASSES: {
+        'error': 'fa-exclamation-triangle',
+        'danger': 'fa-exclamation-triangle',
+        'info': 'fa-info-circle',
+        'warning': 'fa-exclamation-triangle',
+        'success': 'fa-check-circle'
+    },
+
     /**
      * Show a status message alert
      * @param {string} containerId - ID of the container element (without #)
@@ -15,21 +33,8 @@ const StatusMessages = {
         type = type || 'success';
         dismissible = dismissible !== false;
         
-        const alertClass = {
-            'error': 'alert-danger',
-            'danger': 'alert-danger',
-            'info': 'alert-info',
-            'warning': 'alert-warning',
-            'success': 'alert-success'
-        }[type] || 'alert-success';
-        
-        const iconClass = {
-            'error': 'fa-exclamation-triangle',
-            'danger': 'fa-exclamation-triangle',
-            'info': 'fa-info-circle',
-            'warning': 'fa-exclamation-triangle',
-            'success': 'fa-check-circle'
-        }[type] || 'fa-check-circle';
+        const alertClass = this.ALERT_CLASSES[type] || 'alert-success';
+        const iconClass = this.ICON_CLASSES[type] || 'fa-check-circle';
         
         let alertHtml = `
             <div class="alert ${alertClass}${dismissible ? ' alert-dismissible fade show' : ''}" role="alert">
@@ -65,21 +70,8 @@ const StatusMessages = {
     append: function(containerId, message, type) {
         type = type || 'info';
         
-        const alertClass = {
-            'error': 'alert-danger',
-            'danger': 'alert-danger',
-            'info': 'alert-info',
-            'warning': 'alert-warning',
-            'success': 'alert-success'
-        }[type] || 'alert-info';
-        
-        const iconClass = {
-            'error': 'fa-exclamation-triangle',
-            'danger': 'fa-exclamation-triangle',
-            'info': 'fa-info-circle',
-            'warning': 'fa-exclamation-triangle',
-            'success': 'fa-check-circle'
-        }[type] || 'fa-info-circle';
+        const alertClass = this.ALERT_CLASSES[type] || 'alert-info';
+        const iconClass = this.ICON_CLASSES[type] || 'fa-info-circle';
         
         const alertHtml = `
             <div class="alert ${alertClass}" role="alert" style="font-size: 0.9em;">
@@ -91,7 +83,9 @@ const StatusMessages = {
     },
 
     /**
-     * Escape HTML to prevent XSS
+     * Escape HTML to prevent XSS.
+     * This is the canonical implementation - other modules should use this
+     * via StatusMessages.escapeHtml() instead of implementing their own.
      * @param {string} text - Text to escape
      * @returns {string} Escaped text
      */
