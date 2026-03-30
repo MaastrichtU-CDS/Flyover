@@ -153,9 +153,7 @@ class QueryBuilder:
         """
 
     @classmethod
-    def categories_query(
-        cls, repo: str, column_name: str, database: str = None
-    ) -> str:
+    def categories_query(cls, repo: str, column_name: str, database: str = None) -> str:
         """
         Build query to retrieve categories for a column.
 
@@ -175,9 +173,7 @@ class QueryBuilder:
         db_filter = ""
         if database:
             safe_database = cls.sanitize_sparql_value(database)
-            db_filter = (
-                f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}')))"
-            )
+            db_filter = f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}')))"
 
         return f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>

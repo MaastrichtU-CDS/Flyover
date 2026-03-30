@@ -87,9 +87,7 @@ class GraphDBService:
 
         return columns_by_database
 
-    def get_categories(
-        self, column_name: str, database: str = None
-    ) -> Optional[str]:
+    def get_categories(self, column_name: str, database: str = None) -> Optional[str]:
         """
         Get categories for a column.
 

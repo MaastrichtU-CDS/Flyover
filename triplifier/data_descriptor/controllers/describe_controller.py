@@ -251,7 +251,9 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
 
     map_db_name = mapping.get_first_database_name()
     if map_db_name is None:
-        logger.warning("JSON-LD mapping has no database name, skipping details population")
+        logger.warning(
+            "JSON-LD mapping has no database name, skipping details population"
+        )
         return
 
     for database in session_cache.databases:
@@ -291,9 +293,7 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
                 }
 
             if data_type == "categorical":
-                cat_result = graphdb_service.get_categories(
-                    local_column, database
-                )
+                cat_result = graphdb_service.get_categories(local_column, database)
                 if cat_result:
                     try:
                         df = pl.read_csv(
@@ -311,9 +311,7 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
                             f"Failed to parse categories for {local_column}: {e}"
                         )
             elif data_type == "continuous":
-                session_cache.DescriptiveInfoDetails[database].append(
-                    display_name
-                )
+                session_cache.DescriptiveInfoDetails[database].append(display_name)
 
         # Remove empty databases
         if not session_cache.DescriptiveInfoDetails[database]:

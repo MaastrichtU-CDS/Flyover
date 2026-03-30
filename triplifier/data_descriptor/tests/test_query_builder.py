@@ -121,9 +121,7 @@ class TestQueryBuilderColumnQueries(unittest.TestCase):
 
     def test_categories_query_with_database(self):
         """Test categories query with database filter."""
-        query = QueryBuilder.categories_query(
-            "test_repo", "test_column", "test_db"
-        )
+        query = QueryBuilder.categories_query("test_repo", "test_column", "test_db")
 
         self.assertIn("test_column", query)
         self.assertIn("FILTER", query)

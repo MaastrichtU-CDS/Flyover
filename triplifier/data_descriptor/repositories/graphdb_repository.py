@@ -175,9 +175,7 @@ class GraphDBRepository:
             logger.error(f"Error extracting database names: {e}")
             return []
 
-    def get_categories(
-        self, column_name: str, database: str = None
-    ) -> Optional[str]:
+    def get_categories(self, column_name: str, database: str = None) -> Optional[str]:
         """
         Retrieve categories for a column.
 
