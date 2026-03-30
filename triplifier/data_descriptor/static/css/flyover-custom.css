@@ -780,7 +780,7 @@ body {
 }
 
 .content.active {
-    max-height: none;
+    max-height: 5000px;
 }
 
 .variable-row {

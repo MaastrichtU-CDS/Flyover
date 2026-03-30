@@ -207,6 +207,27 @@ def describe_variable_details():
     )
 
 
+def _variable_exists_in_details(details_list, local_column):
+    """
+    Check if a variable already exists in the DescriptiveInfoDetails list.
+
+    Args:
+        details_list: List of variable detail entries.
+        local_column: The local column name to check for.
+
+    Returns:
+        True if the variable already exists, False otherwise.
+    """
+    for item in details_list:
+        if isinstance(item, str) and local_column in item:
+            return True
+        if isinstance(item, dict):
+            for key in item:
+                if local_column in key:
+                    return True
+    return False
+
+
 def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
     """
     Populate DescriptiveInfoDetails from JSON-LD mapping.
@@ -229,6 +250,9 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
         session_cache.DescriptiveInfoDetails = {}
 
     map_db_name = mapping.get_first_database_name()
+    if map_db_name is None:
+        logger.warning("JSON-LD mapping has no database name, skipping details population")
+        return
 
     for database in session_cache.databases:
         if not name_matcher(map_db_name, database):
@@ -251,22 +275,11 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
             if not local_column or not data_type:
                 continue
 
-            # Check if variable is already in DescriptiveInfoDetails
             display_name = f'{var_key.replace("_", " ").title()} (or "{local_column}")'
-            already_exists = False
-            for item in session_cache.DescriptiveInfoDetails[database]:
-                if isinstance(item, str) and local_column in item:
-                    already_exists = True
-                    break
-                if isinstance(item, dict):
-                    for key in item:
-                        if local_column in key:
-                            already_exists = True
-                            break
-                if already_exists:
-                    break
 
-            if already_exists:
+            if _variable_exists_in_details(
+                session_cache.DescriptiveInfoDetails[database], local_column
+            ):
                 continue
 
             # Ensure descriptive_info is populated for this variable
