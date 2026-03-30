@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Annotation Landing</title>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
-    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/db-utils.js') }}"></script>
 </head>
 
 <body>
@@ -173,7 +173,7 @@
 {% include 'footer.html' %}
 
 <!-- Page-specific JavaScript -->
-<script src="{{ url_for('custom_static', filename='js/pages/annotation-landing.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/annotation-landing.js') }}"></script>
 <script>
     // Pass Flask variables to JavaScript for navigation header
     {% if data_exists %}

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Data submission finalised</title>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
-    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-select.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/db-utils.js') }}"></script>
 </head>
 
 <body>
@@ -103,7 +103,7 @@
 {% include 'footer.html' %}
 
 <!-- Page-specific JavaScript -->
-<script src="{{ url_for('custom_static', filename='js/pages/describe-landing.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/describe-landing.js') }}"></script>
 <script>
     // Pass Flask variables to JavaScript for navigation header
     window.graph_exists = true; // Data has been ingested at this point

@@ -448,22 +448,11 @@ app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
 
 
-# Add compatibility endpoint for custom_static (templates expect this name)
-@app.route("/data_descriptor/assets/<path:filename>")
-def custom_static(filename):
-    """
-    Compatibility endpoint for custom_static.
-    This route maintains backward compatibility with templates that expect 'custom_static' endpoint.
-    It delegates to the share blueprint's custom_static implementation.
-    """
-    return share_bp.view_functions["custom_static"](filename)
-
-
 # Set up application config
 app.config["graphdb_url"] = graphdb_url
 app.config["repo"] = repo
 
-# Set up application context with required functions and services
+# Set up the application context with required functions and services
 app.config["APP_CONTEXT"] = {
     "session_cache": session_cache,
     "graphdb_service": graphdb_service,

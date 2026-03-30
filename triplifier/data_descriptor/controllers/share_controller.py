@@ -102,10 +102,10 @@ def favicon():
     )
 
 
-@share_bp.route("/data_descriptor/assets/<path:filename>")
-def custom_static(filename):
+@share_bp.route("/data_descriptor/static/<path:filename>")
+def static(filename):
     """
-    Serve static files from assets directory.
+    Serve static files from static directory.
 
     Args:
         filename: Path to the static file.
@@ -117,7 +117,7 @@ def custom_static(filename):
     root_dir = ctx.get("root_dir", "")
     child_dir = ctx.get("child_dir", ".")
 
-    return send_from_directory(f"{root_dir}{child_dir}/assets", filename)
+    return send_from_directory(f"{root_dir}{child_dir}/static", filename)
 
 
 @share_bp.route("/share_mock")

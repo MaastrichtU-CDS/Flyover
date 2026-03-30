@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <title>Flyover | Variable details</title>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/bootstrap-select.css') }}"/>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/all.min.css') }}"/>
-    <link rel="stylesheet" href="{{ url_for('custom_static', filename='css/flyover-custom.css') }}"/>
-    <script src="{{ url_for('custom_static', filename='js/jquery.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap.bundle.min.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/bootstrap-select.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-select.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/flyover-custom.css') }}"/>
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-select.min.js') }}"></script>
     <style>
         /* Page-specific: toggle button with larger font size */
         .toggle-button {
@@ -114,8 +114,8 @@
             </div>
         </div>
     </form>
-    <script src="{{ url_for('custom_static', filename='js/db-utils.js') }}"></script>
-    <script src="{{ url_for('custom_static', filename='js/jsonld-mapper.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/db-utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jsonld-mapper.js') }}"></script>
     <script>
         const DESCRIPTIVE_INFO = {{ descriptive_info | safe }};
         const DESCRIPTIVE_INFO_DETAILS = {{ descriptive_info_details | safe }};
