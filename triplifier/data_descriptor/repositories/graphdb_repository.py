@@ -175,17 +175,20 @@ class GraphDBRepository:
             logger.error(f"Error extracting database names: {e}")
             return []
 
-    def get_categories(self, column_name: str) -> Optional[str]:
+    def get_categories(
+        self, column_name: str, database: str = None
+    ) -> Optional[str]:
         """
         Retrieve categories for a column.
 
         Args:
             column_name: Name of the column.
+            database: Optional database/table name to scope categories to.
 
         Returns:
             Query result as string, or None on error.
         """
-        query = QueryBuilder.categories_query(self.repo, column_name)
+        query = QueryBuilder.categories_query(self.repo, column_name, database)
         return self.execute_query(query)
 
     def get_column_class_uri(self, table_name: str, column_name: str) -> Optional[str]:

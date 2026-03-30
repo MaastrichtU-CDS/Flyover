@@ -153,13 +153,16 @@ class QueryBuilder:
         """
 
     @classmethod
-    def categories_query(cls, repo: str, column_name: str) -> str:
+    def categories_query(
+        cls, repo: str, column_name: str, database: str = None
+    ) -> str:
         """
         Build query to retrieve categories for a column.
 
         Args:
             repo: Repository name for namespace construction.
             column_name: Name of the column.
+            database: Optional database/table name to scope categories to.
 
         Returns:
             str: SPARQL SELECT query for categories.
@@ -167,6 +170,15 @@ class QueryBuilder:
         # Sanitize inputs to prevent SPARQL injection
         safe_repo = cls.sanitize_sparql_value(repo)
         safe_column = cls.sanitize_sparql_value(column_name)
+
+        # Add database filter to ensure categories are scoped to the correct table
+        db_filter = ""
+        if database:
+            safe_database = cls.sanitize_sparql_value(database)
+            db_filter = (
+                f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}')))"
+            )
+
         return f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
             PREFIX db: <http://{safe_repo}.local/rdf/ontology/>
@@ -176,6 +188,7 @@ class QueryBuilder:
             {{
                ?a a ?v.
                ?v dbo:column '{safe_column}'.
+               {db_filter}
                ?a dbo:has_cell ?cell.
                ?cell dbo:has_value ?value
             }}

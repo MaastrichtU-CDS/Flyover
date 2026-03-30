@@ -119,6 +119,17 @@ class TestQueryBuilderColumnQueries(unittest.TestCase):
         self.assertIn("COUNT(?value)", query)
         self.assertIn("GROUP BY", query)
 
+    def test_categories_query_with_database(self):
+        """Test categories query with database filter."""
+        query = QueryBuilder.categories_query(
+            "test_repo", "test_column", "test_db"
+        )
+
+        self.assertIn("test_column", query)
+        self.assertIn("FILTER", query)
+        self.assertIn("CONTAINS", query)
+        self.assertIn("test_db", query)
+
 
 class TestQueryBuilderDatabaseQueries(unittest.TestCase):
     """Test database-related query construction."""

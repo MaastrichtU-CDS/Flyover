@@ -511,40 +511,6 @@ class DescribeService:
             return default_names
 
     @staticmethod
-    def retrieve_categories(graphdb_service, column_name: str) -> Optional[str]:
-        """
-        Retrieve categories for a given column from GraphDB.
-
-        Args:
-            graphdb_service: GraphDB service instance
-            column_name: Name of the column to get categories for
-
-        Returns:
-            Optional[str]: Categories data or None if not found
-        """
-        try:
-            # Construct SPARQL query to get categories (1:1 with original)
-            query = f"""
-            PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            SELECT ?value (COUNT(?value) as ?count)
-            WHERE
-            {{
-               ?a a ?v.
-               ?v dbo:column '{column_name}'.
-               ?a dbo:has_cell ?cell.
-               ?cell dbo:has_value ?value
-            }}
-            GROUP BY (?value)
-            """
-
-            result = graphdb_service.execute_query(query)
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to retrieve categories for {column_name}: {e}")
-            return None
-
-    @staticmethod
     def retrieve_global_variable_names(jsonld_mapping: Any = None) -> List[str]:
         """
         Retrieve global variable names from semantic map or return defaults.

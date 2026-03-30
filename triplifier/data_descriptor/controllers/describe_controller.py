@@ -131,8 +131,8 @@ def retrieve_descriptive_info():
                 display_name = f'{global_var} (or "{local_var}")'
 
             if data_type == "categorical":
-                # Get categories from GraphDB
-                cat_result = graphdb_service.get_categories(local_var)
+                # Get categories from GraphDB, scoped to this database
+                cat_result = graphdb_service.get_categories(local_var, database)
                 if cat_result:
                     df = pl.read_csv(
                         StringIO(cat_result),
@@ -168,12 +168,26 @@ def describe_variable_details():
     """
     Render the variable details page.
 
+    Ensures all mapped variables with relevant datatypes are included,
+    regardless of whether the user visited describe_variables first.
+    When a JSON-LD mapping exists, variables with categorical or continuous
+    datatypes from the mapping are automatically included.
+
     Returns:
         Rendered describe_variable_details.html template.
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
+    graphdb_service = ctx.get("graphdb_service")
     name_matcher = ctx.get("name_matcher")
+
+    # Ensure databases are available
+    if not session_cache.databases:
+        session_cache.databases = graphdb_service.get_databases()
+
+    # Populate DescriptiveInfoDetails from JSON-LD mapping if not already set
+    if session_cache.jsonld_mapping and not session_cache.DescriptiveInfoDetails:
+        _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher)
 
     preselected_values = {}
 
@@ -191,6 +205,106 @@ def describe_variable_details():
         descriptive_info_details=json.dumps(session_cache.DescriptiveInfoDetails or {}),
         preselected_values=preselected_values,
     )
+
+
+def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
+    """
+    Populate DescriptiveInfoDetails from JSON-LD mapping.
+
+    Ensures variables with categorical or continuous datatypes from the
+    JSON-LD mapping are included even if the user skipped describe_variables.
+
+    Args:
+        session_cache: The session cache object.
+        graphdb_service: GraphDB service instance.
+        name_matcher: Function to match database names.
+    """
+    mapping = session_cache.jsonld_mapping
+    if not mapping or not session_cache.databases:
+        return
+
+    if not session_cache.descriptive_info:
+        session_cache.descriptive_info = {}
+    if not session_cache.DescriptiveInfoDetails:
+        session_cache.DescriptiveInfoDetails = {}
+
+    map_db_name = mapping.get_first_database_name()
+
+    for database in session_cache.databases:
+        if not name_matcher(map_db_name, database):
+            continue
+
+        if database not in session_cache.DescriptiveInfoDetails:
+            session_cache.DescriptiveInfoDetails[database] = []
+        if database not in session_cache.descriptive_info:
+            session_cache.descriptive_info[database] = {}
+
+        # Get all variables from the mapping
+        for var_key in mapping.get_all_variable_keys():
+            var_info = mapping.get_variable(var_key)
+            if not var_info:
+                continue
+
+            data_type = getattr(var_info, "data_type", None)
+            local_column = mapping.get_local_column(var_key)
+
+            if not local_column or not data_type:
+                continue
+
+            # Check if variable is already in DescriptiveInfoDetails
+            display_name = f'{var_key.replace("_", " ").title()} (or "{local_column}")'
+            already_exists = False
+            for item in session_cache.DescriptiveInfoDetails[database]:
+                if isinstance(item, str) and local_column in item:
+                    already_exists = True
+                    break
+                if isinstance(item, dict):
+                    for key in item:
+                        if local_column in key:
+                            already_exists = True
+                            break
+                if already_exists:
+                    break
+
+            if already_exists:
+                continue
+
+            # Ensure descriptive_info is populated for this variable
+            if local_column not in session_cache.descriptive_info[database]:
+                session_cache.descriptive_info[database][local_column] = {
+                    "type": f"Variable type: {data_type}",
+                    "description": f"Variable description: {var_key.replace('_', ' ').title()}",
+                    "comments": "Variable comment: No comment provided",
+                }
+
+            if data_type == "categorical":
+                cat_result = graphdb_service.get_categories(
+                    local_column, database
+                )
+                if cat_result:
+                    try:
+                        df = pl.read_csv(
+                            StringIO(cat_result),
+                            separator=",",
+                            infer_schema_length=0,
+                            null_values=[],
+                            try_parse_dates=False,
+                        )
+                        session_cache.DescriptiveInfoDetails[database].append(
+                            {display_name: df.to_dicts()}
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to parse categories for {local_column}: {e}"
+                        )
+            elif data_type == "continuous":
+                session_cache.DescriptiveInfoDetails[database].append(
+                    display_name
+                )
+
+        # Remove empty databases
+        if not session_cache.DescriptiveInfoDetails[database]:
+            del session_cache.DescriptiveInfoDetails[database]
 
 
 @describe_bp.route("/end", methods=["GET", "POST"])
@@ -224,8 +338,10 @@ def retrieve_detailed_descriptive_info():
                 variable, database, updated_info.get(variable, {})
             )
 
-    # Always redirect to annotation landing page after describe
-    # The annotation landing page handles both cases:
-    # - With JSON-LD: Proceed with annotation workflow
-    # - Without JSON-LD: Show upload instructions and options
-    return redirect(url_for("annotate.annotation_landing"))
+    # Redirect based on whether a JSON-LD mapping is already loaded
+    # If the user used a JSON-LD for describing, skip annotation_landing
+    # and go directly to annotation_review
+    if session_cache.jsonld_mapping:
+        return redirect(url_for("annotate.annotation_review"))
+    else:
+        return redirect(url_for("annotate.annotation_landing"))

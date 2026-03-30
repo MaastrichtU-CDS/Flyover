@@ -87,17 +87,20 @@ class GraphDBService:
 
         return columns_by_database
 
-    def get_categories(self, column_name: str) -> Optional[str]:
+    def get_categories(
+        self, column_name: str, database: str = None
+    ) -> Optional[str]:
         """
         Get categories for a column.
 
         Args:
             column_name: Name of the column.
+            database: Optional database/table name to scope categories to.
 
         Returns:
             Categories query result.
         """
-        return self.repository.get_categories(column_name)
+        return self.repository.get_categories(column_name, database)
 
     def insert_equivalencies(
         self,
