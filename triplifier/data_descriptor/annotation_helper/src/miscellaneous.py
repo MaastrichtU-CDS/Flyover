@@ -483,10 +483,7 @@ def add_annotation(
             else:
                 annotation_success = False
 
-            if (
-                core_response is not None
-                and 200 <= core_response.status_code < 300
-            ):
+            if core_response is not None and 200 <= core_response.status_code < 300:
                 annotation_success = True
 
             if dry_run is True:
@@ -640,6 +637,7 @@ def get_unique_prefixes(query, prefixes):
     :param str prefixes: The input prefixes string.
     :return: A string of unique prefixes.
     """
+
     def _extract_prefix_label(line):
         line = line.strip()
         if not line.startswith("PREFIX"):
