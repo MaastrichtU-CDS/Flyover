@@ -211,6 +211,27 @@ const DescribeVariablesPage = {
                 }
             }
 
+            // Include JSON-LD preselected variables that were never
+            // rendered (user didn't visit their paginated page)
+            const { preselectedDescriptions, preselectedDatatypes } = JSONLDMapper.computePreselections();
+            const databases = JSONLDMapper.getDatabasesFromDOM();
+
+            for (const [key, description] of Object.entries(preselectedDescriptions)) {
+                // Find the matching database prefix to correctly split key
+                const matchingDb = databases.find(db => key.startsWith(db + '_'));
+                if (!matchingDb) continue;
+                const item = key.substring(matchingDb.length + 1);
+
+                // Skip if already in form (rendered on current page or cached)
+                if ($(`[name="ncit_comment_${matchingDb}_${item}"]`).length > 0) continue;
+                if (self.formStateCache[key]) continue;
+
+                form.append(`<input type="hidden" name="ncit_comment_${matchingDb}_${item}" value="${description}">`);
+                if (preselectedDatatypes[key]) {
+                    form.append(`<input type="hidden" name="${matchingDb}_${item}" value="${preselectedDatatypes[key]}">`);
+                }
+            }
+
             self.startLoadingAnimation('#submitBtn');
         });
     },

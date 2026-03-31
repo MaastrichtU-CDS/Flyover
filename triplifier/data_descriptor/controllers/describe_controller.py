@@ -185,8 +185,11 @@ def describe_variable_details():
     if not session_cache.databases:
         session_cache.databases = graphdb_service.get_databases()
 
-    # Populate DescriptiveInfoDetails from JSON-LD mapping if not already set
-    if session_cache.jsonld_mapping and not session_cache.DescriptiveInfoDetails:
+    # Populate DescriptiveInfoDetails from JSON-LD mapping.
+    # Always run when JSON-LD exists, even if some variables were already
+    # populated via the form, to include variables from pages the user
+    # did not visit (e.g. due to pagination).
+    if session_cache.jsonld_mapping:
         _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher)
 
     preselected_values = {}
