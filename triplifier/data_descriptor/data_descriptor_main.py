@@ -1738,7 +1738,9 @@ def verify_annotation_ask():
 
         prefixes = "\n".join(f"PREFIX {k}: <{v}>" for k, v in base_prefixes.items())
 
-        # Build the ASK query according to the specification
+        annotation_graph = f"http://annotation.local/{database}/"
+
+        # Build the ASK query against the per-database annotation graph.
         ask_query_parts = []
 
         # Add the main equivalentClass statement
@@ -1758,7 +1760,9 @@ def verify_annotation_ask():
         ask_query = f"""
             {prefixes}
             ASK {{
-              {' '.join(ask_query_parts)}
+              GRAPH <{annotation_graph}> {{
+                {' '.join(ask_query_parts)}
+              }}
             }}
             """
 

@@ -63,6 +63,8 @@ class TestMaterializeEquivalentClass(unittest.TestCase):
         self.assertIn("owl:equivalentClass", query)
         self.assertIn("rdf:type", query)
         self.assertIn("FILTER(!isBlank(?equivalentClass))", query)
+        self.assertIn("GRAPH ?dataGraph", query)
+        self.assertIn('FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))', query)
 
     @patch("annotation_helper.src.miscellaneous.requests.post")
     def test_query_inserts_into_materialized_graph(self, mock_post):
@@ -92,7 +94,7 @@ class TestMaterializeEquivalentClass(unittest.TestCase):
         mock_response.status_code = 200
         mock_post.return_value = mock_response
 
-        _materialize_equivalent_class(
+        response, query = _materialize_equivalent_class(
             endpoint="http://localhost:7200/repositories/test/statements",
             annotation_graph_uri="http://annotation.local/testdb/",
             materialized_graph_uri="http://materialized.local/testdb/",
@@ -103,6 +105,28 @@ class TestMaterializeEquivalentClass(unittest.TestCase):
         self.assertEqual(
             call_args[0][0],
             "http://localhost:7200/repositories/test/statements",
+        )
+        self.assertEqual(call_args[1]["data"], {"update": query})
+
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_query_scopes_instance_lookup_to_data_graphs(self, mock_post):
+        """Test that the query reads instance data from explicit data named graphs."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        response, query = _materialize_equivalent_class(
+            endpoint="http://localhost:7200/repositories/test/statements",
+            annotation_graph_uri="http://annotation.local/testdb/",
+            materialized_graph_uri="http://materialized.local/testdb/",
+        )
+
+        where_section = query.split("WHERE")[1]
+        self.assertIn("GRAPH ?dataGraph", where_section)
+        self.assertIn("?instance rdf:type ?class .", where_section)
+        self.assertIn(
+            'FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))',
+            where_section,
         )
 
 
@@ -144,10 +168,12 @@ class TestMaterializeValueMapping(unittest.TestCase):
         self.assertIn("?instance rdf:type ?term", query)
         self.assertIn("rdfs:subClassOf", query)
         self.assertIn("owl:intersectionOf", query)
+        self.assertIn("GRAPH ?dataGraph", query)
+        self.assertIn('FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))', query)
 
     @patch("annotation_helper.src.miscellaneous.requests.post")
-    def test_query_uses_has_cell_inverse(self, mock_post):
-        """Test that the query uses dbo:has_cell (the asserted direction) instead of dbo:cell_of."""
+    def test_query_uses_materialized_superclass_type(self, mock_post):
+        """Test that the query reads ?superClass typing from the materialized graph."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_post.return_value = mock_response
@@ -158,10 +184,32 @@ class TestMaterializeValueMapping(unittest.TestCase):
             materialized_graph_uri="http://materialized.local/testdb/",
         )
 
-        # The WHERE clause should use has_cell (asserted) to find instances
         where_section = query.split("WHERE")[1]
-        self.assertIn("dbo:has_cell", where_section)
+        self.assertIn("http://materialized.local/testdb/", where_section)
+        self.assertIn("?instance rdf:type ?superClass .", where_section)
         self.assertIn("dbo:has_value", where_section)
+        self.assertIn("GRAPH ?dataGraph", where_section)
+
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_query_scopes_value_matching_to_data_graphs(self, mock_post):
+        """Test that value matching reads values from explicit data named graphs."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        response, query = _materialize_value_mapping(
+            endpoint="http://localhost:7200/repositories/test/statements",
+            annotation_graph_uri="http://annotation.local/testdb/",
+            materialized_graph_uri="http://materialized.local/testdb/",
+        )
+
+        where_section = query.split("WHERE")[1]
+        self.assertIn("GRAPH ?dataGraph", where_section)
+        self.assertIn("?instance dbo:has_value ?localValue .", where_section)
+        self.assertIn(
+            'FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))',
+            where_section,
+        )
 
     @patch("annotation_helper.src.miscellaneous.requests.post")
     def test_query_inserts_into_materialized_graph(self, mock_post):

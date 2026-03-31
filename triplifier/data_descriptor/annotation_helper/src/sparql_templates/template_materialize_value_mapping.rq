@@ -1,4 +1,4 @@
-# Materialization query: template_mapping.rq ?term → rdf:type
+# Materialization query: template_mapping.rq ?term -> rdf:type
 # For each ?term class defined in the value mapping (template_mapping.rq),
 # this query finds instances that match the owl:equivalentClass restriction
 # and materializes rdf:type ?term for those instances.
@@ -23,7 +23,11 @@ WHERE {
         ?valueRestriction owl:onProperty dbo:has_value ;
                           owl:hasValue ?localValue .
     }
-    ?parent rdf:type ?superClass .
-    ?parent dbo:has_cell ?instance .
-    ?instance dbo:has_value ?localValue .
+    GRAPH <MATERIALIZED_GRAPH_URI> {
+        ?instance rdf:type ?superClass .
+    }
+    GRAPH ?dataGraph {
+        ?instance dbo:has_value ?localValue .
+    }
+    FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
 }

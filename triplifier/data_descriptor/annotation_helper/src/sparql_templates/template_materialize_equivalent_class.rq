@@ -1,4 +1,4 @@
-# Materialization query: owl:equivalentClass → rdf:type
+# Materialization query: owl:equivalentClass -> rdf:type
 # For each owl:equivalentClass triple in the annotation graph,
 # this query finds all instances typed as the local class
 # and materializes an additional rdf:type for the equivalent class.
@@ -16,5 +16,8 @@ WHERE {
         ?class owl:equivalentClass ?equivalentClass .
         FILTER(!isBlank(?equivalentClass))
     }
-    ?instance rdf:type ?class .
+    GRAPH ?dataGraph {
+        ?instance rdf:type ?class .
+    }
+    FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
 }

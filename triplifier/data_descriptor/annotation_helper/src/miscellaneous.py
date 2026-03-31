@@ -441,8 +441,19 @@ def add_annotation(
 
         # reset construction_success for each variable
         construction_success = True
+        core_query = ""
+        query = ""
+        annotation_success = False
 
         if construction_success:
+            core_response, core_query = _add_core_annotation(
+                endpoint=endpoint,
+                prefixes=prefixes,
+                database_name=database,
+                local_definition=local_definition,
+                class_object=class_object,
+            )
+
             # add the annotation with specified reconstructions
             response, query = _add_annotation(
                 endpoint=endpoint,
@@ -461,7 +472,7 @@ def add_annotation(
             )
 
             # check whether the annotation was added successfully
-            if dry_run is False:
+            if dry_run is False and 200 <= response.status_code < 300:
                 annotation_success = check_predicate(
                     endpoint=endpoint,
                     predicate=predicate,
@@ -470,6 +481,15 @@ def add_annotation(
                     prefixes=prefixes,
                 )
             else:
+                annotation_success = False
+
+            if (
+                core_response is not None
+                and 200 <= core_response.status_code < 300
+            ):
+                annotation_success = True
+
+            if dry_run is True:
                 annotation_success = True
 
             # add the value mapping if necessary and possible
@@ -525,7 +545,7 @@ def add_annotation(
 
             write_file(
                 f"{generic_category}",
-                query,
+                f"{core_query}\n\n{query}".strip(),
                 os.path.join(path, "generated_queries", generic_category),
                 ".rq",
             )
@@ -620,17 +640,42 @@ def get_unique_prefixes(query, prefixes):
     :param str prefixes: The input prefixes string.
     :return: A string of unique prefixes.
     """
-    # Extract prefixes from the template query
-    template_prefixes = set()
+    def _extract_prefix_label(line):
+        line = line.strip()
+        if not line.startswith("PREFIX"):
+            return None
+
+        parts = line.split()
+        if len(parts) < 2:
+            return None
+
+        return parts[1].rstrip(":")
+
+    # Track prefix labels already declared by the template so we do not emit
+    # duplicate PREFIX lines. RDF4J rejects duplicate declarations even when
+    # they resolve to the same namespace.
+    seen_labels = set()
     for line in query.split("\n"):
-        if line.startswith("PREFIX"):
-            template_prefixes.add(line)
+        label = _extract_prefix_label(line)
+        if label is not None:
+            seen_labels.add(label)
 
-    # Extract prefixes from the input prefixes string
-    input_prefixes = set(prefixes.split("\n"))
+    unique_prefixes = []
+    for line in prefixes.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
 
-    # Only add prefixes that are not already in the template
-    unique_prefixes = input_prefixes - template_prefixes
+        label = _extract_prefix_label(stripped)
+        if label is None:
+            continue
+
+        if label in seen_labels:
+            continue
+
+        unique_prefixes.append(stripped)
+        seen_labels.add(label)
+
     return "\n".join(unique_prefixes)
 
 
@@ -922,6 +967,56 @@ def _add_annotation(
         query = query.replace(old, new)
 
     # run the query
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def _add_core_annotation(
+    endpoint,
+    prefixes,
+    database_name,
+    local_definition,
+    class_object,
+):
+    """
+    Insert the ontology-level annotation triples independently from any
+    instance-level reconstruction patterns.
+    """
+    query = """
+PREFIX db: <http://data.local/rdf/ontology/>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+PREFIX PLACEHOLDER: <>
+
+INSERT DATA {
+    GRAPH <ANNOTATION_GRAPH_URI> {
+        db:databasename.localvariable owl:equivalentClass PLACEHOLDER:variableclass .
+        db:databasename owl:equivalentClass ncit:C16960 .
+        dbo:has_value owl:sameAs roo:P100042 .
+        dbo:has_unit owl:sameAs roo:P100047 .
+        dbo:cell_of rdf:type owl:ObjectProperty ;
+            owl:inverseOf dbo:has_cell .
+    }
+}
+"""
+
+    prefixes = get_unique_prefixes(query, prefixes)
+
+    replacements = {
+        _prefixes_to_add: prefixes,
+        _annotation_graph_uri: f"http://annotation.local/{database_name}/",
+        _database: database_name,
+        _variable_definition: local_definition,
+        _variable_class: class_object,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
     response = __post_query(endpoint, query)
 
     return response, query
@@ -1445,8 +1540,9 @@ def __post_query(endpoint, query, headers=None, data_style=None):
     if isinstance(headers, dict) is False:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    if isinstance(data_style, str) is False:
-        data_style = "update=" + query
+    if isinstance(data_style, (str, dict)) is False:
+        # Send updates as form fields so RDF4J parses the request body correctly.
+        data_style = {"update": query}
 
     if dry_run is False:
         annotation_response = requests.post(
