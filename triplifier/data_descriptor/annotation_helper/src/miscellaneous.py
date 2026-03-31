@@ -12,7 +12,9 @@ template_dir = os.path.join(script_dir, "sparql_templates")
 dry_run = False
 
 # specify whether to materialize inferences in a separate graph
-materialize = os.environ.get("FLYOVER_MATERIALIZE_INFERENCES", "false").lower() == "true"
+materialize = (
+    os.environ.get("FLYOVER_MATERIALIZE_INFERENCES", "false").lower() == "true"
+)
 
 # not a beauty but works
 _database = "databasename"
