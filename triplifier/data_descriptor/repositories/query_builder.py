@@ -179,9 +179,7 @@ class QueryBuilder:
             # Strip .csv suffix if present for consistent URI matching
             if safe_database.endswith(".csv"):
                 safe_database = safe_database[:-4]
-            db_filter = (
-                f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}.')))"
-            )
+            db_filter = f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}.')))"
 
         return f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>

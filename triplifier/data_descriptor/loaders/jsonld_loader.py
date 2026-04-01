@@ -635,7 +635,10 @@ class JSONLDMapping:
                     if table.source_file.endswith(".csv")
                     else table.source_file
                 )
-                if table.source_file == rdf_store_name or source_no_ext == rdf_store_no_ext:
+                if (
+                    table.source_file == rdf_store_name
+                    or source_no_ext == rdf_store_no_ext
+                ):
                     return db_key
 
         return None

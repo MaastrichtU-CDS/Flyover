@@ -39,9 +39,13 @@ from utils.session_helpers import (
 
 app = Flask(__name__)
 
-if (os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")) and os.getenv("FLYOVER_REPOSITORY_NAME"):
+if (
+    os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")
+) and os.getenv("FLYOVER_REPOSITORY_NAME"):
     # Assume it is running in Docker
-    rdf_store_url = os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")
+    rdf_store_url = os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv(
+        "FLYOVER_GRAPHDB_URL"
+    )
     repo = os.getenv("FLYOVER_REPOSITORY_NAME")
     app.config["DEBUG"] = False
     root_dir = "/app/"
@@ -209,7 +213,9 @@ app.config["APP_CONTEXT"] = {
 
 if __name__ == "__main__":
     # Use 0.0.0.0 in Docker (safe within container network), 127.0.0.1 for local dev
-    is_docker = (os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")) is not None
+    is_docker = (
+        os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")
+    ) is not None
     default_host = "0.0.0.0" if is_docker else "127.0.0.1"
 
     host = os.getenv("FLASK_HOST", default_host)

@@ -128,7 +128,9 @@ def share_mock():
     Returns:
         Rendered share_mock.html template.
     """
-    return render_template("share_mock.html", rdf_store_location="http://localhost:7200/")
+    return render_template(
+        "share_mock.html", rdf_store_location="http://localhost:7200/"
+    )
 
 
 @share_bp.route("/share_publish")

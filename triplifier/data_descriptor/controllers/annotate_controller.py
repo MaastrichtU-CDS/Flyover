@@ -63,7 +63,9 @@ def annotation_landing():
         return redirect(url_for("annotate.annotation_review"))
 
     try:
-        data_exists = rdf_store_service.check_data_exists() if rdf_store_service else False
+        data_exists = (
+            rdf_store_service.check_data_exists() if rdf_store_service else False
+        )
         session_cache.existing_graph = data_exists
 
         return render_template(
