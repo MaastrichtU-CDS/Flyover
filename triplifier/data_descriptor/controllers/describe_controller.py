@@ -112,6 +112,8 @@ def retrieve_descriptive_info():
     session_cache.DescriptiveInfoDetails = {}
 
     for database in session_cache.databases:
+        if not database:
+            continue
         # Parse form data for this database
         descriptive_info = DescribeService.parse_form_data_for_database(
             request.form, database, session_cache.databases
@@ -257,13 +259,15 @@ def _populate_details_from_jsonld(
         session_cache.DescriptiveInfoDetails = {}
 
     map_db_name = mapping.get_first_database_name()
-    if map_db_name is None:
+    if not map_db_name:
         logger.warning(
             "JSON-LD mapping has no database name, skipping details population"
         )
         return
 
     for database in session_cache.databases:
+        if not database:
+            continue
         if not name_matcher(map_db_name, database):
             continue
 

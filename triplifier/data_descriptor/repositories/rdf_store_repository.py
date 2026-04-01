@@ -170,7 +170,9 @@ class RDFStoreRepository:
             return []
 
         try:
-            return df.get_column("db").unique().to_list()
+            names = df.get_column("db").unique().to_list()
+            # Filter out None/empty values from SPARQL results
+            return [n for n in names if n]
         except Exception as e:
             logger.error(f"Error extracting database names: {e}")
             return []
@@ -184,10 +186,17 @@ class RDFStoreRepository:
         Args:
             column_name: Name of the column.
             database: Optional database/table name to scope categories to.
+                Always pass a database name to avoid mixing categories
+                from different tables with the same column name.
 
         Returns:
             Query result as string, or None on error.
         """
+        if not database:
+            logger.warning(
+                f"get_categories called without database for column "
+                f"'{column_name}'; results may include all databases"
+            )
         query = QueryBuilder.categories_query(self.repo, column_name, database)
         return self.execute_query(query)
 

@@ -78,9 +78,11 @@ class RDFStoreService:
         )
         df = df.drop("uri")
 
-        # Group by database
+        # Group by database, filtering out None/empty names from regex mismatches
         columns_by_database = {}
         for db in df.get_column("database").unique().to_list():
+            if not db:
+                continue
             db_columns = df.filter(pl.col("database") == db)
             columns_by_database[db] = db_columns.get_column("column").to_list()
 
@@ -397,12 +399,12 @@ class RDFStoreService:
 
         # Fallback: try matching with/without .csv extension
         map_name_no_ext = (
-            map_database_name.rstrip(".csv")
+            map_database_name[:-4]
             if map_database_name.endswith(".csv")
             else map_database_name
         )
         target_no_ext = (
-            target_database.rstrip(".csv")
+            target_database[:-4]
             if target_database.endswith(".csv")
             else target_database
         )
