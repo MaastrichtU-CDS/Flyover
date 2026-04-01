@@ -31,7 +31,7 @@ const FlyoverNavigation = {
             pages: ['/share_landing', '/share_mock', '/share_publish'],
             elementId: 'share-step',
             alwaysAccessible: true,
-            icon: 'fa-share-alt',
+            icon: 'fa-mail-forward',
         }
     },
 
