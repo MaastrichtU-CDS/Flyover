@@ -8,7 +8,6 @@ data validation, and triplification.
 import json
 import logging
 import os
-import requests
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -24,15 +23,17 @@ try:
 except (ImportError, ValueError):
     try:
         # Try direct import (works when running from data_descriptor directory)
-        from utils.data_preprocessing import preprocess_dataframe, sanitise_table_name
+        from utils.data_preprocessing import (  # type: ignore[no-redef]
+            preprocess_dataframe,
+            sanitise_table_name,
+        )
     except ImportError:
         try:
             # Try absolute import from current working directory
             import sys
-            import os
 
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from utils.data_preprocessing import (
+            from utils.data_preprocessing import (  # type: ignore[no-redef]
                 preprocess_dataframe,
                 sanitise_table_name,
             )
@@ -41,7 +42,7 @@ except (ImportError, ValueError):
             import sys
 
             sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-            from utils.data_preprocessing import (
+            from utils.data_preprocessing import (  # type: ignore[no-redef]
                 preprocess_dataframe,
                 sanitise_table_name,
             )
@@ -280,7 +281,7 @@ class IngestService:
         Returns:
             list: List of table names (sourceFile values) from all databases/tables
         """
-        table_names = []
+        table_names: List[str] = []
 
         # Check if this is JSON-LD format (has 'databases' key)
         databases = semantic_map.get("databases")
@@ -385,7 +386,7 @@ class IngestService:
                     run_triplifier as run_triplifier_impl,
                 )
             except ImportError:
-                from services.conversion_service import (
+                from services.conversion_service import (  # type: ignore[no-redef]
                     run_triplifier as run_triplifier_impl,
                 )
 
@@ -756,7 +757,11 @@ class IngestService:
                     continue
 
                 # Upload ontology file
-                ontology_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/{table_name}/"
+                ontology_url = (
+                    f"{rdf_store_url}/repositories/{repo}"
+                    f"/rdf-graphs/service?graph="
+                    f"http://ontology.local/{table_name}/"
+                )
 
                 success, status, method = self.upload_file_to_rdf_store(
                     ontology_path,
@@ -778,7 +783,11 @@ class IngestService:
                     continue
 
                 # Upload data file
-                data_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/{table_name}/"
+                data_url = (
+                    f"{rdf_store_url}/repositories/{repo}"
+                    f"/rdf-graphs/service?graph="
+                    f"http://data.local/{table_name}/"
+                )
 
                 success, status, method = self.upload_file_to_rdf_store(
                     data_path,
@@ -839,7 +848,11 @@ class IngestService:
             if upload_ontology:
                 ontology_path = os.path.join(root_dir, "ontology.owl")
                 if os.path.exists(ontology_path):
-                    ontology_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"
+                    ontology_url = (
+                        f"{rdf_store_url}/repositories/{repo}"
+                        f"/rdf-graphs/service?graph="
+                        f"http://ontology.local/"
+                    )
                     success, status, method = self.upload_file_to_rdf_store(
                         ontology_path,
                         ontology_url,

@@ -153,6 +153,26 @@ app.register_blueprint(share_bp)
 app.config["rdf_store_url"] = rdf_store_url
 app.config["repo"] = repo
 
+
+def _run_triplifier_and_cache(properties_file: str) -> tuple:
+    """Run triplifier and cache output files in session_cache."""
+    result = IngestService().run_triplifier(
+        properties_file,
+        root_dir,
+        child_dir,
+        csv_data_list=(
+            session_cache.csvData if hasattr(session_cache, "csvData") else None
+        ),
+        csv_table_names=(
+            session_cache.csvTableNames
+            if hasattr(session_cache, "csvTableNames")
+            else None
+        ),
+    )
+    session_cache.output_files = result[2]
+    return result[:2]
+
+
 # Set up the application context with required functions and services
 app.config["APP_CONTEXT"] = {
     "session_cache": session_cache,
@@ -161,25 +181,7 @@ app.config["APP_CONTEXT"] = {
     "upload_folder": app.config["UPLOAD_FOLDER"],
     "root_dir": root_dir,
     "child_dir": child_dir,
-    "run_triplifier": lambda properties_file: (
-        lambda result: (setattr(session_cache, "output_files", result[2]), result[:2])[
-            1
-        ]
-    )(
-        IngestService().run_triplifier(
-            properties_file,
-            root_dir,
-            child_dir,
-            csv_data_list=(
-                session_cache.csvData if hasattr(session_cache, "csvData") else None
-            ),
-            csv_table_names=(
-                session_cache.csvTableNames
-                if hasattr(session_cache, "csvTableNames")
-                else None
-            ),
-        )
-    ),
+    "run_triplifier": _run_triplifier_and_cache,
     "upload_func": lambda file_type, output_files: (
         IngestService().upload_multiple_graphs(
             root_dir, rdf_store_url, repo, output_files, data_background=False

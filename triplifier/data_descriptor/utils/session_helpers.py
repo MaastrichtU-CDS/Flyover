@@ -13,7 +13,7 @@ import requests
 import polars as pl
 
 from io import StringIO
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import RDFStoreService for the name matching function
 try:

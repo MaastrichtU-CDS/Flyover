@@ -10,17 +10,15 @@ import logging
 import os
 import zipfile
 import random
-import requests
-
 import polars as pl
 
 from flask import Response, abort, after_this_request
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Union
 
 try:
     from ..utils.data_preprocessing import preprocess_mixed_type_data
 except ImportError:
-    from utils.data_preprocessing import preprocess_mixed_type_data
+    from utils.data_preprocessing import preprocess_mixed_type_data  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +309,7 @@ class ShareService:
         rdf_store_service,
         rdf_store_url: str,
         named_graph: str = "http://ontology.local/",
-        filename: str = None,
+        filename: Optional[str] = None,
     ) -> Response:
         """
         Download ontology files from the RDF store.
@@ -421,7 +419,7 @@ class ShareService:
 
     @staticmethod
     def _download_single_ontology(
-        databases: list, rdf_store_service, named_graph: str, filename: str = None
+        databases: list, rdf_store_service, named_graph: str, filename: Optional[str] = None
     ) -> Response:
         """Download single ontology."""
         if len(databases) == 1:
@@ -447,9 +445,9 @@ class ShareService:
     def generate_mock_data_from_semantic_map(
         semantic_map_data: dict,
         num_rows: int = 100,
-        random_seed: int = None,
-        database_id: str = None,
-        table_id: str = None,
+        random_seed: Optional[int] = None,
+        database_id: Optional[str] = None,
+        table_id: Optional[str] = None,
     ) -> dict:
         """
         Generate mock data based on semantic map structure using the data_synthetisation utility.

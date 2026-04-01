@@ -6,13 +6,12 @@ providing higher-level business operations.
 """
 
 import logging
-import requests
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from ..repositories import RDFStoreRepository
 except ImportError:
-    from repositories import RDFStoreRepository
+    from repositories import RDFStoreRepository  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +86,9 @@ class RDFStoreService:
 
         return columns_by_database
 
-    def get_categories(self, column_name: str, database: str = None) -> Optional[str]:
+    def get_categories(
+        self, column_name: str, database: Optional[str] = None
+    ) -> Optional[str]:
         """
         Get categories for a column.
 

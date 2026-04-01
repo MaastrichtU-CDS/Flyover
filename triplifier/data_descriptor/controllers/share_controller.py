@@ -5,16 +5,10 @@ This module handles HTTP requests for sharing data, including
 semantic map downloads, ontology downloads, and share page rendering.
 """
 
-import json
 import logging
-import os
-import zipfile
 
 from flask import (
     Blueprint,
-    Response,
-    abort,
-    after_this_request,
     render_template,
     send_from_directory,
     jsonify,
