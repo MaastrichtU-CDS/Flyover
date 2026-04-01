@@ -46,6 +46,7 @@ const FlyoverNavigation = {
         this.checkDataExists();
         this.bindClickHandlers();
         this.updateStepStates();
+        this.updateAnnotateLink();
     },
 
     /**
@@ -268,6 +269,56 @@ const FlyoverNavigation = {
         if (config && config.pages && config.pages.length > 0) {
             window.location.href = config.pages[0];
         }
+    },
+
+    /**
+     * Check IndexedDB for an existing semantic map and update the annotate
+     * step link to skip annotation_landing when a mapping is available.
+     * Uses raw IndexedDB API to avoid dependency on FlyoverDB.
+     */
+    updateAnnotateLink: function() {
+        if (!('indexedDB' in window)) {
+            return;
+        }
+
+        var self = this;
+        var request = indexedDB.open('FlyoverDB', 2);
+
+        request.onsuccess = function(event) {
+            try {
+                var db = event.target.result;
+                if (!db.objectStoreNames.contains('metadata')) {
+                    db.close();
+                    return;
+                }
+                var tx = db.transaction(['metadata'], 'readonly');
+                var store = tx.objectStore('metadata');
+                var getReq = store.get('semantic_map');
+
+                getReq.onsuccess = function() {
+                    if (getReq.result && getReq.result.data) {
+                        // Semantic map found - update annotate step href
+                        var annotateEl = document.getElementById('annotate-step');
+                        if (annotateEl) {
+                            annotateEl.href = '/annotation-review';
+                        }
+                        // Also update the pages config for navigateToStep
+                        self.steps['annotate'].pages[0] = '/annotation-review';
+                    }
+                    db.close();
+                };
+
+                getReq.onerror = function() {
+                    db.close();
+                };
+            } catch (e) {
+                // Silently ignore IndexedDB errors in navigation
+            }
+        };
+
+        request.onerror = function() {
+            // IndexedDB not available or blocked - fall back to default
+        };
     }
 };
 

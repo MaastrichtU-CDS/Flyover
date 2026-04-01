@@ -126,7 +126,24 @@ class TestQueryBuilderColumnQueries(unittest.TestCase):
         self.assertIn("test_column", query)
         self.assertIn("FILTER", query)
         self.assertIn("CONTAINS", query)
-        self.assertIn("test_db", query)
+        # Filter should use 'test_db.' (with trailing dot) for precise matching
+        self.assertIn("test_db.", query)
+
+    def test_categories_query_with_csv_database(self):
+        """Test categories query strips .csv from database name."""
+        query = QueryBuilder.categories_query("test_repo", "col", "my_table.csv")
+
+        self.assertIn("FILTER", query)
+        # Should strip .csv and use 'my_table.' for matching
+        self.assertIn("my_table.", query)
+        self.assertNotIn("my_table.csv", query)
+
+    def test_column_class_uri_query_strips_csv(self):
+        """Test column class URI query strips .csv from table name."""
+        query = QueryBuilder.column_class_uri_query("my_table.csv", "col")
+
+        self.assertIn("my_table.", query)
+        self.assertNotIn("my_table.csv", query)
 
 
 class TestQueryBuilderDatabaseQueries(unittest.TestCase):

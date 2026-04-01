@@ -68,22 +68,16 @@ class Cache:
     Session cache for storing application state.
 
     This class holds session-specific data for the Flyover application,
-    including database connections, semantic mappings, and processing status.
+    including RDF store configuration, semantic mappings, and processing status.
 
     Attributes:
-        repo: GraphDB repository name
-        table: PostgreSQL table name (for SQL data sources)
-        url: PostgreSQL URL
-        username: PostgreSQL username
-        password: PostgreSQL password
-        db_name: PostgreSQL database name
-        conn: PostgreSQL connection object
+        repo: RDF store repository name
         csvData: List of parsed CSV dataframes
         csvTableNames: List of table names derived from CSV filenames
         global_semantic_map: DEPRECATED - Legacy JSON semantic map (for backward compatibility)
         jsonld_mapping: JSONLDMapping object for JSON-LD format semantic maps
         existing_graph: Boolean indicating if data graph exists
-        databases: List of database names from GraphDB
+        databases: List of database names from the RDF store
         descriptive_info: Variable description metadata by database
         DescriptiveInfoDetails: Detailed variable info (categories, units) by database
         StatusToDisplay: Message to display on status pages
@@ -94,19 +88,18 @@ class Cache:
         annotation_status: Annotation results by variable
         annotation_json_path: Path to uploaded annotation JSON file
         output_files: List of output files from triplification
+
+    Removed attributes (no longer used):
+        table, url, username, password, db_name, conn: PostgreSQL connection
+            details - removed as PostgreSQL connections are no longer managed
+            via the session cache.
+        file_path, col_cursor, uploaded_file: File handling attributes -
+            removed as file handling is now managed in the frontend.
     """
 
     def __init__(self):
-        # GraphDB configuration
+        # RDF store configuration
         self.repo = repo
-
-        # PostgreSQL connection details
-        self.table = None
-        self.url = None
-        self.username = None
-        self.password = None
-        self.db_name = None
-        self.conn = None
 
         # CSV data storage
         self.csvData = None

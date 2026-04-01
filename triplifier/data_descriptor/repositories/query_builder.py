@@ -169,11 +169,19 @@ class QueryBuilder:
         safe_repo = cls.sanitize_sparql_value(repo)
         safe_column = cls.sanitize_sparql_value(column_name)
 
-        # Add database filter to ensure categories are scoped to the correct table
+        # Add database filter to ensure categories are scoped to the correct table.
+        # Use '{database}.' (with trailing dot) to prevent false-positive substring
+        # matches (e.g. 'table_a' matching 'table_a_copy'). The column class URI
+        # follows the pattern: http://…/{table_name}.column.{column_name}
         db_filter = ""
         if database:
             safe_database = cls.sanitize_sparql_value(database)
-            db_filter = f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}')))"
+            # Strip .csv suffix if present for consistent URI matching
+            if safe_database.endswith(".csv"):
+                safe_database = safe_database[:-4]
+            db_filter = (
+                f"FILTER(CONTAINS(LCASE(STR(?v)), LCASE('{safe_database}.')))"
+            )
 
         return f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
@@ -206,13 +214,16 @@ class QueryBuilder:
         # Sanitize inputs to prevent SPARQL injection
         safe_table = cls.sanitize_sparql_value(table_name)
         safe_column = cls.sanitize_sparql_value(column_name)
+        # Strip .csv suffix if present for consistent URI matching
+        if safe_table.endswith(".csv"):
+            safe_table = safe_table[:-4]
         return f"""
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
             SELECT ?uri WHERE {{
                 ?uri dbo:column '{safe_column}' .
-                FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{safe_table}')))
+                FILTER(CONTAINS(LCASE(STR(?uri)), LCASE('{safe_table}.')))
             }}
             LIMIT 1
         """
