@@ -37,7 +37,7 @@ class RDFStoreRepository:
         self.repo = repo
         self.query_builder = QueryBuilder()
 
-    def _parse_csv_result(self, csv_data: str) -> Optional[pl.DataFrame]:
+    def _parse_csv_result(self, csv_data: Optional[str]) -> Optional[pl.DataFrame]:
         """
         Parse CSV query result into a Polars DataFrame.
 
@@ -175,7 +175,9 @@ class RDFStoreRepository:
             logger.error(f"Error extracting database names: {e}")
             return []
 
-    def get_categories(self, column_name: str, database: str = None) -> Optional[str]:
+    def get_categories(
+        self, column_name: str, database: Optional[str] = None
+    ) -> Optional[str]:
         """
         Retrieve categories for a column.
 

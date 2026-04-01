@@ -7,7 +7,7 @@ import re
 import logging
 import chardet
 from io import BytesIO
-from typing import Any, Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -340,10 +340,10 @@ def preprocess_mixed_type_data(
     Returns:
         Processed table data with consistent types for each column
     """
-    processed_data = {}
+    processed_data: Dict[str, List[Union[str, int, float, None]]] = {}
 
     for col_name, col_values in table_data.items():
-        processed_values = []
+        processed_values: List[Union[str, int, float, None]] = []
         has_list_values = False
         has_numeric = False
         has_string = False

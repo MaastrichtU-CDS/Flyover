@@ -23,7 +23,7 @@ from typing import List, Tuple, Union
 try:
     from ..utils.data_preprocessing import sanitise_table_name
 except ImportError:
-    from utils.data_preprocessing import sanitise_table_name
+    from utils.data_preprocessing import sanitise_table_name  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class PythonTriplifierIntegration:
     """Integration layer for the Python Triplifier package."""
 
-    def __init__(self, root_dir="", child_dir="."):
+    def __init__(self, root_dir: str = "", child_dir: str = "."):
         self.root_dir = root_dir
         self.child_dir = child_dir
         self.hostname = socket.gethostname()
@@ -86,7 +86,10 @@ class PythonTriplifierIntegration:
                     col_defs = ", ".join([f'"{col}" TEXT' for col in csv_data.columns])
                     conn.execute(f'DROP TABLE IF EXISTS "{clean_table_name}"')
                     conn.execute(f'CREATE TABLE "{clean_table_name}" ({col_defs})')
-                    insert_sql = f'INSERT INTO "{clean_table_name}" VALUES ({", ".join(["?" for _ in csv_data.columns])})'
+                    insert_sql = (
+                        f'INSERT INTO "{clean_table_name}" '
+                        f'VALUES ({", ".join(["?" for _ in csv_data.columns])})'
+                    )
                     # Use executemany for efficient batch insertion
                     conn.executemany(insert_sql, csv_data.iter_rows())
                     conn.commit()
@@ -218,7 +221,9 @@ class PythonTriplifierIntegration:
                 if db_url is None:
                     return (
                         False,
-                        "Database URL is required. Please provide it via the form or set the TRIPLIFIER_DB_URL environment variable.",
+                        "Database URL is required. Please provide it "
+                        "via the form or set the "
+                        "TRIPLIFIER_DB_URL environment variable.",
                         [],
                     )
             if db_user is None:
@@ -226,7 +231,9 @@ class PythonTriplifierIntegration:
                 if db_user is None:
                     return (
                         False,
-                        "Database user is required. Please provide it via the form or set the TRIPLIFIER_DB_USER environment variable.",
+                        "Database user is required. Please provide it "
+                        "via the form or set the "
+                        "TRIPLIFIER_DB_USER environment variable.",
                         [],
                     )
             if db_password is None:
@@ -234,7 +241,9 @@ class PythonTriplifierIntegration:
                 if db_password is None:
                     return (
                         False,
-                        "Database password is required. Please provide it via the form or set the TRIPLIFIER_DB_PASSWORD environment variable.",
+                        "Database password is required. Please provide "
+                        "it via the form or set the "
+                        "TRIPLIFIER_DB_PASSWORD environment variable.",
                         [],
                     )
 
@@ -359,7 +368,7 @@ class PythonTriplifierIntegration:
                     with sqlite3.connect(temp_db_path) as sqlite_conn:
                         # Sanitize column names to ensure they're safe for SQL
                         # Column names from cursor.description should be safe, but we validate anyway
-                        safe_columns = []
+                        safe_columns: List[str] = []
                         for col in columns:
                             # Remove any characters that could be problematic
                             # Only allow alphanumeric and underscore (hyphens are not valid in SQL)
@@ -380,7 +389,10 @@ class PythonTriplifierIntegration:
                         sqlite_conn.execute(
                             f'CREATE TABLE "{clean_table_name}" ({col_defs})'
                         )
-                        insert_sql = f'INSERT INTO "{clean_table_name}" VALUES ({", ".join(["?" for _ in safe_columns])})'
+                        insert_sql = (
+                            f'INSERT INTO "{clean_table_name}" '
+                            f'VALUES ({", ".join(["?" for _ in safe_columns])})'
+                        )
                         sqlite_conn.executemany(insert_sql, table_data.iter_rows())
                         sqlite_conn.commit()
                         logger.info(
@@ -525,6 +537,8 @@ def run_triplifier(
 
         if properties_file == "triplifierCSV.properties":
             # Use Python Triplifier for CSV processing
+            if csv_data_list is None or csv_table_names is None:
+                return False, "CSV data and table names are required.", []
             success, message, output_files = triplifier.run_triplifier_csv(
                 csv_data_list, csv_table_names
             )

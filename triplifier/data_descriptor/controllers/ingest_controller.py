@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 ingest_bp = Blueprint("ingest", __name__)
 
 
-def get_app_context():
+def get_app_context() -> dict:
     """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
     from services import RDFStoreService

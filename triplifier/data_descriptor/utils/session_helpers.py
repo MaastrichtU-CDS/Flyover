@@ -13,7 +13,7 @@ import requests
 import polars as pl
 
 from io import StringIO
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import RDFStoreService for the name matching function
 try:
@@ -249,7 +249,9 @@ def process_variable_for_annotation(
     return var_copy, has_local_def
 
 
-def get_semantic_map_for_annotation(session_cache, database_key: Optional[str] = None):
+def get_semantic_map_for_annotation(
+    session_cache: Any, database_key: Optional[str] = None
+) -> Tuple[Optional[dict], Optional[str], bool]:
     """
     Get the effective semantic map for annotation, preferring jsonld_mapping.
 
@@ -282,7 +284,7 @@ def get_semantic_map_for_annotation(session_cache, database_key: Optional[str] =
     return None, None, False
 
 
-def has_semantic_map(session_cache) -> bool:
+def has_semantic_map(session_cache: Any) -> bool:
     """
     Check if any semantic map (jsonld_mapping or global_semantic_map) is available.
 
@@ -299,7 +301,7 @@ def has_semantic_map(session_cache) -> bool:
     return False
 
 
-def get_database_name_from_mapping(session_cache) -> Optional[str]:
+def get_database_name_from_mapping(session_cache: Any) -> Optional[str]:
     """
     Get the database name from the available semantic map.
 

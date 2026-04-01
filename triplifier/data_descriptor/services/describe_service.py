@@ -205,61 +205,6 @@ class DescribeService:
 
         return processed_var, has_local_def
 
-        # Get keys for this database
-        keys = []
-        for key in form_data:
-            if not key.startswith(f"{database}_"):
-                continue
-            matching_dbs = [db for db in all_databases if key.startswith(f"{db}_")]
-            if matching_dbs and max(matching_dbs, key=len) == database:
-                keys.append(key)
-
-        # Extract unique variables
-        variables = set()
-        for key in keys:
-            var = extract_variable_from_key(key, database)
-            if var:
-                variables.add(var)
-
-        # Process each variable
-        for variable in variables:
-            if variable not in existing_info:
-                existing_info[variable] = {}
-
-            # Get related keys
-            var_keys = [
-                key
-                for key in form_data
-                if variable in key
-                and not key.startswith("comment_")
-                and not key.startswith("count_")
-            ]
-
-            for key in var_keys:
-                if "_notation_missing_or_unspecified" in key:
-                    value = form_data.get(key)
-                    existing_info[variable][f"Category: {value}"] = (
-                        f"Category {value}: missing_or_unspecified"
-                        if value
-                        else "No missing value notation provided"
-                    )
-                elif "_category_" in key and not key.startswith("count_"):
-                    category = key.split('_category_"')[1].split('"')[0]
-                    count_key = f'count_{database}_{variable}_category_"{category}"'
-                    comment_key = f"comment_{key}"
-
-                    existing_info[variable][f"Category: {category}"] = (
-                        f"Category {category}: {form_data.get(key)}, comment: "
-                        f'{form_data.get(comment_key) or "No comment provided"}, '
-                        f'count: {form_data.get(count_key) or "No count available"}'
-                    )
-                elif "count_" not in key:
-                    existing_info[variable]["units"] = (
-                        form_data.get(key) or "No units specified"
-                    )
-
-        return existing_info
-
     @staticmethod
     def formulate_local_semantic_map(
         global_semantic_map: Dict[str, Any],
@@ -300,7 +245,7 @@ class DescribeService:
             return modified_map
 
         # Process variables from UI
-        used_global_variables = {}
+        used_global_variables: Dict[str, int] = {}
 
         for local_var, local_value in descriptive_info.items():
             if "description" not in local_value or not local_value["description"]:
@@ -376,7 +321,7 @@ class DescribeService:
             return
 
         original_terms = modified_var["value_mapping"].get("terms", {})
-        used_global_terms = {}
+        used_global_terms: Dict[str, int] = {}
 
         # Reset local_terms first
         for term_key in original_terms:
@@ -441,6 +386,19 @@ class DescribeService:
             except Exception as e:
                 logger.error(f"Error reading JSON-LD mapping: {e}")
                 return default_names
+
+        # Fallback to legacy semantic map
+        if global_semantic_map is not None:
+            try:
+                var_info = global_semantic_map.get("variable_info", {})
+                if var_info:
+                    return [
+                        name.capitalize().replace("_", " ") for name in var_info.keys()
+                    ] + ["Other"]
+            except Exception as e:
+                logger.error(f"Error reading global semantic map: {e}")
+
+        return default_names
 
     @staticmethod
     def has_semantic_map(session_cache: Any) -> bool:

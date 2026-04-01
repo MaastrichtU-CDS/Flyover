@@ -153,7 +153,9 @@ class QueryBuilder:
         """
 
     @classmethod
-    def categories_query(cls, repo: str, column_name: str, database: str = None) -> str:
+    def categories_query(
+        cls, repo: str, column_name: str, database: Optional[str] = None
+    ) -> str:
         """
         Build query to retrieve categories for a column.
 

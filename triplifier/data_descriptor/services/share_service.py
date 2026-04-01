@@ -10,17 +10,15 @@ import logging
 import os
 import zipfile
 import random
-import requests
-
 import polars as pl
 
 from flask import Response, abort, after_this_request
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Union
 
 try:
     from ..utils.data_preprocessing import preprocess_mixed_type_data
 except ImportError:
-    from utils.data_preprocessing import preprocess_mixed_type_data
+    from utils.data_preprocessing import preprocess_mixed_type_data  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +223,7 @@ class ShareService:
     """
 
     @staticmethod
-    def download_semantic_map(session_cache, formulate_local_map) -> Response:
+    def download_semantic_map(session_cache: Any, formulate_local_map: Any) -> Response:
         """
         Download the semantic map in JSON-LD or legacy JSON format.
 
@@ -263,7 +261,7 @@ class ShareService:
 
     @staticmethod
     def _download_multiple_semantic_maps(
-        session_cache, formulate_local_map
+        session_cache: Any, formulate_local_map: Any
     ) -> Response:
         """Create zip file with multiple semantic maps."""
         zip_filename = "local_semantic_maps.zip"
@@ -275,7 +273,7 @@ class ShareService:
                 zipf.writestr(filename, json.dumps(modified_map, indent=4))
 
         @after_this_request
-        def remove_file(response):
+        def remove_file(response: Any) -> Any:
             try:
                 os.remove(zip_filename)
             except Exception as error:
@@ -290,7 +288,9 @@ class ShareService:
             )
 
     @staticmethod
-    def _download_single_semantic_map(session_cache, formulate_local_map) -> Response:
+    def _download_single_semantic_map(
+        session_cache: Any, formulate_local_map: Any
+    ) -> Response:
         """Download single semantic map."""
         database = session_cache.databases[0]
         filename = f"local_semantic_map_{database}.json"
@@ -311,7 +311,7 @@ class ShareService:
         rdf_store_service,
         rdf_store_url: str,
         named_graph: str = "http://ontology.local/",
-        filename: str = None,
+        filename: Optional[str] = None,
     ) -> Response:
         """
         Download ontology files from the RDF store.
@@ -405,7 +405,7 @@ class ShareService:
             abort(404, description="No ontology data found.")
 
         @after_this_request
-        def remove_file(response):
+        def remove_file(response: Any) -> Any:
             try:
                 os.remove(zip_filename)
             except Exception as error:
@@ -421,7 +421,10 @@ class ShareService:
 
     @staticmethod
     def _download_single_ontology(
-        databases: list, rdf_store_service, named_graph: str, filename: str = None
+        databases: list,
+        rdf_store_service,
+        named_graph: str,
+        filename: Optional[str] = None,
     ) -> Response:
         """Download single ontology."""
         if len(databases) == 1:
@@ -447,9 +450,9 @@ class ShareService:
     def generate_mock_data_from_semantic_map(
         semantic_map_data: dict,
         num_rows: int = 100,
-        random_seed: int = None,
-        database_id: str = None,
-        table_id: str = None,
+        random_seed: Optional[int] = None,
+        database_id: Optional[str] = None,
+        table_id: Optional[str] = None,
     ) -> dict:
         """
         Generate mock data based on semantic map structure using the data_synthetisation utility.
