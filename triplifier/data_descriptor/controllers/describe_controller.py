@@ -352,10 +352,4 @@ def retrieve_detailed_descriptive_info():
                 variable, database, updated_info.get(variable, {})
             )
 
-    # Redirect based on whether a JSON-LD mapping is already loaded
-    # If the user used a JSON-LD for describing, skip annotation_landing
-    # and go directly to annotation_review
-    if session_cache.jsonld_mapping:
-        return redirect(url_for("annotate.annotation_review"))
-    else:
-        return redirect(url_for("annotate.annotation_landing"))
+    return redirect(url_for("annotate.annotation_review"))

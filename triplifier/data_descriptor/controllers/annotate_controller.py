@@ -47,20 +47,12 @@ def annotation_landing():
     """
     Render the annotation landing page.
 
-    If the user already has a JSON-LD mapping loaded (e.g. from the describe
-    step), skip the landing page and redirect directly to annotation review,
-    since the manual mapping step is unnecessary.
-
     Returns:
-        Rendered annotation_landing.html template, or redirect to review.
+        Rendered annotation_landing.html template.
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
-
-    # Skip landing when a JSON-LD mapping is already loaded
-    if session_cache.jsonld_mapping:
-        return redirect(url_for("annotate.annotation_review"))
 
     try:
         data_exists = (
