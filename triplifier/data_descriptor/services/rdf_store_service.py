@@ -398,16 +398,8 @@ class RDFStoreService:
             return True
 
         # Fallback: try matching with/without .csv extension
-        map_name_no_ext = (
-            map_database_name[:-4]
-            if map_database_name.endswith(".csv")
-            else map_database_name
-        )
-        target_no_ext = (
-            target_database[:-4]
-            if target_database.endswith(".csv")
-            else target_database
-        )
+        map_name_no_ext = map_database_name.removesuffix(".csv")
+        target_no_ext = target_database.removesuffix(".csv")
 
         if map_name_no_ext == target_no_ext:
             logger.debug(
