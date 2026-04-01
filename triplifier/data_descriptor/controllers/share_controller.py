@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 share_bp = Blueprint("share", __name__)
 
 
-def get_app_context():
+def get_app_context() -> dict:
     """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
 
@@ -97,7 +97,7 @@ def favicon():
 
 
 @share_bp.route("/data_descriptor/static/<path:filename>")
-def static(filename):
+def static(filename: str):
     """
     Serve static files from static directory.
 

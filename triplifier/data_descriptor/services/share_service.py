@@ -223,7 +223,7 @@ class ShareService:
     """
 
     @staticmethod
-    def download_semantic_map(session_cache, formulate_local_map) -> Response:
+    def download_semantic_map(session_cache: Any, formulate_local_map: Any) -> Response:
         """
         Download the semantic map in JSON-LD or legacy JSON format.
 
@@ -261,7 +261,7 @@ class ShareService:
 
     @staticmethod
     def _download_multiple_semantic_maps(
-        session_cache, formulate_local_map
+        session_cache: Any, formulate_local_map: Any
     ) -> Response:
         """Create zip file with multiple semantic maps."""
         zip_filename = "local_semantic_maps.zip"
@@ -273,7 +273,7 @@ class ShareService:
                 zipf.writestr(filename, json.dumps(modified_map, indent=4))
 
         @after_this_request
-        def remove_file(response):
+        def remove_file(response: Any) -> Any:
             try:
                 os.remove(zip_filename)
             except Exception as error:
@@ -288,7 +288,7 @@ class ShareService:
             )
 
     @staticmethod
-    def _download_single_semantic_map(session_cache, formulate_local_map) -> Response:
+    def _download_single_semantic_map(session_cache: Any, formulate_local_map: Any) -> Response:
         """Download single semantic map."""
         database = session_cache.databases[0]
         filename = f"local_semantic_map_{database}.json"
@@ -403,7 +403,7 @@ class ShareService:
             abort(404, description="No ontology data found.")
 
         @after_this_request
-        def remove_file(response):
+        def remove_file(response: Any) -> Any:
             try:
                 os.remove(zip_filename)
             except Exception as error:

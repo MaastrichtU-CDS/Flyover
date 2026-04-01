@@ -21,14 +21,14 @@ logger = logging.getLogger(__name__)
 annotate_bp = Blueprint("annotate", __name__)
 
 
-def get_app_context():
+def get_app_context() -> dict:
     """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
 
 
-def safe_remove_file(filepath):
+def safe_remove_file(filepath: str) -> None:
     """
     Safely remove a file, logging any errors but not raising exceptions.
 

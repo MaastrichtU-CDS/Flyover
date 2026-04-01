@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class PythonTriplifierIntegration:
     """Integration layer for the Python Triplifier package."""
 
-    def __init__(self, root_dir="", child_dir="."):
+    def __init__(self, root_dir: str = "", child_dir: str = "."):
         self.root_dir = root_dir
         self.child_dir = child_dir
         self.hostname = socket.gethostname()

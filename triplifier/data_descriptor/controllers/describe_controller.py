@@ -12,6 +12,8 @@ from io import StringIO
 import polars as pl
 from flask import Blueprint, redirect, render_template, request, url_for
 
+from typing import Any
+
 from services import DescribeService
 
 logger = logging.getLogger(__name__)
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 describe_bp = Blueprint("describe", __name__)
 
 
-def get_app_context():
+def get_app_context() -> dict:
     """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
 
@@ -210,7 +212,7 @@ def describe_variable_details():
     )
 
 
-def _variable_exists_in_details(details_list, local_column):
+def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
     """
     Check if a variable already exists in the DescriptiveInfoDetails list.
 
@@ -231,7 +233,7 @@ def _variable_exists_in_details(details_list, local_column):
     return False
 
 
-def _populate_details_from_jsonld(session_cache, rdf_store_service, name_matcher):
+def _populate_details_from_jsonld(session_cache: Any, rdf_store_service: Any, name_matcher: Any) -> None:
     """
     Populate DescriptiveInfoDetails from JSON-LD mapping.
 

@@ -14,7 +14,7 @@ from flask import Flask
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
-def setup_logging():
+def setup_logging() -> None:
     """Setup centralised logging with timestamp format"""
     logging.basicConfig(
         level=logging.INFO,
