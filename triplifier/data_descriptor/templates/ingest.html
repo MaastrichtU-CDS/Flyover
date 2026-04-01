@@ -181,7 +181,7 @@
                 <div class="mt-1 ms-4">
                     <div class="mt-1">
                         <p class="mb-1">
-                            Please know that if you have already converted your data using Flyover, then you can also directly upload the files in the GraphDB workbench.
+                            Please know that if you have already converted your data using Flyover, then you can also directly upload the files in the RDF store interface.
                             <br>
                             In that case you can skip this data ingest step and proceed to describing and or annotating your data.
                         </p>
@@ -193,12 +193,12 @@
         {% if graph_exists %}
             <hr>
             <p><i class="fas fa-exclamation-triangle"
-                                   style="margin-right: 5px; align-self: flex-start;"></i><i><b>The associated GraphDB instance already contains a data graph.</b></i><br>
+                                   style="margin-right: 5px; align-self: flex-start;"></i><i><b>The associated RDF store already contains a data graph.</b></i><br>
                 <i>It is possible to add more data to this graph, for that you can use the data upload available
                     above.</i><br>
                 <i>It is, however, possible to describe the existing data without having to add new,
                     for that please use the options below.</i></p>
-            <i>The existing data graph can also be removed through the GraphDB workbench.</i></p>
+            <i>The existing data graph can also be removed through the RDF store interface.</i></p>
             <br>
             <button type="submit" id="submitWithoutData" class="btn btn-primary"><i class="fas fa-fast-forward"></i> Proceed without adding data</button>
             <br>

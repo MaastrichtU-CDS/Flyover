@@ -6,7 +6,7 @@ separated from HTTP request handling (controllers) and
 data access (repositories).
 """
 
-from .graphdb_service import GraphDBService
+from .rdf_store_service import RDFStoreService
 from .ingest_service import IngestService
 from .describe_service import DescribeService
 from .annotate_service import AnnotateService
@@ -14,7 +14,7 @@ from .conversion_service import PythonTriplifierIntegration, run_triplifier
 from .share_service import ShareService
 
 __all__ = [
-    "GraphDBService",
+    "RDFStoreService",
     "IngestService",
     "DescribeService",
     "AnnotateService",

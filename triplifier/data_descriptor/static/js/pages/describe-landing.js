@@ -14,7 +14,7 @@ const DescribeLandingPage = {
     },
 
     /**
-     * Check if data exists in GraphDB
+     * Check if data exists in the RDF store
      */
     checkDataExists: function() {
         const self = this;

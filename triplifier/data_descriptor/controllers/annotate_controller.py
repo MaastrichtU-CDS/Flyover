@@ -22,7 +22,7 @@ annotate_bp = Blueprint("annotate", __name__)
 
 
 def get_app_context():
-    """Get application context (session_cache, graphdb_url, etc.)."""
+    """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
@@ -56,14 +56,14 @@ def annotation_landing():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     # Skip landing when a JSON-LD mapping is already loaded
     if session_cache.jsonld_mapping:
         return redirect(url_for("annotate.annotation_review"))
 
     try:
-        data_exists = graphdb_service.check_data_exists() if graphdb_service else False
+        data_exists = rdf_store_service.check_data_exists() if rdf_store_service else False
         session_cache.existing_graph = data_exists
 
         return render_template(
@@ -86,7 +86,7 @@ def upload_annotation_json():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
     name_matcher = ctx.get("name_matcher")
     upload_folder = ctx.get("upload_folder")
 
@@ -111,7 +111,7 @@ def upload_annotation_json():
                 json_data = json.load(f)
 
             # Ensure databases are available
-            databases = graphdb_service.get_databases() if graphdb_service else []
+            databases = rdf_store_service.get_databases() if rdf_store_service else []
             session_cache.databases = databases
 
             if not databases:
@@ -120,7 +120,7 @@ def upload_annotation_json():
                     jsonify(
                         {
                             "error": "No data found. Please complete Ingest step first.",
-                            "graphdb_databases": [],
+                            "rdf_store_databases": [],
                             "jsonld_databases": [],
                         }
                     ),
@@ -148,7 +148,7 @@ def upload_annotation_json():
                     jsonify(
                         {
                             "error": "No table definitions found in semantic map.",
-                            "graphdb_databases": databases,
+                            "rdf_store_databases": databases,
                             "jsonld_databases": [],
                         }
                     ),
@@ -166,7 +166,7 @@ def upload_annotation_json():
                         matched = db
                         break
                 if matched:
-                    matching.append({"jsonld": jsonld_table, "graphdb": matched})
+                    matching.append({"jsonld": jsonld_table, "rdf_store": matched})
                 else:
                     non_matching.append(jsonld_table)
 
@@ -175,8 +175,8 @@ def upload_annotation_json():
                 return (
                     jsonify(
                         {
-                            "error": "No data sources match GraphDB data.",
-                            "graphdb_databases": databases,
+                            "error": "No data sources match RDF store data.",
+                            "rdf_store_databases": databases,
                             "jsonld_databases": jsonld_tables,
                             "matching_databases": [],
                             "non_matching_jsonld": non_matching,
@@ -200,7 +200,7 @@ def upload_annotation_json():
                     "success": True,
                     "message": "JSON-LD file validated successfully",
                     "filename": filename,
-                    "graphdb_databases": databases,
+                    "rdf_store_databases": databases,
                     "jsonld_databases": jsonld_tables,
                     "matching_databases": matching,
                     "non_matching_jsonld": non_matching,
@@ -236,8 +236,8 @@ def start_annotation():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
-    graphdb_url = ctx.get("graphdb_url")
+    rdf_store_service = ctx.get("rdf_store_service")
+    rdf_store_url = ctx.get("rdf_store_url")
     get_semantic_map = ctx.get("get_semantic_map")
     formulate_local_map = ctx.get("formulate_local_map")
     name_matcher = ctx.get("name_matcher")
@@ -249,13 +249,13 @@ def start_annotation():
             return jsonify({"success": False, "error": "No semantic map available"})
 
         # Ensure databases are available
-        databases = graphdb_service.get_databases() if graphdb_service else []
+        databases = rdf_store_service.get_databases() if rdf_store_service else []
         session_cache.databases = databases
 
         if not databases:
             return jsonify({"success": False, "error": "No databases available"})
 
-        endpoint = f"{graphdb_url}/repositories/{session_cache.repo}/statements"
+        endpoint = f"{rdf_store_url}/repositories/{session_cache.repo}/statements"
         map_table_names = get_table_names(session_cache)
 
         # Prepare annotation data
@@ -336,7 +336,7 @@ def annotation_verify():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
     get_semantic_map = ctx.get("get_semantic_map")
     formulate_local_map = ctx.get("formulate_local_map")
     name_matcher = ctx.get("name_matcher")
@@ -347,7 +347,7 @@ def annotation_verify():
         flash("No semantic map available.")
         return redirect(url_for("share.describe_downloads"))
 
-    databases = graphdb_service.get_databases() if graphdb_service else []
+    databases = rdf_store_service.get_databases() if rdf_store_service else []
     session_cache.databases = databases
 
     if not databases:
@@ -393,7 +393,7 @@ def verify_annotation_ask():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
     get_semantic_map = ctx.get("get_semantic_map")
     formulate_local_map = ctx.get("formulate_local_map")
 
@@ -407,7 +407,7 @@ def verify_annotation_ask():
         success, is_valid, query, error = AnnotateService.verify_single_annotation(
             variable_name,
             session_cache,
-            graphdb_service,
+            rdf_store_service,
             get_semantic_map,
             formulate_local_map,
         )

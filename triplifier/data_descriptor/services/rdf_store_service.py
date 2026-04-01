@@ -1,7 +1,7 @@
 """
-GraphDB service for graph database operations.
+RDF store service for graph database operations.
 
-This service acts as a facade over the GraphDB repository,
+This service acts as a facade over the RDF store repository,
 providing higher-level business operations.
 """
 
@@ -10,31 +10,31 @@ import requests
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from ..repositories import GraphDBRepository
+    from ..repositories import RDFStoreRepository
 except ImportError:
-    from repositories import GraphDBRepository
+    from repositories import RDFStoreRepository
 
 logger = logging.getLogger(__name__)
 
 
-class GraphDBService:
+class RDFStoreService:
     """
-    Service class for GraphDB operations.
+    Service class for RDF store operations.
 
-    Provides business-level methods for interacting with GraphDB,
+    Provides business-level methods for interacting with the RDF store,
     abstracting repository details from controllers.
     """
 
-    def __init__(self, graphdb_url: str, repo: str):
+    def __init__(self, rdf_store_url: str, repo: str):
         """
-        Initialise GraphDB service.
+        Initialise RDF store service.
 
         Args:
-            graphdb_url: Base URL of the GraphDB instance.
+            rdf_store_url: Base URL of the RDF store instance.
             repo: Repository name.
         """
-        self.repository = GraphDBRepository(graphdb_url, repo)
-        self.graphdb_url = graphdb_url
+        self.repository = RDFStoreRepository(rdf_store_url, repo)
+        self.rdf_store_url = rdf_store_url
         self.repo = repo
 
     def check_data_exists(self) -> bool:
@@ -286,7 +286,7 @@ class GraphDBService:
         endpoint_appendices: str = "",
     ) -> str:
         """
-        Execute a SPARQL query on GraphDB.
+        Execute a SPARQL query on the RDF store.
 
         Args:
             query: SPARQL query to execute
@@ -301,14 +301,14 @@ class GraphDBService:
         """
         result = self.repository.execute_query(query, query_type, endpoint_appendices)
         if result is None:
-            raise Exception("GraphDB query execution failed")
+            raise Exception("RDF store query execution failed")
         return result
 
     def get_existing_column_class_uri(
         self, table_name: str, column_name: str
     ) -> Optional[str]:
         """
-        Get existing column class URI from GraphDB.
+        Get existing column class URI from the RDF store.
 
         Uses the same SPARQL query as get_column_class_uri since both
         new and existing columns share the same URI lookup mechanism.

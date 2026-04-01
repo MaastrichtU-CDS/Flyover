@@ -1,6 +1,6 @@
 /**
  * Annotation Review Page Module
- * Handles loading semantic map data from IndexedDB, validating against GraphDB databases,
+ * Handles loading semantic map data from IndexedDB, validating against RDF store databases,
  * and rendering the annotation review interface with pagination.
  */
 
@@ -10,7 +10,7 @@ const AnnotationReviewPage = {
 
     // State
     semanticMapData: null,
-    graphDbDatabases: [],
+    rdfStoreDatabases: [],
     databasePages: {},
     databaseVariables: {},
 
@@ -22,60 +22,60 @@ const AnnotationReviewPage = {
     },
 
     /**
-     * Fetch databases from GraphDB and store in IndexedDB
+     * Fetch databases from the RDF store and store in IndexedDB
      */
-    fetchAndStoreGraphDbDatabases: async function() {
+    fetchAndStoreRdfStoreDatabases: async function() {
         try {
-            const response = await fetch('/api/graphdb-databases');
+            const response = await fetch('/api/rdf-store-databases');
             const data = await response.json();
 
             if (data.success && data.databases && data.databases.length > 0) {
-                this.graphDbDatabases = data.databases;
-                console.log('Fetched GraphDB databases:', this.graphDbDatabases);
+                this.rdfStoreDatabases = data.databases;
+                console.log('Fetched RDF store databases:', this.rdfStoreDatabases);
 
                 // Store in IndexedDB for use across pages
                 await FlyoverDB.saveData('metadata', {
-                    key: 'graphdb_databases',
-                    data: this.graphDbDatabases,
+                    key: 'rdf_store_databases',
+                    data: this.rdfStoreDatabases,
                     timestamp: new Date().toISOString()
                 });
 
                 return true;
             } else {
-                console.warn('No databases found in GraphDB:', data.message);
+                console.warn('No databases found in RDF store:', data.message);
                 return false;
             }
         } catch (error) {
-            console.error('Error fetching GraphDB databases:', error);
+            console.error('Error fetching RDF store databases:', error);
             return false;
         }
     },
 
     /**
-     * Load GraphDB databases from IndexedDB (fallback if API call fails)
+     * Load RDF store databases from IndexedDB (fallback if API call fails)
      */
-    loadGraphDbDatabasesFromIndexedDB: async function() {
+    loadRdfStoreDatabasesFromIndexedDB: async function() {
         try {
-            const result = await FlyoverDB.getData('metadata', 'graphdb_databases');
+            const result = await FlyoverDB.getData('metadata', 'rdf_store_databases');
             if (result && result.data && result.data.length > 0) {
-                this.graphDbDatabases = result.data;
-                console.log('Loaded GraphDB databases from IndexedDB:', this.graphDbDatabases);
+                this.rdfStoreDatabases = result.data;
+                console.log('Loaded RDF store databases from IndexedDB:', this.rdfStoreDatabases);
                 return true;
             }
         } catch (error) {
-            console.error('Error loading GraphDB databases from IndexedDB:', error);
+            console.error('Error loading RDF store databases from IndexedDB:', error);
         }
         return false;
     },
 
     /**
-     * Check if a database name matches any GraphDB database
+     * Check if a database name matches any RDF store database
      * Handles cases like "file.csv" matching "file" or vice versa
      */
     findMatchingDatabase: function(mapDbName) {
-        if (!mapDbName || mapDbName === '') return this.graphDbDatabases[0] || null;
+        if (!mapDbName || mapDbName === '') return this.rdfStoreDatabases[0] || null;
 
-        for (const db of this.graphDbDatabases) {
+        for (const db of this.rdfStoreDatabases) {
             if (db === mapDbName) return db;
 
             // Try matching without .csv extension
@@ -108,23 +108,23 @@ const AnnotationReviewPage = {
             console.log('Initializing FlyoverDB...');
             await FlyoverDB.initDB();
 
-            // First, try to fetch databases from GraphDB
-            console.log('Fetching GraphDB databases...');
-            let hasGraphDbDatabases = await this.fetchAndStoreGraphDbDatabases();
+            // First, try to fetch databases from RDF store
+            console.log('Fetching RDF store databases...');
+            let hasRdfStoreDatabases = await this.fetchAndStoreRdfStoreDatabases();
 
             // If API call failed, try loading from IndexedDB
-            if (!hasGraphDbDatabases) {
+            if (!hasRdfStoreDatabases) {
                 console.log('API call failed, trying IndexedDB...');
-                hasGraphDbDatabases = await this.loadGraphDbDatabasesFromIndexedDB();
+                hasRdfStoreDatabases = await this.loadRdfStoreDatabasesFromIndexedDB();
             }
 
-            if (!hasGraphDbDatabases) {
-                console.warn('No GraphDB databases available');
+            if (!hasRdfStoreDatabases) {
+                console.warn('No RDF store databases available');
                 this.showNoDataWarning('No databases found in the data store. Please complete the Ingest step first.');
                 return;
             }
 
-            console.log('GraphDB databases loaded:', this.graphDbDatabases);
+            console.log('RDF store databases loaded:', this.rdfStoreDatabases);
 
             // Load semantic map
             console.log('Loading semantic map from IndexedDB...');
@@ -139,7 +139,7 @@ const AnnotationReviewPage = {
             this.semanticMapData = result.data;
             console.log('Loaded semantic map from IndexedDB:', this.semanticMapData);
 
-            // Render the annotation data with GraphDB database validation
+            // Render the annotation data with RDF store database validation
             this.renderAnnotationData(this.semanticMapData);
 
         } catch (error) {
@@ -174,7 +174,7 @@ const AnnotationReviewPage = {
 
     /**
      * Extract table names from JSON-LD structure
-     * Tables are the actual data sources that match with GraphDB
+     * Tables are the actual data sources that match with the RDF store
      */
     extractJsonLdTables: function(data) {
         const tables = [];
@@ -204,14 +204,14 @@ const AnnotationReviewPage = {
         // Calculate matches
         const matching = [];
         const nonMatchingJsonld = [];
-        const nonMatchingGraphDb = [...this.graphDbDatabases];
+        const nonMatchingRdfStore = [...this.rdfStoreDatabases];
 
         for (const jsonldTable of jsonldTables) {
             const match = this.findMatchingDatabase(jsonldTable);
             if (match) {
-                matching.push({ jsonld: jsonldTable, graphdb: match });
-                const idx = nonMatchingGraphDb.indexOf(match);
-                if (idx > -1) nonMatchingGraphDb.splice(idx, 1);
+                matching.push({ jsonld: jsonldTable, rdf_store: match });
+                const idx = nonMatchingRdfStore.indexOf(match);
+                if (idx > -1) nonMatchingRdfStore.splice(idx, 1);
             } else {
                 nonMatchingJsonld.push(jsonldTable);
             }
@@ -220,20 +220,20 @@ const AnnotationReviewPage = {
         // Only show info section if there are non-matching databases
         const infoSection = document.getElementById('databaseInfoSection');
 
-        if (nonMatchingJsonld.length > 0 || nonMatchingGraphDb.length > 0) {
+        if (nonMatchingJsonld.length > 0 || nonMatchingRdfStore.length > 0) {
             let infoHtml = '';
 
             if (nonMatchingJsonld.length > 0) {
                 infoHtml += `<div class="alert alert-warning" style="font-size: 0.9em;">
                     <i class="fas fa-exclamation-triangle"></i>
-                    <strong>Will not be annotated</strong> (not in GraphDB): ${nonMatchingJsonld.map(t => this.escapeHtml(t)).join(', ')}
+                    <strong>Will not be annotated</strong> (not in the RDF store): ${nonMatchingJsonld.map(t => this.escapeHtml(t)).join(', ')}
                 </div>`;
             }
 
-            if (nonMatchingGraphDb.length > 0) {
+            if (nonMatchingRdfStore.length > 0) {
                 infoHtml += `<div class="alert alert-info" style="font-size: 0.9em;">
                     <i class="fas fa-info-circle"></i>
-                    <strong>Other data in GraphDB</strong> (no mapping provided): ${nonMatchingGraphDb.map(t => this.escapeHtml(t)).join(', ')}
+                    <strong>Other data in RDF store</strong> (no mapping provided): ${nonMatchingRdfStore.map(t => this.escapeHtml(t)).join(', ')}
                 </div>`;
             }
 
@@ -246,7 +246,7 @@ const AnnotationReviewPage = {
         return {
             matching: matching,
             nonMatchingJsonld: nonMatchingJsonld,
-            nonMatchingGraphDb: nonMatchingGraphDb,
+            nonMatchingRdfStore: nonMatchingRdfStore,
             hasMatches: matching.length > 0
         };
     },
@@ -268,9 +268,9 @@ const AnnotationReviewPage = {
 
             if (!comparison.hasMatches) {
                 this.showNoDataWarning(
-                    `None of the data sources in the semantic map match data in GraphDB.<br><br>` +
+                    `None of the data sources in the semantic map match data in the RDF store.<br><br>` +
                     `<strong>Data sources in semantic map:</strong> ${jsonldTables.join(', ') || 'None'}<br>` +
-                    `<strong>Data in GraphDB:</strong> ${this.graphDbDatabases.join(', ') || 'None'}`
+                    `<strong>Data in RDF store:</strong> ${this.rdfStoreDatabases.join(', ') || 'None'}`
                 );
                 return;
             }
@@ -291,7 +291,7 @@ const AnnotationReviewPage = {
             let totalAnnotatedVars = 0;
 
             for (const [tableName, tableData] of Object.entries(tableVariables)) {
-                const { variableInfo, graphdbName } = tableData;
+                const { variableInfo, rdfStoreName } = tableData;
 
                 // Filter variables that are ready for annotation
                 const annotatedVars = {};
@@ -316,7 +316,7 @@ const AnnotationReviewPage = {
                 console.log(`Table ${tableName}: ${Object.keys(annotatedVars).length} annotated, ${unannotatedVars.length} unannotated`);
 
                 if (Object.keys(annotatedVars).length > 0) {
-                    allHtml += this.renderDatabaseSection(graphdbName, annotatedVars);
+                    allHtml += this.renderDatabaseSection(rdfStoreName, annotatedVars);
                     totalAnnotatedVars += Object.keys(annotatedVars).length;
                 }
             }
@@ -344,17 +344,17 @@ const AnnotationReviewPage = {
 
     /**
      * Transform JSON-LD structure to variable_info organized by table
-     * Only includes tables that have a match in GraphDB
+     * Only includes tables that have a match in the RDF store
      */
     transformJsonLdToVariableInfoByTable: function(data, matchingTables) {
         const result = {};
         const schemaVariables = data.schema?.variables || {};
         const databases = data.databases || {};
 
-        // Create a map of jsonld table name -> graphdb name
-        const tableToGraphDb = {};
+        // Create a map of jsonld table name -> rdf_store name
+        const tableToRdfStore = {};
         for (const match of matchingTables) {
-            tableToGraphDb[match.jsonld] = match.graphdb;
+            tableToRdfStore[match.jsonld] = match.rdf_store;
         }
 
         // Process each database and table
@@ -365,10 +365,10 @@ const AnnotationReviewPage = {
                 // Determine the table name (sourceFile or tableKey)
                 const tableName = (tableData.sourceFile) ? tableData.sourceFile : tableKey;
 
-                // Skip if this table doesn't have a GraphDB match
-                if (!tableToGraphDb[tableName]) continue;
+                // Skip if this table doesn't have an RDF store match
+                if (!tableToRdfStore[tableName]) continue;
 
-                const graphdbName = tableToGraphDb[tableName];
+                const rdfStoreName = tableToRdfStore[tableName];
                 const variableInfo = {};
 
                 if (!tableData.columns) continue;
@@ -442,7 +442,7 @@ const AnnotationReviewPage = {
                 if (Object.keys(variableInfo).length > 0) {
                     result[tableName] = {
                         variableInfo: variableInfo,
-                        graphdbName: graphdbName
+                        rdfStoreName: rdfStoreName
                     };
                 }
             }

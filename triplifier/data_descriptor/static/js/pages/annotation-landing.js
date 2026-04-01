@@ -5,7 +5,7 @@
  */
 
 const AnnotationLandingPage = {
-    graphDbDatabases: [],
+    rdfStoreDatabases: [],
 
     /**
      * Initialize the annotation landing page
@@ -106,15 +106,15 @@ const AnnotationLandingPage = {
     },
 
     /**
-     * Check if a database name matches any GraphDB database
+     * Check if a database name matches any RDF store database
      * @param {string} mapDbName - Database name from semantic map
-     * @param {string[]} graphDbList - List of GraphDB databases
+     * @param {string[]} rdfStoreList - List of RDF store databases
      * @returns {string|null} Matching database or null
      */
-    findMatchingDatabase: function(mapDbName, graphDbList) {
+    findMatchingDatabase: function(mapDbName, rdfStoreList) {
         if (!mapDbName || mapDbName === '') return null;
 
-        for (const db of graphDbList) {
+        for (const db of rdfStoreList) {
             if (db === mapDbName) return db;
 
             const mapNoExt = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName;
@@ -151,21 +151,21 @@ const AnnotationLandingPage = {
     /**
      * Generate database comparison HTML
      * @param {string[]} jsonldTables - Tables from JSON-LD
-     * @param {string[]} graphDbList - Databases in GraphDB
+     * @param {string[]} rdfStoreList - Databases in RDF store
      * @returns {Object} Comparison result
      */
-    generateDatabaseComparisonHtml: function(jsonldTables, graphDbList) {
+    generateDatabaseComparisonHtml: function(jsonldTables, rdfStoreList) {
         const self = this;
         const matching = [];
         const nonMatchingJsonld = [];
-        const nonMatchingGraphDb = [...graphDbList];
+        const nonMatchingRdfStore = [...rdfStoreList];
 
         for (const jsonldTable of jsonldTables) {
-            const match = this.findMatchingDatabase(jsonldTable, graphDbList);
+            const match = this.findMatchingDatabase(jsonldTable, rdfStoreList);
             if (match) {
-                matching.push({ jsonld: jsonldTable, graphdb: match });
-                const idx = nonMatchingGraphDb.indexOf(match);
-                if (idx > -1) nonMatchingGraphDb.splice(idx, 1);
+                matching.push({ jsonld: jsonldTable, rdf_store: match });
+                const idx = nonMatchingRdfStore.indexOf(match);
+                if (idx > -1) nonMatchingRdfStore.splice(idx, 1);
             } else {
                 nonMatchingJsonld.push(jsonldTable);
             }
@@ -181,13 +181,13 @@ const AnnotationLandingPage = {
 
         if (nonMatchingJsonld.length > 0) {
             html += `<div class="text-warning mb-2" style="font-size: 0.9em;">
-                <i class="fas fa-exclamation-triangle"></i> <strong>Not in GraphDB:</strong> ${nonMatchingJsonld.map(t => self.escapeHtml(t)).join(', ')}
+                <i class="fas fa-exclamation-triangle"></i> <strong>Not in RDF store:</strong> ${nonMatchingJsonld.map(t => self.escapeHtml(t)).join(', ')}
             </div>`;
         }
 
-        if (nonMatchingGraphDb.length > 0) {
+        if (nonMatchingRdfStore.length > 0) {
             html += `<div class="text-muted mb-2" style="font-size: 0.9em;">
-                <i class="fas fa-info-circle"></i> <strong>Other data in GraphDB:</strong> ${nonMatchingGraphDb.map(t => self.escapeHtml(t)).join(', ')}
+                <i class="fas fa-info-circle"></i> <strong>Other data in RDF store:</strong> ${nonMatchingRdfStore.map(t => self.escapeHtml(t)).join(', ')}
             </div>`;
         }
 
@@ -196,42 +196,42 @@ const AnnotationLandingPage = {
             hasMatches: matching.length > 0,
             matching: matching,
             nonMatchingJsonld: nonMatchingJsonld,
-            nonMatchingGraphDb: nonMatchingGraphDb
+            nonMatchingRdfStore: nonMatchingRdfStore
         };
     },
 
     /**
-     * Fetch databases from GraphDB and store in IndexedDB
+     * Fetch databases from the RDF store and store in IndexedDB
      * @returns {Promise<string[]>} List of databases
      */
-    fetchAndStoreGraphDbDatabases: async function() {
+    fetchAndStoreRdfStoreDatabases: async function() {
         try {
-            const response = await fetch('/api/graphdb-databases');
+            const response = await fetch('/api/rdf-store-databases');
             const data = await response.json();
 
             if (data.success && data.databases && data.databases.length > 0) {
-                console.log('Fetched GraphDB databases:', data.databases);
-                this.graphDbDatabases = data.databases;
+                console.log('Fetched RDF store databases:', data.databases);
+                this.rdfStoreDatabases = data.databases;
 
                 await FlyoverDB.saveData('metadata', {
-                    key: 'graphdb_databases',
+                    key: 'rdf_store_databases',
                     data: data.databases,
                     timestamp: new Date().toISOString()
                 });
 
                 return data.databases;
             } else {
-                console.warn('No databases found in GraphDB:', data.message);
+                console.warn('No databases found in RDF store:', data.message);
                 return [];
             }
         } catch (error) {
-            console.error('Error fetching GraphDB databases:', error);
+            console.error('Error fetching RDF store databases:', error);
             return [];
         }
     },
 
     /**
-     * Check IndexedDB for existing semantic map and compare with GraphDB databases
+     * Check IndexedDB for existing semantic map and compare with RDF store databases
      */
     checkIndexedDbSemanticMap: async function() {
         try {
@@ -241,7 +241,7 @@ const AnnotationLandingPage = {
             }
 
             await FlyoverDB.initDB();
-            this.graphDbDatabases = await this.fetchAndStoreGraphDbDatabases();
+            this.rdfStoreDatabases = await this.fetchAndStoreRdfStoreDatabases();
 
             const result = await FlyoverDB.getData('metadata', 'semantic_map');
 
@@ -251,7 +251,7 @@ const AnnotationLandingPage = {
                 document.getElementById('indexedDbSection').style.display = 'block';
 
                 const jsonldTables = this.extractJsonLdTables(result.data);
-                const comparison = this.generateDatabaseComparisonHtml(jsonldTables, this.graphDbDatabases);
+                const comparison = this.generateDatabaseComparisonHtml(jsonldTables, this.rdfStoreDatabases);
                 document.getElementById('indexedDbMatchInfo').innerHTML = comparison.html;
 
                 if (comparison.hasMatches) {
@@ -263,7 +263,7 @@ const AnnotationLandingPage = {
                     document.getElementById('indexedDbErrorMessage').innerHTML = `
                         <div class="alert alert-danger mt-3" style="font-size: 0.9em;">
                             <i class="fas fa-times-circle"></i>
-                            <strong>Cannot proceed:</strong> No matching data sources found between your semantic map and GraphDB.
+                            <strong>Cannot proceed:</strong> No matching data sources found between your semantic map and the RDF store.
                         </div>`;
                 }
 
@@ -349,7 +349,7 @@ const AnnotationLandingPage = {
                 }
 
                 if (result.non_matching_jsonld && result.non_matching_jsonld.length > 0) {
-                    message += `<i class="fas fa-exclamation-triangle text-warning"></i> ${result.non_matching_jsonld.length} data source(s) in semantic map not found in GraphDB.<br>`;
+                    message += `<i class="fas fa-exclamation-triangle text-warning"></i> ${result.non_matching_jsonld.length} data source(s) in semantic map not found in RDF store.<br>`;
                 }
 
                 this.showUploadStatus(message, "success");
@@ -371,9 +371,9 @@ const AnnotationLandingPage = {
             } else {
                 let errorMessage = result.error || "Failed to upload JSON-LD file.";
 
-                if (result.graphdb_databases && result.graphdb_databases.length > 0) {
-                    errorMessage += "<br><br><strong>Data available in GraphDB:</strong><ul>";
-                    result.graphdb_databases.forEach(db => {
+                if (result.rdf_store_databases && result.rdf_store_databases.length > 0) {
+                    errorMessage += "<br><br><strong>Data available in RDF store:</strong><ul>";
+                    result.rdf_store_databases.forEach(db => {
                         errorMessage += `<li>${self.escapeHtml(db)}</li>`;
                     });
                     errorMessage += "</ul>";

@@ -111,7 +111,7 @@ class AnnotateService:
         Execute annotation for variables.
 
         Args:
-            endpoint: GraphDB statements endpoint.
+            endpoint: RDF store statements endpoint.
             database: Database name.
             prefixes: SPARQL prefixes.
             annotated_variables: Variables to annotate.
@@ -184,7 +184,7 @@ class AnnotateService:
             # Get database key for JSON-LD
             db_key = None
             if session_cache.jsonld_mapping:
-                db_key = session_cache.jsonld_mapping.find_database_key_for_graphdb(
+                db_key = session_cache.jsonld_mapping.find_database_key_for_rdf_store(
                     database
                 )
 
@@ -263,7 +263,7 @@ class AnnotateService:
             # Get semantic map
             db_key = None
             if session_cache.jsonld_mapping:
-                db_key = session_cache.jsonld_mapping.find_database_key_for_graphdb(
+                db_key = session_cache.jsonld_mapping.find_database_key_for_rdf_store(
                     database
                 )
 
@@ -308,7 +308,7 @@ class AnnotateService:
     def verify_single_annotation(
         variable_name: str,
         session_cache: Any,
-        graphdb_service: Any,
+        rdf_store_service: Any,
         get_semantic_map_func: Any,
         formulate_local_map_func: Any,
     ) -> Tuple[bool, bool, Optional[str], Optional[str]]:
@@ -318,7 +318,7 @@ class AnnotateService:
         Args:
             variable_name: Full variable name (database.variable).
             session_cache: Session cache object.
-            graphdb_service: GraphDB service instance.
+            rdf_store_service: RDF store service instance.
             get_semantic_map_func: Function to get semantic map.
             formulate_local_map_func: Function to formulate local map.
 
@@ -333,7 +333,7 @@ class AnnotateService:
         # Get semantic map
         db_key = None
         if session_cache.jsonld_mapping:
-            db_key = session_cache.jsonld_mapping.find_database_key_for_graphdb(
+            db_key = session_cache.jsonld_mapping.find_database_key_for_rdf_store(
                 database
             )
 
@@ -388,7 +388,7 @@ class AnnotateService:
             additional_prefixes = session_cache.jsonld_mapping.prefixes
 
         # Execute verification
-        success, is_valid, query = graphdb_service.verify_annotation(
+        success, is_valid, query = rdf_store_service.verify_annotation(
             database,
             local_def,
             var_class,

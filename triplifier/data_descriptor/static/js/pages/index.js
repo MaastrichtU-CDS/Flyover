@@ -41,7 +41,7 @@ const IndexPage = {
 
     /**
      * Update workflow card states based on data existence
-     * @param {boolean} dataExists - Whether data exists in GraphDB
+     * @param {boolean} dataExists - Whether data exists in the RDF store
      */
     updateCardStates: function(dataExists) {
         // Ingest card is always accessible

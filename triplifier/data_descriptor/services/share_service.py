@@ -308,18 +308,18 @@ class ShareService:
     @staticmethod
     def download_ontology(
         session_cache,
-        graphdb_service,
-        graphdb_url: str,
+        rdf_store_service,
+        rdf_store_url: str,
         named_graph: str = "http://ontology.local/",
         filename: str = None,
     ) -> Response:
         """
-        Download ontology files from GraphDB.
+        Download ontology files from the RDF store.
 
         Args:
             session_cache: Application session cache
-            graphdb_service: GraphDB service instance
-            graphdb_url: GraphDB base URL
+            rdf_store_service: RDF store service instance
+            rdf_store_url: RDF store base URL
             named_graph: Base URL for ontology graphs
             filename: Optional filename override
 
@@ -334,7 +334,7 @@ class ShareService:
             if session_cache.databases and len(session_cache.databases) > 1:
                 databases_to_process = session_cache.databases
             else:
-                # Query GraphDB to find all ontology graphs
+                # Query the RDF store to find all ontology graphs
                 query_graphs = """
                     SELECT DISTINCT ?g WHERE {
                         GRAPH ?g {
@@ -343,7 +343,7 @@ class ShareService:
                         FILTER(STRSTARTS(STR(?g), "http://ontology.local/"))
                     }
                 """
-                result = graphdb_service.repository.execute_query(query_graphs)
+                result = rdf_store_service.repository.execute_query(query_graphs)
 
                 if result and result.strip():
                     # Parse result to extract database names
@@ -366,11 +366,11 @@ class ShareService:
             # If we have multiple databases, create a zip file
             if len(databases_to_process) > 1:
                 return ShareService._download_multiple_ontologies(
-                    databases_to_process, graphdb_service, named_graph, graphdb_url
+                    databases_to_process, rdf_store_service, named_graph, rdf_store_url
                 )
             else:
                 return ShareService._download_single_ontology(
-                    databases_to_process, graphdb_service, named_graph, filename
+                    databases_to_process, rdf_store_service, named_graph, filename
                 )
 
         except Exception as e:
@@ -378,7 +378,7 @@ class ShareService:
 
     @staticmethod
     def _download_multiple_ontologies(
-        databases: list, graphdb_service, named_graph: str, graphdb_url: str
+        databases: list, rdf_store_service, named_graph: str, rdf_store_url: str
     ) -> Response:
         """Create zip file with multiple ontologies."""
         zip_filename = "local_ontologies.zip"
@@ -389,7 +389,7 @@ class ShareService:
                 table_graph = f"{named_graph}{database}/"
                 ontology_filename = f"local_ontology_{database}.nt"
 
-                content, status = graphdb_service.repository.download_ontology(
+                content, status = rdf_store_service.repository.download_ontology(
                     table_graph
                 )
 
@@ -421,7 +421,7 @@ class ShareService:
 
     @staticmethod
     def _download_single_ontology(
-        databases: list, graphdb_service, named_graph: str, filename: str = None
+        databases: list, rdf_store_service, named_graph: str, filename: str = None
     ) -> Response:
         """Download single ontology."""
         if len(databases) == 1:
@@ -432,7 +432,7 @@ class ShareService:
             ontology_graph = named_graph
             filename = filename or "local_ontology.nt"
 
-        content, status = graphdb_service.repository.download_ontology(ontology_graph)
+        content, status = rdf_store_service.repository.download_ontology(ontology_graph)
 
         if status == 200:
             return Response(

@@ -21,16 +21,16 @@ ingest_bp = Blueprint("ingest", __name__)
 
 
 def get_app_context():
-    """Get application context (session_cache, graphdb_url, etc.)."""
+    """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
-    from services import GraphDBService
+    from services import RDFStoreService
 
     ctx = current_app.config.get("APP_CONTEXT", {})
 
-    # Ensure graphdb_service is initialized if graphdb_url and repo are available
-    if not ctx.get("graphdb_service") and "graphdb_url" in current_app.config:
-        ctx["graphdb_service"] = GraphDBService(
-            current_app.config["graphdb_url"], current_app.config["repo"]
+    # Ensure rdf_store_service is initialized if rdf_store_url and repo are available
+    if not ctx.get("rdf_store_service") and "rdf_store_url" in current_app.config:
+        ctx["rdf_store_service"] = RDFStoreService(
+            current_app.config["rdf_store_url"], current_app.config["repo"]
         )
 
     return ctx
@@ -59,11 +59,11 @@ def index():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     graph_exists = False
     try:
-        if graphdb_service and graphdb_service.check_data_exists():
+        if rdf_store_service and rdf_store_service.check_data_exists():
             graph_exists = True
             session_cache.existing_graph = True
         else:
@@ -280,7 +280,7 @@ def upload_file():
         session_cache.StatusToDisplay = message
 
         if upload and upload_func:
-            logger.info("Initiating upload to GraphDB")
+            logger.info("Initiating upload to RDF store")
             upload_success, upload_messages = upload_func(
                 file_type, session_cache.output_files
             )
@@ -319,20 +319,20 @@ def data_submission():
     )
 
 
-@ingest_bp.route("/api/graphdb-databases", methods=["GET"])
-def get_graphdb_databases():
+@ingest_bp.route("/api/rdf-store-databases", methods=["GET"])
+def get_rdf_store_databases():
     """
-    Get list of databases from GraphDB.
+    Get list of databases from the RDF store.
 
     Returns:
         JSON response with database list.
     """
     ctx = get_app_context()
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
     session_cache = ctx.get("session_cache")
 
     try:
-        databases = graphdb_service.get_databases() if graphdb_service else []
+        databases = rdf_store_service.get_databases() if rdf_store_service else []
         session_cache.databases = databases
 
         if databases:
@@ -359,10 +359,10 @@ def api_check_graph_exists():
         JSON response with existence status.
     """
     ctx = get_app_context()
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     try:
-        exists = graphdb_service.check_data_exists() if graphdb_service else False
+        exists = rdf_store_service.check_data_exists() if rdf_store_service else False
         return jsonify({"exists": exists})
     except Exception as e:
         return jsonify({"exists": False, "error": str(e)})
@@ -377,11 +377,11 @@ def get_existing_graph_structure():
         JSON response with tables and columns.
     """
     ctx = get_app_context()
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     try:
-        if graphdb_service:
-            return jsonify(graphdb_service.get_graph_structure())
+        if rdf_store_service:
+            return jsonify(rdf_store_service.get_graph_structure())
         return {"tables": [], "tableColumns": {}}
     except Exception as e:
         logger.error(f"Error getting graph structure: {e}")

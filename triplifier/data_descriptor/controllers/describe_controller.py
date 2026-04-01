@@ -20,7 +20,7 @@ describe_bp = Blueprint("describe", __name__)
 
 
 def get_app_context():
-    """Get application context (session_cache, graphdb_url, etc.)."""
+    """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
@@ -40,10 +40,10 @@ def describe_landing():
 
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     try:
-        if graphdb_service and graphdb_service.check_data_exists():
+        if rdf_store_service and rdf_store_service.check_data_exists():
             session_cache.existing_graph = True
             message = "Data uploaded successfully. You can now describe your variables."
             return render_template("describe_landing.html", message=Markup(message))
@@ -82,10 +82,10 @@ def describe_variables():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     # Get column info by database
-    columns_by_database = graphdb_service.get_column_info_by_database()
+    columns_by_database = rdf_store_service.get_column_info_by_database()
     session_cache.databases = list(columns_by_database.keys())
 
     return render_template(
@@ -104,7 +104,7 @@ def retrieve_descriptive_info():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
@@ -131,8 +131,8 @@ def retrieve_descriptive_info():
                 display_name = f'{global_var} (or "{local_var}")'
 
             if data_type == "categorical":
-                # Get categories from GraphDB, scoped to this database
-                cat_result = graphdb_service.get_categories(local_var, database)
+                # Get categories from the RDF store, scoped to this database
+                cat_result = rdf_store_service.get_categories(local_var, database)
                 if cat_result:
                     df = pl.read_csv(
                         StringIO(cat_result),
@@ -148,7 +148,7 @@ def retrieve_descriptive_info():
                 session_cache.DescriptiveInfoDetails[database].append(display_name)
             else:
                 # Insert equivalencies for other types
-                graphdb_service.insert_equivalencies(
+                rdf_store_service.insert_equivalencies(
                     local_var, database, descriptive_info[local_var]
                 )
 
@@ -178,19 +178,19 @@ def describe_variable_details():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
     name_matcher = ctx.get("name_matcher")
 
     # Ensure databases are available
     if not session_cache.databases:
-        session_cache.databases = graphdb_service.get_databases()
+        session_cache.databases = rdf_store_service.get_databases()
 
     # Populate DescriptiveInfoDetails from JSON-LD mapping.
     # Always run when JSON-LD exists, even if some variables were already
     # populated via the form, to include variables from pages the user
     # did not visit (e.g. due to pagination).
     if session_cache.jsonld_mapping:
-        _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher)
+        _populate_details_from_jsonld(session_cache, rdf_store_service, name_matcher)
 
     preselected_values = {}
 
@@ -231,7 +231,7 @@ def _variable_exists_in_details(details_list, local_column):
     return False
 
 
-def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
+def _populate_details_from_jsonld(session_cache, rdf_store_service, name_matcher):
     """
     Populate DescriptiveInfoDetails from JSON-LD mapping.
 
@@ -240,7 +240,7 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
 
     Args:
         session_cache: The session cache object.
-        graphdb_service: GraphDB service instance.
+        rdf_store_service: RDF store service instance.
         name_matcher: Function to match database names.
     """
     mapping = session_cache.jsonld_mapping
@@ -296,7 +296,7 @@ def _populate_details_from_jsonld(session_cache, graphdb_service, name_matcher):
                 }
 
             if data_type == "categorical":
-                cat_result = graphdb_service.get_categories(local_column, database)
+                cat_result = rdf_store_service.get_categories(local_column, database)
                 if cat_result:
                     try:
                         df = pl.read_csv(
@@ -331,7 +331,7 @@ def retrieve_detailed_descriptive_info():
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
+    rdf_store_service = ctx.get("rdf_store_service")
 
     for database in session_cache.databases:
         # Update descriptive info with detailed data
@@ -348,7 +348,7 @@ def retrieve_detailed_descriptive_info():
 
         # Insert equivalencies for each variable
         for variable in set(updated_info.keys()):
-            graphdb_service.insert_equivalencies(
+            rdf_store_service.insert_equivalencies(
                 variable, database, updated_info.get(variable, {})
             )
 

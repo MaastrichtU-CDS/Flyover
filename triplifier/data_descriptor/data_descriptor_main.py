@@ -32,30 +32,30 @@ from services.ingest_service import (
     IngestService,
 )
 from services.describe_service import DescribeService
-from services.graphdb_service import GraphDBService
+from services.rdf_store_service import RDFStoreService
 from utils.session_helpers import (
     get_semantic_map_for_annotation,
 )
 
 app = Flask(__name__)
 
-if os.getenv("FLYOVER_GRAPHDB_URL") and os.getenv("FLYOVER_REPOSITORY_NAME"):
+if (os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")) and os.getenv("FLYOVER_REPOSITORY_NAME"):
     # Assume it is running in Docker
-    graphdb_url = os.getenv("FLYOVER_GRAPHDB_URL")
+    rdf_store_url = os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")
     repo = os.getenv("FLYOVER_REPOSITORY_NAME")
     app.config["DEBUG"] = False
     root_dir = "/app/"
     child_dir = "data_descriptor"
 else:
     # Assume it is not running in Docker
-    graphdb_url = "http://localhost:7200"
+    rdf_store_url = "http://localhost:7200"
     repo = "userRepo"
     app.config["DEBUG"] = False
     root_dir = ""
     child_dir = "."
 
-# Initialize GraphDB service for use in route handlers
-graphdb_service = GraphDBService(graphdb_url, repo)
+# Initialize RDF store service for use in route handlers
+rdf_store_service = RDFStoreService(rdf_store_url, repo)
 
 app.secret_key = "secret_key"
 app.config["UPLOAD_FOLDER"] = os.path.join(child_dir, "static", "files")
@@ -146,14 +146,14 @@ app.register_blueprint(share_bp)
 
 
 # Set up application config
-app.config["graphdb_url"] = graphdb_url
+app.config["rdf_store_url"] = rdf_store_url
 app.config["repo"] = repo
 
 # Set up the application context with required functions and services
 app.config["APP_CONTEXT"] = {
     "session_cache": session_cache,
-    "graphdb_service": graphdb_service,
-    "graphdb_url": graphdb_url,
+    "rdf_store_service": rdf_store_service,
+    "rdf_store_url": rdf_store_url,
     "upload_folder": app.config["UPLOAD_FOLDER"],
     "root_dir": root_dir,
     "child_dir": child_dir,
@@ -178,17 +178,17 @@ app.config["APP_CONTEXT"] = {
     ),
     "upload_func": lambda file_type, output_files: (
         IngestService().upload_multiple_graphs(
-            root_dir, graphdb_url, repo, output_files, data_background=False
+            root_dir, rdf_store_url, repo, output_files, data_background=False
         )
         if file_type == "CSV"
         else IngestService().upload_ontology_then_data(
-            root_dir, graphdb_url, repo, data_background=False
+            root_dir, rdf_store_url, repo, data_background=False
         )
     ),
     "start_background": lambda sc: [
-        gevent.spawn(IngestService.background_pk_fk_processing, sc, graphdb_service),
+        gevent.spawn(IngestService.background_pk_fk_processing, sc, rdf_store_service),
         gevent.spawn(
-            IngestService.background_cross_graph_processing, sc, graphdb_service
+            IngestService.background_cross_graph_processing, sc, rdf_store_service
         ),
     ],
     "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
@@ -199,7 +199,7 @@ app.config["APP_CONTEXT"] = {
     "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
     "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(db),
     "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
-    "name_matcher": lambda map_db, target_db: GraphDBService.graph_database_find_name_match(
+    "name_matcher": lambda map_db, target_db: RDFStoreService.graph_database_find_name_match(
         map_db, target_db
     ),
     "get_semantic_map": lambda sc, database_key=None: get_semantic_map_for_annotation(
@@ -209,7 +209,7 @@ app.config["APP_CONTEXT"] = {
 
 if __name__ == "__main__":
     # Use 0.0.0.0 in Docker (safe within container network), 127.0.0.1 for local dev
-    is_docker = os.getenv("FLYOVER_GRAPHDB_URL") is not None
+    is_docker = (os.getenv("FLYOVER_RDF_STORE_URL") or os.getenv("FLYOVER_GRAPHDB_URL")) is not None
     default_host = "0.0.0.0" if is_docker else "127.0.0.1"
 
     host = os.getenv("FLASK_HOST", default_host)

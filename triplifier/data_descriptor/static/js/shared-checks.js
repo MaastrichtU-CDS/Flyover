@@ -1,11 +1,11 @@
 /**
  * Shared Utility Functions for Flyover Pages
- * Common checks for semantic maps and graph databases
+ * Common checks for semantic maps and RDF store databases
  */
 
 const SharedChecks = {
-    // Store GraphDB databases globally
-    graphDbDatabases: [],
+    // Store RDF store databases globally
+    rdfStoreDatabases: [],
 
     /**
      * Check if IndexedDB contains a valid semantic map
@@ -49,24 +49,24 @@ const SharedChecks = {
     },
 
     /**
-     * Check if graphs exist in GraphDB
+     * Check if graphs exist in the RDF store
      * @returns {Promise<{hasGraphs: boolean, databases: Array}>}
      */
-    async checkGraphsInGraphDB() {
+    async checkGraphsInRDFStore() {
         try {
-            const response = await fetch('/api/graphdb-databases');
+            const response = await fetch('/api/rdf-store-databases');
             const data = await response.json();
 
             if (data.success && data.databases && data.databases.length > 0) {
-                console.log('GraphDB: Found databases:', data.databases);
-                this.graphDbDatabases = data.databases;
+                console.log('RDF store: Found databases:', data.databases);
+                this.rdfStoreDatabases = data.databases;
                 return { hasGraphs: true, databases: data.databases };
             } else {
-                console.warn('GraphDB: No databases found:', data.message);
+                console.warn('RDF store: No databases found:', data.message);
                 return { hasGraphs: false, databases: [] };
             }
         } catch (error) {
-            console.error('Error fetching GraphDB databases:', error);
+            console.error('Error fetching RDF store databases:', error);
             return { hasGraphs: false, databases: [] };
         }
     },
@@ -98,15 +98,15 @@ const SharedChecks = {
     },
 
     /**
-     * Find matching database between map and GraphDB
+     * Find matching database between map and RDF store
      * @param {string} mapDbName - Database name from map
-     * @param {Array} graphDbList - List of GraphDB databases
+     * @param {Array} rdfStoreList - List of RDF store databases
      * @returns {string|null} - Matching database or null
      */
-    findMatchingDatabase(mapDbName, graphDbList) {
+    findMatchingDatabase(mapDbName, rdfStoreList) {
         if (!mapDbName || mapDbName === '') return null;
 
-        for (const db of graphDbList) {
+        for (const db of rdfStoreList) {
             if (db === mapDbName) return db;
 
             // Try matching without .csv extension
@@ -120,20 +120,20 @@ const SharedChecks = {
     /**
      * Generate database comparison HTML
      * @param {Array} jsonldTables - Tables from JSON-LD
-     * @param {Array} graphDbList - Databases from GraphDB
+     * @param {Array} rdfStoreList - Databases from RDF store
      * @returns {object} - Comparison result with HTML and stats
      */
-    generateDatabaseComparisonHtml(jsonldTables, graphDbList) {
+    generateDatabaseComparisonHtml(jsonldTables, rdfStoreList) {
         const matching = [];
         const nonMatchingJsonld = [];
-        const nonMatchingGraphDb = [...graphDbList];
+        const nonMatchingRdfStore = [...rdfStoreList];
 
         for (const jsonldTable of jsonldTables) {
-            const match = this.findMatchingDatabase(jsonldTable, graphDbList);
+            const match = this.findMatchingDatabase(jsonldTable, rdfStoreList);
             if (match) {
-                matching.push({ jsonld: jsonldTable, graphdb: match });
-                const idx = nonMatchingGraphDb.indexOf(match);
-                if (idx > -1) nonMatchingGraphDb.splice(idx, 1);
+                matching.push({ jsonld: jsonldTable, rdf_store: match });
+                const idx = nonMatchingRdfStore.indexOf(match);
+                if (idx > -1) nonMatchingRdfStore.splice(idx, 1);
             } else {
                 nonMatchingJsonld.push(jsonldTable);
             }
@@ -149,13 +149,13 @@ const SharedChecks = {
 
         if (nonMatchingJsonld.length > 0) {
             html += `<div class="text-warning mb-2" style="font-size: 0.9em;">
-                <i class="fas fa-exclamation-triangle"></i> <strong>Not in GraphDB:</strong> ${nonMatchingJsonld.map(t => this.escapeHtml(t)).join(', ')}
+                <i class="fas fa-exclamation-triangle"></i> <strong>Not in RDF store:</strong> ${nonMatchingJsonld.map(t => this.escapeHtml(t)).join(', ')}
             </div>`;
         }
 
-        if (nonMatchingGraphDb.length > 0) {
+        if (nonMatchingRdfStore.length > 0) {
             html += `<div class="text-muted mb-2" style="font-size: 0.9em;">
-                <i class="fas fa-info-circle"></i> <strong>Other data in GraphDB:</strong> ${nonMatchingGraphDb.map(t => this.escapeHtml(t)).join(', ')}
+                <i class="fas fa-info-circle"></i> <strong>Other data in RDF store:</strong> ${nonMatchingRdfStore.map(t => this.escapeHtml(t)).join(', ')}
             </div>`;
         }
 
@@ -164,7 +164,7 @@ const SharedChecks = {
             hasMatches: matching.length > 0,
             matching: matching,
             nonMatchingJsonld: nonMatchingJsonld,
-            nonMatchingGraphDb: nonMatchingGraphDb
+            nonMatchingRdfStore: nonMatchingRdfStore
         };
     },
 

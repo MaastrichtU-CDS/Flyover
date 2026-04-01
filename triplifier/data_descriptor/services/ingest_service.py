@@ -414,7 +414,7 @@ class IngestService:
                     True,
                     (
                         "The data you have submitted was triplified successfully and "
-                        "is now available in GraphDB."
+                        "is now available in the RDF store."
                     ),
                     output_files,
                 )
@@ -434,14 +434,14 @@ class IngestService:
     @staticmethod
     def process_pk_fk_relationships(
         pk_fk_data: List[Dict],
-        graphdb_service: Any,
+        rdf_store_service: Any,
     ) -> Tuple[bool, List[str]]:
         """
         Process all PK/FK relationships.
 
         Args:
             pk_fk_data: List of relationship definitions.
-            graphdb_service: GraphDB service instance.
+            rdf_store_service: RDF store service instance.
 
         Returns:
             Tuple of (overall_success, list of messages).
@@ -483,7 +483,7 @@ class IngestService:
             fk_table = sanitise_table_name(rel["fileName"])
             pk_table = sanitise_table_name(target_file)
 
-            result = graphdb_service.process_pk_fk_relationship(
+            result = rdf_store_service.process_pk_fk_relationship(
                 fk_table,
                 rel["foreignKey"],
                 pk_table,
@@ -504,7 +504,7 @@ class IngestService:
 
         return success, messages
 
-    def upload_file_to_graphdb(
+    def upload_file_to_rdf_store(
         self,
         file_path: str,
         url: str,
@@ -513,12 +513,12 @@ class IngestService:
         timeout_seconds: int = 300,
     ) -> Tuple[bool, str, str]:
         """
-        Upload a single file to GraphDB with an intelligent fallback strategy.
+        Upload a single file to the RDF store with an intelligent fallback strategy.
         Uses gevent subprocess for better integration with gevent worker.
 
         Args:
             file_path: Path to the file to upload
-            url: GraphDB endpoint URL
+            url: RDF store endpoint URL
             content_type: MIME type (e.g. 'application/rdf+xml')
             wait_for_completion: Whether to wait for upload completion
             timeout_seconds: Timeout for each upload attempt
@@ -719,7 +719,7 @@ class IngestService:
     def upload_multiple_graphs(
         self,
         root_dir: str,
-        graphdb_url: str,
+        rdf_store_url: str,
         repo: str,
         output_files: List[dict],
         ontology_timeout: int = 300,
@@ -732,7 +732,7 @@ class IngestService:
 
         Args:
             root_dir: Directory containing the files
-            graphdb_url: GraphDB base URL
+            rdf_store_url: RDF store base URL
             repo: Repository name
             output_files: List of dicts with keys: data_file, ontology_file, table_name
             ontology_timeout: Timeout for ontology upload
@@ -756,9 +756,9 @@ class IngestService:
                     continue
 
                 # Upload ontology file
-                ontology_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/{table_name}/"
+                ontology_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/{table_name}/"
 
-                success, status, method = self.upload_file_to_graphdb(
+                success, status, method = self.upload_file_to_rdf_store(
                     ontology_path,
                     ontology_url,
                     "application/rdf+xml",
@@ -778,9 +778,9 @@ class IngestService:
                     continue
 
                 # Upload data file
-                data_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/{table_name}/"
+                data_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/{table_name}/"
 
-                success, status, method = self.upload_file_to_graphdb(
+                success, status, method = self.upload_file_to_rdf_store(
                     data_path,
                     data_url,
                     "application/x-turtle",
@@ -807,7 +807,7 @@ class IngestService:
     def upload_ontology_then_data(
         self,
         root_dir: str,
-        graphdb_url: str,
+        rdf_store_url: str,
         repo: str,
         upload_ontology: bool = True,
         upload_data: bool = True,
@@ -820,7 +820,7 @@ class IngestService:
 
         Args:
             root_dir: Directory containing the files
-            graphdb_url: GraphDB base URL
+            rdf_store_url: RDF store base URL
             repo: Repository name
             upload_ontology: Whether to upload ontology file
             upload_data: Whether to upload data file
@@ -839,8 +839,8 @@ class IngestService:
             if upload_ontology:
                 ontology_path = os.path.join(root_dir, "ontology.owl")
                 if os.path.exists(ontology_path):
-                    ontology_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"
-                    success, status, method = self.upload_file_to_graphdb(
+                    ontology_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://ontology.local/"
+                    success, status, method = self.upload_file_to_rdf_store(
                         ontology_path,
                         ontology_url,
                         "application/rdf+xml",
@@ -860,9 +860,9 @@ class IngestService:
             if upload_data:
                 data_path = os.path.join(root_dir, "output.ttl")
                 if os.path.exists(data_path):
-                    data_url = f"{graphdb_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"
+                    data_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"
 
-                    success, status, method = self.upload_file_to_graphdb(
+                    success, status, method = self.upload_file_to_rdf_store(
                         data_path,
                         data_url,
                         "application/x-turtle",
@@ -885,16 +885,16 @@ class IngestService:
             return False, [f"Upload error: {e}"]
 
     @staticmethod
-    def background_pk_fk_processing(session_cache: Any, graphdb_service: Any) -> None:
+    def background_pk_fk_processing(session_cache: Any, rdf_store_service: Any) -> None:
         """
         Background function to process PK/FK relationships.
 
-        Waits briefly for GraphDB to process uploaded data, then
+        Waits briefly for the RDF store to process uploaded data, then
         delegates to process_pk_fk_relationships.
 
         Args:
             session_cache: Session cache object with pk_fk_data attribute
-            graphdb_service: GraphDBService instance for database operations
+            rdf_store_service: RDFStoreService instance for database operations
         """
         try:
             time.sleep(3)
@@ -907,7 +907,7 @@ class IngestService:
             session_cache.pk_fk_status = "processing"
 
             success, messages = IngestService.process_pk_fk_relationships(
-                pk_fk_data, graphdb_service
+                pk_fk_data, rdf_store_service
             )
 
             session_cache.pk_fk_status = "success" if success else "failed"
@@ -923,18 +923,18 @@ class IngestService:
 
     @staticmethod
     def background_cross_graph_processing(
-        session_cache: Any, graphdb_service: Any
+        session_cache: Any, rdf_store_service: Any
     ) -> None:
         """
         Background function to process cross-graph relationships.
 
-        Waits briefly for GraphDB to process uploaded data (slightly
+        Waits briefly for the RDF store to process uploaded data (slightly
         longer than PK/FK to ensure ordering), then delegates to
         process_cross_graph_relationships.
 
         Args:
             session_cache: Session cache object with cross_graph_link_data attribute
-            graphdb_service: GraphDBService instance for database operations
+            rdf_store_service: RDFStoreService instance for database operations
         """
         try:
             # Slightly longer delay than PK/FK to ensure it runs after
@@ -948,7 +948,7 @@ class IngestService:
             session_cache.cross_graph_link_status = "processing"
 
             success, message = IngestService.process_cross_graph_relationships(
-                cross_graph_data, graphdb_service
+                cross_graph_data, rdf_store_service
             )
 
             session_cache.cross_graph_link_status = "success" if success else "failed"
@@ -967,14 +967,14 @@ class IngestService:
     @staticmethod
     def process_cross_graph_relationships(
         cross_graph_data: Dict,
-        graphdb_service: Any,
+        rdf_store_service: Any,
     ) -> Tuple[bool, str]:
         """
         Process cross-graph relationships.
 
         Args:
             cross_graph_data: Cross-graph relationship definition.
-            graphdb_service: GraphDB service instance.
+            rdf_store_service: RDF store service instance.
 
         Returns:
             Tuple of (success, message).
@@ -985,7 +985,7 @@ class IngestService:
         new_table = sanitise_table_name(cross_graph_data["newTableName"])
         existing_table = sanitise_table_name(cross_graph_data["existingTableName"])
 
-        result = graphdb_service.process_cross_graph_relationship(
+        result = rdf_store_service.process_cross_graph_relationship(
             new_table,
             cross_graph_data["newColumnName"],
             existing_table,

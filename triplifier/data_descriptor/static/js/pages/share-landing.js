@@ -60,7 +60,7 @@ const ShareLandingPage = {
     },
 
     /**
-     * Check if ontology is available in GraphDB
+     * Check if ontology is available in the RDF store
      */
     checkOntologyAvailability: async function() {
         try {
@@ -68,7 +68,7 @@ const ShareLandingPage = {
             
             // Directly call the API instead of going through SharedChecks
             // to have better error handling
-            const response = await fetch('/api/graphdb-databases');
+            const response = await fetch('/api/rdf-store-databases');
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);

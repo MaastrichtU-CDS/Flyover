@@ -1,7 +1,7 @@
 """
-GraphDB repository for data access operations.
+RDF store repository for data access operations.
 
-This module handles all interactions with GraphDB, including
+This module handles all interactions with the RDF store, including
 query execution, data retrieval, and graph management.
 """
 
@@ -17,23 +17,23 @@ from .query_builder import QueryBuilder
 logger = logging.getLogger(__name__)
 
 
-class GraphDBRepository:
+class RDFStoreRepository:
     """
-    Repository class for GraphDB operations.
+    Repository class for RDF store operations.
 
     Provides methods for executing queries, checking graph existence,
     and managing ontology and data graphs.
     """
 
-    def __init__(self, graphdb_url: str, repo: str):
+    def __init__(self, rdf_store_url: str, repo: str):
         """
-        Initialise GraphDB repository.
+        Initialise RDF store repository.
 
         Args:
-            graphdb_url: Base URL of the GraphDB instance.
+            rdf_store_url: Base URL of the RDF store instance.
             repo: Repository name.
         """
-        self.graphdb_url = graphdb_url
+        self.rdf_store_url = rdf_store_url
         self.repo = repo
         self.query_builder = QueryBuilder()
 
@@ -69,7 +69,7 @@ class GraphDBRepository:
         timeout: int = 30,
     ) -> Optional[str]:
         """
-        Execute a SPARQL query on the GraphDB repository.
+        Execute a SPARQL query on the RDF store repository.
 
         Args:
             query: SPARQL query string.
@@ -81,7 +81,7 @@ class GraphDBRepository:
             Query result as string, or None on error.
         """
         try:
-            endpoint = f"{self.graphdb_url}/repositories/{self.repo}{endpoint_suffix}"
+            endpoint = f"{self.rdf_store_url}/repositories/{self.repo}{endpoint_suffix}"
             response = requests.post(
                 endpoint,
                 data={query_type: query},
@@ -106,7 +106,7 @@ class GraphDBRepository:
         """
         try:
             response = requests.get(
-                f"{self.graphdb_url}/repositories/{self.repo}",
+                f"{self.rdf_store_url}/repositories/{self.repo}",
                 params={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
                 timeout=timeout,
@@ -129,7 +129,7 @@ class GraphDBRepository:
         query = QueryBuilder.check_data_graph_exists_query()
         try:
             response = requests.get(
-                f"{self.graphdb_url}/repositories/{self.repo}",
+                f"{self.rdf_store_url}/repositories/{self.repo}",
                 params={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
                 timeout=30,
@@ -362,7 +362,7 @@ class GraphDBRepository:
         """
         try:
             response = requests.get(
-                f"{self.graphdb_url}/repositories/{self.repo}/rdf-graphs/service",
+                f"{self.rdf_store_url}/repositories/{self.repo}/rdf-graphs/service",
                 params={"graph": graph_uri},
                 headers={"Accept": "application/n-triples"},
             )

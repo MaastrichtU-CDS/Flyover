@@ -29,7 +29,7 @@ share_bp = Blueprint("share", __name__)
 
 
 def get_app_context():
-    """Get application context (session_cache, graphdb_url, etc.)."""
+    """Get application context (session_cache, rdf_store_url, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
@@ -45,7 +45,7 @@ def share_landing():
     """
     return render_template(
         "share_landing.html",
-        graphdb_location="http://localhost:7200/",
+        rdf_store_location="http://localhost:7200/",
     )
 
 
@@ -67,19 +67,19 @@ def download_semantic_map():
 @share_bp.route("/downloadOntology", methods=["GET"])
 def download_ontology():
     """
-    Download ontology files from GraphDB.
+    Download ontology files from the RDF store.
 
     Returns:
         Response with ontology file(s).
     """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
-    graphdb_service = ctx.get("graphdb_service")
-    graphdb_url = ctx.get("graphdb_url", "http://localhost:7200")
+    rdf_store_service = ctx.get("rdf_store_service")
+    rdf_store_url = ctx.get("rdf_store_url", "http://localhost:7200")
     named_graph = "http://ontology.local/"
 
     return ShareService.download_ontology(
-        session_cache, graphdb_service, graphdb_url, named_graph
+        session_cache, rdf_store_service, rdf_store_url, named_graph
     )
 
 
@@ -128,7 +128,7 @@ def share_mock():
     Returns:
         Rendered share_mock.html template.
     """
-    return render_template("share_mock.html", graphdb_location="http://localhost:7200/")
+    return render_template("share_mock.html", rdf_store_location="http://localhost:7200/")
 
 
 @share_bp.route("/share_publish")
@@ -140,7 +140,7 @@ def share_publish():
         Rendered share_publish.html template.
     """
     return render_template(
-        "share_publish.html", graphdb_location="http://localhost:7200/"
+        "share_publish.html", rdf_store_location="http://localhost:7200/"
     )
 
 

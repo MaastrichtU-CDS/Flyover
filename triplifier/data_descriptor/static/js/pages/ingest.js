@@ -12,7 +12,7 @@ const IngestPage = {
 
     /**
      * Initialize the ingest page
-     * @param {boolean} graphExists - Whether a graph already exists in GraphDB
+     * @param {boolean} graphExists - Whether a graph already exists in the RDF store
      */
     init: function(graphExists) {
         this.graphExists = graphExists || false;

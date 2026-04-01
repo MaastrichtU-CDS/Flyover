@@ -15,12 +15,12 @@ import polars as pl
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-# Import GraphDBService for the name matching function
+# Import RDFStoreService for the name matching function
 try:
-    from services.graphdb_service import GraphDBService
+    from services.rdf_store_service import RDFStoreService
 except ImportError:
     # Fallback for when running in different contexts
-    from ..services.graphdb_service import GraphDBService
+    from ..services.rdf_store_service import RDFStoreService
 
 logger = logging.getLogger(__name__)
 
@@ -45,22 +45,22 @@ select ?db where {
 """
 
 
-def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
+def check_any_data_graph_exists(repo: str, rdf_store_url: str) -> bool:
     """
-    This function checks if any data graph exists in a GraphDB repository.
+    This function checks if any data graph exists in an RDF store repository.
     It checks for graphs matching the pattern http://data.local/* which includes
     both the legacy single graph (http://data.local/) and new per-table graphs
     (http://data.local/tablename/).
 
     Args:
-        repo: The name of the repository in GraphDB.
-        graphdb_url: The base URL of the GraphDB instance.
+        repo: The name of the repository in the RDF store.
+        rdf_store_url: The base URL of the RDF store instance.
 
     Returns:
         bool: True if any data graph exists, False otherwise.
 
     Raises:
-        Exception: If the request to the GraphDB instance fails,
+        Exception: If the request to the RDF store instance fails,
         an exception is raised with the status code of the failed request.
     """
     # Construct a SPARQL query that checks for any graph starting with http://data.local/
@@ -73,9 +73,9 @@ def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
     }
     """
 
-    # Send a GET request to the GraphDB instance
+    # Send a GET request to the RDF store instance
     response = requests.get(
-        f"{graphdb_url}/repositories/{repo}",
+        f"{rdf_store_url}/repositories/{repo}",
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
         timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
@@ -90,19 +90,19 @@ def check_any_data_graph_exists(repo: str, graphdb_url: str) -> bool:
 
 
 def graph_database_ensure_backend_initialisation(
-    session_cache, graphdb_service: GraphDBService
+    session_cache, rdf_store_service: RDFStoreService
 ) -> bool:
     """
-    Ensure that session_cache.databases is populated from the RDF-store.
+    Ensure that session_cache.databases is populated from the RDF store.
 
     Args:
         session_cache: The session cache object
-        graphdb_service: The GraphDB service instance for executing queries
+        rdf_store_service: The RDF store service instance for executing queries
 
     Returns:
         bool: True if databases are available, False otherwise
     """
-    databases = graph_database_fetch_from_rdf(session_cache.repo, graphdb_service)
+    databases = graph_database_fetch_from_rdf(session_cache.repo, rdf_store_service)
 
     if databases is None or len(databases) == 0:
         return False
@@ -112,25 +112,25 @@ def graph_database_ensure_backend_initialisation(
 
 
 def graph_database_fetch_from_rdf(
-    repo: str, graphdb_service: GraphDBService
+    repo: str, rdf_store_service: RDFStoreService
 ) -> Optional[List[str]]:
     """
-    Fetch database names from the RDF-store.
+    Fetch database names from the RDF store.
 
-    This function queries the GraphDB repository to get column information and extracts
+    This function queries the RDF store repository to get column information and extracts
     the unique database names from the URIs. This is useful when users navigate directly
     to annotation routes without going through the 'describe' step.
 
     Args:
         repo: The repository name to query
-        graphdb_service: The GraphDB service instance for executing queries
+        rdf_store_service: The RDF store service instance for executing queries
 
     Returns:
         List[str] or None: List of unique database names, or None if fetching fails
     """
     try:
         # Execute the query and read the results into a polars DataFrame
-        query_result = graphdb_service.execute_query(DATABASE_NAME_QUERY)
+        query_result = rdf_store_service.execute_query(DATABASE_NAME_QUERY)
         database_info = pl.read_csv(
             StringIO(query_result),
             infer_schema_length=0,
@@ -184,7 +184,7 @@ def graph_database_find_matching(
         return str(available_databases[0]) if len(available_databases) > 0 else None
 
     for db in available_databases:
-        if GraphDBService.graph_database_find_name_match(map_database_name, str(db)):
+        if RDFStoreService.graph_database_find_name_match(map_database_name, str(db)):
             return str(db)
 
     return None

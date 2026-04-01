@@ -604,15 +604,15 @@ class JSONLDMapping:
             return first_db.name
         return None
 
-    def find_database_key_for_graphdb(self, graphdb_name: str) -> Optional[str]:
+    def find_database_key_for_rdf_store(self, rdf_store_name: str) -> Optional[str]:
         """
-        Find the JSON-LD database key that matches a GraphDB database name.
+        Find the JSON-LD database key that matches an RDF store database name.
 
-        Matches by checking database name or table sourceFile against the GraphDB name.
+        Matches by checking database name or table sourceFile against the RDF store name.
         Handles .csv extension differences.
 
         Args:
-            graphdb_name: The database name from GraphDB.
+            rdf_store_name: The database name from the RDF store.
 
         Returns:
             The matching database key, or None if no match found.
@@ -620,13 +620,13 @@ class JSONLDMapping:
         if not self.databases:
             return None
 
-        graphdb_no_ext = (
-            graphdb_name[:-4] if graphdb_name.endswith(".csv") else graphdb_name
+        rdf_store_no_ext = (
+            rdf_store_name[:-4] if rdf_store_name.endswith(".csv") else rdf_store_name
         )
 
         for db_key, db in self.databases.items():
             db_name_no_ext = db.name[:-4] if db.name.endswith(".csv") else db.name
-            if db.name == graphdb_name or db_name_no_ext == graphdb_no_ext:
+            if db.name == rdf_store_name or db_name_no_ext == rdf_store_no_ext:
                 return db_key
 
             for table in db.tables.values():
@@ -635,7 +635,7 @@ class JSONLDMapping:
                     if table.source_file.endswith(".csv")
                     else table.source_file
                 )
-                if table.source_file == graphdb_name or source_no_ext == graphdb_no_ext:
+                if table.source_file == rdf_store_name or source_no_ext == rdf_store_no_ext:
                     return db_key
 
         return None
