@@ -288,7 +288,9 @@ class ShareService:
             )
 
     @staticmethod
-    def _download_single_semantic_map(session_cache: Any, formulate_local_map: Any) -> Response:
+    def _download_single_semantic_map(
+        session_cache: Any, formulate_local_map: Any
+    ) -> Response:
         """Download single semantic map."""
         database = session_cache.databases[0]
         filename = f"local_semantic_map_{database}.json"
@@ -419,7 +421,10 @@ class ShareService:
 
     @staticmethod
     def _download_single_ontology(
-        databases: list, rdf_store_service, named_graph: str, filename: Optional[str] = None
+        databases: list,
+        rdf_store_service,
+        named_graph: str,
+        filename: Optional[str] = None,
     ) -> Response:
         """Download single ontology."""
         if len(databases) == 1:

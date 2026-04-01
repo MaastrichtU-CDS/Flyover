@@ -393,8 +393,7 @@ class DescribeService:
                 var_info = global_semantic_map.get("variable_info", {})
                 if var_info:
                     return [
-                        name.capitalize().replace("_", " ")
-                        for name in var_info.keys()
+                        name.capitalize().replace("_", " ") for name in var_info.keys()
                     ] + ["Other"]
             except Exception as e:
                 logger.error(f"Error reading global semantic map: {e}")

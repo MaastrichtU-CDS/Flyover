@@ -233,7 +233,9 @@ def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
     return False
 
 
-def _populate_details_from_jsonld(session_cache: Any, rdf_store_service: Any, name_matcher: Any) -> None:
+def _populate_details_from_jsonld(
+    session_cache: Any, rdf_store_service: Any, name_matcher: Any
+) -> None:
     """
     Populate DescriptiveInfoDetails from JSON-LD mapping.
 
