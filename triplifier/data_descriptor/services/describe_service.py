@@ -539,7 +539,9 @@ class DescribeService:
                             local_term = jsonld_mapping.get_local_term(global_var, term)
                             if str(local_term) == str(cat_value):
                                 key = f'{database}_{local_column or ""}_category_"{cat_value}"'
-                                preselected[key] = (term[0].upper() + term[1:]).replace("_", " ")
+                                preselected[key] = (term[0].upper() + term[1:]).replace(
+                                    "_", " "
+                                )
                                 break
 
         return preselected
