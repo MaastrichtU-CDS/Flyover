@@ -17,14 +17,14 @@ services:
     container_name: rdf-store
 
   triplifier:
-    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    #image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    #build:
-    #   context: ./triplifier
+    build:
+       context: ./triplifier
     ports:
       - "127.0.0.1:5000:5000"
     environment:
-      - FLYOVER_GRAPHDB_URL=http://rdf-store:7200
+      - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
       # Optional: Override default timeout settings
