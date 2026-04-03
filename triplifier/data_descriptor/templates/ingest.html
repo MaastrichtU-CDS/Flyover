@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/flyover-custom.css') }}"/>
     <script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 </head>
 
 <body>
@@ -42,181 +43,15 @@
     <hr>
     <header>Start by selecting your data source:</header>
 
-    <form method="POST" action="/upload" enctype="multipart/form-data" id="mainForm">
-        <div class="form-group">
-            <label for="CSV"><i class="fas fa-file-csv"></i> CSV:</label>
-            <input type="radio" id="CSV" name="fileType" value="CSV">
-        </div>
-
-        <div class="form-group">
-            <label for="Postgres"><i class="fas fa-database"></i> PostgreSQL:</label>
-            <input type="radio" id="Postgres" name="fileType" value="Postgres">
-        </div>
-
-        <div id="csvform" style="display: none;">
-            <hr>
-            <label for="csvPath">Please specify the path of the CSV file(s) you would like to process</label>
-            <br>
-            <input type="text" id="csvPath" name="csvPath" placeholder="Enter CSV File Path(s)" readonly>
-            <input type="button" class="btn btn-primary" value="..."
-                   onclick="document.getElementById('csvFile').click();">
-            <input type="file" id="csvFile" name="csvFile" style="display:none;" multiple accept=".csv"
-                   onchange="updateFilePaths(this)">
-            <input type="text" id="csv_separator_sign" name="csv_separator_sign"
-                   placeholder="Separator sign (defaults to ',')"
-                   style="width: 250px; margin-left: 10px;">
-            <input type="text" id="csv_decimal_sign" name="csv_decimal_sign"
-                   placeholder="Decimal sign (defaults to '.')"
-                   style="width: 250px; margin-left: 10px;">
-
-            <!-- PK/FK Configuration Section -->
-            <div id="pkFkSection" style="display: none; margin-top: 20px;">
-                <hr>
-                <div class="alert alert-info">
-                    <strong><i class="fas fa-info-circle"></i>Multiple CSV Files Detected</strong><br>
-                    To establish relationships between your data files, you can optionally specify Primary Keys (PK) and Foreign Keys (FK) for each file. <br> This will help create meaningful connections in your knowledge graph.
-                </div>
-                <div id="pkFkContent">
-                    <!-- Dynamic PK/FK fields will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Data Linking Section - Hidden until files are uploaded -->
-            {% if graph_exists %}
-            <div id="dataLinkingSection" style="display: none; margin-top: 20px;">
-                <hr>
-                <div class="alert alert-info">
-                    <strong><i class="fas fa-link"></i> Link Your New Data to Existing Graph Data</strong><br>
-                    <p>This feature allows you to connect your new data with data that already exists in the graph database. </p>
-                    <p class="mb-0"><small>Note: Make sure your linking columns contain compatible values (e.g., identical ID formats)</small></p>
-                </div>
-
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="enableDataLinking" name="enableDataLinking">
-                    <label class="form-check-label" for="enableDataLinking">
-                        <strong>Enable Data Linking</strong>
-                    </label>
-                    <small class="form-text text-muted">Check this box to establish connections between your new data and existing data</small>
-                </div>
-
-                <div id="linkingConfiguration" style="display: none;">
-                    <div class="card">
-                        <div class="card-header">
-                            <h6 class="mb-0">Configure Data Links</h6>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h6>New Data (Data you're uploading now)</h6>
-                                    <div class="form-group">
-                                        <label for="newTableName">Select Data File:</label>
-                                        <select class="form-control" id="newTableName" name="newTableName">
-                                            <option value="">-- Select the CSV file you want to link --</option>
-                                        </select>
-                                        <small class="form-text text-muted">Choose which of your uploaded CSV files contains the linking information</small>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="newColumnName">Select Linking Column:</label>
-                                        <select class="form-control" id="newColumnName" name="newColumnName">
-                                            <option value="">-- Select the column containing identifiers --</option>
-                                        </select>
-                                        <small class="form-text text-muted">Choose the column that contains values matching the existing data (e.g., Patient ID, Study Number)</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <h6>Existing Graph Data (Data already in the graph database)</h6>
-                                    <div class="form-group">
-                                        <label for="existingTableName">Select Existing Table:</label>
-                                        <select class="form-control" id="existingTableName" name="existingTableName">
-                                            <option value="">-- Select the existing data table to link to --</option>
-                                        </select>
-                                        <small class="form-text text-muted">Choose which existing data table you want to link with</small>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="existingColumnName">Select Matching Column:</label>
-                                        <select class="form-control" id="existingColumnName" name="existingColumnName">
-                                            <option value="">-- Select the column to match against --</option>
-                                        </select>
-                                        <small class="form-text text-muted">Choose the column from existing data that matches your new data's identifiers</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <br>
-                </div>
-
-                <!-- Hidden field for cross-graph linking data -->
-                <input type="hidden" id="crossGraphLinkData" name="crossGraphLinkData" value="">
-            </div>
-            {% endif %}
-        </div>
-
-        <div id="postgresform" style="display: none;">
-            <hr>
-            <label for="username">Please specify the following details for your postgres database</label>
-            <br>
-            <label for="username">PostgreSQL Username:</label>
-            <input type="text" id="username" name="username">
-            <br>
-            <label for="password">PostgreSQL Password:</label>
-            <input type="password" id="password" name="password">
-            <br>
-            <label for="POSTGRES_URL">PostgreSQL URL:</label>
-            <input type="text" id="POSTGRES_URL" name="POSTGRES_URL">
-            <br>
-            <label for="POSTGRES_DB">PostgreSQL Database:</label>
-            <input type="text" id="POSTGRES_DB" name="POSTGRES_DB">
-        </div>
-
-        <!-- Hidden field for PK/FK data -->
-        <input type="hidden" id="pkFkData" name="pkFkData" value="">
-
-        <button type="submit" id="submitFilesButton" class="btn btn-primary"><i class="fas fa-play"></i> Submit Files</button>
-
-        <div class="mt-4">
-            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
-                <i class="fas fa-info-circle"></i>
-                <strong>Directly uploading your graph data</strong><br>
-                <div class="mt-1 ms-4">
-                    <div class="mt-1">
-                        <p class="mb-1">
-                            Please know that if you have already converted your data using Flyover, then you can also directly upload the files in the RDF store interface.
-                            <br>
-                            In that case you can skip this data ingest step and proceed to describing and or annotating your data.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {% if graph_exists %}
-            <hr>
-            <p><i class="fas fa-exclamation-triangle"
-                                   style="margin-right: 5px; align-self: flex-start;"></i><i><b>The associated RDF store already contains a data graph.</b></i><br>
-                <i>It is possible to add more data to this graph, for that you can use the data upload available
-                    above.</i><br>
-                <i>It is, however, possible to describe the existing data without having to add new,
-                    for that please use the options below.</i></p>
-            <i>The existing data graph can also be removed through the RDF store interface.</i></p>
-            <br>
-            <button type="submit" id="submitWithoutData" class="btn btn-primary"><i class="fas fa-fast-forward"></i> Proceed without adding data</button>
-            <br>
-            <br>
-
-        {% endif %}
-    </form>
+    <div id="ingest-app"></div>
 </div>
 
 <!-- Page-specific JavaScript -->
-<script src="{{ url_for('static', filename='js/pages/ingest.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vue/ingest-app.js') }}"></script>
 <script>
-    // Pass Flask variables to JavaScript and initialize
+    // Pass Flask variables to the Vue app before mounting
     window.graph_exists = {% if graph_exists %}true{% else %}false{% endif %};
-    
-    $(document).ready(function() {
-        IngestPage.init(window.graph_exists);
-    });
+    IngestApp.mount('#ingest-app');
 </script>
 
 <!-- Include footer -->
