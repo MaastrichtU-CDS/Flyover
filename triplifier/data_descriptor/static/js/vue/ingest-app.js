@@ -849,5 +849,10 @@ window.IngestApp = IngestApp;
  */
 function updateFilePaths(input) {
     // Vue handles this through the @change binding on the file input.
-    // This function exists for backward compatibility only.
+    // This function exists for backward compatibility with any remaining
+    // inline onchange="updateFilePaths(this)" handlers in the HTML.
+    console.warn(
+        'updateFilePaths() called via legacy handler. ' +
+        'The Vue ingest-app component handles file input changes internally.'
+    );
 }
