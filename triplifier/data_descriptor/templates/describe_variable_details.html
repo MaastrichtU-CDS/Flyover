@@ -10,6 +10,7 @@
     <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/bootstrap-select.min.js') }}"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 </head>
 
 <body>
@@ -22,36 +23,7 @@
     <hr>
     <p>Please provide more information for the categorical and continuous variables that were defined in the variable
         description page.<br>
-    <form class="form-horizontal" method="POST" action="end">
-        <hr>
-        <div id="databases-container">
-            <!-- Databases will be dynamically loaded from IndexedDB -->
-        </div>
-        <div id="template-storage" style="display: none;">
-            <div class="database-section">
-                <h2 style="display: inline-block;"><i class="fas fa-database"></i> <span class="db-name"></span></h2>
-                <button class="toggle-button" type="button">
-                    <span class="toggle-text">Show more</span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="20"
-                         height="20">
-                        <path d="M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z"/>
-                    </svg>
-                </button>
-                <div class="content hidden variables-container">
-                </div>
-                <hr>
-            </div>
-        </div>
-
-
-        <p>
-            <button type="submit" id="submitBtn" class="btn btn-primary">
-                <i class="fas fa-play"></i> Submit
-            </button>
-            <a href="/describe_variables" class="btn btn-light">
-                <i class="fas fa-backward"></i> Back to Describe Variables
-            </a>
-        </p>
+    <div id="describe-details-app"></div>
 
         <!-- Reference Guide Section -->
         <div class="mt-4">
@@ -105,22 +77,18 @@
                 </div>
             </div>
         </div>
-    </form>
     <script src="{{ url_for('static', filename='js/db-utils.js') }}"></script>
     <script src="{{ url_for('static', filename='js/jsonld-mapper.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/pages/describe-variable-details.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/vue/describe-variable-details-app.js') }}"></script>
     <script>
         const DESCRIPTIVE_INFO = {{ descriptive_info | safe }};
         const DESCRIPTIVE_INFO_DETAILS = {{ descriptive_info_details | safe }};
         const PRESELECTED_VALUES = {{ preselected_values | tojson | safe }};
 
-        $(document).ready(function () {
-            DescribeVariableDetailsPage.init(DESCRIPTIVE_INFO, DESCRIPTIVE_INFO_DETAILS, PRESELECTED_VALUES);
-        });
-    </script>
+        const descDetailsApp = DescribeVariableDetailsApp.mount('#describe-details-app');
+        descDetailsApp.init(DESCRIPTIVE_INFO, DESCRIPTIVE_INFO_DETAILS, PRESELECTED_VALUES);
 
-    <script>
-        window.graph_exists = true; // Data exists in the 'describe' step
+        window.graph_exists = true;
     </script>
 
 </div>
