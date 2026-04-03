@@ -86,6 +86,120 @@ The [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki) contains detailed do
   Converting old JSON mappings to JSON-LD
 - [Flyover architecture](https://github.com/MaastrichtU-CDS/Flyover/wiki/Flyover-architecture/Architecture.md) — Flyover's internal architecture 
 
+## Frontend Architecture: Vue.js Progressive Enhancement
+
+Flyover's frontend uses a **progressive enhancement** strategy that combines Flask/Jinja2
+server-rendered HTML with Vue.js 3 for interaction-heavy pages. The application architecture
+remains Flask-centric, with Python as the primary language for maintainers.
+
+### Overview
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Server rendering** | Flask + Jinja2 | Page structure, navigation, server-side logic |
+| **Reactive UI** | Vue.js 3 (CDN) | Complex form state, pagination, live validation |
+| **Utilities** | jQuery, Bootstrap | Legacy interactions, selectpicker widgets |
+| **Client storage** | IndexedDB (FlyoverDB) | Semantic map persistence across pages |
+
+### Which Pages Use Vue.js
+
+Vue.js components are used on pages with **complex state management** or **heavy client-side
+interactivity**:
+
+| Page | Vue Component | Key Features |
+|------|--------------|--------------|
+| **Ingest** | `vue/ingest-app.js` | CSV file analysis, PK/FK configuration, data linking |
+| **Describe Variables** | `vue/describe-variables-app.js` | Pagination, form state caching, auto-populate datatypes |
+| **Describe Variable Details** | `vue/describe-variable-details-app.js` | Category/continuous variable forms, IndexedDB sync |
+| **Annotation Landing** | `vue/annotation-landing-app.js` | JSON-LD upload, database matching, multi-option UI |
+| **Annotation Review** | `vue/annotation-review-app.js` | Semantic map loading, variable cards, pagination |
+
+Pages that remain on the jQuery/vanilla JS backbone (simpler interactions):
+- Home (`index.js`), Share pages (`share-landing.js`, `share-mock.js`, `share-publish.js`)
+- Navigation (`navigation.js`), shared utilities (`shared-checks.js`, `db-utils.js`)
+
+### How to Add a New Vue.js Component
+
+1. **Create the component file** in `static/js/vue/`:
+
+```javascript
+// static/js/vue/my-feature-app.js
+
+const MyFeatureApp = Vue.createApp({
+    // Use [[ ]] delimiters to avoid conflicts with Jinja2 {{ }}
+    delimiters: ['[[', ']]'],
+
+    template: `
+    <div>
+        <h3>[[ title ]]</h3>
+        <ul>
+            <li v-for="item in items" :key="item.id">[[ item.name ]]</li>
+        </ul>
+        <button @click="addItem">Add Item</button>
+    </div>
+    `,
+
+    data() {
+        return {
+            title: 'My Feature',
+            items: []
+        };
+    },
+
+    methods: {
+        addItem() {
+            this.items.push({ id: Date.now(), name: 'New item' });
+        }
+    },
+
+    mounted() {
+        console.log('Vue component mounted');
+    }
+});
+
+window.MyFeatureApp = MyFeatureApp;
+```
+
+2. **Update the HTML template** (Jinja2):
+
+```html
+<!-- In <head>, add Vue.js CDN after jQuery/Bootstrap -->
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+<!-- Add a mount point in the page body -->
+<div id="my-feature-app"></div>
+
+<!-- Load and mount the component (before </body>) -->
+<script src="{{ url_for('static', filename='js/vue/my-feature-app.js') }}"></script>
+<script>
+    MyFeatureApp.mount('#my-feature-app');
+</script>
+```
+
+3. **Pass Flask data** to the Vue component:
+
+```html
+<script>
+    // Option A: Set global variables before mounting
+    window.serverData = {{ my_data|tojson }};
+    MyFeatureApp.mount('#my-feature-app');
+
+    // Option B: Call an init method after mounting
+    const app = MyFeatureApp.mount('#my-feature-app');
+    app.init({{ my_data|tojson }});
+</script>
+```
+
+### Key Conventions
+
+- **Delimiters**: Always use `[[ ]]` for Vue expressions to avoid conflicts with Jinja2's `{{ }}`
+- **CDN**: Vue.js 3 is loaded via CDN (`unpkg.com/vue@3/dist/vue.global.prod.js`) — no build tools required
+- **Options API**: Use the Options API (`data()`, `methods`, `computed`, `mounted`) for consistency
+- **Templates in JS**: Keep Vue templates in the component's `template` string property, not inline in HTML
+- **External utilities**: Continue using `FlyoverDB` and `JSONLDMapper` as global utilities from within Vue methods
+- **Form submissions**: Standard HTML form POST remains the submission mechanism; Vue manages the reactive state
+- **No SPA routing**: Each page is a separate Flask route with its own Vue app instance
+
 ## References
 
 - Gouthamchand, V., Choudhury, A., ..., and Wee, L. (2024). Making head and neck cancer clinical data
