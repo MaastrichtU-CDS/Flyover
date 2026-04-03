@@ -15,6 +15,12 @@
  * @requires JSONLDMapper (from jsonld-mapper.js)
  */
 
+/** @const {number} Duration in ms to show auto-fill feedback */
+const AUTO_FILL_FEEDBACK_MS = 3000;
+
+/** @const {number} Duration in ms to show manual override feedback */
+const OVERRIDE_FEEDBACK_MS = 2000;
+
 const DescribeVariablesApp = Vue.createApp({
     delimiters: ['[[', ']]'],
 
@@ -710,7 +716,7 @@ const DescribeVariablesApp = Vue.createApp({
                         feedback.show();
                         setTimeout(function () {
                             feedback.fadeOut();
-                        }, 3000);
+                        }, AUTO_FILL_FEEDBACK_MS);
                     }
                 }
             } else {
@@ -739,7 +745,7 @@ const DescribeVariablesApp = Vue.createApp({
                 .css('color', '#ffc107').show();
             setTimeout(function () {
                 feedback.fadeOut();
-            }, 2000);
+            }, OVERRIDE_FEEDBACK_MS);
         },
 
         /**
