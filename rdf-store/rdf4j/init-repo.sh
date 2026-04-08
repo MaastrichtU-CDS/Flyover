@@ -26,9 +26,16 @@ else
     echo "Repository 'userRepo' created successfully."
 fi
 
-# Stop the background Tomcat instance gracefully.
+# Stop the background Tomcat instance and wait until port 8080 is free.
 catalina.sh stop 2>/dev/null || true
-sleep 2
+echo "Waiting for port 8080 to be released..."
+for i in $(seq 1 30); do
+    if ! ss -tlnp 2>/dev/null | grep -q ':8080 ' && ! netstat -tlnp 2>/dev/null | grep -q ':8080 '; then
+        echo "Port 8080 is free."
+        break
+    fi
+    sleep 1
+done
 
 # Restart Tomcat in the foreground as PID 1.
 exec catalina.sh run
