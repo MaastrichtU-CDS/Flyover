@@ -97,7 +97,7 @@ remains Flask-centric, with Python as the primary language for maintainers.
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Server rendering** | Flask + Jinja2 | Page structure, navigation, server-side logic |
-| **Reactive UI** | Vue.js 3 (CDN) | Complex form state, pagination, live validation |
+| **Reactive UI** | Vue.js 3 (local) | Complex form state, pagination, live validation |
 | **Utilities** | jQuery, Bootstrap | Legacy interactions, selectpicker widgets |
 | **Client storage** | IndexedDB (FlyoverDB) | Semantic map persistence across pages |
 
@@ -163,8 +163,8 @@ window.MyFeatureApp = MyFeatureApp;
 2. **Update the HTML template** (Jinja2):
 
 ```html
-<!-- In <head>, add Vue.js CDN after jQuery/Bootstrap -->
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<!-- In <head>, add Vue.js after jQuery/Bootstrap (served locally, no internet needed) -->
+<script src="{{ url_for('static', filename='js/vue.global.prod.js') }}"></script>
 
 <!-- Add a mount point in the page body -->
 <div id="my-feature-app"></div>
@@ -193,7 +193,7 @@ window.MyFeatureApp = MyFeatureApp;
 ### Key Conventions
 
 - **Delimiters**: Always use `[[ ]]` for Vue expressions to avoid conflicts with Jinja2's `{{ }}`
-- **CDN**: Vue.js 3 is loaded via CDN (`unpkg.com/vue@3/dist/vue.global.prod.js`) — no build tools required
+- **CDN**: Vue.js 3 is bundled locally (`static/js/vue.global.prod.js`) — no internet connection or build tools required
 - **Options API**: Use the Options API (`data()`, `methods`, `computed`, `mounted`) for consistency
 - **Templates in JS**: Keep Vue templates in the component's `template` string property, not inline in HTML
 - **External utilities**: Continue using `FlyoverDB` and `JSONLDMapper` as global utilities from within Vue methods

@@ -207,6 +207,9 @@ const DescribeVariableDetailsApp = Vue.createApp({
             /** @type {boolean} Whether form is being submitted */
             isProcessing: false,
 
+            /** @type {boolean} Whether JSONLDMapper has been loaded from IndexedDB */
+            mapperLoaded: false,
+
             /** @type {boolean} Toggle for loading icon animation */
             loadingIconIsPen: false,
 
@@ -233,6 +236,9 @@ const DescribeVariableDetailsApp = Vue.createApp({
          */
         parsedDatabases() {
             if (!this.descriptiveInfoDetails) return [];
+
+            // Depend on mapperLoaded so this re-computes after JSONLDMapper loads
+            const _loaded = this.mapperLoaded;
 
             const result = [];
             let dbIdx = 0;
@@ -286,10 +292,14 @@ const DescribeVariableDetailsApp = Vue.createApp({
          * @param {Object} descriptiveInfoDetails - Detailed descriptive info from backend
          * @param {Object} preselectedValues - Preselected values from backend
          */
-        init(descriptiveInfo, descriptiveInfoDetails, preselectedValues) {
+        async init(descriptiveInfo, descriptiveInfoDetails, preselectedValues) {
             this.descriptiveInfo = descriptiveInfo;
             this.descriptiveInfoDetails = descriptiveInfoDetails;
             this.preselectedValues = preselectedValues || {};
+
+            // Call storeAndRenderData here (not in mounted) because init is
+            // called after mount and data is only available after init sets it.
+            await this.storeAndRenderData();
         },
 
         /**
@@ -314,6 +324,10 @@ const DescribeVariableDetailsApp = Vue.createApp({
 
                 await JSONLDMapper.loadFromIndexedDB();
                 console.log('Flyover: Loaded semantic mapping from IndexedDB');
+
+                // Flag that mapper is loaded so parsedDatabases re-computes
+                // with category options and local mappings available
+                this.mapperLoaded = true;
 
                 this.renderFormsFromData();
             } catch (error) {
@@ -728,12 +742,11 @@ const DescribeVariableDetailsApp = Vue.createApp({
 
     /**
      * Lifecycle hook: called after the component is mounted.
-     * Initializes IndexedDB storage and renders form data.
+     * Data initialization is handled by init() which is called externally
+     * after mount, since the backend data is only available at that point.
      */
     async mounted() {
-        if (this.descriptiveInfo && this.descriptiveInfoDetails) {
-            await this.storeAndRenderData();
-        }
+        // No-op: init() is called externally after mount with backend data
     }
 });
 
