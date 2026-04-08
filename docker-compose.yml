@@ -24,7 +24,7 @@ services:
     build:
       context: ./rdf-store/rdf4j
     ports:
-      - "8080:8080"
+      - "7200:7200"
     volumes:
       - ./rdf-store/rdf4j/data:/var/rdf4j
       - ./rdf-store/rdf4j/logs:/usr/local/tomcat/logs
@@ -45,7 +45,7 @@ services:
       # ── GraphDB URL (use with Option A) ──
       # - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
       # ── RDF4J URL (use with Option B) ──
-      - FLYOVER_RDF_STORE_URL=http://rdf-store:8080/rdf4j-server
+      - FLYOVER_RDF_STORE_URL=http://rdf-store:7200/rdf4j-server
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
       # Enable manual materialization of inferred triples in a separate graph.

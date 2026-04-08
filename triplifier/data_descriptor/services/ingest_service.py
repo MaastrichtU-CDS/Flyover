@@ -759,8 +759,9 @@ class IngestService:
                 # Upload ontology file
                 ontology_url = (
                     f"{rdf_store_url}/repositories/{repo}"
-                    f"/rdf-graphs/service?graph="
+                    f"/statements?context=%3C"
                     f"http://ontology.local/{table_name}/"
+                    f"%3E"
                 )
 
                 success, status, method = self.upload_file_to_rdf_store(
@@ -785,14 +786,15 @@ class IngestService:
                 # Upload data file
                 data_url = (
                     f"{rdf_store_url}/repositories/{repo}"
-                    f"/rdf-graphs/service?graph="
+                    f"/statements?context=%3C"
                     f"http://data.local/{table_name}/"
+                    f"%3E"
                 )
 
                 success, status, method = self.upload_file_to_rdf_store(
                     data_path,
                     data_url,
-                    "application/x-turtle",
+                    "text/turtle",
                     not data_background,
                     data_timeout,
                 )
@@ -850,8 +852,9 @@ class IngestService:
                 if os.path.exists(ontology_path):
                     ontology_url = (
                         f"{rdf_store_url}/repositories/{repo}"
-                        f"/rdf-graphs/service?graph="
+                        f"/statements?context=%3C"
                         f"http://ontology.local/"
+                        f"%3E"
                     )
                     success, status, method = self.upload_file_to_rdf_store(
                         ontology_path,
@@ -873,12 +876,17 @@ class IngestService:
             if upload_data:
                 data_path = os.path.join(root_dir, "output.ttl")
                 if os.path.exists(data_path):
-                    data_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"
+                    data_url = (
+                        f"{rdf_store_url}/repositories/{repo}"
+                        f"/statements?context=%3C"
+                        f"http://data.local/"
+                        f"%3E"
+                    )
 
                     success, status, method = self.upload_file_to_rdf_store(
                         data_path,
                         data_url,
-                        "application/x-turtle",
+                        "text/turtle",
                         not data_background,
                         data_timeout,
                     )
