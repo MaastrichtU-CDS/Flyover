@@ -756,12 +756,11 @@ class IngestService:
                     messages.append(f"Missing files for table {table_name}")
                     continue
 
-                # Upload ontology file
+                # Upload ontology file (SPARQL Graph Store Protocol)
                 ontology_url = (
                     f"{rdf_store_url}/repositories/{repo}"
-                    f"/statements?context=%3C"
+                    f"/rdf-graphs/service?graph="
                     f"http://ontology.local/{table_name}/"
-                    f"%3E"
                 )
 
                 success, status, method = self.upload_file_to_rdf_store(
@@ -783,12 +782,11 @@ class IngestService:
                     overall_success = False
                     continue
 
-                # Upload data file
+                # Upload data file (SPARQL Graph Store Protocol)
                 data_url = (
                     f"{rdf_store_url}/repositories/{repo}"
-                    f"/statements?context=%3C"
+                    f"/rdf-graphs/service?graph="
                     f"http://data.local/{table_name}/"
-                    f"%3E"
                 )
 
                 success, status, method = self.upload_file_to_rdf_store(
@@ -852,9 +850,8 @@ class IngestService:
                 if os.path.exists(ontology_path):
                     ontology_url = (
                         f"{rdf_store_url}/repositories/{repo}"
-                        f"/statements?context=%3C"
+                        f"/rdf-graphs/service?graph="
                         f"http://ontology.local/"
-                        f"%3E"
                     )
                     success, status, method = self.upload_file_to_rdf_store(
                         ontology_path,
@@ -878,9 +875,8 @@ class IngestService:
                 if os.path.exists(data_path):
                     data_url = (
                         f"{rdf_store_url}/repositories/{repo}"
-                        f"/statements?context=%3C"
+                        f"/rdf-graphs/service?graph="
                         f"http://data.local/"
-                        f"%3E"
                     )
 
                     success, status, method = self.upload_file_to_rdf_store(

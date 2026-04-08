@@ -373,8 +373,8 @@ class RDFStoreRepository:
         """
         try:
             response = requests.get(
-                f"{self.rdf_store_url}/repositories/{self.repo}/statements",
-                params={"context": f"<{graph_uri}>"},
+                f"{self.rdf_store_url}/repositories/{self.repo}/rdf-graphs/service",
+                params={"graph": graph_uri},
                 headers={"Accept": "application/n-triples"},
             )
             return response.text, response.status_code
