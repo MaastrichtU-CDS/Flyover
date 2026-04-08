@@ -7,7 +7,7 @@ import re
 import logging
 import chardet
 from io import BytesIO
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 # Setup logger for this module
 logger = logging.getLogger(__name__)
@@ -304,11 +304,6 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
 
     Returns:
         DataFrame with cleaned column names and original names stored in metadata
-
-    Note:
-        Column mappings are stored in a global registry keyed by DataFrame id().
-        Call clear_column_mapping_registry() when DataFrames are no longer needed
-        to free memory.
     """
     logger.info(
         f"Starting DataFrame preprocessing: {df.height} rows, {df.width} columns"
@@ -332,97 +327,63 @@ def preprocess_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     return processed_df
 
 
-def clear_column_mapping_registry() -> None:
+def preprocess_mixed_type_data(
+    table_data: Dict[str, List[Union[str, int, float, None]]],
+) -> Dict[str, List[Union[str, int, float, None]]]:
     """
-    Clear all stored column mappings from the global registry.
-
-    Call this function when DataFrames are no longer needed to free memory.
-    """
-    _column_mapping_registry.clear()
-    logger.debug("Column mapping registry cleared")
-
-
-def get_original_column_name(df: pl.DataFrame, cleaned_name: str) -> str:
-    """
-    Get the original column name from a cleaned column name.
+    Pre-process table data to handle mixed types by converting to appropriate types.
+    Specifically handles the case where missing values are lists like ["NULL"].
 
     Args:
-        df: DataFrame with column mapping in registry
-        cleaned_name: Cleaned column name
+        table_data: Dictionary where keys are column names and values are lists of data
 
     Returns:
-        Original column name if found, otherwise the cleaned name
+        Processed table data with consistent types for each column
     """
-    df_id = id(df)
-    if (
-        df_id in _column_mapping_registry
-        and "column_mapping" in _column_mapping_registry[df_id]
-    ):
-        original_name = _column_mapping_registry[df_id]["column_mapping"].get(
-            cleaned_name, cleaned_name
-        )
-        if original_name != cleaned_name:
-            logger.debug(
-                f"Retrieved original column name: '{cleaned_name}' -> '{original_name}'"
-            )
-        return original_name
+    processed_data: Dict[str, List[Union[str, int, float, None]]] = {}
 
-    logger.debug(f"No column mapping found, returning cleaned name: '{cleaned_name}'")
-    return cleaned_name
+    for col_name, col_values in table_data.items():
+        processed_values: List[Union[str, int, float, None]] = []
+        has_list_values = False
+        has_numeric = False
+        has_string = False
 
+        # First pass: detect what types we have
+        for value in col_values:
+            if isinstance(value, list):
+                has_list_values = True
+            elif isinstance(value, (int, float)):
+                has_numeric = True
+            elif isinstance(value, str):
+                has_string = True
 
-def get_column_mapping(df: pl.DataFrame) -> Dict[str, str]:
-    """
-    Get the column mapping for a preprocessed DataFrame.
+        # Second pass: convert values appropriately
+        if has_list_values:
+            # If we have list values, convert everything to string
+            for value in col_values:
+                if isinstance(value, list):
+                    # Extract single item from list or join multiple items
+                    if len(value) == 1:
+                        processed_values.append(str(value[0]))
+                    else:
+                        processed_values.append(", ".join(str(v) for v in value))
+                else:
+                    processed_values.append(str(value))
+        elif has_numeric and has_string:
+            # Mixed numeric and string - convert everything to string
+            for value in col_values:
+                processed_values.append(str(value))
+        elif has_numeric:
+            # All numeric - keep as is but handle None values
+            for value in col_values:
+                if value is None:
+                    processed_values.append(None)
+                else:
+                    processed_values.append(value)
+        else:
+            # All strings or other types - keep as is
+            processed_values = col_values
 
-    Args:
-        df: DataFrame with column mapping in registry
+        processed_data[col_name] = processed_values
 
-    Returns:
-        Dictionary mapping cleaned column names to original column names
-    """
-    df_id = id(df)
-    if (
-        df_id in _column_mapping_registry
-        and "column_mapping" in _column_mapping_registry[df_id]
-    ):
-        return _column_mapping_registry[df_id]["column_mapping"]
-    return {}
-
-
-def dataframe_to_template_data(df: pl.DataFrame) -> Dict[str, Any]:
-    """
-    Convert a polars DataFrame to a template-friendly dictionary structure.
-
-    Instead of wrapping DataFrames, this converts them to plain Python data
-    structures that Jinja templates can work with directly.
-
-    Args:
-        df: polars DataFrame to convert
-
-    Returns:
-        Dictionary containing:
-        - 'columns': list of unique column values (from the 'column' field)
-        - 'rows': list of row dicts
-        - 'by_column': dict mapping column names to their rows for easy filtering
-    """
-    rows = df.to_dicts()
-
-    # Get unique column values if 'column' exists in dataframe
-    columns = []
-    if "column" in df.columns:
-        columns = df.get_column("column").unique().to_list()
-
-    # Create a mapping of column name to rows for easy filtering in templates
-    by_column: Dict[str, List[Dict]] = {}
-    for row in rows:
-        col_name = row.get("column", "")
-        if col_name not in by_column:
-            by_column[col_name] = []
-        by_column[col_name].append(row)
-
-    return {
-        "columns": columns,
-        "rows": rows,
-        "by_column": by_column,
-    }
+    return processed_data
