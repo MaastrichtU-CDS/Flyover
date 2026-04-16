@@ -112,6 +112,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
                                                     :name="cat.selectName"
                                                     class="selectpicker form-control category-select"
                                                     :data-comment-id="cat.commentId"
+                                                    :data-count-id="cat.countId"
                                                     :data-database="db.name"
                                                     :data-variable="variable.localVariable"
                                                     :data-global-variable="variable.globalVarName"
@@ -641,7 +642,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
                     const description = $(this).val();
                     const commentId = $(this).data('comment-id');
                     const comment = $(`#${commentId}`).val();
-                    const countId = commentId.replace('cat-comment-', 'cat-count-');
+                    const countId = $(this).data('count-id');
                     const count = $(`#${countId}`).val();
 
                     if (description && updatedDescriptiveInfo[database]?.[variable]) {
