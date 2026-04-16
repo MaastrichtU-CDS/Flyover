@@ -36,6 +36,7 @@ from services.rdf_store_service import RDFStoreService
 from utils.session_helpers import (
     get_semantic_map_for_annotation,
 )
+from utils.rdf_store_url import normalise_rdf_store_base_url
 
 app = Flask(__name__)
 
@@ -47,6 +48,7 @@ if (
         "FLYOVER_GRAPHDB_URL"
     )
     repo = os.getenv("FLYOVER_REPOSITORY_NAME")
+    rdf_store_url = normalise_rdf_store_base_url(rdf_store_url, repo)
     app.config["DEBUG"] = False
     root_dir = "/app/"
     child_dir = "data_descriptor"

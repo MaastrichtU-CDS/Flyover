@@ -14,6 +14,17 @@ import requests
 
 from .query_builder import QueryBuilder
 
+try:
+    from ..utils.rdf_store_url import (
+        build_repository_endpoint,
+        normalise_rdf_store_base_url,
+    )
+except ImportError:
+    from utils.rdf_store_url import (  # type: ignore[no-redef]
+        build_repository_endpoint,
+        normalise_rdf_store_base_url,
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +44,7 @@ class RDFStoreRepository:
             rdf_store_url: Base URL of the RDF store instance.
             repo: Repository name.
         """
-        self.rdf_store_url = rdf_store_url
+        self.rdf_store_url = normalise_rdf_store_base_url(rdf_store_url, repo)
         self.repo = repo
         self.query_builder = QueryBuilder()
 
@@ -81,7 +92,9 @@ class RDFStoreRepository:
             Query result as string, or None on error.
         """
         try:
-            endpoint = f"{self.rdf_store_url}/repositories/{self.repo}{endpoint_suffix}"
+            endpoint = build_repository_endpoint(
+                self.rdf_store_url, self.repo, endpoint_suffix
+            )
             response = requests.post(
                 endpoint,
                 data={query_type: query},
@@ -106,7 +119,7 @@ class RDFStoreRepository:
         """
         try:
             response = requests.get(
-                f"{self.rdf_store_url}/repositories/{self.repo}",
+                build_repository_endpoint(self.rdf_store_url, self.repo),
                 params={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
                 timeout=timeout,
@@ -129,7 +142,7 @@ class RDFStoreRepository:
         query = QueryBuilder.check_data_graph_exists_query()
         try:
             response = requests.get(
-                f"{self.rdf_store_url}/repositories/{self.repo}",
+                build_repository_endpoint(self.rdf_store_url, self.repo),
                 params={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
                 timeout=30,

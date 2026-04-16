@@ -15,6 +15,7 @@ from werkzeug.utils import secure_filename
 from services import AnnotateService
 from validation import MappingValidator
 from loaders import JSONLDMapping
+from utils.rdf_store_url import build_repository_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +250,9 @@ def start_annotation():
         if not databases:
             return jsonify({"success": False, "error": "No databases available"})
 
-        endpoint = f"{rdf_store_url}/repositories/{session_cache.repo}/statements"
+        endpoint = build_repository_endpoint(
+            rdf_store_url, session_cache.repo, "/statements"
+        )
         map_table_names = get_table_names(session_cache)
 
         # Prepare annotation data

@@ -13,14 +13,18 @@ import requests
 import polars as pl
 
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-# Import RDFStoreService for the name matching function
 try:
-    from services.rdf_store_service import RDFStoreService
+    from .rdf_store_url import build_repository_endpoint
 except ImportError:
-    # Fallback for when running in different contexts
-    from ..services.rdf_store_service import RDFStoreService
+    from rdf_store_url import build_repository_endpoint  # type: ignore[no-redef]
+
+if TYPE_CHECKING:
+    try:
+        from services.rdf_store_service import RDFStoreService
+    except ImportError:
+        from ..services.rdf_store_service import RDFStoreService
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +79,7 @@ def check_any_data_graph_exists(repo: str, rdf_store_url: str) -> bool:
 
     # Send a GET request to the RDF store instance
     response = requests.get(
-        f"{rdf_store_url}/repositories/{repo}",
+        build_repository_endpoint(rdf_store_url, repo),
         params={"query": query},
         headers={"Accept": "application/sparql-results+json"},
         timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
@@ -90,7 +94,7 @@ def check_any_data_graph_exists(repo: str, rdf_store_url: str) -> bool:
 
 
 def graph_database_ensure_backend_initialisation(
-    session_cache, rdf_store_service: RDFStoreService
+    session_cache, rdf_store_service: "RDFStoreService"
 ) -> bool:
     """
     Ensure that session_cache.databases is populated from the RDF store.
@@ -112,7 +116,7 @@ def graph_database_ensure_backend_initialisation(
 
 
 def graph_database_fetch_from_rdf(
-    repo: str, rdf_store_service: RDFStoreService
+    repo: str, rdf_store_service: "RDFStoreService"
 ) -> Optional[List[str]]:
     """
     Fetch database names from the RDF store.
