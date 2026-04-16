@@ -34,7 +34,7 @@ const DescribeVariablesApp = Vue.createApp({
 
         <div id="databases-container">
             <div v-for="dbName in databaseNames" :key="dbName">
-                <h2 style="display: inline-block;">
+                <h2 class="database-heading">
                     <i class="fas fa-database"></i> [[ dbName ]]
                 </h2>
                 <button class="toggle-button" type="button"
@@ -43,10 +43,7 @@ const DescribeVariablesApp = Vue.createApp({
                     <span class="toggle-text">
                         [[ expandedDatabases[dbName] ? 'Show less' : 'Show more' ]]
                     </span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg"
-                         viewBox="0 0 448 512" width="20" height="20">
-                        <path :d="expandedDatabases[dbName] ? anglePaths.down : anglePaths.up" />
-                    </svg>
+                    <i class="fas" :class="expandedDatabases[dbName] ? 'fa-chevron-down' : 'fa-chevron-up'"></i>
                 </button>
 
                 <div class="content"
@@ -78,7 +75,8 @@ const DescribeVariablesApp = Vue.createApp({
                                        :name="'comment_' + dbName + '_' + item"
                                        placeholder="If other, please specify"
                                        :disabled="getDescriptionValue(dbName, item) !== 'Other'"
-                                       :value="getCommentValue(dbName, item)" />
+                                       :value="getCommentValue(dbName, item)"
+                                       @change="onCommentChange(dbName, item, $event)" />
 
                                 <div class="datatype-container">
                                     <select :id="dbName + '_' + item"
@@ -94,8 +92,7 @@ const DescribeVariablesApp = Vue.createApp({
                                         <option value="standardised">Standardised</option>
                                     </select>
                                     <small class="datatype-feedback"
-                                           :id="'feedback_' + dbName + '_' + item"
-                                           style="display: none; color: #28a745;">
+                                           :id="'feedback_' + dbName + '_' + item">
                                         <i class="fas fa-magic"></i> Auto-filled based on description
                                     </small>
                                 </div>
@@ -213,13 +210,7 @@ const DescribeVariablesApp = Vue.createApp({
             isSubmitting: false,
 
             /** @type {boolean} Toggle for loading icon animation */
-            loadingIconIsPen: false,
-
-            /** SVG path data for chevron angles */
-            anglePaths: {
-                up: 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z',
-                down: 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z'
-            }
+            loadingIconIsPen: false
         };
     },
 
@@ -498,31 +489,37 @@ const DescribeVariablesApp = Vue.createApp({
 
         /**
          * Cache the form state of the currently visible variables for a database.
-         * Reads DOM values via jQuery since selectpicker manages its own state.
+         * Since event handlers already maintain formStateCache, this only needs to
+         * sync any selectpicker values that may not have triggered change events
+         * (e.g. preselected values set via selectpicker('val')).
          * @param {string} dbName - Database name
          */
         cacheCurrentPageState(dbName) {
-            const self = this;
-            $(`#variables-${dbName} .variable-row`).each(function () {
-                const row = $(this);
-                const descSelect = row.find('.description-select');
-                const datatypeSelect = row.find('.datatype-select');
-                const item = descSelect.data('item');
-                if (!item) return;
-
+            const items = this.currentPageItems(dbName);
+            for (const item of items) {
                 const key = `${dbName}_${item}`;
-                const domDescription = descSelect.val();
-                const domDatatype = datatypeSelect.val();
-                const domComment = $(`#comment_${dbName}_${item}`).val();
 
-                const existing = self.formStateCache[key] || {};
-                self.formStateCache[key] = {
+                // Read current selectpicker values (selectpicker manages its own DOM state)
+                let domDescription = '';
+                let domDatatype = '';
+                let domComment = '';
+                try {
+                    const descEl = document.getElementById(`ncit_comment_${dbName}_${item}`);
+                    const dtEl = document.getElementById(`${dbName}_${item}`);
+                    const commentEl = document.getElementById(`comment_${dbName}_${item}`);
+                    if (descEl) domDescription = descEl.value;
+                    if (dtEl) domDatatype = dtEl.value;
+                    if (commentEl) domComment = commentEl.value;
+                } catch (e) { /* elements may not exist */ }
+
+                const existing = this.formStateCache[key] || {};
+                this.formStateCache[key] = {
                     database: dbName,
                     description: domDescription || existing.description || '',
                     datatype: domDatatype || existing.datatype || '',
                     comment: domComment || existing.comment || ''
                 };
-            });
+            }
 
             this.syncToIndexedDB();
         },
@@ -573,6 +570,7 @@ const DescribeVariablesApp = Vue.createApp({
 
         /**
          * Restore cached selectpicker values for a database page.
+         * Uses selectpicker API (jQuery required) since it manages its own widget state.
          * @param {string} dbName - Database name
          */
         restoreCachedValues(dbName) {
@@ -592,8 +590,11 @@ const DescribeVariablesApp = Vue.createApp({
                         } catch (e) { /* selectpicker not ready */ }
                     }
                     if (cached.comment) {
-                        $(`#comment_${dbName}_${item}`).val(cached.comment);
-                        $(`#comment_${dbName}_${item}`).prop('disabled', false);
+                        const commentEl = document.getElementById(`comment_${dbName}_${item}`);
+                        if (commentEl) {
+                            commentEl.value = cached.comment;
+                            commentEl.disabled = false;
+                        }
                     }
                 }
             }
@@ -610,6 +611,7 @@ const DescribeVariablesApp = Vue.createApp({
 
         /**
          * Attach selectpicker change event handlers for a database section.
+         * jQuery is required for Bootstrap selectpicker events (changed.bs.select).
          * @param {string} dbName - Database name
          */
         attachEventHandlersForDatabase(dbName) {
@@ -619,19 +621,11 @@ const DescribeVariablesApp = Vue.createApp({
             // Unbind first to avoid duplicate handlers
             container.find('.description-select').off('changed.bs.select');
             container.find('.datatype-select').off('changed.bs.select');
-            container.find('input[id^="comment_"]').off('change');
 
             container.find('.description-select').on('changed.bs.select', function () {
                 const db = $(this).data('database');
                 const item = $(this).data('item');
-                const commentBox = $(`#comment_${db}_${item}`);
                 const key = `${db}_${item}`;
-
-                if ($(this).val() === 'Other') {
-                    commentBox.removeAttr('disabled');
-                } else {
-                    commentBox.attr('disabled', 'disabled');
-                }
 
                 if (!self.formStateCache[key]) {
                     self.formStateCache[key] = {};
@@ -662,46 +656,44 @@ const DescribeVariablesApp = Vue.createApp({
 
                 self.syncToIndexedDB();
             });
+        },
 
-            container.find('input[id^="comment_"]').on('change', function () {
-                const id = $(this).attr('id');
-                const parts = id.replace('comment_', '').split('_');
-                const item = parts.pop();
-                const db = parts.join('_');
-                const key = `${db}_${item}`;
-
-                if (!self.formStateCache[key]) {
-                    self.formStateCache[key] = {};
-                }
-                self.formStateCache[key].database = db;
-                self.formStateCache[key].comment = $(this).val();
-
-                self.syncToIndexedDB();
-            });
+        /**
+         * Handle comment input change via Vue @change binding.
+         * @param {string} dbName - Database name
+         * @param {string} item - Column name
+         * @param {Event} event - Input change event
+         */
+        onCommentChange(dbName, item, event) {
+            const key = `${dbName}_${item}`;
+            if (!this.formStateCache[key]) {
+                this.formStateCache[key] = {};
+            }
+            this.formStateCache[key].database = dbName;
+            this.formStateCache[key].comment = event.target.value;
+            this.syncToIndexedDB();
         },
 
         /**
          * Auto-populate datatype based on selected description.
+         * Uses selectpicker API (jQuery required) for setting values.
          * @param {string} database - Database name
          * @param {string} item - Column name
          */
         autoPopulateDatatype(database, item) {
-            const descriptionSelect = $(`#ncit_comment_${database}_${item}`);
-            const datatypeSelect = $(`#${database}_${item}`);
-            const feedback = $(`#feedback_${database}_${item}`);
             const fieldKey = `${database}_${item}`;
-            const selectedDescription = descriptionSelect.val();
+            const descEl = document.getElementById(`ncit_comment_${database}_${item}`);
+            const selectedDescription = descEl ? descEl.value : '';
 
             if (selectedDescription && selectedDescription !== '' && selectedDescription !== 'Other') {
                 const suggestedDatatype = this.preselectedDatatypes[fieldKey]
                     || this.descriptionToDatatype[selectedDescription];
 
                 if (suggestedDatatype) {
-                    if (datatypeSelect.val() === '' || !this.manualOverrides.has(fieldKey)) {
+                    const dtEl = document.getElementById(`${database}_${item}`);
+                    if (!dtEl || dtEl.value === '' || !this.manualOverrides.has(fieldKey)) {
                         try {
-                            if (datatypeSelect.length > 0) {
-                                datatypeSelect.selectpicker('val', suggestedDatatype);
-                            }
+                            $(`#${database}_${item}`).selectpicker('val', suggestedDatatype);
                         } catch (e) {
                             console.error('Failed to set datatype value:', e);
                         }
@@ -713,23 +705,23 @@ const DescribeVariablesApp = Vue.createApp({
                         this.formStateCache[fieldKey].datatype = suggestedDatatype;
 
                         this.autoFilledFields.add(fieldKey);
-                        feedback.show();
-                        setTimeout(function () {
-                            feedback.fadeOut();
-                        }, AUTO_FILL_FEEDBACK_MS);
+                        const feedbackEl = document.getElementById(`feedback_${database}_${item}`);
+                        if (feedbackEl) {
+                            feedbackEl.style.display = 'inline';
+                            setTimeout(() => { feedbackEl.style.display = 'none'; }, AUTO_FILL_FEEDBACK_MS);
+                        }
                     }
                 }
             } else {
                 if (this.autoFilledFields.has(fieldKey) && !this.manualOverrides.has(fieldKey)) {
                     try {
-                        if (datatypeSelect.length > 0) {
-                            datatypeSelect.selectpicker('val', '');
-                        }
+                        $(`#${database}_${item}`).selectpicker('val', '');
                     } catch (e) {
                         console.error('Failed to clear datatype value:', e);
                     }
                     this.autoFilledFields.delete(fieldKey);
-                    feedback.hide();
+                    const feedbackEl = document.getElementById(`feedback_${database}_${item}`);
+                    if (feedbackEl) feedbackEl.style.display = 'none';
                 }
             }
         },
@@ -740,20 +732,24 @@ const DescribeVariablesApp = Vue.createApp({
          * @param {string} item - Column name
          */
         showOverrideConfirmation(database, item) {
-            const feedback = $(`#feedback_${database}_${item}`);
-            feedback.html('<i class="fas fa-user-edit"></i> Manually overridden')
-                .css('color', '#ffc107').show();
-            setTimeout(function () {
-                feedback.fadeOut();
-            }, OVERRIDE_FEEDBACK_MS);
+            const feedbackEl = document.getElementById(`feedback_${database}_${item}`);
+            if (feedbackEl) {
+                feedbackEl.innerHTML = '<i class="fas fa-user-edit"></i> Manually overridden';
+                feedbackEl.style.color = '#ffc107';
+                feedbackEl.style.display = 'inline';
+                setTimeout(() => { feedbackEl.style.display = 'none'; }, OVERRIDE_FEEDBACK_MS);
+            }
         },
 
         /**
          * Build the selected descriptions map for duplicate detection.
+         * Uses formStateCache as the primary source, supplemented by
+         * selectpicker DOM values for any visible selects not yet cached.
          */
         buildSelectedDescriptions() {
             this.selectedDescriptions = {};
 
+            // Build from cache first
             for (const key in this.formStateCache) {
                 const cached = this.formStateCache[key];
                 const desc = cached.description;
@@ -764,21 +760,22 @@ const DescribeVariablesApp = Vue.createApp({
                 }
             }
 
-            const self = this;
-            $('select.description-select').each(function () {
-                const $select = $(this);
-                const db = $select.data('database');
-                const item = $select.data('item');
-                const key = `${db}_${item}`;
-                const val = $select.val();
+            // Supplement with any currently visible selects whose values aren't yet cached
+            for (const dbName of this.databaseNames) {
+                const items = this.currentPageItems(dbName);
+                for (const item of items) {
+                    const key = `${dbName}_${item}`;
+                    const el = document.getElementById(`ncit_comment_${dbName}_${item}`);
+                    const val = el ? el.value : '';
 
-                if (val && val !== '' && val !== 'Other') {
-                    if (!self.selectedDescriptions[db]) self.selectedDescriptions[db] = {};
-                    if (!self.selectedDescriptions[db][val]) {
-                        self.selectedDescriptions[db][val] = key;
+                    if (val && val !== '' && val !== 'Other') {
+                        if (!this.selectedDescriptions[dbName]) this.selectedDescriptions[dbName] = {};
+                        if (!this.selectedDescriptions[dbName][val]) {
+                            this.selectedDescriptions[dbName][val] = key;
+                        }
                     }
                 }
-            });
+            }
         },
 
         /**
@@ -812,6 +809,7 @@ const DescribeVariablesApp = Vue.createApp({
 
         /**
          * Apply preselections from JSONLDMapper to a database's current page.
+         * Uses selectpicker API (jQuery required) for setting widget values.
          * @param {string} database - Database name
          */
         applyPreselectionsToCurrentPage(database) {
@@ -820,41 +818,26 @@ const DescribeVariablesApp = Vue.createApp({
             this.preselectedDatatypes = preselections.preselectedDatatypes;
             this.preselectedDescriptions = preselections.preselectedDescriptions;
 
-            $(`#variables-${database} .description-select`).each((_, el) => {
-                const $select = $(el);
-                const db = $select.data('database');
-                const item = $select.data('item');
-                const key = `${db}_${item}`;
+            const items = this.currentPageItems(database);
+            for (const item of items) {
+                const key = `${database}_${item}`;
 
                 if (key in this.preselectedDescriptions && !(key in this.formStateCache)) {
-                    const value = this.preselectedDescriptions[key];
                     try {
-                        if ($select.length > 0) {
-                            $select.selectpicker('val', value);
-                        }
+                        $(`#ncit_comment_${database}_${item}`).selectpicker('val', this.preselectedDescriptions[key]);
                     } catch (e) {
                         console.error('Failed to set select value:', e);
                     }
                 }
-            });
-
-            $(`#variables-${database} .datatype-select`).each((_, el) => {
-                const $select = $(el);
-                const db = $select.data('database');
-                const item = $select.data('item');
-                const key = `${db}_${item}`;
 
                 if (key in this.preselectedDatatypes && !(key in this.formStateCache)) {
-                    const value = this.preselectedDatatypes[key];
                     try {
-                        if ($select.length > 0) {
-                            $select.selectpicker('val', value);
-                        }
+                        $(`#${database}_${item}`).selectpicker('val', this.preselectedDatatypes[key]);
                     } catch (e) {
                         console.error('Failed to set select value:', e);
                     }
                 }
-            });
+            }
         },
 
         /**

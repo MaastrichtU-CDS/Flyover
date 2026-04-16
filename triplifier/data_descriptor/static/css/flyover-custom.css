@@ -1220,6 +1220,47 @@ body {
     display: none;
 }
 
+/* ==========================================================================
+   Shared Alert & Text Utility Styles
+   ========================================================================== */
+
+.alert-compact {
+    font-size: 0.9em;
+}
+
+.alert-compact-sm {
+    font-size: 0.85em;
+}
+
+.alert-info-highlight {
+    font-size: 0.85em;
+    border-left: 4px solid rgba(118, 75, 162, 0.75);
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.75) 0%, rgba(118, 75, 162, 0.75) 100%);
+    color: white;
+}
+
+.text-compact {
+    font-size: 0.9em;
+}
+
+.database-heading {
+    display: inline-block;
+}
+
+.category-comment-input {
+    width: 200px;
+}
+
+.datatype-feedback {
+    display: none;
+    color: #28a745;
+}
+
+.csv-sign-input {
+    width: 250px;
+    margin-left: 10px;
+}
+
 .unannotated {
     background: #f8f9fa;
 }

@@ -16,12 +16,6 @@
 /** @const {number} Number of variable cards displayed per page */
 const PAGE_SIZE = 10;
 
-/** @const {string} SVG path for the collapsed (up) chevron icon */
-const ANGLE_UP_PATH = 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z';
-
-/** @const {string} SVG path for the expanded (down) chevron icon */
-const ANGLE_DOWN_PATH = 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z';
-
 const AnnotationReviewApp = Vue.createApp({
     delimiters: ['[[', ']]'],
 
@@ -48,13 +42,13 @@ const AnnotationReviewApp = Vue.createApp({
             <!-- Database info section - only shows issues -->
             <div v-if="nonMatchingJsonld.length > 0 || nonMatchingRdfStore.length > 0" class="mb-4">
                 <div v-if="nonMatchingJsonld.length > 0"
-                     class="alert alert-warning" style="font-size: 0.9em;">
+                     class="alert alert-warning alert-compact">
                     <i class="fas fa-exclamation-triangle"></i>
                     <strong>Will not be annotated</strong> (not in the RDF store):
                     [[ nonMatchingJsonld.join(', ') ]]
                 </div>
                 <div v-if="nonMatchingRdfStore.length > 0"
-                     class="alert alert-info" style="font-size: 0.9em;">
+                     class="alert alert-info alert-compact">
                     <i class="fas fa-info-circle"></i>
                     <strong>Other data in RDF store</strong> (no mapping provided):
                     [[ nonMatchingRdfStore.join(', ') ]]
@@ -63,7 +57,7 @@ const AnnotationReviewApp = Vue.createApp({
 
             <form class="form-horizontal">
                 <div v-for="(dbData, dbName) in annotatedTableVariables" :key="dbName">
-                    <h2 style="display: inline-block;">
+                    <h2 class="database-heading">
                         <i class="fas fa-database"></i> [[ dbData.rdfStoreName ]]
                     </h2>
                     <button class="toggle-button" type="button"
@@ -72,10 +66,7 @@ const AnnotationReviewApp = Vue.createApp({
                         <span class="toggle-text">
                             [[ expandedDatabases[dbData.rdfStoreName] ? 'Show less' : 'Show more' ]]
                         </span>
-                        <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg"
-                             viewBox="0 0 448 512" width="20" height="20">
-                            <path :d="expandedDatabases[dbData.rdfStoreName] ? angleDownPath : angleUpPath" />
-                        </svg>
+                        <i class="fas" :class="expandedDatabases[dbData.rdfStoreName] ? 'fa-chevron-down' : 'fa-chevron-up'"></i>
                     </button>
 
                     <div class="content"
@@ -175,10 +166,7 @@ const AnnotationReviewApp = Vue.createApp({
 
             <!-- Info alert box -->
             <div class="mt-4">
-                <div class="alert alert-info py-2"
-                     style="font-size: 0.85em; border-left: 4px solid #764ba2;
-                            background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%);
-                            color: white">
+                <div class="alert alert-info-highlight py-2">
                     <i class="fas fa-info-circle"></i>
                     <strong>Annotating your data</strong><br>
                     <div class="mt-1 ms-4">
@@ -218,10 +206,6 @@ const AnnotationReviewApp = Vue.createApp({
             annotationProcessing: false,
             /** @type {string} Current label for the annotation button */
             annotationButtonText: 'Start Annotation Process',
-            /** @type {string} SVG path for the up chevron */
-            angleUpPath: ANGLE_UP_PATH,
-            /** @type {string} SVG path for the down chevron */
-            angleDownPath: ANGLE_DOWN_PATH,
             /**
              * Processed table variables keyed by table name.
              * Each value contains { variables, rdfStoreName }.
@@ -784,23 +768,6 @@ const AnnotationReviewApp = Vue.createApp({
         this.loadSemanticMapFromIndexedDB();
     }
 });
-
-// Global bridge functions for backward compatibility
-/**
- * Change page for a specific database section.
- * @param {string} database - Database name
- * @param {number} direction - Page direction (-1 or 1)
- */
-function changePage(database, direction) {
-    console.warn('changePage() is now handled by the Vue app. This global function is a no-op.');
-}
-
-/**
- * Start the annotation process.
- */
-function startAnnotationProcess() {
-    console.warn('startAnnotationProcess() is now handled by the Vue app. This global function is a no-op.');
-}
 
 // Export for global access
 window.AnnotationReviewApp = AnnotationReviewApp;

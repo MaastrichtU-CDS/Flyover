@@ -42,7 +42,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
 
         <div id="databases-container">
             <div v-for="(db, dbIndex) in parsedDatabases" :key="db.name" class="database-section">
-                <h2 style="display: inline-block;">
+                <h2 class="database-heading">
                     <i class="fas fa-database"></i> [[ db.name ]]
                 </h2>
                 <button class="toggle-button" type="button"
@@ -51,10 +51,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
                     <span class="toggle-text">
                         [[ expandedDatabases[db.name] ? 'Show less' : 'Show more' ]]
                     </span>
-                    <svg class="angle-icon" xmlns="http://www.w3.org/2000/svg"
-                         viewBox="0 0 448 512" width="20" height="20">
-                        <path :d="expandedDatabases[db.name] ? anglePaths.down : anglePaths.up" />
-                    </svg>
+                    <i class="fas" :class="expandedDatabases[db.name] ? 'fa-chevron-down' : 'fa-chevron-up'"></i>
                 </button>
 
                 <div class="content variables-container"
@@ -141,7 +138,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
                                                    :data-category-value="cat.safeValue"
                                                    placeholder="If other, please specify"
                                                    disabled="disabled"
-                                                   style="width: 200px;" />
+                                                   class="form-control category-comment-input" />
                                         </div>
                                     </div>
                                     <input type="hidden"
@@ -217,13 +214,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
             databases: [],
 
             /** @type {Array<Object>} Default category options */
-            defaultCategoryOptions: DEFAULT_CATEGORY_OPTIONS,
-
-            /** SVG path data for chevron angles */
-            anglePaths: {
-                up: 'M201.4 137.4c12.5-12.5 32.8-12.5 45.3 0l160 160c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L224 205.3 86.6 342.6c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3l160-160z',
-                down: 'M201.4 374.6c12.5 12.5 32.8 12.5 45.3 0l160-160c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L224 306.7 86.6 169.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l160 160z'
-            }
+            defaultCategoryOptions: DEFAULT_CATEGORY_OPTIONS
         };
     },
 
@@ -432,11 +423,11 @@ const DescribeVariableDetailsApp = Vue.createApp({
                     safeValue: safeValue,
                     displayValue: displayValue,
                     preselectedValue: preselectedValue,
-                    selectId: `select_${dbIdx}_${itemIdx}_${valueIdx}`,
+                    selectId: `cat-select-${database}-${localVariable}-${valueIdx}`,
                     selectName: `category_select_${dbIdx}_${itemIdx}_${valueIdx}`,
-                    commentId: `comment_${dbIdx}_${itemIdx}_${valueIdx}`,
+                    commentId: `cat-comment-${database}-${localVariable}-${valueIdx}`,
                     commentName: `category_comment_${dbIdx}_${itemIdx}_${valueIdx}`,
-                    countId: `count_${dbIdx}_${itemIdx}_${valueIdx}`,
+                    countId: `cat-count-${database}-${localVariable}-${valueIdx}`,
                     countName: `category_count_${dbIdx}_${itemIdx}_${valueIdx}`
                 });
             }
@@ -650,7 +641,7 @@ const DescribeVariableDetailsApp = Vue.createApp({
                     const description = $(this).val();
                     const commentId = $(this).data('comment-id');
                     const comment = $(`#${commentId}`).val();
-                    const countId = commentId.replace('comment_', 'count_');
+                    const countId = commentId.replace('cat-comment-', 'cat-count-');
                     const count = $(`#${countId}`).val();
 
                     if (description && updatedDescriptiveInfo[database]?.[variable]) {

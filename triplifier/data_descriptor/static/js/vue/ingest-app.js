@@ -51,14 +51,14 @@ const IngestApp = Vue.createApp({
             <input type="text" id="csv_separator_sign" name="csv_separator_sign"
                    v-model="csvSeparatorSign"
                    placeholder="Separator sign (defaults to ',')"
-                   style="width: 250px; margin-left: 10px;">
+                   class="csv-sign-input">
             <input type="text" id="csv_decimal_sign" name="csv_decimal_sign"
                    v-model="csvDecimalSign"
                    placeholder="Decimal sign (defaults to '.')"
-                   style="width: 250px; margin-left: 10px;">
+                   class="csv-sign-input">
 
             <!-- PK/FK Configuration Section -->
-            <div id="pkFkSection" v-show="showPkFkSection" style="margin-top: 20px;">
+            <div id="pkFkSection" v-show="showPkFkSection" class="mt-4">
                 <hr>
                 <div class="alert alert-info">
                     <strong><i class="fas fa-info-circle"></i>Multiple CSV Files Detected</strong><br>
@@ -161,7 +161,7 @@ const IngestApp = Vue.createApp({
 
             <!-- Data Linking Section - only shown when graphExists and files uploaded -->
             <div id="dataLinkingSection" v-if="graphExists" v-show="showDataLinkingSection"
-                 style="margin-top: 20px;">
+                 class="mt-4">
                 <hr>
                 <div class="alert alert-info">
                     <strong><i class="fas fa-link"></i> Link Your New Data to Existing Graph Data</strong><br>
@@ -276,7 +276,7 @@ const IngestApp = Vue.createApp({
         </button>
 
         <div class="mt-4">
-            <div class="alert alert-info py-2" style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+            <div class="alert alert-info-highlight py-2">
                 <i class="fas fa-info-circle"></i>
                 <strong>Directly uploading your graph data</strong><br>
                 <div class="mt-1 ms-4">
@@ -293,8 +293,7 @@ const IngestApp = Vue.createApp({
 
         <template v-if="graphExists">
             <hr>
-            <p><i class="fas fa-exclamation-triangle"
-                  style="margin-right: 5px; align-self: flex-start;"></i><i><b>The associated RDF store already contains a data graph.</b></i><br>
+            <p><i class="fas fa-exclamation-triangle me-1"></i><i><b>The associated RDF store already contains a data graph.</b></i><br>
                 <i>It is possible to add more data to this graph, for that you can use the data upload available
                     above.</i><br>
                 <i>It is, however, possible to describe the existing data without having to add new,
@@ -840,19 +839,3 @@ const IngestApp = Vue.createApp({
 
 // Export for global access
 window.IngestApp = IngestApp;
-
-/**
- * Global bridge function for backward compatibility.
- * Called from inline onchange handlers if any remain in the HTML.
- * In the Vue app, file input is handled via @change binding instead.
- * @param {HTMLInputElement} input - The file input element
- */
-function updateFilePaths(input) {
-    // Vue handles this through the @change binding on the file input.
-    // This function exists for backward compatibility with any remaining
-    // inline onchange="updateFilePaths(this)" handlers in the HTML.
-    console.warn(
-        'updateFilePaths() called via legacy handler. ' +
-        'The Vue ingest-app component handles file input changes internally.'
-    );
-}

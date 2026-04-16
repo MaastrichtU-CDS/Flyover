@@ -38,7 +38,7 @@ const AnnotationLandingApp = Vue.createApp({
                     </p>
 
                     <!-- Warning when existing JSON-LD is in IndexedDB -->
-                    <div v-if="existingJsonldWarning" class="alert alert-warning" style="font-size: 0.9em;">
+                    <div v-if="existingJsonldWarning" class="alert alert-warning alert-compact">
                         <i class="fas fa-exclamation-triangle"></i>
                         <strong>Existing semantic map detected!</strong><br>
                         You already have a semantic map stored in your browser from a previous session.
@@ -47,11 +47,10 @@ const AnnotationLandingApp = Vue.createApp({
                     </div>
 
                     <!-- Upload status messages -->
-                    <div v-if="uploadStatus.message" v-html="uploadStatusHtml" style="font-size: 0.9em;"></div>
+                    <div v-if="uploadStatus.message" v-html="uploadStatusHtml" class="alert-compact"></div>
 
                     <div v-if="showUploadInfo">
-                        <div class="alert alert-info"
-                             style="font-size: 0.85em; border-left: 4px solid rgba(118,75,162,0.75); background: linear-gradient(135deg, rgba(102,126,234,0.75) 0%, rgba(118,75,162,0.75) 100%); color: white">
+                        <div class="alert alert-info-highlight">
                             <i class="fas fa-info-circle"></i>
                             <strong>What should the JSON-LD contain?</strong><br>
                             Your JSON-LD file should include data variable definitions, types, and any pre-existing semantic
@@ -212,7 +211,7 @@ const AnnotationLandingApp = Vue.createApp({
                 type === 'info' ? 'alert-info' : 'alert-success';
             const iconClass = type === 'error' ? 'exclamation-triangle' :
                 type === 'info' ? 'info-circle' : 'check-circle';
-            return `<div class="alert ${alertClass}" style="font-size: 0.9em;">` +
+            return `<div class="alert ${alertClass} alert-compact">` +
                 `<i class="fas fa-${iconClass}"></i> ${this.uploadStatus.message}</div>`;
         }
     },
@@ -249,7 +248,7 @@ const AnnotationLandingApp = Vue.createApp({
                     } else {
                         this.indexedDbSection.continueToReview = false;
                         this.indexedDbSection.errorHtml = `
-                            <div class="alert alert-danger mt-3" style="font-size: 0.9em;">
+                            <div class="alert alert-danger mt-3 alert-compact">
                                 <i class="fas fa-times-circle"></i>
                                 <strong>Cannot proceed:</strong> No matching data sources found between your semantic map and the RDF store.
                             </div>`;
@@ -473,19 +472,19 @@ const AnnotationLandingApp = Vue.createApp({
             let html = '';
 
             if (matching.length > 0) {
-                html += `<div class="text-success mb-2" style="font-size: 0.9em;">
+                html += `<div class="text-success mb-2 text-compact">
                     <i class="fas fa-check-circle"></i> <strong>${matching.length}</strong> data source(s) ready for annotation
                 </div>`;
             }
 
             if (nonMatchingJsonld.length > 0) {
-                html += `<div class="text-warning mb-2" style="font-size: 0.9em;">
+                html += `<div class="text-warning mb-2 text-compact">
                     <i class="fas fa-exclamation-triangle"></i> <strong>Not in RDF store:</strong> ${nonMatchingJsonld.map(t => this.escapeHtml(t)).join(', ')}
                 </div>`;
             }
 
             if (nonMatchingRdfStore.length > 0) {
-                html += `<div class="text-muted mb-2" style="font-size: 0.9em;">
+                html += `<div class="text-muted mb-2 text-compact">
                     <i class="fas fa-info-circle"></i> <strong>Other data in RDF store:</strong> ${nonMatchingRdfStore.map(t => this.escapeHtml(t)).join(', ')}
                 </div>`;
             }
@@ -547,15 +546,6 @@ const AnnotationLandingApp = Vue.createApp({
         this.checkIndexedDbSemanticMap();
     }
 });
-
-/**
- * Global bridge function for backward compatibility.
- * File input changes are now handled by Vue's @change binding.
- * @param {HTMLInputElement} input - The file input element (unused)
- */
-function updateAnnotationJsonPath(input) {
-    // Now handled by Vue
-}
 
 // Export for global access
 window.AnnotationLandingApp = AnnotationLandingApp;
