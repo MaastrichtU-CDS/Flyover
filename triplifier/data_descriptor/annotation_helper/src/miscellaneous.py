@@ -510,7 +510,9 @@ def add_annotation(
                     annotation_success = annotation_success and all(
                         value_mapping_statuses.values()
                     )
-                elif _has_actionable_value_mapping_terms(variable_data["value_mapping"]):
+                elif _has_actionable_value_mapping_terms(
+                    variable_data["value_mapping"]
+                ):
                     annotation_success = False
 
             # remove the 'has_column' section

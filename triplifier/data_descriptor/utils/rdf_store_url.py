@@ -38,7 +38,11 @@ def build_repository_endpoint(
     Build a repository endpoint from a server base URL and repository name.
     """
     base_url = normalise_rdf_store_base_url(rdf_store_url, repo).rstrip("/")
-    suffix = endpoint_suffix if endpoint_suffix.startswith("/") or not endpoint_suffix else f"/{endpoint_suffix}"
+    suffix = (
+        endpoint_suffix
+        if endpoint_suffix.startswith("/") or not endpoint_suffix
+        else f"/{endpoint_suffix}"
+    )
     return f"{base_url}/repositories/{repo}{suffix}"
 
 
