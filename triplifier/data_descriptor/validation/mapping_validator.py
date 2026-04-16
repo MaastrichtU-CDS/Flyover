@@ -424,7 +424,7 @@ class MappingValidator:
 
     def _check_cross_references(self, data: dict) -> List[ValidationIssue]:
         """Check that column mappings reference existing schema variables."""
-        issues = []
+        issues: List[ValidationIssue] = []
 
         # Get defined variables
         schema_vars = set()
@@ -493,7 +493,12 @@ class MappingValidator:
                         if schema_terms:
                             for local_term in local_mappings.keys():
                                 if local_term not in schema_terms:
-                                    path = f"databases.{db_key}.tables.{table_key}.columns.{col_key}.localMappings.{local_term}"
+                                    path = (
+                                        f"databases.{db_key}.tables"
+                                        f".{table_key}.columns"
+                                        f".{col_key}.localMappings"
+                                        f".{local_term}"
+                                    )
                                     available = ", ".join(sorted(schema_terms)[:5])
                                     if len(schema_terms) > 5:
                                         available += "..."

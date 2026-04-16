@@ -24,8 +24,10 @@ Thumbs.db
 dist/
 build/
 
-# GraphDB data and logs (generated files)
-graphdb/data/
+# RDF store data and logs (generated at runtime)
+rdf-store/graphdb/data/
+rdf-store/rdf4j/data/
+rdf-store/rdf4j/logs/
 
 # Test and demo files (but keep actual test suites)
 test_annotation_ui.py

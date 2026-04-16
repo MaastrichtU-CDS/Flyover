@@ -1,13 +1,15 @@
 services:
+  # ─── Option A: GraphDB (default) ────────────────────────────────────
+  # Uncomment this block and comment out Option B to use GraphDB.
   # rdf-store:
   #   image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
-  #   # If preferred, the graphdb image can be built from the Dockerfile in the graphdb directory
-  #   #build:
-  #   #  context: ./graphdb
+  #   # If preferred, the graphdb image can be built from the Dockerfile
+  #   # build:
+  #   #   context: ./rdf-store/graphdb
   #   ports:
   #     - "127.0.0.1:7200:7200"
   #   volumes:
-  #     - ./graphdb/data:/opt/graphdb/home
+  #     - ./rdf-store/graphdb/data:/opt/graphdb/home
   #   environment:
   #     - GDB_HEAP_SIZE=8g
   #     - GDB_MIN_MEM=4g
@@ -16,36 +18,42 @@ services:
   #     - proxynet
   #   container_name: rdf-store
 
+  # ─── Option B: RDF4J ────────────────────────────────────────────────
+  # The Dockerfile auto-creates the "userRepo" repository on first start.
   rdf-store:
-    image: eclipse/rdf4j-workbench:latest #:5.2.1-tomcat
+    build:
+      context: ./rdf-store/rdf4j
     ports:
-      - "8080:8080"
-    # volumes:
-    #   - ./rdf4j/data:/var/rdf4j
-    #   - ./rdf4j/logs:/usr/local/tomcat/logs
+      - "7200:7200"
+    volumes:
+      - ./rdf-store/rdf4j/data:/var/rdf4j
+      - ./rdf-store/rdf4j/logs:/usr/local/tomcat/logs
     environment:
       - "JAVA_OPTS=-Xms4g -Xmx12g"
     networks:
       - proxynet
     container_name: rdf-store
-  
+
   triplifier:
-    # image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
-    # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
+   # image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    # If preferred, the triplifier image can be built from the Dockerfile
     build:
-      context: ./triplifier
+       context: ./triplifier
     ports:
       - "127.0.0.1:5000:5000"
     environment:
-      - FLYOVER_GRAPHDB_URL=http://rdf-store:8080/rdf4j-server
+      # ── GraphDB URL (use with Option A) ──
+      # - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
+      # ── RDF4J URL (use with Option B) ──
+      - FLYOVER_RDF_STORE_URL=http://rdf-store:7200/rdf4j-server
       - FLYOVER_REPOSITORY_NAME=userRepo
       - FLASK_ENV=production
+      # Enable manual materialization of inferred triples in a separate graph.
+      # Set to true when the RDF store does not perform reasoning (e.g. RDF4J).
       - FLYOVER_MATERIALIZE_INFERENCES=true
       # Optional: Override default timeout settings
       # - GUNICORN_TIMEOUT=300
       # - RDF_REQUEST_TIMEOUT=3600
-      # Optional: Enable manual materialization of inferred triples in a separate graph
-      # - FLYOVER_MATERIALIZE_INFERENCES=true
     hostname: "data.local"
     networks:
       - proxynet

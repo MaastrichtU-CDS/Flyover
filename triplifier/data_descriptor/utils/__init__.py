@@ -5,20 +5,14 @@ Utility functions for the Flyover data descriptor application .
 from .data_preprocessing import (
     clean_column_names,
     preprocess_dataframe,
-    get_original_column_name,
-)
-
-from .data_ingest import (
-    upload_file_to_graphdb,
-    upload_ontology_then_data,
-    upload_multiple_graphs,
+    sanitise_table_name,
+    preprocess_mixed_type_data,
 )
 
 from .session_helpers import (
     check_any_data_graph_exists,
     graph_database_ensure_backend_initialisation,
     graph_database_fetch_from_rdf,
-    graph_database_find_name_match,
     graph_database_find_matching,
     process_variable_for_annotation,
     COLUMN_INFO_QUERY,
@@ -28,15 +22,11 @@ from .session_helpers import (
 __all__ = [
     "clean_column_names",
     "preprocess_dataframe",
-    "get_original_column_name",
     "sanitise_table_name",
-    "upload_file_to_graphdb",
-    "upload_ontology_then_data",
-    "upload_multiple_graphs",
+    "preprocess_mixed_type_data",
     "check_any_data_graph_exists",
     "graph_database_ensure_backend_initialisation",
     "graph_database_fetch_from_rdf",
-    "graph_database_find_name_match",
     "graph_database_find_matching",
     "process_variable_for_annotation",
     "COLUMN_INFO_QUERY",
