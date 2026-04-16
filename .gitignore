@@ -24,6 +24,9 @@ Thumbs.db
 dist/
 build/
 
+# Vendored frontend dependencies (downloaded during Docker build)
+triplifier/data_descriptor/static/js/vue.global.prod.js
+
 # GraphDB data and logs (generated files)
 graphdb/data/
 

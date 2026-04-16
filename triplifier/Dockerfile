@@ -18,6 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the entire application code
 COPY data_descriptor/ /app/data_descriptor/
 
+# Download Vue.js 3 production build (vendored frontend dependency)
+RUN curl -fsSL https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js \
+    -o /app/data_descriptor/static/js/vue.global.prod.js
+
 # Copy and prepare entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
