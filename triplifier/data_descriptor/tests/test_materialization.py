@@ -205,7 +205,8 @@ class TestMaterializeValueMapping(unittest.TestCase):
 
         where_section = query.split("WHERE")[1]
         self.assertIn("GRAPH ?dataGraph", where_section)
-        self.assertIn("?instance dbo:has_value ?localValue .", where_section)
+        self.assertIn("?instance dbo:has_cell ?valueCell .", where_section)
+        self.assertIn("?valueCell dbo:has_value ?localValue .", where_section)
         self.assertIn(
             'FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))',
             where_section,

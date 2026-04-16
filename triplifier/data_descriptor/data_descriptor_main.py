@@ -1444,7 +1444,7 @@ def start_annotation():
 
             try:
                 # Use add_annotation function from the annotation helper for this database
-                add_annotation(
+                annotation_results = add_annotation(
                     endpoint=endpoint,
                     database=database,
                     prefixes=prefixes,
@@ -1454,18 +1454,30 @@ def start_annotation():
                     save_query=True,
                 )
 
-                # For now, we'll assume success for variables with local definitions
-                # In the future the add_annotation function should return status
+                successful_annotations = 0
                 for var_name, _var_data in annotated_variables.items():
+                    result = (
+                        annotation_results.get(var_name, {})
+                        if isinstance(annotation_results, dict)
+                        else {}
+                    )
+                    is_success = result.get("success", False)
                     session_cache.annotation_status[f"{database}. {var_name}"] = {
-                        "success": True,
-                        "message": "Annotation completed successfully",
+                        "success": is_success,
+                        "message": (
+                            "Annotation completed successfully"
+                            if is_success
+                            else "Annotation failed"
+                        ),
                         "database": database,
+                        "details": result,
                     }
+                    successful_annotations += int(is_success)
 
-                total_annotated_vars += len(annotated_variables)
+                total_annotated_vars += successful_annotations
                 logger.info(
-                    f"Annotation process completed successfully for database {database}"
+                    f"Annotation process completed for database {database} with "
+                    f"{successful_annotations}/{len(annotated_variables)} successful variables"
                 )
 
             except Exception as annotation_error:

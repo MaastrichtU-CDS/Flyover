@@ -27,7 +27,8 @@ WHERE {
         ?instance rdf:type ?superClass .
     }
     GRAPH ?dataGraph {
-        ?instance dbo:has_value ?localValue .
+        ?instance dbo:has_cell ?valueCell .
+        ?valueCell dbo:has_value ?localValue .
     }
     FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
 }

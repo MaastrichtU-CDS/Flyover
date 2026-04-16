@@ -205,6 +205,7 @@ def add_annotation(
     construction_queries = {}
     value_mapping_queries = None
     construction_success = True
+    annotation_results = {}
 
     if isinstance(annotation_data, str) and isinstance(path, str):
         annotation_data = read_file(file_name=annotation_data, path=path)
@@ -496,7 +497,11 @@ def add_annotation(
             if annotation_success and isinstance(
                 variable_data.get("value_mapping"), dict
             ):
-                value_mapping_responses, value_mapping_queries = add_mapping(
+                (
+                    value_mapping_responses,
+                    value_mapping_queries,
+                    value_mapping_statuses,
+                ) = add_mapping(
                     endpoint=endpoint,
                     prefixes=prefixes,
                     variable=generic_category,
@@ -504,6 +509,12 @@ def add_annotation(
                     value_map=variable_data["value_mapping"],
                     database_name=database,
                 )
+                if isinstance(value_mapping_statuses, dict) and value_mapping_statuses:
+                    annotation_success = annotation_success and all(
+                        value_mapping_statuses.values()
+                    )
+                elif _has_actionable_value_mapping_terms(variable_data["value_mapping"]):
+                    annotation_success = False
 
             # remove the 'has_column' section
             if remove_has_column:
@@ -520,6 +531,27 @@ def add_annotation(
                 )
                 # store the removal queries for saving
                 removal_queries.update({label: removal})
+
+            annotation_results[generic_category] = {
+                "success": bool(annotation_success),
+                "core_annotation_inserted": (
+                    core_response is not None and 200 <= core_response.status_code < 300
+                ),
+                "reconstruction_inserted": (
+                    response is not None and 200 <= response.status_code < 300
+                ),
+                "value_mappings_inserted": bool(
+                    not isinstance(variable_data.get("value_mapping"), dict)
+                    or (
+                        isinstance(value_mapping_statuses, dict)
+                        and value_mapping_statuses
+                        and all(value_mapping_statuses.values())
+                    )
+                    or not _has_actionable_value_mapping_terms(
+                        variable_data.get("value_mapping")
+                    )
+                ),
+            }
 
         if save_query:
             if os.path.exists(os.path.join(path, "generated_queries")) is False:
@@ -623,6 +655,7 @@ def add_annotation(
         response = None
         construction_success = True
         annotation_success = None
+        value_mapping_statuses = None
 
     # materialize inferences if enabled
     if materialize and dry_run is False:
@@ -630,6 +663,8 @@ def add_annotation(
             endpoint=endpoint,
             database_name=database,
         )
+
+    return annotation_results
 
 
 def get_unique_prefixes(query, prefixes):
@@ -694,6 +729,7 @@ def add_mapping(
     """
     responses = []
     queries = {}
+    statuses = {}
 
     if isinstance(value_map.get("terms"), dict):
         for term, term_data in value_map["terms"].items():
@@ -732,14 +768,47 @@ def add_mapping(
 
                 responses.append(response)
                 queries.update({f"{term}_{lt}": query})
+                statuses[f"{term}_{lt}"] = check_value_mapping(
+                    endpoint=endpoint,
+                    prefixes=prefixes,
+                    database_name=database_name,
+                    variable=variable,
+                    response=response,
+                    target_class=target_class,
+                    super_class=super_class,
+                    local_term=lt,
+                )
 
-        return responses, queries
+        return responses, queries, statuses
     else:
         logging.warning(
             f"Value map for variable {variable} is incorrectly defined, "
             f"please see function docstring for an example."
         )
-        return None, None
+        return None, None, None
+
+
+def _has_actionable_value_mapping_terms(value_map):
+    """
+    Determine whether the value map contains at least one concrete local term to insert.
+    """
+    if not isinstance(value_map, dict) or not isinstance(value_map.get("terms"), dict):
+        return False
+
+    for term_data in value_map["terms"].values():
+        if not isinstance(term_data, dict):
+            continue
+
+        if not isinstance(term_data.get("target_class"), str):
+            continue
+
+        local_term = term_data.get("local_term")
+        if isinstance(local_term, str):
+            return True
+        if isinstance(local_term, list) and any(isinstance(v, str) for v in local_term):
+            return True
+
+    return False
 
 
 def check_data_class(
@@ -822,6 +891,48 @@ def check_predicate(endpoint, prefixes, predicate, variable, response):
         return False
 
 
+def check_value_mapping(
+    endpoint,
+    prefixes,
+    database_name,
+    variable,
+    response,
+    target_class,
+    super_class,
+    local_term,
+):
+    """
+    Check whether an OWL restriction value mapping was added to the annotation graph.
+    """
+    if 200 <= response.status_code < 300:
+        response, check_query = _check_for_value_mapping(
+            endpoint=endpoint,
+            prefixes=prefixes,
+            database_name=database_name,
+            target_class=target_class,
+            super_class=super_class,
+            local_term=local_term,
+        )
+        _response = json.loads(response.text)
+        if _response.get("boolean", True) is True:
+            logging.info(
+                f"Value mapping '{local_term}' was successfully annotated for {variable}."
+            )
+            return True
+
+        logging.warning(
+            f"Query for {variable} was successfully run on endpoint {endpoint}, "
+            f"but OWL restriction mapping for local value '{local_term}' was not found."
+        )
+        return False
+
+    logging.warning(
+        f"Value mapping query for {variable} was not successfully run on endpoint: {endpoint}.\n"
+        f"HTTP response code: {response.status_code}."
+    )
+    return False
+
+
 def read_file(file_name, path=None):
     """
     read a file and store its contents
@@ -880,6 +991,23 @@ def write_file(file_name, content, path=None, file_extension=None):
         logging.debug(f"File {file_path} successfully written.")
     except Exception as e:
         logging.error(f"An error occurred while writing the file: {e}")
+
+
+def _expand_prefixed_identifier(identifier, prefix_to_uri):
+    """
+    Expand a CURIE-like identifier to a full IRI string when possible.
+    """
+    if not isinstance(identifier, str):
+        return identifier
+
+    if ":" not in identifier:
+        return identifier
+
+    prefix, local = identifier.split(":", 1)
+    if prefix in prefix_to_uri:
+        return f"{prefix_to_uri[prefix]}{local}"
+
+    return identifier
 
 
 def _add_annotation(
@@ -1086,19 +1214,8 @@ def _add_mapping(
         super_class.split(":")[0] if ":" in super_class else super_class
     )
 
-    target_class = target_class.replace(":", "")
-    super_class = super_class.replace(":", "")
-
-    # Replace the prefix with the URI in the target_class and super_class
-    if target_class_prefix in prefix_to_uri:
-        target_class = target_class.replace(
-            target_class_prefix, prefix_to_uri[target_class_prefix]
-        )
-
-    if super_class_prefix in prefix_to_uri:
-        super_class = super_class.replace(
-            super_class_prefix, prefix_to_uri[super_class_prefix]
-        )
+    target_class = _expand_prefixed_identifier(target_class, prefix_to_uri)
+    super_class = _expand_prefixed_identifier(super_class, prefix_to_uri)
 
     # add the target_class, super_class, and local_term
     query = query % (target_class, super_class, local_term)
@@ -1165,7 +1282,11 @@ def _check_for_data_class(
     response = __post_query(
         endpoint=endpoint.rsplit("/statements", 1)[0],
         query=query,
-        data_style="query=" + query,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/sparql-results+json",
+        },
+        data_style={"query": query},
     )
 
     return response, query
@@ -1209,7 +1330,85 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     response = __post_query(
         endpoint=endpoint.rsplit("/statements", 1)[0],
         query=query,
-        data_style="query=" + query,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/sparql-results+json",
+        },
+        data_style={"query": query},
+    )
+
+    return response, query
+
+
+def _check_for_value_mapping(
+    endpoint,
+    prefixes,
+    database_name,
+    target_class,
+    super_class,
+    local_term,
+):
+    """
+    Check whether the OWL restriction mapping exists in the annotation graph.
+    """
+    prefix_to_uri = {}
+    for line in prefixes.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("PREFIX"):
+            continue
+
+        parts = stripped.split()
+        if len(parts) < 3:
+            continue
+
+        prefix_to_uri[parts[1][:-1]] = parts[2][1:-1]
+
+    prefix_to_uri.update(
+        {
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "dbo": "http://um-cds/ontologies/databaseontology/",
+        }
+    )
+
+    target_class_uri = _expand_prefixed_identifier(target_class, prefix_to_uri)
+    super_class_uri = _expand_prefixed_identifier(super_class, prefix_to_uri)
+    annotation_graph_uri = f"http://annotation.local/{database_name}/"
+    local_term_literal = json.dumps(local_term)
+
+    query = f"""
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+
+ASK {{
+    GRAPH <{annotation_graph_uri}> {{
+        <{target_class_uri}> rdf:type owl:Class ;
+            rdfs:subClassOf <{super_class_uri}> ;
+            owl:equivalentClass ?eqClass .
+        ?eqClass owl:intersectionOf ?list .
+        ?list rdf:rest*/rdf:first ?cellRestriction .
+        ?cellRestriction owl:onProperty dbo:cell_of ;
+            owl:someValuesFrom <{super_class_uri}> .
+        ?list rdf:rest*/rdf:first ?valueRestriction .
+        ?valueRestriction owl:onProperty dbo:has_value ;
+            owl:hasValue {local_term_literal}^^xsd:string .
+    }}
+}}
+"""
+
+    response = __post_query(
+        endpoint=endpoint.rsplit("/statements", 1)[0],
+        query=query,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/sparql-results+json",
+        },
+        data_style={"query": query},
     )
 
     return response, query
