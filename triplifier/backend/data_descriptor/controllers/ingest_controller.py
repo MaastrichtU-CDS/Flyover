@@ -8,8 +8,7 @@ including file uploads, semantic map uploads, and data processing.
 import json
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for, flash
-from markupsafe import Markup
+from flask import Blueprint, jsonify, redirect, request
 
 from services import IngestService
 from validation import MappingValidator
@@ -27,7 +26,6 @@ def get_app_context() -> dict:
 
     ctx = current_app.config.get("APP_CONTEXT", {})
 
-    # Ensure rdf_store_service is initialized if rdf_store_url and repo are available
     if not ctx.get("rdf_store_service") and "rdf_store_url" in current_app.config:
         ctx["rdf_store_service"] = RDFStoreService(
             current_app.config["rdf_store_url"], current_app.config["repo"]
@@ -38,53 +36,17 @@ def get_app_context() -> dict:
 
 @ingest_bp.route("/")
 def landing():
-    """
-    Render the landing page.
-
-    Returns:
-        Rendered index.html template.
-    """
-    return render_template("index.html")
+    return redirect("/app/")
 
 
 @ingest_bp.route("/ingest")
 def index():
-    """
-    Render the ingest page.
-
-    Checks for existing data and renders appropriate view.
-
-    Returns:
-        Rendered ingest.html template.
-    """
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-    rdf_store_service = ctx.get("rdf_store_service")
-
-    graph_exists = False
-    try:
-        if rdf_store_service and rdf_store_service.check_data_exists():
-            graph_exists = True
-            session_cache.existing_graph = True
-        else:
-            session_cache.existing_graph = False
-    except Exception as e:
-        logger.error(f"Failed to check if data graph exists: {e}")
-        # Don't flash on initial landing if it's just a network issue
-        # but keep session_cache state consistent
-        session_cache.existing_graph = False
-
-    return render_template("ingest.html", graph_exists=graph_exists)
+    return redirect("/app/ingest")
 
 
 @ingest_bp.route("/upload-semantic-map", methods=["POST"])
 def upload_semantic_map():
-    """
-    Handle semantic map file upload.
-
-    Returns:
-        JSON response with validation result.
-    """
+    """Handle semantic map file upload."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
 
@@ -151,12 +113,7 @@ def upload_semantic_map():
 
 @ingest_bp.route("/submit-indexeddb-semantic-map", methods=["POST"])
 def submit_indexeddb_semantic_map():
-    """
-    Handle semantic map submission from IndexedDB.
-
-    Returns:
-        JSON response with redirect URL.
-    """
+    """Handle semantic map submission from IndexedDB."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
 
@@ -187,7 +144,7 @@ def submit_indexeddb_semantic_map():
             {
                 "success": True,
                 "message": "Semantic map loaded from browser storage",
-                "redirect_url": "/annotation-review",
+                "redirect_url": "/app/annotate/review",
                 "statistics": result.statistics,
             }
         )
@@ -201,12 +158,7 @@ def submit_indexeddb_semantic_map():
 
 @ingest_bp.route("/upload", methods=["POST"])
 def upload_file():
-    """
-    Handle file upload for CSV or PostgreSQL data.
-
-    Returns:
-        Redirect to appropriate page based on success.
-    """
+    """Handle file upload for CSV or PostgreSQL data."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     run_triplifier = ctx.get("run_triplifier")
@@ -218,7 +170,6 @@ def upload_file():
     pk_fk_data = request.form.get("pkFkData")
     cross_graph_data = request.form.get("crossGraphLinkData")
 
-    # Store relationship data
     if pk_fk_data:
         session_cache.pk_fk_data = IngestService.parse_pk_fk_data(pk_fk_data)
     if cross_graph_data:
@@ -229,13 +180,10 @@ def upload_file():
     upload = True
 
     if file_type == "CSV" and csv_files:
-        # Validate CSV files
         is_valid, error = IngestService.validate_csv_files(csv_files)
         if not is_valid:
-            flash(error)
-            return render_template("ingest.html", error=True)
+            return redirect(f"/app/ingest?error={error}")
 
-        # Parse CSV files - let the service handle validation
         separator = request.form.get("csv_separator_sign", ",")
         decimal = request.form.get("csv_decimal_sign", ".")
 
@@ -244,8 +192,7 @@ def upload_file():
         )
 
         if error:
-            flash(error)
-            return render_template("ingest.html", error=True)
+            return redirect(f"/app/ingest?error={error}")
 
         session_cache.csvData = dataframes
         session_cache.csvTableNames = table_names
@@ -253,7 +200,6 @@ def upload_file():
         success, message = run_triplifier("triplifierCSV.properties")
 
     elif file_type == "Postgres":
-        # Handle PostgreSQL connection
         handle_postgres = ctx.get("handle_postgres")
         if handle_postgres:
             handle_postgres(
@@ -268,7 +214,7 @@ def upload_file():
     elif file_type != "Postgres" and not any(f.filename for f in csv_files):
         success = True
         upload = False
-        message = Markup(
+        message = (
             "You have opted to not submit any new data. "
             "You can now proceed to describe your data."
         )
@@ -288,45 +234,22 @@ def upload_file():
             for msg in upload_messages:
                 logger.info(f"Upload: {msg}")
 
-            # Start background processing
             if file_type == "CSV" and start_background:
                 start_background(session_cache)
 
-        return redirect(url_for("ingest.data_submission"))
+        return redirect("/app/describe")
     else:
-        flash(f"Error: {message}")
-        return render_template(
-            "ingest.html",
-            error=True,
-            graph_exists=session_cache.existing_graph,
-        )
+        return redirect(f"/app/ingest?error=Error: {message}")
 
 
 @ingest_bp.route("/data-submission")
 def data_submission():
-    """
-    Render data submission confirmation page.
-
-    Returns:
-        Rendered describe_landing.html template.
-    """
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-
-    return render_template(
-        "describe_landing.html",
-        message=Markup(session_cache.StatusToDisplay or ""),
-    )
+    return redirect("/app/describe")
 
 
 @ingest_bp.route("/api/rdf-store-databases", methods=["GET"])
 def get_rdf_store_databases():
-    """
-    Get list of databases from the RDF store.
-
-    Returns:
-        JSON response with database list.
-    """
+    """Get list of databases from the RDF store."""
     ctx = get_app_context()
     rdf_store_service = ctx.get("rdf_store_service")
     session_cache = ctx.get("session_cache")
@@ -352,12 +275,7 @@ def get_rdf_store_databases():
 
 @ingest_bp.route("/api/check-graph-exists", methods=["GET"])
 def api_check_graph_exists():
-    """
-    Check if graph data exists.
-
-    Returns:
-        JSON response with existence status.
-    """
+    """Check if graph data exists."""
     ctx = get_app_context()
     rdf_store_service = ctx.get("rdf_store_service")
 
@@ -370,12 +288,7 @@ def api_check_graph_exists():
 
 @ingest_bp.route("/get-existing-graph-structure", methods=["GET"])
 def get_existing_graph_structure():
-    """
-    Get structure of existing graph data.
-
-    Returns:
-        JSON response with tables and columns.
-    """
+    """Get structure of existing graph data."""
     ctx = get_app_context()
     rdf_store_service = ctx.get("rdf_store_service")
 

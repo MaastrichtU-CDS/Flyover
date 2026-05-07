@@ -10,7 +10,7 @@ import logging
 from io import StringIO
 
 import polars as pl
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, jsonify, redirect, request
 
 from typing import Any
 
@@ -30,76 +30,18 @@ def get_app_context() -> dict:
 
 @describe_bp.route("/describe_landing")
 def describe_landing():
-    """
-    Render the describe landing page.
-
-    Checks for data existence and shows appropriate view.
-
-    Returns:
-        Rendered describe_landing.html template.
-    """
-    from markupsafe import Markup
-
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-    rdf_store_service = ctx.get("rdf_store_service")
-
-    try:
-        if rdf_store_service and rdf_store_service.check_data_exists():
-            session_cache.existing_graph = True
-            message = "Data uploaded successfully. You can now describe your variables."
-            return render_template("describe_landing.html", message=Markup(message))
-        else:
-            message = """
-            <div class="alert alert-warning" role="alert">
-                <i class="fas fa-exclamation-triangle"></i>
-                <strong>No Data Found</strong><br>
-                Please complete the Ingest step first.
-                <br><br>
-                <a href="/ingest" class="btn btn-primary">Go to Ingest Step</a>
-            </div>
-            """
-            return render_template("describe_landing.html", message=Markup(message))
-
-    except Exception as e:
-        message = f"""
-        <div class="alert alert-danger" role="alert">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>Error</strong><br>
-            {e}
-            <br><br>
-            <a href="/ingest" class="btn btn-primary">Go to Ingest Step</a>
-        </div>
-        """
-        return render_template("describe_landing.html", message=Markup(message))
+    return redirect("/app/describe")
 
 
-@describe_bp.route("/describe_variables", methods=["GET", "POST"])
-def describe_variables():
-    """
-    Render the variable description page.
-
-    Returns:
-        Rendered describe_variables.html template.
-    """
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-    rdf_store_service = ctx.get("rdf_store_service")
-
-    # Get column info by database
-    columns_by_database = rdf_store_service.get_column_info_by_database()
-    session_cache.databases = list(columns_by_database.keys())
-
-    return render_template(
-        "describe_variables.html",
-        column_info=columns_by_database,
-    )
+@describe_bp.route("/describe_variables", methods=["GET"])
+def describe_variables_get():
+    return redirect("/app/describe/variables")
 
 
 @describe_bp.route("/api/v1/describe-variables-state", methods=["GET"])
 def api_describe_variables_state():
     """Return column info per database (the JSON version of the data the
-    Jinja describe_variables page receives via render_template)."""
+    Jinja describe_variables page used to receive via render_template)."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -113,8 +55,7 @@ def api_describe_variables_state():
 
 @describe_bp.route("/api/v1/describe-variable-details-state", methods=["GET"])
 def api_describe_variable_details_state():
-    """Return descriptive info, descriptive details, and preselected values
-    (the JSON version of what describe_variable_details renders)."""
+    """Return descriptive info, descriptive details, and preselected values."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -146,12 +87,7 @@ def api_describe_variable_details_state():
 
 @describe_bp.route("/units", methods=["POST"])
 def retrieve_descriptive_info():
-    """
-    Process variable descriptions from form submission.
-
-    Returns:
-        Redirect to appropriate next page.
-    """
+    """Process variable descriptions from form submission."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -162,28 +98,24 @@ def retrieve_descriptive_info():
     for database in session_cache.databases:
         if not database:
             continue
-        # Parse form data for this database
         descriptive_info = DescribeService.parse_form_data_for_database(
             request.form, database, session_cache.databases
         )
         session_cache.descriptive_info[database] = descriptive_info
         session_cache.DescriptiveInfoDetails[database] = []
 
-        # Process each variable
         for local_var, var_info in descriptive_info.items():
             data_type = var_info.get("type", "").replace("Variable type: ", "")
             global_var = var_info.get("description", "").replace(
                 "Variable description: ", ""
             )
 
-            # Format display name
             if not global_var or global_var.strip() == "":
                 display_name = f'Missing Description (or "{local_var}")'
             else:
                 display_name = f'{global_var} (or "{local_var}")'
 
             if data_type == "categorical":
-                # Get categories from the RDF store, scoped to this database
                 cat_result = rdf_store_service.get_categories(local_var, database)
                 if cat_result:
                     df = pl.read_csv(
@@ -199,80 +131,25 @@ def retrieve_descriptive_info():
             elif data_type == "continuous":
                 session_cache.DescriptiveInfoDetails[database].append(display_name)
             else:
-                # Insert equivalencies for other types
                 rdf_store_service.insert_equivalencies(
                     local_var, database, descriptive_info[local_var]
                 )
 
-        # Remove empty databases
         if not session_cache.DescriptiveInfoDetails[database]:
             del session_cache.DescriptiveInfoDetails[database]
 
-    # Redirect based on whether there are variables to detail
     if session_cache.DescriptiveInfoDetails:
-        return redirect(url_for("describe.describe_variable_details"))
+        return redirect("/app/describe/variable-details")
     else:
-        return redirect(url_for("share.share_landing"))
+        return redirect("/app/share")
 
 
 @describe_bp.route("/describe_variable_details")
 def describe_variable_details():
-    """
-    Render the variable details page.
-
-    Ensures all mapped variables with relevant datatypes are included,
-    regardless of whether the user visited describe_variables first.
-    When a JSON-LD mapping exists, variables with categorical or continuous
-    datatypes from the mapping are automatically included.
-
-    Returns:
-        Rendered describe_variable_details.html template.
-    """
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-    rdf_store_service = ctx.get("rdf_store_service")
-    name_matcher = ctx.get("name_matcher")
-
-    # Ensure databases are available
-    if not session_cache.databases:
-        session_cache.databases = rdf_store_service.get_databases()
-
-    # Populate DescriptiveInfoDetails from JSON-LD mapping.
-    # Always run when JSON-LD exists, even if some variables were already
-    # populated via the form, to include variables from pages the user
-    # did not visit (e.g. due to pagination).
-    if session_cache.jsonld_mapping:
-        _populate_details_from_jsonld(session_cache, rdf_store_service, name_matcher)
-
-    preselected_values = {}
-
-    if session_cache.jsonld_mapping and session_cache.DescriptiveInfoDetails:
-        preselected_values = DescribeService.get_preselected_values(
-            session_cache.jsonld_mapping,
-            session_cache.DescriptiveInfoDetails,
-            session_cache.databases,
-            name_matcher,
-        )
-
-    return render_template(
-        "describe_variable_details.html",
-        descriptive_info=json.dumps(session_cache.descriptive_info or {}),
-        descriptive_info_details=json.dumps(session_cache.DescriptiveInfoDetails or {}),
-        preselected_values=preselected_values,
-    )
+    return redirect("/app/describe/variable-details")
 
 
 def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
-    """
-    Check if a variable already exists in the DescriptiveInfoDetails list.
-
-    Args:
-        details_list: List of variable detail entries.
-        local_column: The local column name to check for.
-
-    Returns:
-        True if the variable already exists, False otherwise.
-    """
     for item in details_list:
         if isinstance(item, str) and local_column in item:
             return True
@@ -286,17 +163,7 @@ def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
 def _populate_details_from_jsonld(
     session_cache: Any, rdf_store_service: Any, name_matcher: Any
 ) -> None:
-    """
-    Populate DescriptiveInfoDetails from JSON-LD mapping.
-
-    Ensures variables with categorical or continuous datatypes from the
-    JSON-LD mapping are included even if the user skipped describe_variables.
-
-    Args:
-        session_cache: The session cache object.
-        rdf_store_service: RDF store service instance.
-        name_matcher: Function to match database names.
-    """
+    """Populate DescriptiveInfoDetails from JSON-LD mapping."""
     mapping = session_cache.jsonld_mapping
     if not mapping or not session_cache.databases:
         return
@@ -324,7 +191,6 @@ def _populate_details_from_jsonld(
         if database not in session_cache.descriptive_info:
             session_cache.descriptive_info[database] = {}
 
-        # Get all variables from the mapping
         for var_key in mapping.get_all_variable_keys():
             var_info = mapping.get_variable(var_key)
             if not var_info:
@@ -343,7 +209,6 @@ def _populate_details_from_jsonld(
             ):
                 continue
 
-            # Ensure descriptive_info is populated for this variable
             if local_column not in session_cache.descriptive_info[database]:
                 session_cache.descriptive_info[database][local_column] = {
                     "type": f"Variable type: {data_type}",
@@ -372,25 +237,18 @@ def _populate_details_from_jsonld(
             elif data_type == "continuous":
                 session_cache.DescriptiveInfoDetails[database].append(display_name)
 
-        # Remove empty databases
         if not session_cache.DescriptiveInfoDetails[database]:
             del session_cache.DescriptiveInfoDetails[database]
 
 
 @describe_bp.route("/end", methods=["GET", "POST"])
 def retrieve_detailed_descriptive_info():
-    """
-    Process detailed variable info (units, categories).
-
-    Returns:
-        Redirect to download page.
-    """
+    """Process detailed variable info (units, categories)."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
 
     for database in session_cache.databases:
-        # Update descriptive info with detailed data
         if database not in session_cache.descriptive_info:
             session_cache.descriptive_info[database] = {}
 
@@ -402,10 +260,9 @@ def retrieve_detailed_descriptive_info():
         )
         session_cache.descriptive_info[database] = updated_info
 
-        # Insert equivalencies for each variable
         for variable in set(updated_info.keys()):
             rdf_store_service.insert_equivalencies(
                 variable, database, updated_info.get(variable, {})
             )
 
-    return redirect(url_for("annotate.annotation_review"))
+    return redirect("/app/annotate/review")

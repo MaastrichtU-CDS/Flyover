@@ -9,7 +9,7 @@ import json
 import logging
 import os
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, jsonify, redirect, request
 from werkzeug.utils import secure_filename
 
 from services import AnnotateService
@@ -29,12 +29,6 @@ def get_app_context() -> dict:
 
 
 def safe_remove_file(filepath: str) -> None:
-    """
-    Safely remove a file, logging any errors but not raising exceptions.
-
-    Args:
-        filepath: Path to the file to remove.
-    """
     try:
         if filepath and os.path.exists(filepath):
             os.remove(filepath)
@@ -44,40 +38,12 @@ def safe_remove_file(filepath: str) -> None:
 
 @annotate_bp.route("/annotation_landing")
 def annotation_landing():
-    """
-    Render the annotation landing page.
-
-    Returns:
-        Rendered annotation_landing.html template.
-    """
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-    rdf_store_service = ctx.get("rdf_store_service")
-
-    try:
-        data_exists = (
-            rdf_store_service.check_data_exists() if rdf_store_service else False
-        )
-        session_cache.existing_graph = data_exists
-
-        return render_template(
-            "annotation_landing.html",
-            data_exists=data_exists,
-            message=None,
-        )
-    except Exception as e:
-        flash(f"Error accessing annotation step: {e}")
-        return redirect(url_for("ingest.landing"))
+    return redirect("/app/annotate")
 
 
 @annotate_bp.route("/upload-annotation-json", methods=["POST"])
 def upload_annotation_json():
-    """
-    Handle JSON-LD file upload for annotation.
-
-    Returns:
-        JSON response with validation result.
-    """
+    """Handle JSON-LD file upload for annotation."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -95,7 +61,6 @@ def upload_annotation_json():
         if not file.filename.lower().endswith(".jsonld"):
             return jsonify({"error": "File must be a .jsonld file"}), 400
 
-        # Save file
         filename = secure_filename(file.filename)
         filepath = os.path.join(upload_folder, filename)
         file.save(filepath)
@@ -104,7 +69,6 @@ def upload_annotation_json():
             with open(filepath, "r") as f:
                 json_data = json.load(f)
 
-            # Ensure databases are available
             databases = rdf_store_service.get_databases() if rdf_store_service else []
             session_cache.databases = databases
 
@@ -121,7 +85,6 @@ def upload_annotation_json():
                     400,
                 )
 
-            # Extract tables from JSON-LD
             jsonld_tables = []
             if json_data.get("databases"):
                 for db_key, db_data in json_data["databases"].items():
@@ -149,7 +112,6 @@ def upload_annotation_json():
                     400,
                 )
 
-            # Find matching tables
             matching = []
             non_matching = []
 
@@ -179,11 +141,9 @@ def upload_annotation_json():
                     400,
                 )
 
-            # Store in session
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
 
-            # Validate and store as jsonld_mapping
             validator = MappingValidator()
             result = validator.validate(json_data)
             if result.is_valid:
@@ -211,23 +171,12 @@ def upload_annotation_json():
 
 @annotate_bp.route("/annotation-review")
 def annotation_review():
-    """
-    Render the annotation review page.
-
-    Returns:
-        Rendered annotation_review.html template.
-    """
-    return render_template("annotation_review.html")
+    return redirect("/app/annotate/review")
 
 
 @annotate_bp.route("/start-annotation", methods=["POST"])
 def start_annotation():
-    """
-    Start the annotation process.
-
-    Returns:
-        JSON response with annotation status.
-    """
+    """Start the annotation process."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -242,7 +191,6 @@ def start_annotation():
         if not has_semantic_map(session_cache):
             return jsonify({"success": False, "error": "No semantic map available"})
 
-        # Ensure databases are available
         databases = rdf_store_service.get_databases() if rdf_store_service else []
         session_cache.databases = databases
 
@@ -252,7 +200,6 @@ def start_annotation():
         endpoint = f"{rdf_store_url}/repositories/{session_cache.repo}/statements"
         map_table_names = get_table_names(session_cache)
 
-        # Prepare annotation data
         annotation_data = AnnotateService.prepare_annotation_data(
             databases,
             session_cache,
@@ -270,7 +217,6 @@ def start_annotation():
                 }
             )
 
-        # Execute annotations
         session_cache.annotation_status = {}
         total_annotated = 0
 
@@ -322,64 +268,12 @@ def start_annotation():
 
 @annotate_bp.route("/annotation-verify")
 def annotation_verify():
-    """
-    Render the annotation verification page.
-
-    Returns:
-        Rendered annotation_verify.html template.
-    """
-    ctx = get_app_context()
-    session_cache = ctx.get("session_cache")
-    rdf_store_service = ctx.get("rdf_store_service")
-    get_semantic_map = ctx.get("get_semantic_map")
-    formulate_local_map = ctx.get("formulate_local_map")
-    name_matcher = ctx.get("name_matcher")
-    get_table_names = ctx.get("get_table_names")
-    has_semantic_map = ctx.get("has_semantic_map")
-
-    if not has_semantic_map(session_cache):
-        flash("No semantic map available.")
-        return redirect(url_for("share.describe_downloads"))
-
-    databases = rdf_store_service.get_databases() if rdf_store_service else []
-    session_cache.databases = databases
-
-    if not databases:
-        flash("No databases available.")
-        return redirect(url_for("share.describe_downloads"))
-
-    map_table_names = get_table_names(session_cache)
-
-    annotated, unannotated, variable_data = AnnotateService.get_verification_data(
-        databases,
-        session_cache,
-        map_table_names,
-        name_matcher,
-        get_semantic_map,
-        formulate_local_map,
-    )
-
-    annotation_status = session_cache.annotation_status or {}
-
-    success_message = None
-    if annotation_status and all(s.get("success") for s in annotation_status.values()):
-        success_message = (
-            "Data processing complete. Semantic interoperability achieved."
-        )
-
-    return render_template(
-        "annotation_verify.html",
-        annotated_variables=annotated,
-        unannotated_variables=unannotated,
-        annotation_status=annotation_status,
-        variable_data=variable_data,
-        success_message=success_message,
-    )
+    return redirect("/app/annotate/verify")
 
 
 @annotate_bp.route("/api/v1/annotation-verify-state", methods=["GET"])
 def api_annotation_verify_state():
-    """Return the same data the Jinja annotation_verify page receives."""
+    """Return the data the SPA's AnnotationVerifyView needs."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -429,12 +323,7 @@ def api_annotation_verify_state():
 
 @annotate_bp.route("/verify-annotation-ask", methods=["POST"])
 def verify_annotation_ask():
-    """
-    Verify annotation using ASK query.
-
-    Returns:
-        JSON response with verification result.
-    """
+    """Verify annotation using ASK query."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
