@@ -10,7 +10,7 @@ PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
 
 INSERT {
     GRAPH <MATERIALIZED_GRAPH_URI> {
-        ?instance rdf:type ?term .
+        ?valueCell rdf:type ?term .
     }
 }
 WHERE {
