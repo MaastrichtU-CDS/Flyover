@@ -1,5 +1,7 @@
 <script setup>
 import MigrationStub from '@/components/MigrationStub.vue'
+// Detail data is collected from /describe_variable_details (legacy) — that's a
+// single page covering all variables, not a per-variable URL.
 </script>
 
 <template>
