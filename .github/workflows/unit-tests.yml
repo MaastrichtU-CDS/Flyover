@@ -66,10 +66,8 @@ jobs:
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
-        python -m pytest triplifier/data_descriptor/tests/ -k unit \
-          --cov=triplifier/data_descriptor \
-          --cov-report=term-missing \
-          -q --no-header 2>&1 | grep -E "^(TOTAL|triplifier)" | head -30 > coverage-summary.txt || true
+        # Use the .coverage data file produced by the test step above
+        python -m coverage report --show-missing 2>&1 | grep -E "^(TOTAL|triplifier)" | head -30 > coverage-summary.txt || true
         if [ -s coverage-summary.txt ]; then
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat coverage-summary.txt >> $GITHUB_STEP_SUMMARY
