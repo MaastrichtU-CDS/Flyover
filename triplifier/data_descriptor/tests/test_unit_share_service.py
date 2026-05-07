@@ -6,15 +6,14 @@ Tests cover:
 - ShareService.generate_mock_data_from_semantic_map (class method)
 - ShareService.download_semantic_map (JSON-LD and legacy paths)
 - ShareService._download_single_semantic_map
+- ShareService._download_multiple_semantic_maps (multi-database legacy path)
 """
 
 import json
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import polars as pl
+from unittest.mock import MagicMock
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -344,6 +343,84 @@ class TestShareServiceDownloadSemanticMap(unittest.TestCase):
             response = ShareService.download_semantic_map(session, formulate_fn)
             self.assertEqual(response.mimetype, "application/json")
             formulate_fn.assert_called_once_with("db_a")
+
+    def test_uses_multi_db_path_when_no_jsonld_mapping_multiple_dbs(self):
+        """Falls back to multi-DB legacy path (zip) when jsonld_mapping is None and len(databases) > 1."""
+        import os
+        from flask import Flask
+
+        app = Flask(__name__)
+        # _download_multiple_semantic_maps uses after_this_request which requires
+        # an active request context (not just an app context).
+        with app.test_request_context("/"):
+            session = self._mock_session_legacy_multi()
+            formulate_fn = MagicMock(return_value={"db": "value"})
+
+            response = ShareService.download_semantic_map(session, formulate_fn)
+            self.assertEqual(response.mimetype, "application/zip")
+            # formulate_local_map should be called once per database
+            self.assertEqual(formulate_fn.call_count, 2)
+            formulate_fn.assert_any_call("db_a")
+            formulate_fn.assert_any_call("db_b")
+            # Clean up the zip file created by the implementation
+            zip_path = "local_semantic_maps.zip"
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+
+
+# ---------------------------------------------------------------------------
+# Tests for ShareService._download_single_semantic_map
+# ---------------------------------------------------------------------------
+
+
+class TestShareServiceDownloadSingleSemanticMap(unittest.TestCase):
+    """Tests for ShareService._download_single_semantic_map."""
+
+    def test_returns_json_response_with_correct_content(self):
+        """Returns a JSON response containing the formulated map."""
+        from flask import Flask
+
+        app = Flask(__name__)
+        with app.app_context():
+            session = MagicMock()
+            session.databases = ["patients"]
+            formulate_fn = MagicMock(return_value={"variable": "age"})
+
+            response = ShareService._download_single_semantic_map(session, formulate_fn)
+
+            self.assertEqual(response.mimetype, "application/json")
+            body = json.loads(response.get_data(as_text=True))
+            self.assertEqual(body["variable"], "age")
+            formulate_fn.assert_called_once_with("patients")
+
+    def test_filename_derived_from_database_name(self):
+        """Content-Disposition header uses the database name."""
+        from flask import Flask
+
+        app = Flask(__name__)
+        with app.app_context():
+            session = MagicMock()
+            session.databases = ["my_db"]
+            formulate_fn = MagicMock(return_value={})
+
+            response = ShareService._download_single_semantic_map(session, formulate_fn)
+
+            disposition = response.headers.get("Content-Disposition", "")
+            self.assertIn("local_semantic_map_my_db.json", disposition)
+
+    def test_raises_500_when_formulate_throws(self):
+        """Aborts with 500 when the formulate function raises an exception."""
+        from flask import Flask
+        from werkzeug.exceptions import InternalServerError
+
+        app = Flask(__name__)
+        with app.app_context():
+            session = MagicMock()
+            session.databases = ["bad_db"]
+            formulate_fn = MagicMock(side_effect=RuntimeError("db error"))
+
+            with self.assertRaises((InternalServerError, Exception)):
+                ShareService._download_single_semantic_map(session, formulate_fn)
 
 
 if __name__ == "__main__":

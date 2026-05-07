@@ -8,7 +8,7 @@ rdf_store_repository dependency mocked out.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import polars as pl
 
