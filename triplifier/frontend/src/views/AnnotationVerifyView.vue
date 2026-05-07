@@ -82,7 +82,11 @@ onMounted(async () => {
         message: 'Not described',
       }))
     variables.value = [...described, ...undescribed]
-    described.forEach(verifyOne)
+    // Iterate via the reactive proxy — mutating the originals in `described`
+    // bypasses Vue's set-trap and the UI would stay on "Checking annotation…"
+    for (const v of variables.value) {
+      if (v.status === 'pending') verifyOne(v)
+    }
   } catch (e) {
     status.error(`Could not load verification data: ${e.message || e}`)
   }
