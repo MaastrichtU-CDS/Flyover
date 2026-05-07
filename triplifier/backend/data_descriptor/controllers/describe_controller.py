@@ -10,7 +10,7 @@ import logging
 from io import StringIO
 
 import polars as pl
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 
 from typing import Any
 
@@ -93,6 +93,54 @@ def describe_variables():
     return render_template(
         "describe_variables.html",
         column_info=columns_by_database,
+    )
+
+
+@describe_bp.route("/api/v1/describe-variables-state", methods=["GET"])
+def api_describe_variables_state():
+    """Return column info per database (the JSON version of the data the
+    Jinja describe_variables page receives via render_template)."""
+    ctx = get_app_context()
+    session_cache = ctx.get("session_cache")
+    rdf_store_service = ctx.get("rdf_store_service")
+
+    columns_by_database = (
+        rdf_store_service.get_column_info_by_database() if rdf_store_service else {}
+    )
+    session_cache.databases = list(columns_by_database.keys())
+    return jsonify({"column_info": columns_by_database})
+
+
+@describe_bp.route("/api/v1/describe-variable-details-state", methods=["GET"])
+def api_describe_variable_details_state():
+    """Return descriptive info, descriptive details, and preselected values
+    (the JSON version of what describe_variable_details renders)."""
+    ctx = get_app_context()
+    session_cache = ctx.get("session_cache")
+    rdf_store_service = ctx.get("rdf_store_service")
+    name_matcher = ctx.get("name_matcher")
+
+    if not session_cache.databases:
+        session_cache.databases = rdf_store_service.get_databases()
+
+    if session_cache.jsonld_mapping:
+        _populate_details_from_jsonld(session_cache, rdf_store_service, name_matcher)
+
+    preselected_values = {}
+    if session_cache.jsonld_mapping and session_cache.DescriptiveInfoDetails:
+        preselected_values = DescribeService.get_preselected_values(
+            session_cache.jsonld_mapping,
+            session_cache.DescriptiveInfoDetails,
+            session_cache.databases,
+            name_matcher,
+        )
+
+    return jsonify(
+        {
+            "descriptive_info": session_cache.descriptive_info or {},
+            "descriptive_info_details": session_cache.DescriptiveInfoDetails or {},
+            "preselected_values": preselected_values,
+        }
     )
 
 
