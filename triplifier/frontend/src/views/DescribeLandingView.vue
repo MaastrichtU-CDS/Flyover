@@ -88,28 +88,37 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1><i class="fas fa-clipboard-check"></i> Data submission finalised</h1>
-    <hr />
+    <h1><i class="fas fa-clipboard-check" /> Data submission finalised</h1>
+    <hr>
 
     <p v-if="dataExists">
       Data uploaded successfully. You can now describe your variables.
     </p>
 
-    <div v-if="!checking && !dataExists" class="alert alert-warning">
-      <i class="fas fa-exclamation-triangle"></i>
+    <div
+      v-if="!checking && !dataExists"
+      class="alert alert-warning"
+    >
+      <i class="fas fa-exclamation-triangle" />
       <strong>No Data Found.</strong> You cannot proceed with the describe step as no
       data has been uploaded yet. Please go back to the Ingest step to upload your
       data first.
-      <br /><br />
-      <RouterLink to="/ingest" class="btn btn-primary">
-        <i class="fas fa-arrow-left"></i> Go to Ingest Step
+      <br><br>
+      <RouterLink
+        to="/ingest"
+        class="btn btn-primary"
+      >
+        <i class="fas fa-arrow-left" /> Go to Ingest Step
       </RouterLink>
     </div>
 
-    <div v-if="dataExists && semanticMapVisible" class="card mb-4">
+    <div
+      v-if="dataExists && semanticMapVisible"
+      class="card mb-4"
+    >
       <div class="card-header">
         <h5 class="mb-0">
-          <i class="fas fa-project-diagram"></i> Optional: Upload Flyover Semantic Map
+          <i class="fas fa-project-diagram" /> Optional: Upload Flyover Semantic Map
           Template
         </h5>
       </div>
@@ -123,13 +132,12 @@ onMounted(async () => {
             href="https://github.com/MaastrichtU-CDS/Flyover/blob/main/example_data/mapping_template.jsonld"
             target="_blank"
             rel="noopener"
-            >here</a
-          >.
+          >here</a>.
         </p>
 
         <div class="alert alert-info info-purple">
-          <i class="fas fa-info-circle"></i>
-          <strong>What is a Global Semantic Map?</strong><br />
+          <i class="fas fa-info-circle" />
+          <strong>What is a Global Semantic Map?</strong><br>
           A global semantic map defines standardised variable definitions, data types,
           and value mappings that can be consistently applied across different
           datasets to ensure semantic interoperability.
@@ -145,14 +153,14 @@ onMounted(async () => {
                 :value="selectedFileName"
                 placeholder="Select semantic map JSON-LD file..."
                 readonly
-              />
+              >
               <div class="input-group-append">
                 <button
                   type="button"
                   class="btn btn-outline-secondary"
                   @click="fileInput?.click()"
                 >
-                  <i class="fas fa-folder-open"></i> Browse
+                  <i class="fas fa-folder-open" /> Browse
                 </button>
               </div>
             </div>
@@ -162,7 +170,7 @@ onMounted(async () => {
               style="display: none"
               accept=".jsonld"
               @change="onFilePicked"
-            />
+            >
             <small class="form-text text-muted">
               The JSON-LD file should follow the Flyover semantic mapping schema with
               @context, schema, and databases sections.
@@ -175,8 +183,14 @@ onMounted(async () => {
               class="btn btn-success"
               :disabled="!selectedFileName || uploading"
             >
-              <i v-if="uploading" class="fas fa-spinner fa-spin"></i>
-              <i v-else class="fas fa-upload"></i>
+              <i
+                v-if="uploading"
+                class="fas fa-spinner fa-spin"
+              />
+              <i
+                v-else
+                class="fas fa-upload"
+              />
               {{ uploading ? ' Saving...' : ' Upload Semantic Map' }}
             </button>
             <button
@@ -185,7 +199,7 @@ onMounted(async () => {
               :disabled="uploading"
               @click="skipSemanticMap"
             >
-              <i class="fas fa-forward"></i> Skip
+              <i class="fas fa-forward" /> Skip
             </button>
           </div>
         </form>
@@ -199,7 +213,7 @@ onMounted(async () => {
         :disabled="continueDisabled"
         @click="continueToDescribe"
       >
-        <i class="fas fa-play"></i> Click here to describe the data
+        <i class="fas fa-play" /> Click here to describe the data
       </button>
     </p>
   </div>

@@ -227,18 +227,18 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1><i class="fas fa-file-export"></i> Generate Mock Data</h1>
-    <hr />
+    <h1><i class="fas fa-file-export" /> Generate Mock Data</h1>
+    <hr>
     <p style="line-height: 1.5; margin: 0">
       Generate anonymous mock data based on your semantic mapping and data structure.
       This allows you to share realistic test data without privacy concerns.
     </p>
-    <br />
+    <br>
 
     <div class="card mb-4">
       <div class="card-header">
         <h5 class="mb-0">
-          <i class="fas fa-database"></i> Mock Data Generation
+          <i class="fas fa-database" /> Mock Data Generation
         </h5>
       </div>
       <div class="card-body">
@@ -248,30 +248,34 @@ onMounted(async () => {
           anonymity.
         </p>
 
-        <hr />
+        <hr>
 
         <div v-if="!storedJsonldData">
-          <h6><i class="fas fa-sitemap"></i> JSON-LD Semantic Map</h6>
+          <h6><i class="fas fa-sitemap" /> JSON-LD Semantic Map</h6>
           <p class="text-muted mb-3">
             To generate mock data, you need a Flyover semantic mapping in JSON-LD
             format.
           </p>
 
-          <div v-if="detectedJsonldData" class="alert alert-warning">
-            <i class="fas fa-info-circle"></i>
-            <strong>Existing semantic map detected!</strong><br />
+          <div
+            v-if="detectedJsonldData"
+            class="alert alert-warning"
+          >
+            <i class="fas fa-info-circle" />
+            <strong>Existing semantic map detected!</strong><br>
             You already have a semantic map stored in your browser from a previous
             session. You can use the stored map or upload a new JSON-LD file to
             overwrite it.
-            <br />
-            <small class="text-muted" v-if="stats"
-              >Current semantic map: {{ stats.dbCount }}
+            <br>
+            <small
+              v-if="stats"
+              class="text-muted"
+            >Current semantic map: {{ stats.dbCount }}
               {{ stats.dbCount === 1 ? 'database' : 'databases' }},
               {{ stats.tableCount }}
               {{ stats.tableCount === 1 ? 'table' : 'tables' }},
               {{ stats.columnCount }}
-              {{ stats.columnCount === 1 ? 'column' : 'columns' }}.</small
-            >
+              {{ stats.columnCount === 1 ? 'column' : 'columns' }}.</small>
           </div>
 
           <div class="mb-4">
@@ -282,7 +286,7 @@ onMounted(async () => {
                 class="form-control"
                 accept=".jsonld"
                 @change="onFilePicked"
-              />
+              >
             </div>
             <button
               type="button"
@@ -290,8 +294,14 @@ onMounted(async () => {
               :disabled="!selectedFileName || uploading"
               @click="handleFileUpload"
             >
-              <i v-if="uploading" class="fas fa-spinner fa-spin"></i>
-              <i v-else class="fas fa-upload"></i>
+              <i
+                v-if="uploading"
+                class="fas fa-spinner fa-spin"
+              />
+              <i
+                v-else
+                class="fas fa-upload"
+              />
               Upload JSON-LD
             </button>
             <button
@@ -300,10 +310,13 @@ onMounted(async () => {
               class="btn btn-outline-secondary"
               @click="useStoredJsonld"
             >
-              <i class="fas fa-database"></i> Use Stored JSON-LD
+              <i class="fas fa-database" /> Use Stored JSON-LD
             </button>
 
-            <div v-if="uploadProgress > 0" class="progress mt-3">
+            <div
+              v-if="uploadProgress > 0"
+              class="progress mt-3"
+            >
               <div
                 class="progress-bar"
                 role="progressbar"
@@ -315,8 +328,11 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="storedJsonldData" class="alert alert-success">
-          <i class="fas fa-check-circle"></i>
+        <div
+          v-if="storedJsonldData"
+          class="alert alert-success"
+        >
+          <i class="fas fa-check-circle" />
           <strong>JSON-LD semantic map loaded successfully!</strong>
           <span v-if="stats">
             ({{ stats.dbCount }}
@@ -329,8 +345,8 @@ onMounted(async () => {
         </div>
 
         <div v-if="storedJsonldData">
-          <hr />
-          <h6><i class="fas fa-cogs"></i> Generation Options</h6>
+          <hr>
+          <h6><i class="fas fa-cogs" /> Generation Options</h6>
 
           <div class="form-group">
             <label for="sampleCount"><strong>Number of Samples to Generate</strong></label>
@@ -341,10 +357,8 @@ onMounted(async () => {
               class="form-control"
               min="1"
               max="10000"
-            />
-            <small class="form-text text-muted"
-              >Enter the number of rows you want in your mock dataset (1–10,000).</small
             >
+            <small class="form-text text-muted">Enter the number of rows you want in your mock dataset (1–10,000).</small>
           </div>
 
           <div class="form-group">
@@ -355,7 +369,7 @@ onMounted(async () => {
               type="number"
               class="form-control"
               placeholder="Leave empty for random results"
-            />
+            >
           </div>
 
           <div class="form-group">
@@ -369,17 +383,33 @@ onMounted(async () => {
                   class="form-control"
                   @change="tableId = ''"
                 >
-                  <option value="">-- All Databases --</option>
-                  <option v-for="d in databaseOptions" :key="d" :value="d">
+                  <option value="">
+                    -- All Databases --
+                  </option>
+                  <option
+                    v-for="d in databaseOptions"
+                    :key="d"
+                    :value="d"
+                  >
                     {{ d }}
                   </option>
                 </select>
               </div>
               <div class="col-md-6">
                 <label for="tableSelect">Table</label>
-                <select id="tableSelect" v-model="tableId" class="form-control">
-                  <option value="">-- All Tables --</option>
-                  <option v-for="t in tableOptions" :key="t" :value="t">
+                <select
+                  id="tableSelect"
+                  v-model="tableId"
+                  class="form-control"
+                >
+                  <option value="">
+                    -- All Tables --
+                  </option>
+                  <option
+                    v-for="t in tableOptions"
+                    :key="t"
+                    :value="t"
+                  >
                     {{ t }}
                   </option>
                 </select>
@@ -393,12 +423,21 @@ onMounted(async () => {
             :disabled="generating"
             @click="generateMockData"
           >
-            <i v-if="generating" class="fas fa-spinner fa-spin"></i>
-            <i v-else class="fas fa-magic"></i>
+            <i
+              v-if="generating"
+              class="fas fa-spinner fa-spin"
+            />
+            <i
+              v-else
+              class="fas fa-magic"
+            />
             Generate Mock Data
           </button>
 
-          <div v-if="generationProgress > 0" class="progress mt-3">
+          <div
+            v-if="generationProgress > 0"
+            class="progress mt-3"
+          >
             <div
               class="progress-bar"
               role="progressbar"
@@ -409,11 +448,14 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="generatedData" class="mt-4">
-          <hr />
-          <h6><i class="fas fa-check-double"></i> Generation Results</h6>
+        <div
+          v-if="generatedData"
+          class="mt-4"
+        >
+          <hr>
+          <h6><i class="fas fa-check-double" /> Generation Results</h6>
           <div class="alert alert-success">
-            <i class="fas fa-check-circle"></i>
+            <i class="fas fa-check-circle" />
             <strong>Mock data generated successfully!</strong>
             {{ generatedTableEntries.length }} table(s) generated with
             {{ sampleCount }} samples each.
@@ -428,9 +470,12 @@ onMounted(async () => {
                 class="btn btn-primary mb-3"
                 @click="downloadAllAsZip"
               >
-                <i class="fas fa-file-archive"></i> Download all as ZIP
+                <i class="fas fa-file-archive" /> Download all as ZIP
               </button>
-              <div v-if="generatedTableEntries.length > 1" class="w-100"></div>
+              <div
+                v-if="generatedTableEntries.length > 1"
+                class="w-100"
+              />
               <button
                 v-for="entry in generatedTableEntries"
                 :key="entry.tableKey"
@@ -439,7 +484,7 @@ onMounted(async () => {
                 :title="`Download ${entry.dbId}.${entry.tableId} as CSV`"
                 @click="downloadCsv(entry.tableData, `${entry.dbId}_${entry.tableId}_mock.csv`)"
               >
-                <i class="fas fa-download"></i> {{ entry.dbId }}<br />{{
+                <i class="fas fa-download" /> {{ entry.dbId }}<br>{{
                   entry.tableId
                 }}
               </button>
@@ -447,7 +492,7 @@ onMounted(async () => {
           </div>
 
           <div class="alert alert-info mt-3 info-purple">
-            <i class="fas fa-info-circle"></i>
+            <i class="fas fa-info-circle" />
             <strong>Data Format Notes:</strong>
             <ul class="mb-0">
               <li>Categorical variables use values from your local mappings</li>
@@ -462,10 +507,13 @@ onMounted(async () => {
       </div>
     </div>
 
-    <RouterLink to="/share" class="btn btn-light">
-      <i class="fas fa-arrow-left"></i> Return to Share options
+    <RouterLink
+      to="/share"
+      class="btn btn-light"
+    >
+      <i class="fas fa-arrow-left" /> Return to Share options
     </RouterLink>
-    <br /><br />
+    <br><br>
   </div>
 </template>
 

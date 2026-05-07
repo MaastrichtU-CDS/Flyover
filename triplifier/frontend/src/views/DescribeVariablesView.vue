@@ -20,7 +20,7 @@ const manualOverrides = reactive(new Set())
 const feedbackVisible = reactive({})
 const isSubmitting = ref(false)
 const loadingIconIsPen = ref(false)
-let loadingInterval = null
+let _loadingInterval = null
 
 const databaseNames = computed(() =>
   columnInfoData.value ? Object.keys(columnInfoData.value) : []
@@ -198,7 +198,7 @@ const loadingIconClass = computed(() =>
 function startLoadingAnimation() {
   isSubmitting.value = true
   loadingIconIsPen.value = false
-  loadingInterval = setInterval(() => {
+  _loadingInterval = setInterval(() => {
     loadingIconIsPen.value = !loadingIconIsPen.value
   }, 1000)
 }
@@ -256,21 +256,29 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1><i class="fas fa-pencil-ruler"></i> Describe your data</h1>
-    <hr />
+    <h1><i class="fas fa-pencil-ruler" /> Describe your data</h1>
+    <hr>
     <p>
-      Please inspect the variables (i.e. columns) of your database(s).<br />
+      Please inspect the variables (i.e. columns) of your database(s).<br>
       For every database that you would like to describe, please select the type and
       description of your columns from the drop-down menu.
     </p>
 
-    <form class="form-horizontal" method="POST" action="/units" @submit="onFormSubmit">
-      <hr />
+    <form
+      class="form-horizontal"
+      method="POST"
+      action="/units"
+      @submit="onFormSubmit"
+    >
+      <hr>
 
       <div>
-        <div v-for="dbName in databaseNames" :key="dbName">
+        <div
+          v-for="dbName in databaseNames"
+          :key="dbName"
+        >
           <h2 class="database-heading">
-            <i class="fas fa-database"></i> {{ dbName }}
+            <i class="fas fa-database" /> {{ dbName }}
           </h2>
           <button
             type="button"
@@ -286,7 +294,7 @@ onMounted(async () => {
               :class="
                 expandedDatabases[dbName] ? 'fa-chevron-down' : 'fa-chevron-up'
               "
-            ></i>
+            />
           </button>
 
           <div
@@ -302,7 +310,9 @@ onMounted(async () => {
                 :key="`${dbName}_${item}`"
                 class="variable-row"
               >
-                <div class="variable-label">{{ item }}</div>
+                <div class="variable-label">
+                  {{ item }}
+                </div>
                 <div class="variable-controls">
                   <select
                     :id="`ncit_comment_${dbName}_${item}`"
@@ -311,8 +321,12 @@ onMounted(async () => {
                     :value="getDescriptionValue(dbName, item)"
                     @change="onDescriptionChange(dbName, item, $event)"
                   >
-                    <option value="">Description</option>
-                    <option value="Other">Other</option>
+                    <option value="">
+                      Description
+                    </option>
+                    <option value="Other">
+                      Other
+                    </option>
                     <option
                       v-for="name in globalVariableNames"
                       :key="name"
@@ -332,7 +346,7 @@ onMounted(async () => {
                     :disabled="getDescriptionValue(dbName, item) !== 'Other'"
                     :value="getCommentValue(dbName, item)"
                     @change="onCommentChange(dbName, item, $event)"
-                  />
+                  >
 
                   <div class="datatype-container">
                     <select
@@ -342,24 +356,37 @@ onMounted(async () => {
                       :value="getDatatypeValue(dbName, item)"
                       @change="onDatatypeChange(dbName, item, $event)"
                     >
-                      <option value="">Data type</option>
-                      <option value="categorical">Categorical</option>
-                      <option value="continuous">Continuous</option>
-                      <option value="identifier">Identifier</option>
-                      <option value="standardised">Standardised</option>
+                      <option value="">
+                        Data type
+                      </option>
+                      <option value="categorical">
+                        Categorical
+                      </option>
+                      <option value="continuous">
+                        Continuous
+                      </option>
+                      <option value="identifier">
+                        Identifier
+                      </option>
+                      <option value="standardised">
+                        Standardised
+                      </option>
                     </select>
                     <small
                       v-if="feedbackVisible[`${dbName}_${item}`]"
                       class="datatype-feedback"
                     >
-                      <i class="fas fa-magic"></i> Auto-filled based on description
+                      <i class="fas fa-magic" /> Auto-filled based on description
                     </small>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div v-if="totalPages(dbName) > 1" class="pagination-controls">
+            <div
+              v-if="totalPages(dbName) > 1"
+              class="pagination-controls"
+            >
               <button
                 type="button"
                 class="prev-btn"
@@ -382,39 +409,49 @@ onMounted(async () => {
               </button>
             </div>
           </div>
-          <hr />
+          <hr>
         </div>
       </div>
 
-      <template v-for="(cached, key) in hiddenFieldEntries" :key="`hidden-${key}`">
+      <template
+        v-for="(cached, key) in hiddenFieldEntries"
+        :key="`hidden-${key}`"
+      >
         <input
           v-if="cached.description"
           type="hidden"
           :name="`ncit_comment_${key}`"
           :value="cached.description"
-        />
+        >
         <input
           v-if="cached.datatype"
           type="hidden"
           :name="key"
           :value="cached.datatype"
-        />
+        >
         <input
           v-if="cached.comment"
           type="hidden"
           :name="`comment_${key}`"
           :value="cached.comment"
-        />
+        >
       </template>
 
-      <template v-for="(desc, key) in preselectedHiddenEntries" :key="`pre-${key}`">
-        <input type="hidden" :name="`ncit_comment_${key}`" :value="desc" />
+      <template
+        v-for="(desc, key) in preselectedHiddenEntries"
+        :key="`pre-${key}`"
+      >
+        <input
+          type="hidden"
+          :name="`ncit_comment_${key}`"
+          :value="desc"
+        >
         <input
           v-if="preselectedDatatypes[key]"
           type="hidden"
           :name="key"
           :value="preselectedDatatypes[key]"
-        />
+        >
       </template>
 
       <p>
@@ -425,10 +462,13 @@ onMounted(async () => {
           :class="{ processing: isSubmitting }"
         >
           <template v-if="!isSubmitting">
-            <i class="fas fa-play"></i> Submit
+            <i class="fas fa-play" /> Submit
           </template>
           <template v-else>
-            <i class="fas loading-icon" :class="loadingIconClass"></i>
+            <i
+              class="fas loading-icon"
+              :class="loadingIconClass"
+            />
             Processing descriptions...
           </template>
         </button>
@@ -437,25 +477,25 @@ onMounted(async () => {
 
     <div class="mt-4">
       <div class="alert alert-info py-2 info-purple">
-        <i class="fas fa-info-circle"></i>
-        <strong>Reference Guide</strong><br />
+        <i class="fas fa-info-circle" />
+        <strong>Reference Guide</strong><br>
         <div class="mt-1 ms-4">
           <strong style="font-size: 0.9em">Data Types:</strong>
           <div class="row g-1 mt-1">
             <div class="col-md-6">
-              <i class="fas fa-tags me-2 ref-guide-icon"></i>
+              <i class="fas fa-tags me-2 ref-guide-icon" />
               <strong>Categorical</strong> — distinct categories or groups
             </div>
             <div class="col-md-6">
-              <i class="fas fa-chart-line me-2 ref-guide-icon"></i>
+              <i class="fas fa-chart-line me-2 ref-guide-icon" />
               <strong>Continuous</strong> — numerical variables on a range
             </div>
             <div class="col-md-6">
-              <i class="fas fa-fingerprint me-2 ref-guide-icon"></i>
+              <i class="fas fa-fingerprint me-2 ref-guide-icon" />
               <strong>Identifier</strong> — unique values used to identify or link records
             </div>
             <div class="col-md-6">
-              <i class="fas fa-clipboard-check me-2 ref-guide-icon"></i>
+              <i class="fas fa-clipboard-check me-2 ref-guide-icon" />
               <strong>Standardised</strong> — large-scale standardised variables (ICD,
               EORTC-QLQ, etc.)
             </div>

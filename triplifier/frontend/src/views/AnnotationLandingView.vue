@@ -3,11 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
-import { useStatusStore } from '@/stores/status'
 import { useNavigation } from '@/composables/useNavigation'
 
 const router = useRouter()
-const status = useStatusStore()
 const { refreshDataExists } = useNavigation()
 
 const checking = ref(true)
@@ -278,23 +276,29 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1><i class="fas fa-tags"></i> Semantic Annotation</h1>
-    <hr />
+    <h1><i class="fas fa-tags" /> Semantic Annotation</h1>
+    <hr>
     <p>
       This step allows you to apply semantic annotations to your data using standardised
       ontologies, making your data more F.A.I.R. (Findable, Accessible, Interoperable,
       and Reusable) and increase semantic interoperability.
     </p>
 
-    <div v-if="!checking && !dataExists" class="alert alert-warning">
-      <h5><i class="fas fa-exclamation-triangle"></i> Prerequisites Required</h5>
+    <div
+      v-if="!checking && !dataExists"
+      class="alert alert-warning"
+    >
+      <h5><i class="fas fa-exclamation-triangle" /> Prerequisites Required</h5>
       <p>To use the annotation features, you need to have completed the previous steps:</p>
       <ul>
         <li><strong>Step 1 — Ingest:</strong> Upload and process your data</li>
         <li><strong>Step 2 — Describe:</strong> Provide metadata and descriptions</li>
       </ul>
-      <RouterLink to="/ingest" class="btn btn-primary">
-        <i class="fas fa-arrow-left"></i> Go to Ingest Step
+      <RouterLink
+        to="/ingest"
+        class="btn btn-primary"
+      >
+        <i class="fas fa-arrow-left" /> Go to Ingest Step
       </RouterLink>
     </div>
 
@@ -302,7 +306,7 @@ onMounted(async () => {
       <div class="card mb-4">
         <div class="card-header">
           <h5 class="mb-0">
-            <i class="fas fa-project-diagram"></i> Option 1: Upload Finalised Flyover
+            <i class="fas fa-project-diagram" /> Option 1: Upload Finalised Flyover
             Semantic Map (JSON-LD) for Direct Annotation
           </h5>
         </div>
@@ -312,34 +316,38 @@ onMounted(async () => {
             semantic mappings, you can upload it directly for annotation processing.
           </p>
 
-          <div v-if="existingJsonldWarning" class="alert alert-warning alert-compact">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>Existing semantic map detected!</strong><br />
+          <div
+            v-if="existingJsonldWarning"
+            class="alert alert-warning alert-compact"
+          >
+            <i class="fas fa-exclamation-triangle" />
+            <strong>Existing semantic map detected!</strong><br>
             You already have a semantic map stored in your browser from a previous session.
             Uploading a new JSON-LD file will <strong>overwrite</strong> the existing
             semantic map.
-            <br /><small class="text-muted"
-              >Current semantic map data source(s):
-              <span>{{ existingJsonldDatabases }}</span></small
-            >
+            <br><small class="text-muted">Current semantic map data source(s):
+              <span>{{ existingJsonldDatabases }}</span></small>
           </div>
 
           <div
             v-if="uploadStatus.message"
             class="alert-compact"
             v-html="uploadStatusHtml"
-          ></div>
+          />
 
           <div v-if="showUploadInfo">
             <div class="alert alert-info-highlight">
-              <i class="fas fa-info-circle"></i>
-              <strong>What should the JSON-LD contain?</strong><br />
+              <i class="fas fa-info-circle" />
+              <strong>What should the JSON-LD contain?</strong><br>
               Your JSON-LD file should include data variable definitions, types, and any
               pre-existing semantic mappings that you want to enhance with additional
               annotations.
             </div>
 
-            <form id="jsonUploadForm" @submit.prevent="handleJsonUpload">
+            <form
+              id="jsonUploadForm"
+              @submit.prevent="handleJsonUpload"
+            >
               <div class="form-group">
                 <label for="annotationJsonPath">JSON-LD File for Annotation:</label>
                 <div class="input-group">
@@ -350,14 +358,14 @@ onMounted(async () => {
                     :value="selectedFileName"
                     placeholder="Select JSON-LD file..."
                     readonly
-                  />
+                  >
                   <div class="input-group-append">
                     <button
                       type="button"
                       class="btn btn-outline-secondary"
                       @click="fileInput?.click()"
                     >
-                      <i class="fas fa-folder-open"></i> Browse
+                      <i class="fas fa-folder-open" /> Browse
                     </button>
                   </div>
                 </div>
@@ -367,7 +375,7 @@ onMounted(async () => {
                   style="display: none"
                   accept=".jsonld"
                   @change="updateAnnotationJsonPath"
-                />
+                >
                 <small class="form-text text-muted">
                   Upload a JSON-LD file containing your data descriptions and variable
                   mappings.
@@ -384,9 +392,14 @@ onMounted(async () => {
               class="btn btn-success"
               :disabled="uploadButtonState.disabled"
               v-html="uploadButtonState.text"
-            ></button>
-            <button v-else type="button" class="btn btn-primary" @click="goToAnnotationReview">
-              <i class="fas fa-arrow-right"></i> Proceed to Annotation Review
+            />
+            <button
+              v-else
+              type="button"
+              class="btn btn-primary"
+              @click="goToAnnotationReview"
+            >
+              <i class="fas fa-arrow-right" /> Proceed to Annotation Review
             </button>
           </div>
         </div>
@@ -394,42 +407,57 @@ onMounted(async () => {
 
       <div class="card mb-4">
         <div class="card-header">
-          <h5 class="mb-0"><i class="fas fa-edit"></i> Option 2: Describe Existing Data</h5>
+          <h5 class="mb-0">
+            <i class="fas fa-edit" /> Option 2: Describe Existing Data
+          </h5>
         </div>
         <div class="card-body">
           <p class="text-muted">
             Use the data that has already been uploaded and describe it in the "Describe"
             steps.
           </p>
-          <RouterLink to="/describe" class="btn btn-primary">
-            <i class="fas fa-fast-backward"></i> Start Describing your data
+          <RouterLink
+            to="/describe"
+            class="btn btn-primary"
+          >
+            <i class="fas fa-fast-backward" /> Start Describing your data
           </RouterLink>
         </div>
       </div>
 
-      <div v-if="indexedDbSection.show" class="card mb-4">
+      <div
+        v-if="indexedDbSection.show"
+        class="card mb-4"
+      >
         <div class="card-header">
           <h5 class="mb-0">
-            <i class="fas fa-history"></i> Option 3: Continue with Existing Semantic Map
+            <i class="fas fa-history" /> Option 3: Continue with Existing Semantic Map
           </h5>
         </div>
         <div class="card-body">
           <p class="text-muted">
             A semantic map from your previous session was found in your browser storage.
           </p>
-          <div v-if="indexedDbMatchInfo" class="mb-3" v-html="indexedDbMatchInfo"></div>
+          <div
+            v-if="indexedDbMatchInfo"
+            class="mb-3"
+            v-html="indexedDbMatchInfo"
+          />
           <RouterLink
             v-if="indexedDbSection.continueToReview"
             to="/annotate/review"
             class="btn btn-primary"
           >
-            <i class="fas fa-arrow-right"></i> Continue to Annotation Review
+            <i class="fas fa-arrow-right" /> Continue to Annotation Review
           </RouterLink>
-          <div v-if="indexedDbSection.errorHtml" v-html="indexedDbSection.errorHtml"></div>
+          <div
+            v-if="indexedDbSection.errorHtml"
+            v-html="indexedDbSection.errorHtml"
+          />
         </div>
       </div>
     </div>
 
-    <hr />
+    <hr>
   </div>
 </template>

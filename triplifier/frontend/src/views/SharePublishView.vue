@@ -7,19 +7,21 @@ const jsonldUploaded = ref(false)
 
 <template>
   <div>
-    <br />
-    <h1><i class="fas fa-cloud-upload-alt"></i> Publish Your Data</h1>
-    <hr />
+    <br>
+    <h1><i class="fas fa-cloud-upload-alt" /> Publish Your Data</h1>
+    <hr>
     <p style="line-height: 1.5; margin: 0">
       Share your semantically interoperable data and metadata with the broader research
       community.
     </p>
-    <br />
+    <br>
 
     <div id="codeBookSection">
       <div class="card mb-4">
         <div class="card-header">
-          <h5 class="mb-0"><i class="fas fa-book"></i> Create an Interactive Codebook</h5>
+          <h5 class="mb-0">
+            <i class="fas fa-book" /> Create an Interactive Codebook
+          </h5>
         </div>
         <div class="card-body">
           <p class="text-muted">
@@ -29,27 +31,35 @@ const jsonldUploaded = ref(false)
           </p>
           <p class="text-muted">
             See an example codebook
-            <a href="https://strongaya.github.io/AYA-cancer-semantic-map/" target="_blank" rel="noopener">here</a>
+            <a
+              href="https://strongaya.github.io/AYA-cancer-semantic-map/"
+              target="_blank"
+              rel="noopener"
+            >here</a>
             (Apache-2 licenced). Repository available
-            <a href="https://github.com/STRONGAYA/AYA-cancer-semantic-map" target="_blank" rel="noopener">here</a>.
+            <a
+              href="https://github.com/STRONGAYA/AYA-cancer-semantic-map"
+              target="_blank"
+              rel="noopener"
+            >here</a>.
           </p>
           <div class="alert alert-info info-purple">
-            <i class="fas fa-info-circle"></i>
-            <strong>Benefits of hosting mappings in Git</strong><br />
+            <i class="fas fa-info-circle" />
+            <strong>Benefits of hosting mappings in Git</strong><br>
             Hosting your mappings on a Git-tracked system is a great way to keep track of
             changes in your mapping over time, and to easily share updates with your
             collaborators.
           </div>
         </div>
       </div>
-      <br />
+      <br>
     </div>
 
     <div id="healthDcatApTriplesSection">
       <div class="card mb-4">
         <div class="card-header">
           <h5 class="mb-0">
-            <i class="fas fa-file-medical"></i> Health DCAT-AP Metadata Export — under
+            <i class="fas fa-file-medical" /> Health DCAT-AP Metadata Export — under
             construction
           </h5>
         </div>
@@ -61,40 +71,54 @@ const jsonldUploaded = ref(false)
           </p>
 
           <div class="alert alert-info info-purple">
-            <i class="fas fa-info-circle"></i>
-            <strong>What is a Health DCAT-AP file?</strong><br />
+            <i class="fas fa-info-circle" />
+            <strong>What is a Health DCAT-AP file?</strong><br>
             A standardised metadata format based on the DCAT Application Profile for
             health data, providing a structured way to describe datasets, their variables,
             and the relationships between them.
           </div>
 
-          <hr />
-          <h6><i class="fas fa-upload"></i> JSON-LD Semantic Map</h6>
+          <hr>
+          <h6><i class="fas fa-upload" /> JSON-LD Semantic Map</h6>
           <p class="text-muted mb-3">
             To generate Health DCAT-AP triples, you need a Flyover semantic mapping.
           </p>
 
-          <button type="button" class="btn btn-outline-primary disabled" disabled>
-            <i class="fas fa-upload"></i> Upload JSON-LD
+          <button
+            type="button"
+            class="btn btn-outline-primary disabled"
+            disabled
+          >
+            <i class="fas fa-upload" /> Upload JSON-LD
           </button>
-          <button type="button" class="btn btn-outline-secondary disabled" disabled>
-            <i class="fas fa-database"></i> Use Stored JSON-LD
+          <button
+            type="button"
+            class="btn btn-outline-secondary disabled"
+            disabled
+          >
+            <i class="fas fa-database" /> Use Stored JSON-LD
           </button>
 
-          <div v-if="jsonldUploaded" class="alert alert-success mt-3">
-            <i class="fas fa-check-circle"></i>
+          <div
+            v-if="jsonldUploaded"
+            class="alert alert-success mt-3"
+          >
+            <i class="fas fa-check-circle" />
             <strong>JSON-LD semantic map ready!</strong>
             {{ jsonldFileName }}
           </div>
         </div>
       </div>
-      <br />
+      <br>
     </div>
 
-    <RouterLink to="/share" class="btn btn-light">
-      <i class="fas fa-arrow-left"></i> Return to Share Options
+    <RouterLink
+      to="/share"
+      class="btn btn-light"
+    >
+      <i class="fas fa-arrow-left" /> Return to Share Options
     </RouterLink>
-    <br /><br />
+    <br><br>
   </div>
 </template>
 

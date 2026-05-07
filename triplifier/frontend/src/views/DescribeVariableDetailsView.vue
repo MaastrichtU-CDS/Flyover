@@ -24,7 +24,7 @@ const expandedVariables = reactive({})
 const isProcessing = ref(false)
 const loadingIconIsPen = ref(false)
 const mapperLoaded = ref(false)
-let loadingInterval = null
+let _loadingInterval = null
 
 // per-input form state — keyed by stable composite keys
 const continuousUnits = reactive({}) // `${db}_${var}` -> unit
@@ -80,9 +80,7 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
   }
 
   const processedCategories = []
-  let valueIdx = 0
   for (const c of categories) {
-    valueIdx++
     const value = c.value !== undefined ? c.value : ''
     const count = c.count || 0
     const safeValue = String(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;')
@@ -202,7 +200,7 @@ const loadingIconClass = computed(() =>
 function startLoadingAnimation() {
   isProcessing.value = true
   loadingIconIsPen.value = false
-  loadingInterval = setInterval(() => {
+  _loadingInterval = setInterval(() => {
     loadingIconIsPen.value = !loadingIconIsPen.value
   }, 1000)
 }
@@ -268,15 +266,20 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1><i class="fas fa-pencil-ruler"></i> Describe categories and units</h1>
-    <hr />
+    <h1><i class="fas fa-pencil-ruler" /> Describe categories and units</h1>
+    <hr>
     <p>
       Please provide more information for the categorical and continuous variables that
       were defined in the variable description page.
     </p>
 
-    <form class="form-horizontal" method="POST" action="/end" @submit="onFormSubmit">
-      <hr />
+    <form
+      class="form-horizontal"
+      method="POST"
+      action="/end"
+      @submit="onFormSubmit"
+    >
+      <hr>
 
       <div>
         <div
@@ -285,7 +288,7 @@ onMounted(async () => {
           class="database-section"
         >
           <h2 class="database-heading">
-            <i class="fas fa-database"></i> {{ dbEntry.name }}
+            <i class="fas fa-database" /> {{ dbEntry.name }}
           </h2>
           <button
             type="button"
@@ -303,7 +306,7 @@ onMounted(async () => {
                   ? 'fa-chevron-down'
                   : 'fa-chevron-up'
               "
-            ></i>
+            />
           </button>
 
           <div
@@ -317,7 +320,10 @@ onMounted(async () => {
               v-for="(variable, varIdx) in dbEntry.variables"
               :key="`${dbEntry.name}_${varIdx}`"
             >
-              <div v-if="variable.type === 'continuous'" class="variable-row">
+              <div
+                v-if="variable.type === 'continuous'"
+                class="variable-row"
+              >
                 <div
                   class="variable-label"
                   v-html="
@@ -325,7 +331,7 @@ onMounted(async () => {
                       ? `<span class='missing-description'>${variable.displayLabel}</span>`
                       : variable.displayLabel
                   "
-                ></div>
+                />
                 <div class="variable-controls">
                   <input
                     v-model="continuousUnits[variable.unitKey]"
@@ -333,14 +339,14 @@ onMounted(async () => {
                     :name="`${dbEntry.name}_${variable.localVariable}`"
                     placeholder="Type unit here"
                     class="form-control"
-                  />
+                  >
                   <input
                     v-model="continuousMissing[variable.unitKey]"
                     type="text"
                     :name="`${dbEntry.name}_${variable.localVariable}_notation_missing_or_unspecified`"
                     placeholder="Type missing value notation here"
                     class="form-control"
-                  />
+                  >
                 </div>
               </div>
 
@@ -353,14 +359,14 @@ onMounted(async () => {
                         ? `<span class='missing-description'>${variable.displayLabel}</span>`
                         : variable.displayLabel
                     "
-                  ></div>
+                  />
                   <div class="variable-controls">
                     <button
                       type="button"
                       class="item-toggle-button"
                       :class="{ open: isVariableExpanded(dbEntry.name, varIdx) }"
                       @click="toggleVariable(dbEntry.name, varIdx)"
-                    ></button>
+                    />
                   </div>
                 </div>
 
@@ -371,7 +377,10 @@ onMounted(async () => {
                     hidden: !isVariableExpanded(dbEntry.name, varIdx),
                   }"
                 >
-                  <template v-for="cat in variable.categories" :key="cat.key">
+                  <template
+                    v-for="cat in variable.categories"
+                    :key="cat.key"
+                  >
                     <div class="category-item">
                       <div class="category-label">
                         {{ cat.displayValue }} (counted: {{ cat.count }})
@@ -391,7 +400,9 @@ onMounted(async () => {
                             )
                           "
                         >
-                          <option value="">Description</option>
+                          <option value="">
+                            Description
+                          </option>
                           <template v-if="variable.categoryOptions.length > 0">
                             <option
                               v-for="opt in variable.categoryOptions"
@@ -400,7 +411,9 @@ onMounted(async () => {
                             >
                               {{ opt }}
                             </option>
-                            <option value="Other">Other</option>
+                            <option value="Other">
+                              Other
+                            </option>
                           </template>
                           <template v-else>
                             <option
@@ -419,20 +432,20 @@ onMounted(async () => {
                           :name="cat.backendCommentKey"
                           placeholder="If other, please specify"
                           :disabled="categorySelections[cat.key] !== 'Other'"
-                        />
+                        >
                       </div>
                     </div>
                     <input
                       type="hidden"
                       :name="cat.backendCountKey"
                       :value="cat.count"
-                    />
+                    >
                   </template>
                 </div>
               </template>
             </template>
           </div>
-          <hr />
+          <hr>
         </div>
       </div>
 
@@ -444,38 +457,44 @@ onMounted(async () => {
           :class="{ processing: isProcessing }"
         >
           <template v-if="!isProcessing">
-            <i class="fas fa-play"></i> Submit
+            <i class="fas fa-play" /> Submit
           </template>
           <template v-else>
-            <i class="fas loading-icon" :class="loadingIconClass"></i>
+            <i
+              class="fas loading-icon"
+              :class="loadingIconClass"
+            />
             Processing descriptions...
           </template>
         </button>
-        <RouterLink to="/describe/variables" class="btn btn-light">
-          <i class="fas fa-backward"></i> Back to Describe Variables
+        <RouterLink
+          to="/describe/variables"
+          class="btn btn-light"
+        >
+          <i class="fas fa-backward" /> Back to Describe Variables
         </RouterLink>
       </p>
     </form>
 
     <div class="mt-4">
       <div class="alert alert-info py-2 info-purple">
-        <i class="fas fa-info-circle"></i>
-        <strong>Reference Guide</strong><br />
+        <i class="fas fa-info-circle" />
+        <strong>Reference Guide</strong><br>
         <div class="mt-1 ms-4">
           <strong>Data Types:</strong>
           <div class="row g-1 mt-1">
             <div class="col-md-6">
-              <i class="fas fa-tags me-2 ref-guide-icon"></i>
+              <i class="fas fa-tags me-2 ref-guide-icon" />
               <strong>Categorical</strong> — select the categories that best describe
               the listed values.
             </div>
             <div class="col-md-6">
-              <i class="fas fa-chart-line me-2 ref-guide-icon"></i>
+              <i class="fas fa-chart-line me-2 ref-guide-icon" />
               <strong>Continuous</strong> — specify the unit and missing value notation.
             </div>
           </div>
           <p class="mb-0 mt-2">
-            <i class="fas fa-exclamation-triangle"></i>
+            <i class="fas fa-exclamation-triangle" />
             Variables that are by definition standardised (e.g. ICD-10, EORTC-QLQ-C30,
             EuroQoL EQ5D) <u>do not have to be described</u>.
           </p>

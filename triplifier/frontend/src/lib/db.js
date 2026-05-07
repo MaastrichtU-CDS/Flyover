@@ -43,13 +43,20 @@ async function tx(storeName, mode, fn) {
   })
 }
 
+// Vue refs unwrap to reactive Proxies, which IndexedDB's structured-clone
+// algorithm can't handle. Strip proxies (and any function/symbol props) by
+// round-tripping through JSON before persisting.
+function plainify(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
 export async function saveData(storeName, data) {
-  return tx(storeName, 'readwrite', (s) => s.put(data))
+  return tx(storeName, 'readwrite', (s) => s.put(plainify(data)))
 }
 
 export async function saveBulkData(storeName, dataArray) {
   return tx(storeName, 'readwrite', (s) => {
-    for (const d of dataArray) s.put(d)
+    for (const d of dataArray) s.put(plainify(d))
   })
 }
 

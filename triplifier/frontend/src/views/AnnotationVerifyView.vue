@@ -91,31 +91,45 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1><i class="fas fa-clipboard-check"></i> Annotation Verification</h1>
-    <hr />
+    <h1><i class="fas fa-clipboard-check" /> Annotation Verification</h1>
+    <hr>
     <p>Checking annotation status for all variables below.</p>
 
     <div class="filter-section">
       <div class="row align-items-center">
         <div class="col-md-6">
           <div class="input-group">
-            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <span class="input-group-text"><i class="fas fa-search" /></span>
             <input
               v-model="search"
               type="text"
               class="form-control"
               placeholder="Search variables..."
               @input="currentPage = 1"
-            />
+            >
           </div>
         </div>
         <div class="col-md-6">
-          <select v-model="filter" class="form-select" @change="currentPage = 1">
-            <option value="all">All Variables</option>
-            <option value="success">Successfully Annotated</option>
-            <option value="error">Failed</option>
-            <option value="pending">Pending</option>
-            <option value="undescribed">Not Described</option>
+          <select
+            v-model="filter"
+            class="form-select"
+            @change="currentPage = 1"
+          >
+            <option value="all">
+              All Variables
+            </option>
+            <option value="success">
+              Successfully Annotated
+            </option>
+            <option value="error">
+              Failed
+            </option>
+            <option value="pending">
+              Pending
+            </option>
+            <option value="undescribed">
+              Not Described
+            </option>
           </select>
         </div>
       </div>
@@ -132,28 +146,43 @@ onMounted(async () => {
         <div class="status-indicator">
           <span class="status-message">{{ v.message }}</span>
           <span class="status-icon">
-            <i class="fas" :class="statusIcon(v.status)"></i>
+            <i
+              class="fas"
+              :class="statusIcon(v.status)"
+            />
           </span>
         </div>
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pagination-controls">
-      <button type="button" :disabled="currentPage <= 1" @click="changePage(-1)">
+    <div
+      v-if="totalPages > 1"
+      class="pagination-controls"
+    >
+      <button
+        type="button"
+        :disabled="currentPage <= 1"
+        @click="changePage(-1)"
+      >
         &#x2190;
       </button>
-      <span class="page-indicator"
-        >Page <span>{{ currentPage }}</span> of <span>{{ totalPages }}</span></span
+      <span class="page-indicator">Page <span>{{ currentPage }}</span> of <span>{{ totalPages }}</span></span>
+      <button
+        type="button"
+        :disabled="currentPage >= totalPages"
+        @click="changePage(1)"
       >
-      <button type="button" :disabled="currentPage >= totalPages" @click="changePage(1)">
         &#x2192;
       </button>
     </div>
 
-    <hr />
-    <RouterLink to="/share" class="btn btn-primary">
-      <i class="fas fa-play"></i> Proceed to Share
+    <hr>
+    <RouterLink
+      to="/share"
+      class="btn btn-primary"
+    >
+      <i class="fas fa-play" /> Proceed to Share
     </RouterLink>
-    <br /><br />
+    <br><br>
   </div>
 </template>

@@ -9,17 +9,25 @@ defineProps({
 
 <template>
   <div>
-    <h1><i class="fas" :class="titleIcon"></i>&nbsp;{{ title }}</h1>
-    <hr />
+    <h1>
+      <i
+        class="fas"
+        :class="titleIcon"
+      />&nbsp;{{ title }}
+    </h1>
+    <hr>
     <div class="alert alert-info">
-      <i class="fas fa-info-circle"></i>
+      <i class="fas fa-info-circle" />
       <strong>Migration in progress.</strong>
       This page is part of the Vue 3 SPA but its full interactive features are still being
       ported. The legacy implementation remains available below until the port lands.
     </div>
-    <a :href="legacyHref" class="btn btn-primary">
-      <i class="fas fa-external-link-alt"></i>&nbsp;{{ legacyLabel }}
+    <a
+      :href="legacyHref"
+      class="btn btn-primary"
+    >
+      <i class="fas fa-external-link-alt" />&nbsp;{{ legacyLabel }}
     </a>
-    <br /><br />
+    <br><br>
   </div>
 </template>

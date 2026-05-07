@@ -363,42 +363,58 @@ onMounted(load)
 
 <template>
   <div>
-    <h1><i class="fas fa-search"></i> Review Annotation Data</h1>
-    <hr />
+    <h1><i class="fas fa-search" /> Review Annotation Data</h1>
+    <hr>
     <p>
       Please review the variable mappings below before proceeding with the annotation
       process. If information is missing or incorrect, you can adjust the local
       definitions through the describe data pages.
     </p>
 
-    <div v-if="loading" class="loading-spinner">
-      <i class="fas fa-spinner fa-spin"></i>
+    <div
+      v-if="loading"
+      class="loading-spinner"
+    >
+      <i class="fas fa-spinner fa-spin" />
       <p>Loading semantic map from browser storage...</p>
     </div>
 
-    <div v-else-if="noDataMessage" class="alert alert-warning" v-html="noDataMessage"></div>
+    <div
+      v-else-if="noDataMessage"
+      class="alert alert-warning"
+      v-html="noDataMessage"
+    />
 
     <div v-else>
       <div
         v-if="nonMatchingJsonld.length || nonMatchingRdfStore.length"
         class="mb-4"
       >
-        <div v-if="nonMatchingJsonld.length" class="alert alert-warning alert-compact">
-          <i class="fas fa-exclamation-triangle"></i>
+        <div
+          v-if="nonMatchingJsonld.length"
+          class="alert alert-warning alert-compact"
+        >
+          <i class="fas fa-exclamation-triangle" />
           <strong>Will not be annotated</strong> (not in the RDF store):
           {{ nonMatchingJsonld.join(', ') }}
         </div>
-        <div v-if="nonMatchingRdfStore.length" class="alert alert-info alert-compact">
-          <i class="fas fa-info-circle"></i>
+        <div
+          v-if="nonMatchingRdfStore.length"
+          class="alert alert-info alert-compact"
+        >
+          <i class="fas fa-info-circle" />
           <strong>Other data in RDF store</strong> (no mapping provided):
           {{ nonMatchingRdfStore.join(', ') }}
         </div>
       </div>
 
       <form class="form-horizontal">
-        <div v-for="(dbData, dbName) in annotatedTableVariables" :key="dbName">
+        <div
+          v-for="(dbData, dbName) in annotatedTableVariables"
+          :key="dbName"
+        >
           <h2 class="database-heading">
-            <i class="fas fa-database"></i> {{ dbData.rdfStoreName }}
+            <i class="fas fa-database" /> {{ dbData.rdfStoreName }}
           </h2>
           <button
             type="button"
@@ -416,7 +432,7 @@ onMounted(load)
                   ? 'fa-chevron-down'
                   : 'fa-chevron-up'
               "
-            ></i>
+            />
           </button>
 
           <div
@@ -440,7 +456,9 @@ onMounted(load)
                 class="variable-card"
               >
                 <div class="variable-header">
-                  <div class="variable-name">{{ varName }}</div>
+                  <div class="variable-name">
+                    {{ varName }}
+                  </div>
                   <div
                     class="status-badge"
                     :class="
@@ -456,35 +474,53 @@ onMounted(load)
                           ? 'fa-check-circle'
                           : 'fa-exclamation-triangle'
                       "
-                    ></i>
+                    />
                     {{ varInfo.local_definition ? 'Described' : 'Undescribed' }}
                   </div>
                 </div>
                 <div class="variable-details">
                   <div class="detail-row">
-                    <div class="detail-label">Local Definition:</div>
+                    <div class="detail-label">
+                      Local Definition:
+                    </div>
                     <div class="detail-value">
                       {{ varInfo.local_definition || 'Not specified' }}
                     </div>
                   </div>
                   <div class="detail-row">
-                    <div class="detail-label">Predicate:</div>
+                    <div class="detail-label">
+                      Predicate:
+                    </div>
                     <div class="detail-value">
                       <code>{{ varInfo.predicate || '' }}</code>
                     </div>
                   </div>
                   <div class="detail-row">
-                    <div class="detail-label">Class:</div>
+                    <div class="detail-label">
+                      Class:
+                    </div>
                     <div class="detail-value">
                       <code>{{ varInfo.class || '' }}</code>
                     </div>
                   </div>
-                  <div v-if="varInfo.data_type" class="detail-row">
-                    <div class="detail-label">Data Type:</div>
-                    <div class="detail-value">{{ varInfo.data_type }}</div>
+                  <div
+                    v-if="varInfo.data_type"
+                    class="detail-row"
+                  >
+                    <div class="detail-label">
+                      Data Type:
+                    </div>
+                    <div class="detail-value">
+                      {{ varInfo.data_type }}
+                    </div>
                   </div>
-                  <div v-if="hasValueMapping(varInfo)" class="detail-row">
-                    <div class="detail-label">Value Mapping:</div>
+                  <div
+                    v-if="hasValueMapping(varInfo)"
+                    class="detail-row"
+                  >
+                    <div class="detail-label">
+                      Value Mapping:
+                    </div>
                     <div class="detail-value">
                       <div class="value-mapping-section">
                         <div
@@ -542,7 +578,7 @@ onMounted(load)
                 type="button"
                 :disabled="
                   (databasePages[dbData.rdfStoreName] || 1) >=
-                  totalPages(dbData.rdfStoreName, dbData.variables)
+                    totalPages(dbData.rdfStoreName, dbData.variables)
                 "
                 @click="changePage(dbData.rdfStoreName, 1)"
               >
@@ -550,7 +586,7 @@ onMounted(load)
               </button>
             </div>
           </div>
-          <hr />
+          <hr>
         </div>
       </form>
 
@@ -559,18 +595,24 @@ onMounted(load)
         :disabled="annotationProcessing"
         @click="startAnnotationProcess"
       >
-        <i class="fas" :class="startBtnIcon"></i>
+        <i
+          class="fas"
+          :class="startBtnIcon"
+        />
         {{ ' ' }}{{ annotationButtonText }}
       </button>
-      <RouterLink to="/describe/variable-details" class="btn btn-light">
-        <i class="fas fa-backward"></i> Back to Describe Variable Details
+      <RouterLink
+        to="/describe/variable-details"
+        class="btn btn-light"
+      >
+        <i class="fas fa-backward" /> Back to Describe Variable Details
       </RouterLink>
-      <br />
+      <br>
 
       <div class="mt-4">
         <div class="alert alert-info-highlight py-2">
-          <i class="fas fa-info-circle"></i>
-          <strong>Annotating your data</strong><br />
+          <i class="fas fa-info-circle" />
+          <strong>Annotating your data</strong><br>
           <div class="mt-1 ms-4">
             <p class="mb-1">
               Annotation data can always be adapted without having to re-upload your data.

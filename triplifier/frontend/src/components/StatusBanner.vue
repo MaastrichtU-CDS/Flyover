@@ -14,17 +14,33 @@ function variant(level) {
 </script>
 
 <template>
-  <div v-if="messages.length" class="mt-3">
+  <div
+    v-if="messages.length"
+    class="mt-3"
+  >
     <div
       v-for="m in messages"
       :key="m.id"
       :class="['alert', 'alert-dismissible', variant(m.level)]"
     >
-      <i v-if="m.level === 'warning' || m.level === 'error'" class="fas fa-exclamation-triangle"></i>
-      <i v-else-if="m.level === 'success'" class="fas fa-check-circle"></i>
-      <i v-else class="fas fa-info-circle"></i>
+      <i
+        v-if="m.level === 'warning' || m.level === 'error'"
+        class="fas fa-exclamation-triangle"
+      />
+      <i
+        v-else-if="m.level === 'success'"
+        class="fas fa-check-circle"
+      />
+      <i
+        v-else
+        class="fas fa-info-circle"
+      />
       {{ ' ' }}{{ m.text }}
-      <button type="button" class="close align-middle" @click="status.dismiss(m.id)">
+      <button
+        type="button"
+        class="close align-middle"
+        @click="status.dismiss(m.id)"
+      >
         &times;
       </button>
     </div>

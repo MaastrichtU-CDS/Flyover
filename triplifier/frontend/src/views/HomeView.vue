@@ -74,7 +74,9 @@ function open(card) {
 <template>
   <div>
     <div class="hero-section">
-      <h1 class="hero-title">Welcome to Flyover</h1>
+      <h1 class="hero-title">
+        Welcome to Flyover
+      </h1>
       <p class="hero-subtitle">
         A privacy-aware tool to transform your data into F.A.I.R. semantically interoperable
         resources
@@ -92,21 +94,34 @@ function open(card) {
         class="col-xl-3 col-lg-3 col-md-6 mb-4"
       >
         <div
-          class="workflow-card"
           :id="`${card.id}-card`"
-          @click="open(card)"
+          class="workflow-card"
           role="button"
           tabindex="0"
+          @click="open(card)"
           @keyup.enter="open(card)"
         >
-          <div class="step-icon" :class="card.iconClass">
-            <i class="fas" :class="card.titleIcon"></i>
+          <div
+            class="step-icon"
+            :class="card.iconClass"
+          >
+            <i
+              class="fas"
+              :class="card.titleIcon"
+            />
           </div>
-          <h3 class="step-title">{{ card.title }}</h3>
-          <p class="step-description">{{ card.description }}</p>
+          <h3 class="step-title">
+            {{ card.title }}
+          </h3>
+          <p class="step-description">
+            {{ card.description }}
+          </p>
           <ul class="step-features">
-            <li v-for="feature in card.features" :key="feature">
-              <i class="fas fa-check"></i> {{ feature }}
+            <li
+              v-for="feature in card.features"
+              :key="feature"
+            >
+              <i class="fas fa-check" /> {{ feature }}
             </li>
           </ul>
         </div>
@@ -114,12 +129,15 @@ function open(card) {
     </div>
 
     <div class="cta-section">
-      <h3><i class="fas fa-rocket text-primary"></i> Ready to Get Started?</h3>
+      <h3><i class="fas fa-rocket text-primary" /> Ready to Get Started?</h3>
       <p class="mb-4">
         Begin transforming your data into semantically interoperable resources.
       </p>
-      <RouterLink to="/ingest" class="btn btn-primary btn-lg">
-        <i class="fas fa-play"></i> Start Data F.A.I.R.-ification Process
+      <RouterLink
+        to="/ingest"
+        class="btn btn-primary btn-lg"
+      >
+        <i class="fas fa-play" /> Start Data F.A.I.R.-ification Process
       </RouterLink>
     </div>
   </div>

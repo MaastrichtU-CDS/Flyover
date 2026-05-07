@@ -37,19 +37,22 @@ onMounted(async () => {
 
 <template>
   <div>
-    <br />
-    <h1><i class="fas fa-mail-forward"></i> Share</h1>
-    <hr />
+    <br>
+    <h1><i class="fas fa-mail-forward" /> Share</h1>
+    <hr>
     <p style="line-height: 1.5; margin: 0">
       Share metadata about your data in a privacy-aware manner using the options below.
     </p>
-    <br />
+    <br>
 
-    <div v-if="hasSemanticMap" id="semanticMapSection">
+    <div
+      v-if="hasSemanticMap"
+      id="semanticMapSection"
+    >
       <div class="card mb-4">
         <div class="card-header">
           <h5 class="mb-0">
-            <i class="fas fa-project-diagram"></i> Download your local semantic mapping
+            <i class="fas fa-project-diagram" /> Download your local semantic mapping
           </h5>
         </div>
         <div class="card-body">
@@ -57,19 +60,25 @@ onMounted(async () => {
             Given you have previously uploaded a Flyover semantic map JSON-LD file, you can
             now download your local semantic mapping.
           </p>
-          <button class="btn btn-outline-secondary" @click="downloadSemanticMap">
-            <i class="fas fa-download"></i> Download local semantic map
+          <button
+            class="btn btn-outline-secondary"
+            @click="downloadSemanticMap"
+          >
+            <i class="fas fa-download" /> Download local semantic map
           </button>
         </div>
       </div>
-      <br />
+      <br>
     </div>
 
-    <div v-if="hasOntology" id="ontologySection">
+    <div
+      v-if="hasOntology"
+      id="ontologySection"
+    >
       <div class="card mb-4">
         <div class="card-header">
           <h5 class="mb-0">
-            <i class="fas fa-file-pen"></i> Download your local ontology file
+            <i class="fas fa-file-pen" /> Download your local ontology file
           </h5>
         </div>
         <div class="card-body">
@@ -78,14 +87,17 @@ onMounted(async () => {
             not used a global map at all? In that case we recommend that you download your
             local ontology.
           </p>
-          <a href="/downloadOntology" download="local_ontology.owl">
+          <a
+            href="/downloadOntology"
+            download="local_ontology.owl"
+          >
             <button class="btn btn-outline-secondary">
-              <i class="fas fa-download"></i> Download local ontology
+              <i class="fas fa-download" /> Download local ontology
             </button>
           </a>
         </div>
       </div>
-      <br />
+      <br>
     </div>
 
     <div id="shareMoreSection">
@@ -94,7 +106,7 @@ onMounted(async () => {
           <div class="card h-100">
             <div class="card-header">
               <h5 class="mb-0">
-                <i class="fas fa-file-export"></i> Generate Mock Data
+                <i class="fas fa-file-export" /> Generate Mock Data
               </h5>
             </div>
             <div class="card-body d-flex flex-column">
@@ -103,8 +115,11 @@ onMounted(async () => {
                 structure. This allows you to share realistic test data without privacy
                 concerns.
               </p>
-              <RouterLink to="/share/mock" class="btn btn-outline-secondary mt-3">
-                <i class="fas fa-arrow-right"></i> Generate Mock Data
+              <RouterLink
+                to="/share/mock"
+                class="btn btn-outline-secondary mt-3"
+              >
+                <i class="fas fa-arrow-right" /> Generate Mock Data
               </RouterLink>
             </div>
           </div>
@@ -114,7 +129,7 @@ onMounted(async () => {
           <div class="card h-100">
             <div class="card-header">
               <h5 class="mb-0">
-                <i class="fas fa-cloud-upload-alt"></i> Publish to Repository
+                <i class="fas fa-cloud-upload-alt" /> Publish to Repository
               </h5>
             </div>
             <div class="card-body d-flex flex-column">
@@ -122,19 +137,25 @@ onMounted(async () => {
                 Publish your semantically interoperable data to external repositories.
                 Share your metadata and mappings with the broader research community.
               </p>
-              <RouterLink to="/share/publish" class="btn btn-outline-secondary mt-3">
-                <i class="fas fa-arrow-right"></i> Publish Data
+              <RouterLink
+                to="/share/publish"
+                class="btn btn-outline-secondary mt-3"
+              >
+                <i class="fas fa-arrow-right" /> Publish Data
               </RouterLink>
             </div>
           </div>
         </div>
       </div>
-      <br />
+      <br>
     </div>
 
-    <RouterLink to="/" class="btn btn-light">
-      <i class="fas fa-home"></i> Return to Home
+    <RouterLink
+      to="/"
+      class="btn btn-light"
+    >
+      <i class="fas fa-home" /> Return to Home
     </RouterLink>
-    <br /><br />
+    <br><br>
   </div>
 </template>
