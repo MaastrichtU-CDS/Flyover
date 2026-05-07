@@ -1,10 +1,12 @@
-<template>
-  <section>
-    <h1>Annotate</h1>
-    <p class="placeholder">Annotation landing — to be migrated in Phase 3.</p>
-  </section>
-</template>
+<script setup>
+import MigrationStub from '@/components/MigrationStub.vue'
+</script>
 
-<style scoped>
-.placeholder { color: #888; font-style: italic; }
-</style>
+<template>
+  <MigrationStub
+    title="Semantic Annotation"
+    title-icon="fa-tags"
+    legacy-href="/annotation_landing"
+    legacy-label="Open legacy annotation landing"
+  />
+</template>

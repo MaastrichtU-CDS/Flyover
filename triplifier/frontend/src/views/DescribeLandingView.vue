@@ -1,10 +1,12 @@
-<template>
-  <section>
-    <h1>Describe</h1>
-    <p class="placeholder">Describe landing — to be migrated in Phase 3.</p>
-  </section>
-</template>
+<script setup>
+import MigrationStub from '@/components/MigrationStub.vue'
+</script>
 
-<style scoped>
-.placeholder { color: #888; font-style: italic; }
-</style>
+<template>
+  <MigrationStub
+    title="Describe — Data submission finalised"
+    title-icon="fa-clipboard-check"
+    legacy-href="/describe_landing"
+    legacy-label="Open legacy describe landing"
+  />
+</template>

@@ -1,12 +1,18 @@
 <script setup>
 import AppNav from '@/components/AppNav.vue'
+import AppFooter from '@/components/AppFooter.vue'
 import StatusBanner from '@/components/StatusBanner.vue'
 </script>
 
 <template>
-  <AppNav />
-  <StatusBanner />
-  <main class="container">
-    <RouterView />
-  </main>
+  <div class="app-shell">
+    <AppNav />
+    <main class="app-main">
+      <div class="container">
+        <StatusBanner />
+        <RouterView />
+      </div>
+    </main>
+    <AppFooter />
+  </div>
 </template>

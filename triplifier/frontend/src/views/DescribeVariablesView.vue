@@ -1,10 +1,12 @@
-<template>
-  <section>
-    <h1>Variables</h1>
-    <p class="placeholder">Describe variables — to be migrated in Phase 3.</p>
-  </section>
-</template>
+<script setup>
+import MigrationStub from '@/components/MigrationStub.vue'
+</script>
 
-<style scoped>
-.placeholder { color: #888; font-style: italic; }
-</style>
+<template>
+  <MigrationStub
+    title="Describe your data"
+    title-icon="fa-pencil-ruler"
+    legacy-href="/describe_variables"
+    legacy-label="Open legacy describe variables"
+  />
+</template>

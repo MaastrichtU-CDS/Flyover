@@ -1,30 +1,49 @@
 <script setup>
 import { RouterLink } from 'vue-router'
+import { useNavigation } from '@/composables/useNavigation'
+
+const { stepStates } = useNavigation()
 </script>
 
 <template>
-  <nav class="app-nav">
-    <RouterLink to="/">Home</RouterLink>
-    <RouterLink to="/ingest">Ingest</RouterLink>
-    <RouterLink to="/describe">Describe</RouterLink>
-    <RouterLink to="/annotate">Annotate</RouterLink>
-    <RouterLink to="/share">Share</RouterLink>
-  </nav>
-</template>
+  <div class="flyover-navigation">
+    <div class="container">
+      <div class="nav-steps">
+        <RouterLink to="/" class="nav-step" id="home-step">
+          <span class="step-number">
+            <i class="fas fa-home step-icon-header"></i>
+          </span>
+          <span class="step-text">Home</span>
+        </RouterLink>
 
-<style scoped>
-.app-nav {
-  display: flex;
-  gap: 1rem;
-  padding: 1rem;
-  border-bottom: 1px solid #ddd;
-}
-.app-nav a {
-  text-decoration: none;
-  color: #333;
-}
-.app-nav a.router-link-active {
-  font-weight: bold;
-  color: #0066cc;
-}
-</style>
+        <span class="step-separator">|</span>
+
+        <template v-for="(step, idx) in stepStates" :key="step.name">
+          <RouterLink
+            :to="step.to"
+            class="nav-step"
+            :class="{
+              active: step.active,
+              completed: step.completed,
+              disabled: step.disabled,
+            }"
+            :id="`${step.name}-step`"
+            @click.prevent="step.disabled ? null : null"
+          >
+            <span class="step-number">
+              <i
+                class="fas step-icon-header"
+                :class="step.completed ? step.completedIcon : step.icon"
+              ></i>
+            </span>
+            <span class="step-text">{{ step.label }}</span>
+          </RouterLink>
+          <i
+            v-if="idx < stepStates.length - 1"
+            class="fas fa-chevron-right step-arrow"
+          ></i>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>

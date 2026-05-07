@@ -377,6 +377,56 @@ def annotation_verify():
     )
 
 
+@annotate_bp.route("/api/v1/annotation-verify-state", methods=["GET"])
+def api_annotation_verify_state():
+    """Return the same data the Jinja annotation_verify page receives."""
+    ctx = get_app_context()
+    session_cache = ctx.get("session_cache")
+    rdf_store_service = ctx.get("rdf_store_service")
+    get_semantic_map = ctx.get("get_semantic_map")
+    formulate_local_map = ctx.get("formulate_local_map")
+    name_matcher = ctx.get("name_matcher")
+    get_table_names = ctx.get("get_table_names")
+    has_semantic_map = ctx.get("has_semantic_map")
+
+    if not has_semantic_map(session_cache):
+        return jsonify({"error": "No semantic map available"}), 400
+
+    databases = rdf_store_service.get_databases() if rdf_store_service else []
+    session_cache.databases = databases
+
+    if not databases:
+        return jsonify({"error": "No databases available"}), 400
+
+    map_table_names = get_table_names(session_cache)
+
+    annotated, unannotated, variable_data = AnnotateService.get_verification_data(
+        databases,
+        session_cache,
+        map_table_names,
+        name_matcher,
+        get_semantic_map,
+        formulate_local_map,
+    )
+
+    annotation_status = session_cache.annotation_status or {}
+    success_message = None
+    if annotation_status and all(s.get("success") for s in annotation_status.values()):
+        success_message = (
+            "Data processing complete. Semantic interoperability achieved."
+        )
+
+    return jsonify(
+        {
+            "annotated_variables": annotated,
+            "unannotated_variables": unannotated,
+            "variable_data": variable_data,
+            "annotation_status": annotation_status,
+            "success_message": success_message,
+        }
+    )
+
+
 @annotate_bp.route("/verify-annotation-ask", methods=["POST"])
 def verify_annotation_ask():
     """

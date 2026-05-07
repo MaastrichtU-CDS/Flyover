@@ -1,10 +1,12 @@
-<template>
-  <section>
-    <h1>Annotation Review</h1>
-    <p class="placeholder">Annotation review — to be migrated in Phase 3.</p>
-  </section>
-</template>
+<script setup>
+import MigrationStub from '@/components/MigrationStub.vue'
+</script>
 
-<style scoped>
-.placeholder { color: #888; font-style: italic; }
-</style>
+<template>
+  <MigrationStub
+    title="Review Annotation Data"
+    title-icon="fa-search"
+    legacy-href="/annotation-review"
+    legacy-label="Open legacy annotation review"
+  />
+</template>

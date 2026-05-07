@@ -1,10 +1,12 @@
-<template>
-  <section>
-    <h1>Mock Share</h1>
-    <p class="placeholder">Share mock — to be migrated in Phase 3.</p>
-  </section>
-</template>
+<script setup>
+import MigrationStub from '@/components/MigrationStub.vue'
+</script>
 
-<style scoped>
-.placeholder { color: #888; font-style: italic; }
-</style>
+<template>
+  <MigrationStub
+    title="Generate Mock Data"
+    title-icon="fa-file-export"
+    legacy-href="/share_mock"
+    legacy-label="Open legacy mock data generator"
+  />
+</template>

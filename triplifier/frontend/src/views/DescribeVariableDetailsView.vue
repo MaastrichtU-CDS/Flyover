@@ -1,14 +1,12 @@
 <script setup>
-defineProps({ name: { type: String, default: '' } })
+import MigrationStub from '@/components/MigrationStub.vue'
 </script>
 
 <template>
-  <section>
-    <h1>Variable: {{ name }}</h1>
-    <p class="placeholder">Variable details — to be migrated in Phase 3.</p>
-  </section>
+  <MigrationStub
+    title="Describe categories and units"
+    title-icon="fa-pencil-ruler"
+    legacy-href="/describe_variable_details"
+    legacy-label="Open legacy variable details"
+  />
 </template>
-
-<style scoped>
-.placeholder { color: #888; font-style: italic; }
-</style>
