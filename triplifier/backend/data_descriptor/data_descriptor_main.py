@@ -9,7 +9,7 @@ import sys
 import logging
 
 
-from flask import Flask
+from flask import Flask, send_from_directory, abort
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -147,6 +147,22 @@ app.register_blueprint(ingest_bp)
 app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
+
+
+# Serve the built Vue SPA under /app/. The Vite build output is copied into
+# data_descriptor/spa/ by the Dockerfile; in non-Docker dev the directory may
+# not exist yet, in which case requests return 404.
+SPA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spa")
+
+
+@app.route("/app/")
+@app.route("/app/<path:subpath>")
+def serve_spa(subpath: str = ""):
+    if not os.path.isdir(SPA_DIR):
+        abort(404)
+    if subpath and os.path.isfile(os.path.join(SPA_DIR, subpath)):
+        return send_from_directory(SPA_DIR, subpath)
+    return send_from_directory(SPA_DIR, "index.html")
 
 
 # Set up application config
