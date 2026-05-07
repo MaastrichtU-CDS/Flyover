@@ -55,9 +55,7 @@ class TestValueMappingAnnotations(unittest.TestCase):
             jsonld_content, "db1", "tbl1"
         )
 
-        self.assertEqual(
-            endpoint, "http://localhost:7200/repositories/test/statements"
-        )
+        self.assertEqual(endpoint, "http://localhost:7200/repositories/test/statements")
         self.assertEqual(table_name, "clinical_table")
         self.assertIn("PREFIX sio:", prefixes)
         self.assertEqual(
@@ -200,7 +198,9 @@ class TestValueMappingAnnotations(unittest.TestCase):
         insert_query = mock_post.call_args_list[1][1]["data"]["update"]
         self.assertIn("?tablerow sio:SIO_000008 ?component1.", insert_query)
         self.assertIn("?tablerow dbo:has_column ?component1 .", insert_query)
-        self.assertIn("?component1 rdf:type db:clinical_table.tumour_location .", insert_query)
+        self.assertIn(
+            "?component1 rdf:type db:clinical_table.tumour_location .", insert_query
+        )
 
 
 if __name__ == "__main__":

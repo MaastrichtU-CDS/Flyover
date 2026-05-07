@@ -138,7 +138,9 @@ def build_annotation_variable_entry(schema_var, local_definition, local_mappings
     if schema_reconstruction:
         var_entry["schema_reconstruction"] = schema_reconstruction
 
-    value_mapping = convert_value_mapping(schema_var.get("valueMapping"), local_mappings)
+    value_mapping = convert_value_mapping(
+        schema_var.get("valueMapping"), local_mappings
+    )
     if value_mapping:
         var_entry["value_mapping"] = value_mapping
 
