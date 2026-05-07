@@ -11,9 +11,63 @@ from annotation_helper.src.miscellaneous import (
     add_annotation,
     add_mapping,
 )
+from annotation_helper.main import parse_jsonld_for_table
 
 
 class TestValueMappingAnnotations(unittest.TestCase):
+    def test_parse_jsonld_for_table_uses_variable_predicate_and_class(self):
+        jsonld_content = {
+            "endpoint": "http://localhost:7200/repositories/test/statements",
+            "schema": {
+                "prefixes": {
+                    "sio": "http://semanticscience.org/resource/",
+                    "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+                    "schema": "schema/",
+                },
+                "variables": {
+                    "tumour_location": {
+                        "@id": "schema:variable/tumour_location",
+                        "@type": "schema:CategoricalVariable",
+                        "dataType": "categorical",
+                        "predicate": "sio:SIO_000008",
+                        "class": "ncit:C3263",
+                    }
+                },
+            },
+            "databases": {
+                "db1": {
+                    "tables": {
+                        "tbl1": {
+                            "sourceFile": "clinical_table",
+                            "columns": {
+                                "tumour_location": {
+                                    "mapsTo": "schema:variable/tumour_location",
+                                    "localColumn": "tumour_location",
+                                }
+                            },
+                        }
+                    }
+                }
+            },
+        }
+
+        endpoint, table_name, prefixes, variable_info = parse_jsonld_for_table(
+            jsonld_content, "db1", "tbl1"
+        )
+
+        self.assertEqual(
+            endpoint, "http://localhost:7200/repositories/test/statements"
+        )
+        self.assertEqual(table_name, "clinical_table")
+        self.assertIn("PREFIX sio:", prefixes)
+        self.assertEqual(
+            variable_info["tumour_location"]["predicate"], "sio:SIO_000008"
+        )
+        self.assertEqual(variable_info["tumour_location"]["class"], "ncit:C3263")
+        self.assertEqual(
+            variable_info["tumour_location"]["local_definition"], "tumour_location"
+        )
+
     @patch("annotation_helper.src.miscellaneous.requests.post")
     def test_check_for_value_mapping_queries_annotation_graph(self, mock_post):
         mock_response = MagicMock()
@@ -108,6 +162,45 @@ class TestValueMappingAnnotations(unittest.TestCase):
 
         self.assertTrue(result["biological_sex"]["success"])
         self.assertTrue(result["biological_sex"]["value_mappings_inserted"])
+
+    @patch("annotation_helper.src.miscellaneous.materialize", False)
+    @patch("annotation_helper.src.miscellaneous.dry_run", False)
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_add_annotation_query_uses_variable_predicate_and_local_type(
+        self, mock_post
+    ):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '{"boolean": true}'
+        mock_post.return_value = mock_response
+
+        annotation_data = {
+            "tumour_location": {
+                "predicate": "sio:SIO_000008",
+                "class": "ncit:C3263",
+                "local_definition": "tumour_location",
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            add_annotation(
+                endpoint="http://localhost:7200/repositories/test/statements",
+                database="clinical_table",
+                prefixes="\n".join(
+                    [
+                        "PREFIX sio: <http://semanticscience.org/resource/>",
+                        "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+                    ]
+                ),
+                annotation_data=annotation_data,
+                path=tmpdir,
+                save_query=False,
+            )
+
+        insert_query = mock_post.call_args_list[1][1]["data"]["update"]
+        self.assertIn("?tablerow sio:SIO_000008 ?component1.", insert_query)
+        self.assertIn("?tablerow dbo:has_column ?component1 .", insert_query)
+        self.assertIn("?component1 rdf:type db:clinical_table.tumour_location .", insert_query)
 
 
 if __name__ == "__main__":
