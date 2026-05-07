@@ -266,9 +266,7 @@ class TestParseJsonldForTable(unittest.TestCase):
         endpoint, _, _, _ = parse_jsonld_for_table(
             self.jsonld_content, "test_db", "patients"
         )
-        self.assertEqual(
-            endpoint, "http://localhost:7200/repositories/test/statements"
-        )
+        self.assertEqual(endpoint, "http://localhost:7200/repositories/test/statements")
 
     def test_extracts_table_name(self):
         """sourceFile is used as the table name."""

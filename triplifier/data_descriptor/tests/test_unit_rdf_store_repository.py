@@ -53,7 +53,10 @@ class TestParseCsvResult(unittest.TestCase):
         # Create input that causes Polars to raise (e.g., no data, only header)
         # An empty CSV with a header row is valid, but a completely unparseable one is not
         # We can force failure by monkeypatching
-        with patch("repositories.rdf_store_repository.pl.read_csv", side_effect=Exception("parse error")):
+        with patch(
+            "repositories.rdf_store_repository.pl.read_csv",
+            side_effect=Exception("parse error"),
+        ):
             result = self.repo._parse_csv_result("a,b\n1,2")
         self.assertIsNone(result)
 
@@ -81,7 +84,9 @@ class TestExecuteQuery(unittest.TestCase):
         mock_response.text = ""
         mock_post.return_value = mock_response
 
-        self.repo.execute_query("SELECT ?s WHERE { ?s ?p ?o }", endpoint_suffix="/statements")
+        self.repo.execute_query(
+            "SELECT ?s WHERE { ?s ?p ?o }", endpoint_suffix="/statements"
+        )
 
         call_args = mock_post.call_args
         self.assertIn("/repositories/test_repo/statements", call_args[0][0])

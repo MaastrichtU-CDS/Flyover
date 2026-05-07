@@ -317,7 +317,9 @@ class TestRDFStoreServiceGraphDatabaseFindNameMatch(unittest.TestCase):
 
     def test_exact_match(self):
         """Exact string match returns True."""
-        self.assertTrue(RDFStoreService.graph_database_find_name_match("my_db", "my_db"))
+        self.assertTrue(
+            RDFStoreService.graph_database_find_name_match("my_db", "my_db")
+        )
 
     def test_csv_extension_fallback(self):
         """Matching with .csv extension stripped returns True."""

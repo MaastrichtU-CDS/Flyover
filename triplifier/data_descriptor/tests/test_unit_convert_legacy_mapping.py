@@ -23,7 +23,6 @@ from convert_legacy_mapping import (
     sanitise_key,
 )
 
-
 # ---------------------------------------------------------------------------
 # Tests for sanitise_key
 # ---------------------------------------------------------------------------
@@ -81,7 +80,9 @@ class TestExtractDatabaseName(unittest.TestCase):
 
     def test_returns_default_when_none(self):
         """Returns 'default_database' when database_name is None."""
-        self.assertEqual(extract_database_name({"database_name": None}), "default_database")
+        self.assertEqual(
+            extract_database_name({"database_name": None}), "default_database"
+        )
 
 
 class TestExtractTableName(unittest.TestCase):
@@ -246,7 +247,10 @@ class TestConvertLegacyMapping(unittest.TestCase):
                     "value_mapping": {
                         "terms": {
                             "male": {"target_class": "ncit:C20197", "local_term": "M"},
-                            "female": {"target_class": "ncit:C16576", "local_term": "F"},
+                            "female": {
+                                "target_class": "ncit:C16576",
+                                "local_term": "F",
+                            },
                         }
                     },
                 },
@@ -314,9 +318,7 @@ class TestConvertLegacyMapping(unittest.TestCase):
 
     def test_custom_database_name(self):
         """Custom database_name overrides extracted value."""
-        result = convert_legacy_mapping(
-            self._base_legacy(), database_name="custom_db"
-        )
+        result = convert_legacy_mapping(self._base_legacy(), database_name="custom_db")
         self.assertIn("custom_db", result.output["databases"])
 
     def test_non_dict_input_fails(self):

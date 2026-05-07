@@ -24,10 +24,10 @@ from services.share_service import (
     generate_mock_data_from_semantic_map,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _minimal_jsonld_map():
     """Return a minimal JSON-LD mapping with all supported data types."""
@@ -130,9 +130,7 @@ class TestGenerateMockDataFromSemanticMap(unittest.TestCase):
         r2 = generate_mock_data_from_semantic_map(
             _minimal_jsonld_map(), num_rows=20, random_seed=99
         )
-        self.assertTrue(
-            r1["test_db.patients"].equals(r2["test_db.patients"])
-        )
+        self.assertTrue(r1["test_db.patients"].equals(r2["test_db.patients"]))
 
     def test_specific_database_filter(self):
         """Passing database_id filters to only that database."""
@@ -166,11 +164,7 @@ class TestGenerateMockDataFromSemanticMap(unittest.TestCase):
     def test_unsupported_data_type_raises_value_error(self):
         """Unknown dataType raises a ValueError."""
         jsonld = {
-            "schema": {
-                "variables": {
-                    "weird": {"dataType": "unknown_type"}
-                }
-            },
+            "schema": {"variables": {"weird": {"dataType": "unknown_type"}}},
             "databases": {
                 "db": {
                     "tables": {
@@ -196,11 +190,7 @@ class TestGenerateMockDataFromSemanticMap(unittest.TestCase):
             "databases": {
                 "db": {
                     "tables": {
-                        "tbl": {
-                            "columns": {
-                                "c": {"localColumn": "col"}  # no mapsTo
-                            }
-                        }
+                        "tbl": {"columns": {"c": {"localColumn": "col"}}}  # no mapsTo
                     }
                 }
             },
@@ -235,9 +225,7 @@ class TestGenerateMockDataFromSemanticMap(unittest.TestCase):
                                 "score_col": {
                                     "mapsTo": "schema:variable/score",
                                     "localColumn": "score",
-                                    "localMappings": {
-                                        "missing_or_unspecified": "999"
-                                    },
+                                    "localMappings": {"missing_or_unspecified": "999"},
                                 }
                             }
                         }
@@ -342,9 +330,7 @@ class TestShareServiceDownloadSemanticMap(unittest.TestCase):
 
             response = ShareService.download_semantic_map(session, formulate_fn)
             self.assertEqual(response.mimetype, "application/ld+json")
-            self.assertIn(
-                b"Test Mapping", response.get_data()
-            )
+            self.assertIn(b"Test Mapping", response.get_data())
 
     def test_uses_legacy_path_when_no_jsonld_mapping_single_db(self):
         """Falls back to single-DB legacy path when jsonld_mapping is None."""
