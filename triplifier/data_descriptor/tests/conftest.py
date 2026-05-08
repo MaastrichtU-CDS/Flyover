@@ -1,25 +1,12 @@
 """
-Shared pytest fixtures and module-level mocks for unit tests.
+Shared pytest fixtures for all tests (unit, integration, e2e).
 
-This conftest.py is loaded before any test modules, ensuring that
-unavailable external dependencies are mocked at import time.
+The pythonTool stub lives in tests/unit/conftest.py so it only applies to
+unit tests and does not bleed into integration or e2e tests.
 """
-
-import sys
-from unittest.mock import MagicMock
 
 import pytest
 import polars as pl
-
-# ---------------------------------------------------------------------------
-# Mock unavailable external modules BEFORE any test imports trigger them
-# ---------------------------------------------------------------------------
-# pythonTool is an internal package only present in the full application
-# deployment; we stub it out so tests can import service modules cleanly.
-_python_tool_mock = MagicMock()
-_python_tool_mock.main_app.run_triplifier = MagicMock(return_value=(True, "ok", []))
-sys.modules.setdefault("pythonTool", _python_tool_mock)
-sys.modules.setdefault("pythonTool.main_app", _python_tool_mock.main_app)
 
 
 # ---------------------------------------------------------------------------

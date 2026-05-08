@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 # Add parent directory to path so the annotation_helper package is importable
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from annotation_helper.main import (
     convert_schema_reconstruction,

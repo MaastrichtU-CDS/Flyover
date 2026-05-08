@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from validation import MappingValidator, ValidationIssue, ValidationResult
 
@@ -237,43 +237,6 @@ class TestMappingValidator(unittest.TestCase):
         self.assertEqual(result.statistics["databases"], 1)
         self.assertEqual(result.statistics["tables"], 1)
         self.assertEqual(result.statistics["columns"], 1)
-
-
-class TestMappingValidatorWithRealFiles(unittest.TestCase):
-    """Test MappingValidator with actual example files."""
-
-    def setUp(self):
-        """Set up validator and file paths."""
-        self.validator = MappingValidator()
-        self.example_dir = Path(__file__).parent.parent.parent.parent / "example_data"
-
-    def test_validate_centre_a_mapping(self):
-        """Test validation of Centre A English mapping."""
-        file_path = self.example_dir / "centre_a_english" / "mapping_centre_a.jsonld"
-        if file_path.exists():
-            result = self.validator.validate_file(file_path)
-            self.assertTrue(
-                result.is_valid, f"Errors: {[i.message for i in result.issues]}"
-            )
-            self.assertEqual(result.statistics["variables"], 11)
-
-    def test_validate_centre_b_mapping(self):
-        """Test validation of Centre B Dutch mapping."""
-        file_path = self.example_dir / "centre_b_dutch" / "mapping_centre_b.jsonld"
-        if file_path.exists():
-            result = self.validator.validate_file(file_path)
-            self.assertTrue(
-                result.is_valid, f"Errors: {[i.message for i in result.issues]}"
-            )
-
-    def test_validate_template_mapping(self):
-        """Test validation of template mapping."""
-        file_path = self.example_dir / "mapping_template.jsonld"
-        if file_path.exists():
-            result = self.validator.validate_file(file_path)
-            self.assertTrue(
-                result.is_valid, f"Errors: {[i.message for i in result.issues]}"
-            )
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from repositories.rdf_store_repository import RDFStoreRepository
 
