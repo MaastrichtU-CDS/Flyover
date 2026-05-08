@@ -169,6 +169,17 @@ def generate_mock_data():
         if not jsonld_map:
             return jsonify({"success": False, "error": "No semantic map provided"}), 400
 
+        if table_id and not database_id:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "table_id requires database_id to be specified",
+                    }
+                ),
+                400,
+            )
+
         # Generate mock data using the service
         result = ShareService.generate_mock_data_from_semantic_map(
             jsonld_map,

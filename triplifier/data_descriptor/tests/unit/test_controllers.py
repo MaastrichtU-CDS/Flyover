@@ -321,23 +321,23 @@ class TestShareControllerGenerateMockData(unittest.TestCase):
         body = json.loads(response.data)
         self.assertTrue(body["success"])
 
-    def test_service_error_returns_500(self):
-        """Service-layer exception returns 500 with success=False."""
+    def test_service_error_returns_400(self):
+        """Client input error (table_id without database_id) returns 400."""
         payload = {
             "jsonld_map": {
                 "schema": {"variables": {}},
                 "databases": {},
             },
             "num_rows": 5,
-            "table_id": "some_table",  # missing database_id → ValueError in service
+            "table_id": "some_table",  # missing database_id → client input error
         }
         response = self.client.post(
             "/api/generate-mock-data",
             data=json.dumps(payload),
             content_type="application/json",
         )
-        # Service returns error dict with success=False → controller returns 500
-        self.assertIn(response.status_code, (500,))
+        # table_id without database_id is a client input error → 400
+        self.assertEqual(response.status_code, 400)
         body = json.loads(response.data)
         self.assertFalse(body["success"])
 
@@ -432,12 +432,12 @@ class TestAnnotateControllerLanding(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_annotation_landing_exception_redirects(self):
-        """GET /annotation_landing redirects when an exception occurs."""
+        """GET /annotation_landing returns 302 and redirects to landing when an exception occurs."""
         ctx = self.app.config["APP_CONTEXT"]
         ctx["rdf_store_service"].check_data_exists.side_effect = RuntimeError("fail")
         response = self.client.get("/annotation_landing")
-        # Should redirect to ingest.landing
-        self.assertIn(response.status_code, (302, 200))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/")
 
 
 if __name__ == "__main__":
