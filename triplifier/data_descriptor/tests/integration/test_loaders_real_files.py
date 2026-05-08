@@ -88,9 +88,7 @@ class TestJSONLDMappingWithRealFiles(unittest.TestCase):
 
         # Test that locale is preserved in to_dict
         mapping_dict = mapping.to_dict()
-        self.assertEqual(
-            mapping_dict["databases"]["centre_a_ehr"]["locale"], "en_GB"
-        )
+        self.assertEqual(mapping_dict["databases"]["centre_a_ehr"]["locale"], "en_GB")
 
 
 if __name__ == "__main__":

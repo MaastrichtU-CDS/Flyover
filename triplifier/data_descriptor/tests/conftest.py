@@ -8,7 +8,6 @@ unit tests and does not bleed into integration or e2e tests.
 import pytest
 import polars as pl
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------

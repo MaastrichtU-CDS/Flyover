@@ -26,7 +26,6 @@ from flask import Flask
 
 from controllers import annotate_bp, describe_bp, ingest_bp, share_bp
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -68,7 +67,9 @@ _MINIMAL_VALID_JSONLD = {
 
 def _make_app(*blueprints):
     """Return a minimal Flask app with the given blueprints and a mock context."""
-    app = Flask(__name__, template_folder=str(Path(__file__).parent.parent.parent / "templates"))
+    app = Flask(
+        __name__, template_folder=str(Path(__file__).parent.parent.parent / "templates")
+    )
     app.secret_key = "test-secret"
     mock_session = MagicMock()
     mock_session.databases = []
