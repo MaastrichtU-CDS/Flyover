@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 # Make the scripts directory importable
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "scripts"))
 
 from convert_legacy_mapping import (
     ConversionResult,

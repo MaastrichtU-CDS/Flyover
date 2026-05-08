@@ -46,7 +46,7 @@ jobs:
       id: unit-tests
       run: |
         echo "## 🧪 Unit Tests" >> $GITHUB_STEP_SUMMARY
-        python -m pytest triplifier/data_descriptor/tests/ -k unit \
+        python -m pytest triplifier/data_descriptor/tests/unit/ \
           --tb=short \
           --junit-xml=unit-test-results.xml \
           --cov=triplifier/data_descriptor \
@@ -95,8 +95,8 @@ jobs:
         echo "## 📋 Unit Tests Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Test scope" >> $GITHUB_STEP_SUMMARY
-        echo "- Tests run with \`pytest -k unit\` (all test functions and files matching 'unit')" >> $GITHUB_STEP_SUMMARY
-        echo "- Location: \`triplifier/data_descriptor/tests/\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Tests run from \`triplifier/data_descriptor/tests/unit/\` (path-based selection)" >> $GITHUB_STEP_SUMMARY
+        echo "- Location: \`triplifier/data_descriptor/tests/unit/\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🚫 Blocking (Will Fail Build)" >> $GITHUB_STEP_SUMMARY
         echo "- Any unit test failure" >> $GITHUB_STEP_SUMMARY
