@@ -1,0 +1,109 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-mock pytest-cov
+        # Install project dependencies
+        if [ -f triplifier/requirements.txt ]; then pip install -r triplifier/requirements.txt; fi
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+    - name: Run unit tests
+      id: unit-tests
+      run: |
+        echo "## 🧪 Unit Tests" >> $GITHUB_STEP_SUMMARY
+        python -m pytest triplifier/data_descriptor/tests/unit/ \
+          --tb=short \
+          --junit-xml=unit-test-results.xml \
+          --cov=triplifier/data_descriptor \
+          --cov-report=term-missing \
+          --cov-report=xml:coverage.xml \
+          -q 2>&1 | tee unit-test-output.txt
+        EXIT_CODE=${PIPESTATUS[0]}
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -20 unit-test-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        exit $EXIT_CODE
+      continue-on-error: false
+
+    - name: Coverage report summary
+      if: always()
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
+        # Use the .coverage data file produced by the test step above
+        python -m coverage report --show-missing 2>&1 | grep -E "^(TOTAL|triplifier)" | head -30 > coverage-summary.txt || true
+        if [ -s coverage-summary.txt ]; then
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat coverage-summary.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "Coverage data not available." >> $GITHUB_STEP_SUMMARY
+        fi
+      continue-on-error: true
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-results
+        path: |
+          unit-test-results.xml
+          unit-test-output.txt
+          coverage.xml
+        retention-days: 30
+
+    - name: Unit Tests Summary
+      if: always()
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "## 📋 Unit Tests Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Test scope" >> $GITHUB_STEP_SUMMARY
+        echo "- Tests run from \`triplifier/data_descriptor/tests/unit/\` (path-based selection)" >> $GITHUB_STEP_SUMMARY
+        echo "- Location: \`triplifier/data_descriptor/tests/unit/\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚫 Blocking (Will Fail Build)" >> $GITHUB_STEP_SUMMARY
+        echo "- Any unit test failure" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Modules covered" >> $GITHUB_STEP_SUMMARY
+        echo "- \`annotation_helper/main.py\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`services/rdf_store_service.py\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`services/share_service.py\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`repositories/rdf_store_repository.py\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`scripts/convert_legacy_mapping.py\`" >> $GITHUB_STEP_SUMMARY

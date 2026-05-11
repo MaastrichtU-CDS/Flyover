@@ -24,6 +24,11 @@ Thumbs.db
 dist/
 build/
 
+# Test coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+
 # GraphDB data and logs (generated files)
 graphdb/data/
 
