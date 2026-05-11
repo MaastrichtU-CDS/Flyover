@@ -115,8 +115,12 @@ class TestFormatPath(unittest.TestCase):
         self.assertEqual(_format_path(["items", 0]), "items[0]")
 
     def test_array_index_followed_by_key_has_no_extra_dot(self):
-        """A key that immediately follows an array index must not gain an extra dot."""
-        # _format_path does not insert a dot after a closing bracket
+        """Document the current behaviour: no dot is inserted after a closing bracket.
+
+        _format_path only prepends a dot before a string segment when the
+        previous part does *not* end with ']'.  This test pins the current
+        behaviour so any future change to that logic is caught immediately.
+        """
         result = _format_path(["schemaReconstruction", 2, "class"])
         self.assertEqual(result, "schemaReconstruction[2]class")
 
