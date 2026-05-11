@@ -170,9 +170,7 @@ class TestFromFileValidLoading(unittest.TestCase):
 
         tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(
-                suffix=".jsonld", delete=False
-            ) as raw_fh:
+            with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as raw_fh:
                 tmp_path = raw_fh.name
                 # Write UTF-8 BOM + JSON content
                 content = json.dumps(_MINIMAL, ensure_ascii=False)
@@ -406,9 +404,7 @@ class TestAccessorMethods(unittest.TestCase):
 
     def test_get_local_term_returns_none_for_unknown_term(self):
         """get_local_term must return None when the schema term is not mapped."""
-        self.assertIsNone(
-            self.mapping.get_local_term("biological_sex", "unknown_term")
-        )
+        self.assertIsNone(self.mapping.get_local_term("biological_sex", "unknown_term"))
 
     def test_get_target_class_returns_correct_value(self):
         """get_target_class must return the ontology URI for a known schema term."""
@@ -502,9 +498,7 @@ class TestSaveAndRoundTrip(unittest.TestCase):
     def test_save_creates_valid_json_file(self):
         """save() must produce a file that parses as valid JSON."""
         mapping = JSONLDMapping.from_dict(_MINIMAL)
-        with tempfile.NamedTemporaryFile(
-            suffix=".jsonld", delete=False
-        ) as fh:
+        with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
             tmp = fh.name
         try:
             mapping.save(tmp)
@@ -518,9 +512,7 @@ class TestSaveAndRoundTrip(unittest.TestCase):
     def test_save_and_reload_preserves_name(self):
         """Reloading a saved mapping must preserve the name field."""
         mapping = JSONLDMapping.from_dict(_MINIMAL)
-        with tempfile.NamedTemporaryFile(
-            suffix=".jsonld", delete=False
-        ) as fh:
+        with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
             tmp = fh.name
         try:
             mapping.save(tmp)
@@ -532,9 +524,7 @@ class TestSaveAndRoundTrip(unittest.TestCase):
     def test_save_and_reload_preserves_variables(self):
         """Reloading a saved mapping must preserve all variable definitions."""
         mapping = JSONLDMapping.from_dict(_MINIMAL)
-        with tempfile.NamedTemporaryFile(
-            suffix=".jsonld", delete=False
-        ) as fh:
+        with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
             tmp = fh.name
         try:
             mapping.save(tmp)
@@ -552,9 +542,7 @@ class TestSaveAndRoundTrip(unittest.TestCase):
         data = _copy.deepcopy(_MINIMAL)
         data["name"] = "Données Cliniques — Ünïcödé"
         mapping = JSONLDMapping.from_dict(data)
-        with tempfile.NamedTemporaryFile(
-            suffix=".jsonld", delete=False
-        ) as fh:
+        with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
             tmp = fh.name
         try:
             mapping.save(tmp)

@@ -546,9 +546,7 @@ class TestFixtureFiles(unittest.TestCase):
 
     def test_malformed_json_fixture_fails_loading(self):
         """The malformed_json fixture must fail at JSON parse time."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "malformed_json.jsonld"
-        )
+        result = self.validator.validate_file(_FIXTURES_DIR / "malformed_json.jsonld")
         self.assertFalse(result.is_valid)
         self.assertTrue(
             any(
@@ -564,16 +562,12 @@ class TestFixtureFiles(unittest.TestCase):
 
     def test_missing_context_fixture_fails_validation(self):
         """The missing_context fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "missing_context.jsonld"
-        )
+        result = self.validator.validate_file(_FIXTURES_DIR / "missing_context.jsonld")
         self.assertFalse(result.is_valid)
 
     def test_missing_schema_fixture_fails_validation(self):
         """The missing_schema fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "missing_schema.jsonld"
-        )
+        result = self.validator.validate_file(_FIXTURES_DIR / "missing_schema.jsonld")
         self.assertFalse(result.is_valid)
 
     def test_missing_databases_fixture_fails_validation(self):
@@ -585,16 +579,12 @@ class TestFixtureFiles(unittest.TestCase):
 
     def test_invalid_type_fixture_fails_validation(self):
         """The invalid_type fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "invalid_type.jsonld"
-        )
+        result = self.validator.validate_file(_FIXTURES_DIR / "invalid_type.jsonld")
         self.assertFalse(result.is_valid)
 
     def test_empty_variables_fixture_fails_validation(self):
         """The empty_variables fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "empty_variables.jsonld"
-        )
+        result = self.validator.validate_file(_FIXTURES_DIR / "empty_variables.jsonld")
         self.assertFalse(result.is_valid)
 
     def test_invalid_data_type_fixture_fails_validation(self):

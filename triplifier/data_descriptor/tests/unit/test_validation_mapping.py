@@ -28,7 +28,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from validation import MappingValidator, ValidationIssue, ValidationResult
 from validation.mapping_validator import _format_path, _get_value_preview
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
@@ -198,9 +197,7 @@ class TestCrossReferenceValidation(unittest.TestCase):
         ] = "schema:variable/does_not_exist"
         result = self.validator.validate(mapping, check_references=True)
         self.assertTrue(len(result.warnings) > 0)
-        self.assertTrue(
-            any("does_not_exist" in w.message for w in result.warnings)
-        )
+        self.assertTrue(any("does_not_exist" in w.message for w in result.warnings))
 
     def test_check_references_false_skips_cross_reference_check(self):
         """When check_references=False, undefined references must not produce warnings."""
@@ -318,9 +315,7 @@ class TestLargeMapping(unittest.TestCase):
                 "predicate": f"sio:SIO_{i:06d}",
                 "class": f"ncit:C{i:05d}",
             }
-            mapping["databases"]["db1"]["tables"]["t1"]["columns"][
-                f"col_{i:03d}"
-            ] = {
+            mapping["databases"]["db1"]["tables"]["t1"]["columns"][f"col_{i:03d}"] = {
                 "mapsTo": f"schema:variable/{var_key}",
                 "localColumn": f"local_col_{i}",
             }
