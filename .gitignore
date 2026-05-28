@@ -24,6 +24,18 @@ Thumbs.db
 dist/
 build/
 
+# Playwright / Vitest output (when test runners are invoked from repo root)
+/test-results/
+/playwright-report/
+triplifier/frontend/node_modules/
+triplifier/frontend/dist/
+triplifier/frontend/.vite/
+triplifier/frontend/playwright-report/
+triplifier/frontend/test-results/
+
+# Python test artifacts
+triplifier/.coverage
+
 # GraphDB data and logs (generated files)
 graphdb/data/
 

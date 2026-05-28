@@ -1,0 +1,16 @@
+services:
+  rdf-store:
+    build:
+      context: ./graphdb
+    image: flyover-graphdb-test:local
+    volumes: !reset []
+    tmpfs:
+      - /opt/graphdb/home:size=2g,mode=1777
+    environment:
+      - GDB_HEAP_SIZE=2g
+      - GDB_MIN_MEM=1g
+      - GDB_MAX_MEM=2g
+
+  triplifier:
+    build:
+      context: ./triplifier
