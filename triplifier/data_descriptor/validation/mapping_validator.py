@@ -91,7 +91,7 @@ def _format_path(path: list) -> str:
         if isinstance(item, int):
             parts.append(f"[{item}]")
         else:
-            if parts and not parts[-1].endswith("]"):
+            if parts:
                 parts.append(".")
             parts.append(str(item))
 

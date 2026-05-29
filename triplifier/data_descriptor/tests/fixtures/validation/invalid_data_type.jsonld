@@ -1,0 +1,32 @@
+{
+  "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+  "@type": "mapping:DataMapping",
+  "name": "Invalid Data Type",
+  "schema": {
+    "@type": "schema:SemanticSchema",
+    "variables": {
+      "identifier": {
+        "@type": "schema:IdentifierVariable",
+        "dataType": "unknown_type",
+        "predicate": "sio:SIO_000673",
+        "class": "ncit:C25364"
+      }
+    }
+  },
+  "databases": {
+    "db1": {
+      "@type": "mapping:Database",
+      "tables": {
+        "t1": {
+          "@type": "mapping:Table",
+          "columns": {
+            "id": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": "id"
+            }
+          }
+        }
+      }
+    }
+  }
+}

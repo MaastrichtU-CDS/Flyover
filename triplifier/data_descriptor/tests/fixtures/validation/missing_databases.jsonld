@@ -1,0 +1,16 @@
+{
+  "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+  "@type": "mapping:DataMapping",
+  "name": "Missing Databases",
+  "schema": {
+    "@type": "schema:SemanticSchema",
+    "variables": {
+      "identifier": {
+        "@type": "schema:IdentifierVariable",
+        "dataType": "identifier",
+        "predicate": "sio:SIO_000673",
+        "class": "ncit:C25364"
+      }
+    }
+  }
+}
