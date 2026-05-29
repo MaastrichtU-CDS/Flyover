@@ -25,6 +25,8 @@ Flyover works with CSV files and relational databases, and uses linked data stan
 semantic representations.
 
 > 📖 **For detailed documentation, see the [Wiki](https://github.com/MaastrichtU-CDS/Flyover/wiki).**
+>
+> 🛠 **For maintainers and contributors**, the [`docs/`](docs/README.md) folder explains the architecture, the Vue frontend, and the test stack — start with [`docs/architecture.md`](docs/architecture.md).
 
 https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 
