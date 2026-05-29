@@ -217,7 +217,8 @@ class TestCrossReferenceValidation(unittest.TestCase):
         result = self.validator.validate(mapping, check_references=True)
         info_issues = [i for i in result.issues if i.severity == "info"]
         self.assertGreaterEqual(
-            len(info_issues), 1,
+            len(info_issues),
+            1,
             "Expected at least one info-level issue for unknown localMappings key",
         )
 

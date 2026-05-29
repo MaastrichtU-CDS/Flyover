@@ -417,7 +417,10 @@ class TestEmptyCollections(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("variables" in i.path or "minProperties" in i.message for i in result.issues),
+            any(
+                "variables" in i.path or "minProperties" in i.message
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -428,7 +431,10 @@ class TestEmptyCollections(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("databases" in i.path or "minProperties" in i.message for i in result.issues),
+            any(
+                "databases" in i.path or "minProperties" in i.message
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -439,7 +445,10 @@ class TestEmptyCollections(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("tables" in i.path or "minProperties" in i.message for i in result.issues),
+            any(
+                "tables" in i.path or "minProperties" in i.message
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -450,7 +459,10 @@ class TestEmptyCollections(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("columns" in i.path or "minProperties" in i.message for i in result.issues),
+            any(
+                "columns" in i.path or "minProperties" in i.message
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -485,7 +497,10 @@ class TestWrongTypesForScalarFields(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("@context" in i.path or "type" in i.message.lower() for i in result.issues),
+            any(
+                "@context" in i.path or "type" in i.message.lower()
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -496,7 +511,10 @@ class TestWrongTypesForScalarFields(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("variables" in i.path or "type" in i.message.lower() for i in result.issues),
+            any(
+                "variables" in i.path or "type" in i.message.lower()
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -522,7 +540,10 @@ class TestInvalidMapsToPattern(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("mapsTo" in i.path or "pattern" in i.message.lower() for i in result.issues),
+            any(
+                "mapsTo" in i.path or "pattern" in i.message.lower()
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -591,7 +612,10 @@ class TestInvalidLocaleFormat(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("locale" in i.path or "pattern" in i.message.lower() for i in result.issues),
+            any(
+                "locale" in i.path or "pattern" in i.message.lower()
+                for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
@@ -666,7 +690,9 @@ class TestInvalidSchemaReconstructionNodeType(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any("@type" in i.path or "enum" in i.message.lower() for i in result.issues),
+            any(
+                "@type" in i.path or "enum" in i.message.lower() for i in result.issues
+            ),
             [i.message for i in result.issues],
         )
 
