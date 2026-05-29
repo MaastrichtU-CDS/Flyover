@@ -33,7 +33,10 @@ triplifier/frontend/.vite/
 triplifier/frontend/playwright-report/
 triplifier/frontend/test-results/
 
-# Python test artifacts
+# Test coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
 triplifier/.coverage
 
 # GraphDB data and logs (generated files)
@@ -43,8 +46,8 @@ graphdb/data/
 test_annotation_ui.py
 setup_test_data.py
 annotation_ui_demo.html
-# test_*.py in root directory - keep test suites in triplifier/data_descriptor/tests/
-!/triplifier/data_descriptor/tests/test_*.py
+# test_*.py in root directory - keep test suites in triplifier/backend/data_descriptor/tests/
+!/triplifier/backend/data_descriptor/tests/test_*.py
 
 # Temporary files
 /tmp/
