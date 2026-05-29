@@ -102,7 +102,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔒 Safety - Dependency Vulnerabilities (HIGH SEVERITY)" >> $GITHUB_STEP_SUMMARY
         echo "Checking dependencies for known security vulnerabilities..."
-        safety check -r triplifier/requirements.txt
+        safety check -r triplifier/backend/requirements.txt
         echo "✅ No high-severity vulnerabilities found" >> $GITHUB_STEP_SUMMARY
       continue-on-error: false
 
@@ -111,7 +111,7 @@ jobs:
       run: |
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔒 Safety - All Vulnerabilities (INFORMATIONAL)" >> $GITHUB_STEP_SUMMARY
-        safety check -r triplifier/requirements.txt > safety-report.txt 2>&1 || true
+        safety check -r triplifier/backend/requirements.txt > safety-report.txt 2>&1 || true
         # Strip ANSI color codes and check for actual vulnerabilities
         sed 's/\x1b\[[0-9;]*m//g' safety-report.txt > safety-clean.txt
         if grep -qE "[1-9][0-9]* vulnerabilities reported" safety-clean.txt; then
