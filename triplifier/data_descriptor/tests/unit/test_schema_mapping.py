@@ -11,9 +11,10 @@ Tests cover:
 - Missing required column and variable fields
 - valueMapping structure errors
 - Invalid schemaReconstruction node types
-- Fixture files produce the expected outcomes
+- Fixture files produce the expected outcomes (with file-existence guard)
 - Additional / unknown fields are accepted (schema is permissive at root)
 - Null values in specific positions
+- Positive tests for accepted schema branches (unprefixed types, valid variants)
 """
 
 import copy
@@ -109,6 +110,68 @@ class TestValidMappingPassesSchema(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Positive tests for accepted schema branches
+# ---------------------------------------------------------------------------
+
+
+class TestAcceptedSchemaBranches(unittest.TestCase):
+    """Positive tests for valid schema variants that must pass validation."""
+
+    def setUp(self):
+        """Set up a shared validator instance."""
+        self.validator = MappingValidator()
+
+    def test_unprefixed_data_mapping_type_is_accepted(self):
+        """@type 'DataMapping' (without mapping: prefix) must pass."""
+        mapping = copy.deepcopy(_VALID_MAPPING)
+        mapping["@type"] = "DataMapping"
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
+
+    def test_unprefixed_semantic_schema_type_is_accepted(self):
+        """@type 'SemanticSchema' (without schema: prefix) must pass."""
+        mapping = copy.deepcopy(_VALID_MAPPING)
+        mapping["schema"]["@type"] = "SemanticSchema"
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
+
+    def test_unprefixed_database_type_is_accepted(self):
+        """@type 'Database' (without mapping: prefix) must pass."""
+        mapping = copy.deepcopy(_VALID_MAPPING)
+        mapping["databases"]["db1"]["@type"] = "Database"
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
+
+    def test_unprefixed_table_type_is_accepted(self):
+        """@type 'Table' (without mapping: prefix) must pass."""
+        mapping = copy.deepcopy(_VALID_MAPPING)
+        mapping["databases"]["db1"]["tables"]["t1"]["@type"] = "Table"
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
+
+    def test_absent_local_mappings_is_accepted(self):
+        """Omitting localMappings entirely must pass validation."""
+        mapping = copy.deepcopy(_VALID_MAPPING)
+        del mapping["databases"]["db1"]["tables"]["t1"]["columns"]["sex_col"][
+            "localMappings"
+        ]
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
+
+    def test_all_continuous_variable_types_are_accepted(self):
+        """All allowed dataType enum values must pass."""
+        for data_type in ("identifier", "categorical", "continuous", "date"):
+            mapping = copy.deepcopy(_VALID_MAPPING)
+            mapping["schema"]["variables"]["identifier"]["dataType"] = data_type
+            result = self.validator.validate(mapping)
+            self.assertTrue(
+                result.is_valid,
+                f"dataType '{data_type}' should be accepted: "
+                + str([i.message for i in result.issues]),
+            )
+
+
+# ---------------------------------------------------------------------------
 # Missing required top-level fields (4 variations)
 # ---------------------------------------------------------------------------
 
@@ -141,16 +204,24 @@ class TestMissingRequiredTopLevelFields(unittest.TestCase):
         self._assert_invalid_and_mentions(mapping, "@type")
 
     def test_missing_schema_is_invalid(self):
-        """Removing schema must fail validation."""
+        """Removing schema must fail validation with a reference to schema."""
         mapping = {k: v for k, v in _VALID_MAPPING.items() if k != "schema"}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("schema" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_missing_databases_is_invalid(self):
-        """Removing databases must fail validation."""
+        """Removing databases must fail validation with a reference to databases."""
         mapping = {k: v for k, v in _VALID_MAPPING.items() if k != "databases"}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("databases" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +337,10 @@ class TestInvalidVariableDataType(unittest.TestCase):
         mapping["schema"]["variables"]["identifier"]["dataType"] = bad_type
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("dataType" in i.path or "dataType" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_bool_data_type_is_rejected(self):
         """dataType 'bool' must be rejected as it is not in the allowed enum."""
@@ -281,6 +356,10 @@ class TestInvalidVariableDataType(unittest.TestCase):
         del mapping["schema"]["variables"]["identifier"]["dataType"]
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("dataType" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +380,10 @@ class TestMissingRequiredVariableFields(unittest.TestCase):
         del mapping["schema"]["variables"]["identifier"][field]
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any(field in i.message or field in i.path for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_missing_variable_type_is_rejected(self):
         """Removing @type from a variable must fail validation."""
@@ -333,6 +416,10 @@ class TestEmptyCollections(unittest.TestCase):
         mapping["schema"]["variables"] = {}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("variables" in i.path or "minProperties" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_empty_databases_object_is_rejected(self):
         """An empty databases object must fail schema validation."""
@@ -340,6 +427,10 @@ class TestEmptyCollections(unittest.TestCase):
         mapping["databases"] = {}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("databases" in i.path or "minProperties" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_empty_tables_object_is_rejected(self):
         """An empty tables object inside a database must fail validation."""
@@ -347,6 +438,10 @@ class TestEmptyCollections(unittest.TestCase):
         mapping["databases"]["db1"]["tables"] = {}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("tables" in i.path or "minProperties" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_empty_columns_object_is_rejected(self):
         """An empty columns object inside a table must fail validation."""
@@ -354,6 +449,10 @@ class TestEmptyCollections(unittest.TestCase):
         mapping["databases"]["db1"]["tables"]["t1"]["columns"] = {}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("columns" in i.path or "minProperties" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +473,10 @@ class TestWrongTypesForScalarFields(unittest.TestCase):
         mapping["name"] = 42
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("name" in i.path or "type" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_context_as_string_is_rejected(self):
         """Providing a string where @context expects an object must fail."""
@@ -381,6 +484,10 @@ class TestWrongTypesForScalarFields(unittest.TestCase):
         mapping["@context"] = "https://github.com/MaastrichtU-CDS/Flyover/"
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("@context" in i.path or "type" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_variables_as_array_is_rejected(self):
         """Providing an array where variables expects an object must fail."""
@@ -388,6 +495,10 @@ class TestWrongTypesForScalarFields(unittest.TestCase):
         mapping["schema"]["variables"] = [{"@type": "schema:IdentifierVariable"}]
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("variables" in i.path or "type" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +521,10 @@ class TestInvalidMapsToPattern(unittest.TestCase):
         ] = bad_maps_to
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("mapsTo" in i.path or "pattern" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_bare_variable_name_is_rejected(self):
         """mapsTo 'identifier' without schema:variable/ prefix must be rejected."""
@@ -438,6 +553,10 @@ class TestMissingRequiredColumnFields(unittest.TestCase):
         del mapping["databases"]["db1"]["tables"]["t1"]["columns"]["id_col"]["mapsTo"]
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("mapsTo" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_missing_local_column_is_rejected(self):
         """A column without localColumn must fail validation."""
@@ -447,6 +566,10 @@ class TestMissingRequiredColumnFields(unittest.TestCase):
         ]
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("localColumn" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +590,10 @@ class TestInvalidLocaleFormat(unittest.TestCase):
         mapping["databases"]["db1"]["locale"] = bad_locale
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("locale" in i.path or "pattern" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_plain_word_locale_is_rejected(self):
         """Locale 'english' (not in xx_XX format) must be rejected."""
@@ -495,6 +622,10 @@ class TestValueMappingStructure(unittest.TestCase):
         mapping["schema"]["variables"]["biological_sex"]["valueMapping"] = {}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("terms" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_missing_target_class_in_term_is_rejected(self):
         """A term mapping without targetClass must fail schema validation."""
@@ -504,6 +635,10 @@ class TestValueMappingStructure(unittest.TestCase):
         ] = {}
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("targetClass" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -530,6 +665,10 @@ class TestInvalidSchemaReconstructionNodeType(unittest.TestCase):
         ]
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("@type" in i.path or "enum" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -544,68 +683,90 @@ class TestFixtureFiles(unittest.TestCase):
         """Set up a shared validator instance."""
         self.validator = MappingValidator()
 
-    def test_malformed_json_fixture_fails_loading(self):
-        """The malformed_json fixture must fail at JSON parse time."""
-        result = self.validator.validate_file(_FIXTURES_DIR / "malformed_json.jsonld")
+    def _assert_fixture_invalid(self, filename, error_hint):
+        """Helper: assert the fixture exists, fails validation, and the error
+        message mentions *error_hint*."""
+        fixture_path = _FIXTURES_DIR / filename
+        self.assertTrue(
+            fixture_path.exists(),
+            f"Fixture file missing: {fixture_path}",
+        )
+        result = self.validator.validate_file(fixture_path)
         self.assertFalse(result.is_valid)
         self.assertTrue(
-            any(
-                "syntax" in i.message.lower() or "json" in i.message.lower()
-                for i in result.issues
-            )
+            any(error_hint in i.message.lower() for i in result.issues),
+            f"Expected error mentioning '{error_hint}' in: "
+            + str([i.message for i in result.issues]),
         )
 
-    def test_empty_fixture_fails_loading(self):
-        """The empty fixture must fail at JSON parse or schema validation time."""
-        result = self.validator.validate_file(_FIXTURES_DIR / "empty.jsonld")
+    def test_malformed_json_fixture_fails_loading(self):
+        """The malformed_json fixture must fail at JSON parse time."""
+        self._assert_fixture_invalid("malformed_json.jsonld", "json")
+
+    def test_empty_file_fixture_fails_loading(self):
+        """The empty_file fixture (0-byte) must fail at JSON parse time."""
+        self._assert_fixture_invalid("empty_file.jsonld", "json")
+
+    def test_empty_object_fixture_fails_validation(self):
+        """The empty_object fixture ({}) must fail schema validation."""
+        fixture_path = _FIXTURES_DIR / "empty_object.jsonld"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+        result = self.validator.validate_file(fixture_path)
         self.assertFalse(result.is_valid)
 
     def test_missing_context_fixture_fails_validation(self):
-        """The missing_context fixture must fail schema validation."""
-        result = self.validator.validate_file(_FIXTURES_DIR / "missing_context.jsonld")
-        self.assertFalse(result.is_valid)
+        """The missing_context fixture must fail with a @context reference."""
+        self._assert_fixture_invalid("missing_context.jsonld", "@context")
 
     def test_missing_schema_fixture_fails_validation(self):
-        """The missing_schema fixture must fail schema validation."""
-        result = self.validator.validate_file(_FIXTURES_DIR / "missing_schema.jsonld")
-        self.assertFalse(result.is_valid)
+        """The missing_schema fixture must fail with a schema reference."""
+        self._assert_fixture_invalid("missing_schema.jsonld", "schema")
 
     def test_missing_databases_fixture_fails_validation(self):
-        """The missing_databases fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "missing_databases.jsonld"
-        )
-        self.assertFalse(result.is_valid)
+        """The missing_databases fixture must fail with a databases reference."""
+        self._assert_fixture_invalid("missing_databases.jsonld", "databases")
 
     def test_invalid_type_fixture_fails_validation(self):
-        """The invalid_type fixture must fail schema validation."""
-        result = self.validator.validate_file(_FIXTURES_DIR / "invalid_type.jsonld")
+        """The invalid_type fixture must fail with a @type reference."""
+        fixture_path = _FIXTURES_DIR / "invalid_type.jsonld"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+        result = self.validator.validate_file(fixture_path)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("@type" in i.path or "@type" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_empty_variables_fixture_fails_validation(self):
-        """The empty_variables fixture must fail schema validation."""
-        result = self.validator.validate_file(_FIXTURES_DIR / "empty_variables.jsonld")
+        """The empty_variables fixture must fail with a variables reference."""
+        fixture_path = _FIXTURES_DIR / "empty_variables.jsonld"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+        result = self.validator.validate_file(fixture_path)
         self.assertFalse(result.is_valid)
 
     def test_invalid_data_type_fixture_fails_validation(self):
-        """The invalid_data_type fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "invalid_data_type.jsonld"
-        )
+        """The invalid_data_type fixture must fail validation."""
+        fixture_path = _FIXTURES_DIR / "invalid_data_type.jsonld"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+        result = self.validator.validate_file(fixture_path)
         self.assertFalse(result.is_valid)
 
     def test_column_missing_maps_to_fixture_fails_validation(self):
-        """The column_missing_maps_to fixture must fail schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "column_missing_maps_to.jsonld"
-        )
+        """The column_missing_maps_to fixture must fail with a mapsTo reference."""
+        fixture_path = _FIXTURES_DIR / "column_missing_maps_to.jsonld"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+        result = self.validator.validate_file(fixture_path)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("mapsTo" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
     def test_unicode_variable_names_fixture_passes_validation(self):
         """A mapping with Unicode variable names must pass schema validation."""
-        result = self.validator.validate_file(
-            _FIXTURES_DIR / "unicode_variable_names.jsonld"
-        )
+        fixture_path = _FIXTURES_DIR / "unicode_variable_names.jsonld"
+        self.assertTrue(fixture_path.exists(), f"Fixture missing: {fixture_path}")
+        result = self.validator.validate_file(fixture_path)
         self.assertTrue(result.is_valid, [i.message for i in result.issues])
 
 
@@ -637,12 +798,27 @@ class TestAdditionalPropertiesAndNullValues(unittest.TestCase):
         result = self.validator.validate(mapping)
         self.assertTrue(result.is_valid, [i.message for i in result.issues])
 
-    def test_null_name_is_rejected(self):
-        """A null name (minLength 1) must fail schema validation."""
+    def test_null_name_is_rejected_by_type(self):
+        """A null name must be rejected because name requires type string."""
         mapping = copy.deepcopy(_VALID_MAPPING)
         mapping["name"] = None
         result = self.validator.validate(mapping)
         self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("name" in i.path or "type" in i.message.lower() for i in result.issues),
+            [i.message for i in result.issues],
+        )
+
+    def test_empty_string_name_is_rejected_by_min_length(self):
+        """An empty string name must be rejected by the minLength constraint."""
+        mapping = copy.deepcopy(_VALID_MAPPING)
+        mapping["name"] = ""
+        result = self.validator.validate(mapping)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("name" in i.path or "minLength" in i.message for i in result.issues),
+            [i.message for i in result.issues],
+        )
 
 
 if __name__ == "__main__":

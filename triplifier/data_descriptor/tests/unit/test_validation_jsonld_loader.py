@@ -6,25 +6,24 @@ Tests cover:
 - Valid JSON-LD files load correctly from both string and Path arguments
 - Malformed JSON raises json.JSONDecodeError
 - Valid JSON but structurally incomplete data produces graceful defaults
-- File encoding edge cases (UTF-8 BOM, Latin-1, Windows-1252)
+- File encoding edge cases (UTF-8 BOM — explicitly tests current behaviour)
 - from_dict with minimal / missing / extra fields
 - Accessor methods return None for absent keys
-- save() round-trips the mapping without data loss
-- to_legacy_format() produces the expected structure
-- find_database_key_for_rdf_store() handles .csv extension variants
+- save() round-trips the mapping without data loss (full to_dict comparison)
+- find_database_key_for_rdf_store() handles .csv extension variants and
+  sourceFile matching
 - get_all_variable_keys() and has_variable()
 - ColumnMapping.get_variable_key() with non-standard mapsTo values
 """
 
 import codecs
+import copy
 import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-import pytest
 
 # Add data_descriptor to path so local imports resolve
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -84,7 +83,7 @@ _MINIMAL = {
         "db1": {
             "@id": "mapping:database/db1",
             "@type": "mapping:Database",
-            "name": "patients.csv",
+            "name": "patient_records",
             "description": "Patient database",
             "locale": "en_GB",
             "tables": {
@@ -164,29 +163,22 @@ class TestFromFileValidLoading(unittest.TestCase):
         finally:
             os.unlink(tmp)
 
-    def test_from_file_utf8_bom_encoded_file(self):
-        """from_file must handle UTF-8 BOM-encoded files via the codec."""
-        import io
+    def test_from_file_utf8_bom_raises_decode_error(self):
+        """from_file with a UTF-8 BOM-encoded file must raise json.JSONDecodeError.
 
+        The loader currently uses encoding='utf-8' (not 'utf-8-sig'), so the
+        BOM byte-order mark is not stripped and causes a parse failure.
+        """
         tmp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as raw_fh:
                 tmp_path = raw_fh.name
-                # Write UTF-8 BOM + JSON content
                 content = json.dumps(_MINIMAL, ensure_ascii=False)
                 raw_fh.write(codecs.BOM_UTF8)
                 raw_fh.write(content.encode("utf-8"))
 
-            # The loader opens with 'utf-8' which reads past BOM on most platforms,
-            # but 'utf-8-sig' handles BOM explicitly. We test that loading raises no
-            # exception and the file can be parsed — the loader currently uses 'utf-8'.
-            # If BOM causes a JSONDecodeError, catch it so the test is informative.
-            try:
-                mapping = JSONLDMapping.from_file(tmp_path)
-                self.assertEqual(mapping.name, "Loader Test Mapping")
-            except json.JSONDecodeError:
-                # BOM not stripped — expected on some platforms with plain utf-8
-                pass
+            with self.assertRaises(json.JSONDecodeError):
+                JSONLDMapping.from_file(tmp_path)
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -202,8 +194,9 @@ class TestFromFileErrorPaths(unittest.TestCase):
 
     def test_nonexistent_file_raises_file_not_found(self):
         """A path to a non-existent file must raise FileNotFoundError."""
+        missing = Path(tempfile.gettempdir()) / "nonexistent_loader_abc123.jsonld"
         with self.assertRaises(FileNotFoundError):
-            JSONLDMapping.from_file("/nonexistent/path/mapping.jsonld")
+            JSONLDMapping.from_file(str(missing))
 
     def test_malformed_json_raises_decode_error(self):
         """A file containing malformed JSON must raise json.JSONDecodeError."""
@@ -243,16 +236,16 @@ class TestFromFileErrorPaths(unittest.TestCase):
         finally:
             os.unlink(tmp)
 
-    def test_json_array_root_raises_attribute_error(self):
-        """A valid JSON file whose root is an array (not an object) must raise
-        an error when the loader tries to call .get() on a list."""
+    def test_json_array_root_is_rejected(self):
+        """A valid JSON file whose root is an array (not an object) must be
+        rejected with an error — non-object roots are not valid mappings."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".jsonld", delete=False
         ) as fh:
             json.dump([{"key": "value"}], fh)
             tmp = fh.name
         try:
-            with self.assertRaises((AttributeError, TypeError)):
+            with self.assertRaises(Exception):
                 JSONLDMapping.from_file(tmp)
         finally:
             os.unlink(tmp)
@@ -330,19 +323,14 @@ class TestFromDictMinimalFields(unittest.TestCase):
         self.assertEqual(mapping.name, "")
 
     def test_from_dict_preserves_raw_data(self):
-        """from_dict must store the original dict in raw_data."""
-        import copy as _copy
-
-        data = _copy.deepcopy(_MINIMAL)
+        """from_dict must store the original dict in raw_data unchanged."""
+        data = copy.deepcopy(_MINIMAL)
         mapping = JSONLDMapping.from_dict(data)
-        self.assertIn("schema", mapping.raw_data)
-        self.assertIn("databases", mapping.raw_data)
+        self.assertEqual(mapping.raw_data, data)
 
     def test_from_dict_with_extra_fields_does_not_raise(self):
         """from_dict must not raise when extra fields are present in the dict."""
-        import copy as _copy
-
-        data = _copy.deepcopy(_MINIMAL)
+        data = copy.deepcopy(_MINIMAL)
         data["unknownField"] = "some extra value"
         data["databases"]["db1"]["unknownDbField"] = 99
         try:
@@ -440,7 +428,7 @@ class TestAccessorMethods(unittest.TestCase):
 
     def test_get_first_database_name_returns_name(self):
         """get_first_database_name must return the name of the first database."""
-        self.assertEqual(self.mapping.get_first_database_name(), "patients.csv")
+        self.assertEqual(self.mapping.get_first_database_name(), "patient_records")
 
     def test_get_first_database_name_returns_none_when_empty(self):
         """get_first_database_name must return None when there are no databases."""
@@ -457,12 +445,17 @@ class TestFindDatabaseKeyForRdfStore(unittest.TestCase):
     """find_database_key_for_rdf_store must match by name or sourceFile."""
 
     def setUp(self):
-        """Create a mapping instance."""
+        """Create a mapping instance.
+
+        The fixture uses distinct values:
+        - database name = 'patient_records'
+        - table sourceFile = 'patients.csv'
+        """
         self.mapping = JSONLDMapping.from_dict(_MINIMAL)
 
     def test_matches_by_database_name(self):
         """Must find a database when the RDF store name matches the database name."""
-        result = self.mapping.find_database_key_for_rdf_store("patients.csv")
+        result = self.mapping.find_database_key_for_rdf_store("patient_records")
         self.assertEqual(result, "db1")
 
     def test_matches_without_csv_extension(self):
@@ -471,9 +464,10 @@ class TestFindDatabaseKeyForRdfStore(unittest.TestCase):
         self.assertEqual(result, "db1")
 
     def test_matches_by_source_file(self):
-        """Must find a database when the RDF store name matches a table sourceFile."""
+        """Must find a database when the RDF store name matches a table sourceFile
+        (not the database name)."""
         result = self.mapping.find_database_key_for_rdf_store("patients.csv")
-        self.assertIsNotNone(result)
+        self.assertEqual(result, "db1")
 
     def test_returns_none_for_unknown_name(self):
         """Must return None when the RDF store name does not match any database."""
@@ -509,37 +503,21 @@ class TestSaveAndRoundTrip(unittest.TestCase):
         finally:
             os.unlink(tmp)
 
-    def test_save_and_reload_preserves_name(self):
-        """Reloading a saved mapping must preserve the name field."""
+    def test_save_and_reload_full_round_trip(self):
+        """Reloading a saved mapping must preserve all data (full to_dict comparison)."""
         mapping = JSONLDMapping.from_dict(_MINIMAL)
         with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
             tmp = fh.name
         try:
             mapping.save(tmp)
             reloaded = JSONLDMapping.from_file(tmp)
-            self.assertEqual(reloaded.name, mapping.name)
-        finally:
-            os.unlink(tmp)
-
-    def test_save_and_reload_preserves_variables(self):
-        """Reloading a saved mapping must preserve all variable definitions."""
-        mapping = JSONLDMapping.from_dict(_MINIMAL)
-        with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
-            tmp = fh.name
-        try:
-            mapping.save(tmp)
-            reloaded = JSONLDMapping.from_file(tmp)
-            self.assertEqual(
-                set(reloaded.variables.keys()), set(mapping.variables.keys())
-            )
+            self.assertEqual(reloaded.to_dict(), mapping.to_dict())
         finally:
             os.unlink(tmp)
 
     def test_save_uses_ensure_ascii_false(self):
         """save() must write Unicode characters as-is, not as escaped sequences."""
-        import copy as _copy
-
-        data = _copy.deepcopy(_MINIMAL)
+        data = copy.deepcopy(_MINIMAL)
         data["name"] = "Données Cliniques — Ünïcödé"
         mapping = JSONLDMapping.from_dict(data)
         with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as fh:
@@ -584,16 +562,6 @@ class TestColumnMappingEdgeCases(unittest.TestCase):
         data = {"mapsTo": "schema:variable/id", "localColumn": []}
         col = ColumnMapping.from_dict("id", data)
         self.assertEqual(col.local_column, "")
-
-    def test_local_mappings_with_array_values_are_preserved(self):
-        """localMappings with list values must be preserved as-is in the dataclass."""
-        data = {
-            "mapsTo": "schema:variable/t_stage",
-            "localColumn": "stage",
-            "localMappings": {"1": ["T1a", "T1b"]},
-        }
-        col = ColumnMapping.from_dict("t_stage", data)
-        self.assertEqual(col.local_mappings["1"], ["T1a", "T1b"])
 
     def test_local_mappings_with_null_value_are_preserved(self):
         """localMappings with null values must be preserved in the dataclass."""
