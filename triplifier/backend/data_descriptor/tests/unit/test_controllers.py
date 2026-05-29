@@ -17,7 +17,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # Add parent (data_descriptor) to path so blueprint imports resolve
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -105,11 +105,11 @@ class TestIngestControllerLanding(unittest.TestCase):
         self.app = _make_app(ingest_bp)
         self.client = self.app.test_client()
 
-    def test_landing_returns_200(self):
-        """GET / renders the index page with HTTP 200."""
-        with patch("controllers.ingest_controller.render_template", return_value="ok"):
-            response = self.client.get("/")
-        self.assertEqual(response.status_code, 200)
+    def test_landing_redirects_to_spa(self):
+        """GET / redirects to the SPA landing page."""
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/app/")
 
 
 class TestIngestControllerUploadSemanticMap(unittest.TestCase):
@@ -350,11 +350,11 @@ class TestShareControllerShareLanding(unittest.TestCase):
         self.app = _make_app(share_bp)
         self.client = self.app.test_client()
 
-    def test_share_landing_returns_200(self):
-        """GET /share_landing renders the share landing page."""
-        with patch("controllers.share_controller.render_template", return_value="ok"):
-            response = self.client.get("/share_landing")
-        self.assertEqual(response.status_code, 200)
+    def test_share_landing_redirects_to_spa(self):
+        """GET /share_landing redirects to the SPA share page."""
+        response = self.client.get("/share_landing")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/app/share")
 
 
 class TestShareControllerShareMock(unittest.TestCase):
@@ -364,11 +364,11 @@ class TestShareControllerShareMock(unittest.TestCase):
         self.app = _make_app(share_bp)
         self.client = self.app.test_client()
 
-    def test_share_mock_returns_200(self):
-        """GET /share_mock renders the mock data page."""
-        with patch("controllers.share_controller.render_template", return_value="ok"):
-            response = self.client.get("/share_mock")
-        self.assertEqual(response.status_code, 200)
+    def test_share_mock_redirects_to_spa(self):
+        """GET /share_mock redirects to the SPA share-mock page."""
+        response = self.client.get("/share_mock")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/app/share/mock")
 
 
 # ---------------------------------------------------------------------------
@@ -383,23 +383,19 @@ class TestDescribeControllerLanding(unittest.TestCase):
         self.app = _make_app(describe_bp)
         self.client = self.app.test_client()
 
-    def test_describe_landing_returns_200_when_no_data(self):
-        """GET /describe_landing renders the describe landing page."""
-        with patch(
-            "controllers.describe_controller.render_template", return_value="ok"
-        ):
-            response = self.client.get("/describe_landing")
-        self.assertEqual(response.status_code, 200)
+    def test_describe_landing_redirects_to_spa(self):
+        """GET /describe_landing redirects to the SPA describe page."""
+        response = self.client.get("/describe_landing")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/app/describe")
 
-    def test_describe_landing_returns_200_when_data_exists(self):
-        """GET /describe_landing renders the describe landing page with data."""
+    def test_describe_landing_redirect_is_independent_of_data_state(self):
+        """Redirect happens regardless of whether RDF data already exists."""
         ctx = self.app.config["APP_CONTEXT"]
         ctx["rdf_store_service"].check_data_exists.return_value = True
-        with patch(
-            "controllers.describe_controller.render_template", return_value="ok"
-        ):
-            response = self.client.get("/describe_landing")
-        self.assertEqual(response.status_code, 200)
+        response = self.client.get("/describe_landing")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/app/describe")
 
 
 # ---------------------------------------------------------------------------
@@ -414,31 +410,19 @@ class TestAnnotateControllerLanding(unittest.TestCase):
         self.app = _make_app(annotate_bp, ingest_bp)
         self.client = self.app.test_client()
 
-    def test_annotation_landing_returns_200_when_no_data(self):
-        """GET /annotation_landing renders the annotation landing page."""
-        with patch(
-            "controllers.annotate_controller.render_template", return_value="ok"
-        ):
-            response = self.client.get("/annotation_landing")
-        self.assertEqual(response.status_code, 200)
-
-    def test_annotation_landing_returns_200_when_data_exists(self):
-        """GET /annotation_landing renders correctly when graph data exists."""
-        ctx = self.app.config["APP_CONTEXT"]
-        ctx["rdf_store_service"].check_data_exists.return_value = True
-        with patch(
-            "controllers.annotate_controller.render_template", return_value="ok"
-        ):
-            response = self.client.get("/annotation_landing")
-        self.assertEqual(response.status_code, 200)
-
-    def test_annotation_landing_exception_redirects(self):
-        """GET /annotation_landing returns 302 and redirects to landing when an exception occurs."""
-        ctx = self.app.config["APP_CONTEXT"]
-        ctx["rdf_store_service"].check_data_exists.side_effect = RuntimeError("fail")
+    def test_annotation_landing_redirects_to_spa(self):
+        """GET /annotation_landing redirects to the SPA annotate page."""
         response = self.client.get("/annotation_landing")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/")
+        self.assertEqual(response.headers.get("Location"), "/app/annotate")
+
+    def test_annotation_landing_redirect_is_independent_of_data_state(self):
+        """Redirect happens regardless of whether RDF data already exists."""
+        ctx = self.app.config["APP_CONTEXT"]
+        ctx["rdf_store_service"].check_data_exists.return_value = True
+        response = self.client.get("/annotation_landing")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers.get("Location"), "/app/annotate")
 
 
 if __name__ == "__main__":
