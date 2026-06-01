@@ -1,0 +1,20 @@
+/* Vue SPA-only overrides on top of legacy /static/css/flyover-custom.css */
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+}
+
+.placeholder-note {
+  color: #888;
+  font-style: italic;
+}

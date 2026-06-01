@@ -1,0 +1,79 @@
+name: Frontend E2E (Full)
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [labeled, opened, synchronize, reopened]
+
+jobs:
+  e2e-full:
+    name: Full Playwright suite against tmpfs stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Only run on PRs if the run-full-e2e label is present. Always run on the
+    # other triggers (schedule, dispatch).
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'run-full-e2e')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: triplifier/frontend/package-lock.json
+
+      - name: Install npm dependencies
+        working-directory: triplifier/frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('triplifier/frontend/package-lock.json') }}
+
+      - name: Install Playwright browser
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        working-directory: triplifier/frontend
+        run: npx playwright install chromium
+
+      - name: Install Playwright OS deps
+        working-directory: triplifier/frontend
+        run: npx playwright install-deps chromium
+
+      - name: Start stack (tmpfs)
+        run: ./scripts/start-test-stack.sh
+
+      - name: Run full E2E suite
+        working-directory: triplifier/frontend
+        run: npx playwright test --reporter=line
+
+      - name: Capture docker logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml \
+            logs --no-color > docker-logs.txt
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-full-${{ github.run_id }}
+          path: |
+            triplifier/frontend/playwright-report/
+            triplifier/frontend/test-results/
+            docker-logs.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Tear down stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml down -v

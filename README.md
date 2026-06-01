@@ -97,7 +97,7 @@ remains Flask-centric, with Python as the primary language for maintainers.
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Server rendering** | Flask + Jinja2 | Page structure, navigation, server-side logic |
-| **Reactive UI** | Vue.js 3 (local) | Complex form state, pagination, live validation |
+| **Reactive UI** | Vue.js 3 (vendored) | Complex form state, pagination, live validation |
 | **Utilities** | jQuery, Bootstrap | Legacy interactions, selectpicker widgets |
 | **Client storage** | IndexedDB (FlyoverDB) | Semantic map persistence across pages |
 
@@ -193,7 +193,7 @@ window.MyFeatureApp = MyFeatureApp;
 ### Key Conventions
 
 - **Delimiters**: Always use `[[ ]]` for Vue expressions to avoid conflicts with Jinja2's `{{ }}`
-- **CDN**: Vue.js 3 is bundled locally (`static/js/vue.global.prod.js`) — no internet connection or build tools required
+- **Vue.js**: Vue.js 3.5.13 is vendored as `static/js/vue.global.prod.js` — no runtime internet connection or build tools required
 - **Options API**: Use the Options API (`data()`, `methods`, `computed`, `mounted`) for consistency
 - **Templates in JS**: Keep Vue templates in the component's `template` string property, not inline in HTML
 - **External utilities**: Continue using `FlyoverDB` and `JSONLDMapper` as global utilities from within Vue methods
