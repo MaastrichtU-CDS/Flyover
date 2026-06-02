@@ -1,0 +1,36 @@
+# Development overlay for backend hot-reloading.
+#
+# Use:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# This overlay does NOT auto-load (its name is .dev.yml, not .override.yml),
+# so `docker compose up` without `-f` still gives you the prod-like stack.
+# CI scripts that use explicit `-f` flags (start-test-stack.sh, release.yaml)
+# ignore this file.
+#
+# Frontend HMR is NOT included here — see notes below.
+
+services:
+  flyover:
+    volumes:
+      # Bind-mount the Python package so host edits show up inside the
+      # container. Flask's --reload picks them up and respawns.
+      - ./backend/flyover:/app/flyover
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    # Replace the production gunicorn entrypoint with Flask's dev server.
+    entrypoint: []
+    command: >
+      python -m flask --app flyover.main:app run --host=0.0.0.0 --port=5000 --reload
+
+# Frontend notes:
+#   The Vue SPA is baked into the image at build time. Reloading the container
+#   does NOT pick up frontend changes. For HMR, run the Vite dev server on
+#   your host alongside this stack:
+#
+#     cd frontend && npm run dev    # http://localhost:5173/
+#
+#   Vite proxies /api, /upload, /static, etc. through to Flask on :5000 (see
+#   the proxy table in frontend/vite.config.js). The browser tab to use during
+#   dev is :5173 — never :5000 — because only :5173 has HMR.
