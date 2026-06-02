@@ -8,7 +8,7 @@ import StatusBanner from '@/components/StatusBanner.vue'
   <div class="app-shell">
     <AppNav />
     <main class="app-main">
-      <div class="container">
+      <div class="container container-flyover">
         <StatusBanner />
         <RouterView />
       </div>

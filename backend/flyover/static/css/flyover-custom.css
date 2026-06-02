@@ -159,10 +159,16 @@
    Workflow Card Styles
    ========================================================================== */
 
+/* Widen the SPA content area past Bootstrap's default 1320px cap so the
+   workflow cards on the home page have more horizontal room. */
+.container-flyover {
+    max-width: 1500px;
+}
+
 .workflow-card {
     background: white;
     border-radius: 15px;
-    padding: 30px;
+    padding: 20px;
     margin-bottom: 10px;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -243,11 +249,6 @@
 
 .step-features li {
     padding: 8px 0;
-    border-bottom: 1px solid #eee;
-}
-
-.step-features li:last-child {
-    border-bottom: none;
 }
 
 .step-features i {
