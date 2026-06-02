@@ -212,15 +212,18 @@ async function handleFileChange(e) {
   }
   csvPath.value = paths.join(', ')
 
+  // Visibility depends only on file counts, not on the column reads. Set it
+  // before awaiting so the multi-file UI appears immediately and tests don't
+  // race the FileReader.onload macrotask.
+  showPkFkSection.value = input.files.length > 1
+  showDataLinkingSection.value = graphExists.value && input.files.length > 0
+
   const cols = await Promise.all(
     Array.from(input.files).map((f) => readCSVColumns(f))
   )
   cols.forEach((c, i) => {
     csvColumns[input.files[i].name] = c
   })
-
-  showPkFkSection.value = input.files.length > 1
-  showDataLinkingSection.value = graphExists.value && input.files.length > 0
 }
 
 function onFkTableChange(index) {
