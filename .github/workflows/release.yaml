@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  TRIPLIFIER_IMAGE_NAME: maastrichtu-cds/flyover-triplifier
+  FLYOVER_IMAGE_NAME: maastrichtu-cds/flyover
   GRAPHDB_IMAGE_NAME: maastrichtu-cds/flyover-graphdb
 
 jobs:
@@ -29,11 +29,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Triplifier
-        id: meta-triplifier
+      - name: Extract metadata (tags, labels) for flyover
+        id: meta-flyover
         uses: docker/metadata-action@v4
         with:
-          images: ${{ env.REGISTRY }}/${{ env.TRIPLIFIER_IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.FLYOVER_IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -47,13 +47,13 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
 
-      - name: Build and push Triplifier Docker image
+      - name: Build and push Flyover Docker image
         uses: docker/build-push-action@v4
         with:
-          context: ./triplifier
+          context: .
           push: true
-          tags: ${{ steps.meta-triplifier.outputs.tags }}
-          labels: ${{ steps.meta-triplifier.outputs.labels }}
+          tags: ${{ steps.meta-flyover.outputs.tags }}
+          labels: ${{ steps.meta-flyover.outputs.labels }}
 
       - name: Build and push GraphDB Docker image
         uses: docker/build-push-action@v4

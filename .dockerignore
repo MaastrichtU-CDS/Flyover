@@ -1,0 +1,8 @@
+# Exclude test files and development-only artifacts from the Docker image
+backend/flyover/tests/
+backend/flyover/.coverage
+backend/flyover/htmlcov/
+backend/flyover/.pytest_cache/
+**/__pycache__/
+**/*.pyc
+**/*.pyo

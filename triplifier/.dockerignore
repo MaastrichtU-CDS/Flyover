@@ -1,8 +1,0 @@
-# Exclude test files and development-only artifacts from the Docker image
-backend/data_descriptor/tests/
-backend/data_descriptor/.coverage
-backend/data_descriptor/htmlcov/
-backend/data_descriptor/.pytest_cache/
-**/__pycache__/
-**/*.pyc
-**/*.pyo

@@ -11,6 +11,6 @@ services:
       - GDB_MIN_MEM=1g
       - GDB_MAX_MEM=2g
 
-  triplifier:
+  flyover:
     build:
-      context: ./triplifier
+      context: .

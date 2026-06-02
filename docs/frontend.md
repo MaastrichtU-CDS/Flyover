@@ -1,6 +1,6 @@
 # Frontend (Vue 3 SPA)
 
-This doc explains the Vue side of Flyover for someone who knows JavaScript and HTTP but hasn't worked with Vue before. By the end you should know what every file under [`triplifier/frontend/src/`](../triplifier/frontend/src/) does, how the SPA talks to Flask, and how to add a new route.
+This doc explains the Vue side of Flyover for someone who knows JavaScript and HTTP but hasn't worked with Vue before. By the end you should know what every file under [`frontend/src/`](../frontend/src/) does, how the SPA talks to Flask, and how to add a new route.
 
 ## The stack in one paragraph
 
@@ -9,7 +9,7 @@ A Single Page Application built with **Vue 3** (the component framework), **Vite
 ## Code map
 
 ```
-triplifier/frontend/
+frontend/
 ├── index.html                       # static shell; <div id="app"> and legacy CSS <link>s
 ├── package.json                     # npm scripts and deps
 ├── vite.config.js                   # build config + dev-server proxy to Flask
@@ -19,7 +19,7 @@ triplifier/frontend/
     ├── main.js                      # app entry: createApp → use(pinia, router) → mount('#app')
     ├── App.vue                      # shell: AppNav, <RouterView/>, AppFooter, StatusBanner
     ├── assets/main.css              # the only Vue-owned CSS (layout overrides)
-    ├── router/index.js              # the 11 routes (lazy-loaded), base path /app/
+    ├── router/index.js              # the 11 routes (lazy-loaded), base path /
     ├── views/                       # one component per route
     │   ├── HomeView.vue
     │   ├── IngestView.vue
@@ -49,7 +49,7 @@ triplifier/frontend/
 
 ```mermaid
 flowchart TD
-    subgraph router["router/index.js (base: /app/)"]
+    subgraph router["router/index.js (base: /)"]
         r1["/ → HomeView"]
         r2["/ingest → IngestView"]
         r3["/describe[/variables][/variable-details]"]
@@ -76,17 +76,17 @@ Two processes, side by side.
 
 ```bash
 # terminal 1 — Flask backend (Docker is easiest; or run uv directly)
-docker compose up -d triplifier   # or: cd triplifier/backend/data_descriptor && uv run python data_descriptor_main.py
+docker compose up -d flyover      # or: cd backend/flyover && uv run python -m flyover.main
 
 # terminal 2 — Vite dev server with HMR
-cd triplifier/frontend
+cd frontend
 npm install
-npm run dev                       # serves the SPA at http://localhost:5173/app/
+npm run dev                       # serves the SPA at http://localhost:5173/
 ```
 
-Open `http://localhost:5173/app/`. The Vite dev server has HMR (hot module replacement): edit a `.vue` file and the browser re-renders without losing component state.
+Open `http://localhost:5173/`. The Vite dev server has HMR (hot module replacement): edit a `.vue` file and the browser re-renders without losing component state.
 
-**Why does the SPA talk to Flask in dev mode?** Because the dev server is a different port (`5173`), normally the browser would block API calls to `5000` as cross-origin. [`vite.config.js`](../triplifier/frontend/vite.config.js) avoids that by proxying a curated list of paths through the dev server itself:
+**Why does the SPA talk to Flask in dev mode?** Because the dev server is a different port (`5173`), normally the browser would block API calls to `5000` as cross-origin. [`vite.config.js`](../frontend/vite.config.js) avoids that by proxying a curated list of paths through the dev server itself:
 
 ```js
 server: {
@@ -104,7 +104,7 @@ server: {
 
 So a SPA call to `/api/check-graph-exists` from `:5173` is silently forwarded to Flask on `:5000`. **If you add a new API route in Flask, you'll likely need to add a proxy entry too**, otherwise it works in production but 404s in dev.
 
-In production, both are served from the same Flask process on `:5000` (Vite isn't running), so the proxy table is irrelevant. The multi-stage [`Dockerfile`](../triplifier/Dockerfile) builds the SPA in stage 1 (Node) and copies `dist/` into `/app/data_descriptor/spa` in stage 2 (Python); Flask serves it as static.
+In production, both are served from the same Flask process on `:5000` (Vite isn't running), so the proxy table is irrelevant. The multi-stage [`Dockerfile`](../Dockerfile) builds the SPA in stage 1 (Node) and copies `dist/` into `/app/flyover/spa` in stage 2 (Python); Flask serves it as static.
 
 ## How to add a new route
 
@@ -133,7 +133,7 @@ Concrete example: adding `/describe/units`.
    </template>
    ```
 
-2. **Register the route** in [`src/router/index.js`](../triplifier/frontend/src/router/index.js):
+2. **Register the route** in [`src/router/index.js`](../frontend/src/router/index.js):
 
    ```js
    { path: '/describe/units', name: 'describe-units',
@@ -142,7 +142,7 @@ Concrete example: adding `/describe/units`.
 
    Keep the lazy-import pattern — it keeps the initial bundle small.
 
-3. **(Optional) Surface it in the nav** by adding an entry to `STEPS` in [`composables/useNavigation.js`](../triplifier/frontend/src/composables/useNavigation.js) if it's a top-level workflow step, or just link to it from another view with `<RouterLink to="/describe/units">`.
+3. **(Optional) Surface it in the nav** by adding an entry to `STEPS` in [`composables/useNavigation.js`](../frontend/src/composables/useNavigation.js) if it's a top-level workflow step, or just link to it from another view with `<RouterLink to="/describe/units">`.
 
 That's it. Vite picks up the new files on save. If `/units` is a new Flask endpoint too, add a proxy entry to `vite.config.js` so dev mode works.
 
@@ -151,17 +151,17 @@ That's it. Vite picks up the new files on save. If `/units` is a new Flask endpo
 A common point of confusion. Both let you share logic between components.
 
 - **A composable** (`use*` function) is a plain JS function that returns reactive refs and computed values. Use it for **stateless or per-call logic**: encapsulating a fetch + parse pattern, deriving step-completion flags from URL state, wrapping `fetch` with retries. Multiple components call the composable independently and get their own state.
-  - Example: [`useNavigation()`](../triplifier/frontend/src/composables/useNavigation.js) — derives "which workflow step is active / completed" from the current route. Note the one-shot `primed` flag at the top of the module: it fires `/api/check-graph-exists` exactly once across all consumers, then shares the resulting `dataExists` ref module-wide. This is a deliberate "singleton via module scope" pattern.
+  - Example: [`useNavigation()`](../frontend/src/composables/useNavigation.js) — derives "which workflow step is active / completed" from the current route. Note the one-shot `primed` flag at the top of the module: it fires `/api/check-graph-exists` exactly once across all consumers, then shares the resulting `dataExists` ref module-wide. This is a deliberate "singleton via module scope" pattern.
 - **A Pinia store** is global, shared, reactive state with explicit actions. Use it when **multiple components need to mutate or subscribe to the same state**: a notification queue, a logged-in user, the current JSON-LD mapping.
-  - Example: [`useStatusStore()`](../triplifier/frontend/src/stores/status.js) — any component can call `useStatusStore().error('upload failed')` and the message instantly appears in the `StatusBanner` rendered by `App.vue`. There's only one banner; only one store.
+  - Example: [`useStatusStore()`](../frontend/src/stores/status.js) — any component can call `useStatusStore().error('upload failed')` and the message instantly appears in the `StatusBanner` rendered by `App.vue`. There's only one banner; only one store.
 
 Rule of thumb: if removing the feature wouldn't lose information across components, it's a composable; if you'd lose a shared list / queue / object, it's a store.
 
 ## Why the legacy CSS
 
-The SPA inherits styling from the pre-Vue (jQuery + Flask templates) era of Flyover. [`index.html`](../triplifier/frontend/index.html) `<link>`s to several stylesheets served by Flask under `/static/css/`: Bootstrap, FontAwesome, plus project-specific `flyover-custom.css` and `share.css`. Those files live under [`triplifier/backend/data_descriptor/static/`](../triplifier/backend/data_descriptor/static/), not in the frontend tree.
+The SPA inherits styling from the pre-Vue (jQuery + Flask templates) era of Flyover. [`index.html`](../frontend/index.html) `<link>`s to several stylesheets served by Flask under `/static/css/`: Bootstrap, FontAwesome, plus project-specific `flyover-custom.css` and `share.css`. Those files live under [`backend/flyover/static/`](../backend/flyover/static/), not in the frontend tree.
 
-The Vue side only owns [`src/assets/main.css`](../triplifier/frontend/src/assets/main.css) (layout overrides) and scoped CSS inside each `.vue` file's `<style scoped>` block. Component-local styles use scoped CSS; project-wide visual changes mean editing files under the Flask `static/` tree.
+The Vue side only owns [`src/assets/main.css`](../frontend/src/assets/main.css) (layout overrides) and scoped CSS inside each `.vue` file's `<style scoped>` block. Component-local styles use scoped CSS; project-wide visual changes mean editing files under the Flask `static/` tree.
 
 This is awkward but deliberate: replacing Bootstrap and the design tokens is a much bigger project than the SPA migration. Keep new component styles `<style scoped>` and the boundary stays manageable.
 

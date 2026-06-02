@@ -16,11 +16,11 @@ services:
       - proxynet
     container_name: rdf-store
 
-  triplifier:
-    #image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
-    # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
+  flyover:
+    #image: ghcr.io/maastrichtu-cds/flyover:latest
+    # If preferred, the flyover image can be built from the Dockerfile at the repo root.
     build:
-       context: ./triplifier
+       context: .
     ports:
       - "127.0.0.1:5000:5000"
     environment:
@@ -33,7 +33,7 @@ services:
     hostname: "data.local"
     networks:
       - proxynet
-    container_name: triplifier
+    container_name: flyover
 
 networks:
   proxynet:

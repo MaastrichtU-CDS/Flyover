@@ -38,7 +38,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pytest pytest-mock pytest-cov
         # Install project dependencies
-        if [ -f triplifier/backend/requirements.txt ]; then pip install -r triplifier/backend/requirements.txt; fi
+        if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
@@ -46,10 +46,10 @@ jobs:
       id: unit-tests
       run: |
         echo "## 🧪 Unit Tests" >> $GITHUB_STEP_SUMMARY
-        python -m pytest triplifier/backend/data_descriptor/tests/unit/ \
+        python -m pytest backend/flyover/tests/unit/ \
           --tb=short \
           --junit-xml=unit-test-results.xml \
-          --cov=triplifier/backend/data_descriptor \
+          --cov=backend/flyover \
           --cov-report=term-missing \
           --cov-report=xml:coverage.xml \
           -q 2>&1 | tee unit-test-output.txt
@@ -66,7 +66,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
         # Use the .coverage data file produced by the test step above
-        python -m coverage report --show-missing 2>&1 | grep -E "^(TOTAL|triplifier)" | head -30 > coverage-summary.txt || true
+        python -m coverage report --show-missing 2>&1 | grep -E "^(TOTAL|backend)" | head -30 > coverage-summary.txt || true
         if [ -s coverage-summary.txt ]; then
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat coverage-summary.txt >> $GITHUB_STEP_SUMMARY
@@ -95,8 +95,8 @@ jobs:
         echo "## 📋 Unit Tests Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Test scope" >> $GITHUB_STEP_SUMMARY
-        echo "- Tests run from \`triplifier/backend/data_descriptor/tests/unit/\` (path-based selection)" >> $GITHUB_STEP_SUMMARY
-        echo "- Location: \`triplifier/backend/data_descriptor/tests/unit/\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Tests run from \`backend/flyover/tests/unit/\` (path-based selection)" >> $GITHUB_STEP_SUMMARY
+        echo "- Location: \`backend/flyover/tests/unit/\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🚫 Blocking (Will Fail Build)" >> $GITHUB_STEP_SUMMARY
         echo "- Any unit test failure" >> $GITHUB_STEP_SUMMARY

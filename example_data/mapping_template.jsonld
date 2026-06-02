@@ -486,5 +486,29 @@
       }
     }
   },
-  "databases": {}
+  "databases": {
+    "local_database": {
+      "@id": "mapping:database/local_database",
+      "@type": "mapping:Database",
+      "name": "REPLACE_WITH_YOUR_DATABASE_NAME",
+      "description": "Placeholder database — replace with your local data source.",
+      "locale": "en_GB",
+
+      "tables": {
+        "local_table": {
+          "@id": "mapping:table/local_table",
+          "@type": "mapping:Table",
+          "sourceFile": "REPLACE_WITH_YOUR_SOURCE_FILE",
+          "description": "Placeholder table — replace with your local table or file.",
+
+          "columns": {
+            "identifier": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": "REPLACE_WITH_YOUR_LOCAL_COLUMN"
+            }
+          }
+        }
+      }
+    }
+  }
 }

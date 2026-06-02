@@ -9,20 +9,20 @@ Flyover runs as **two containers plus a browser**, defined in [`docker-compose.y
 ```mermaid
 flowchart LR
     subgraph host["Developer / user machine"]
-        browser["Browser<br/>http://localhost:5000/app/"]
+        browser["Browser<br/>http://localhost:5000/"]
     end
     subgraph net["flyover_network (Docker bridge)"]
-        triplifier["triplifier<br/>(Flask + Gunicorn)<br/>:5000<br/>image: flyover-triplifier"]
+        flyover["flyover<br/>(Flask + Gunicorn)<br/>:5000<br/>image: flyover"]
         rdfstore["rdf-store<br/>(GraphDB 10.8.5)<br/>:7200<br/>image: flyover-graphdb"]
     end
     bind[("./graphdb/data<br/>(host bind mount)")]
-    browser -- "/app/* (SPA),<br/>/api/*, /upload, etc." --> triplifier
-    triplifier -- "SPARQL over HTTP<br/>http://rdf-store:7200/repositories/userRepo" --> rdfstore
+    browser -- "/ (SPA),<br/>/api/*, /upload, etc." --> flyover
+    flyover -- "SPARQL over HTTP<br/>http://rdf-store:7200/repositories/userRepo" --> rdfstore
     rdfstore <--> bind
 ```
 
-- The browser only ever talks to **`triplifier`** on port 5000. Flask serves the Vue SPA bundle (from `/app/data_descriptor/spa/` inside the container) and exposes the JSON API. The SPA's `vue-router` lives at the base path `/app/`.
-- **`triplifier`** talks to **`rdf-store`** over the internal Docker network using its hostname `rdf-store`. There is no `host` networking; the bridge `flyover_network` keeps everything isolated from the rest of the host.
+- The browser only ever talks to **`flyover`** on port 5000. Flask serves the Vue SPA bundle (from `/app/flyover/spa/` inside the container) and exposes the JSON API. The SPA's `vue-router` lives at the base path `/`.
+- **`flyover`** talks to **`rdf-store`** over the internal Docker network using its hostname `rdf-store`. There is no `host` networking; the bridge `flyover_network` keeps everything isolated from the rest of the host.
 - The GraphDB home directory is persisted on the host at `./graphdb/data` (bind mount). That's where the actual triples live across restarts.
 
 In **test mode**, [`docker-compose.test.yml`](../docker-compose.test.yml) overlays this stack to replace the bind mount with a tmpfs volume, so every test run starts from a clean GraphDB. See [`testing.md`](testing.md) for that story.
@@ -35,12 +35,12 @@ A typical "user uploads a CSV" round trip:
 sequenceDiagram
     autonumber
     participant B as Browser (SPA)
-    participant F as Flask (triplifier)
+    participant F as Flask (flyover)
     participant S as IngestService
     participant R as RdfStoreRepository
     participant G as GraphDB (rdf-store)
 
-    B->>F: GET /app/ingest (static SPA route)
+    B->>F: GET /ingest (static SPA route)
     F-->>B: index.html + JS bundle
     Note over B: vue-router renders IngestView.vue
     B->>F: POST /upload (CSV file)
@@ -55,8 +55,8 @@ sequenceDiagram
 ```
 
 Two things to notice:
-- **Flask serves both the SPA and the API.** The SPA's HTML / JS / CSS are static files copied into the image at build time ([`triplifier/Dockerfile`](../triplifier/Dockerfile) stage 1 → stage 2). There is no separate static-asset server in production.
-- **The Flask layer is thin.** Controllers do HTTP parsing and call services; services orchestrate; repositories own the SPARQL queries. This is the three-tier shape that lets the unit tests in [`tests/unit/`](../triplifier/backend/data_descriptor/tests/unit/) mock the repository without touching real GraphDB.
+- **Flask serves both the SPA and the API.** The SPA's HTML / JS / CSS are static files copied into the image at build time ([`Dockerfile`](../Dockerfile) stage 1 → stage 2). There is no separate static-asset server in production.
+- **The Flask layer is thin.** Controllers do HTTP parsing and call services; services orchestrate; repositories own the SPARQL queries. This is the three-tier shape that lets the unit tests in [`tests/unit/`](../backend/flyover/tests/unit/) mock the repository without touching real GraphDB.
 
 ## Data flow: CSV → RDF → SPARQL → UI
 
@@ -76,16 +76,16 @@ flowchart LR
     enriched -- "Share:<br/>export semantic map,<br/>generate mock data,<br/>publish metadata" --> out
 ```
 
-The JSON-LD mapping is **the** durable document that the user is editing across screens. Every Vue view either reads from it, writes to it, or both. The Flask backend keeps it in `session_cache` ([`data_descriptor_main.py`](../triplifier/backend/data_descriptor/data_descriptor_main.py) line 70 onwards), with the browser holding a copy in IndexedDB so reloads don't lose state.
+The JSON-LD mapping is **the** durable document that the user is editing across screens. Every Vue view either reads from it, writes to it, or both. The Flask backend keeps it in `session_cache` ([`main.py`](../backend/flyover/main.py) line 70 onwards), with the browser holding a copy in IndexedDB so reloads don't lose state.
 
 ## Backend layers
 
-The Flask side at [`triplifier/backend/data_descriptor/`](../triplifier/backend/data_descriptor/) is organised as four layers:
+The Flask side at [`backend/flyover/`](../backend/flyover/) is organised as four layers:
 
-- **[`controllers/`](../triplifier/backend/data_descriptor/controllers/)** — One Flask Blueprint per workflow step (`ingest_bp`, `describe_bp`, `annotate_bp`, `share_bp`). Each route does HTTP parsing only — pulls JSON or form data, calls a service, packages the response. Many landing routes are now just `redirect("/app/...")` because the SPA owns the page rendering.
-- **[`services/`](../triplifier/backend/data_descriptor/services/)** — Business logic. `IngestService` runs the Triplifier and writes to GraphDB; `RdfStoreService` is the higher-level wrapper around the repository; `ShareService` does export and mock-data generation; etc. Services are the right place to add new behaviour — they're the layer the unit tests exercise most heavily.
-- **[`repositories/`](../triplifier/backend/data_descriptor/repositories/)** — `RdfStoreRepository` owns the actual HTTP calls to GraphDB's REST API; `query_builder.py` constructs the SPARQL strings. Anything that touches `requests.post("http://rdf-store:7200/...")` belongs here.
-- **`session_cache`** — A module-global instance of the `Cache` class in [`data_descriptor_main.py`](../triplifier/backend/data_descriptor/data_descriptor_main.py) (line 70, instantiated at line 140). Holds the current user's in-flight state: the loaded CSV, the JSON-LD mapping under construction, the list of variables, etc. It's process-local, so the app is **not** safe to scale horizontally without changes.
+- **[`controllers/`](../backend/flyover/controllers/)** — One Flask Blueprint per workflow step (`ingest_bp`, `describe_bp`, `annotate_bp`, `share_bp`). Each route does HTTP parsing only — pulls JSON or form data, calls a service, packages the response. Many landing routes are now just `redirect("/...")` because the SPA owns the page rendering.
+- **[`services/`](../backend/flyover/services/)** — Business logic. `IngestService` runs the Triplifier and writes to GraphDB; `RdfStoreService` is the higher-level wrapper around the repository; `ShareService` does export and mock-data generation; etc. Services are the right place to add new behaviour — they're the layer the unit tests exercise most heavily.
+- **[`repositories/`](../backend/flyover/repositories/)** — `RdfStoreRepository` owns the actual HTTP calls to GraphDB's REST API; `query_builder.py` constructs the SPARQL strings. Anything that touches `requests.post("http://rdf-store:7200/...")` belongs here.
+- **`session_cache`** — A module-global instance of the `Cache` class in [`main.py`](../backend/flyover/main.py) (line 70, instantiated at line 140). Holds the current user's in-flight state: the loaded CSV, the JSON-LD mapping under construction, the list of variables, etc. It's process-local, so the app is **not** safe to scale horizontally without changes.
 
 If you're hunting a bug, work from the outside in: controller → service → repository. The controller usually just hands the request body to the service.
 
@@ -106,7 +106,7 @@ The Flask backend learns which repository to use from the env var `FLYOVER_REPOS
 
 JSON-LD is JSON with one extra key: `@context`. The context maps every other key in the document to a URI, so the same document is both **valid JSON** (parseable by anything) and **an RDF graph** (every key:value becomes a triple). It's how Flyover stores semantic mappings without forcing users to think in triples.
 
-Here's a stripped-down example pulled from [`tests/conftest.py::sample_jsonld_mapping`](../triplifier/backend/data_descriptor/tests/conftest.py):
+Here's a stripped-down example pulled from [`tests/conftest.py::sample_jsonld_mapping`](../backend/flyover/tests/conftest.py):
 
 ```jsonc
 {
