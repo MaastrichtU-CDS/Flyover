@@ -15,10 +15,17 @@ Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code
 
 ## Running tests locally
 
+The repo ships a [`justfile`](../justfile) with recipes for everything below. `just --list` shows the menu; the shortest form of each command is `just test-*`. If you don't have just (`cargo install just`, `brew install just`, or `apt install just` on Ubuntu 22.10+), the raw commands underneath each recipe are shown in the sections below.
+
 ### Backend (pytest)
 
 ```bash
-# from the repo root; uses uv to spin up an ephemeral env
+# with just
+just test-backend              # unit + integration
+just test-backend-unit         # unit only — the fast loop
+just test-backend-integration  # integration only — loaders + validator against example_data
+
+# raw (what just runs under the hood)
 cd backend/flyover
 uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock \
   python -m pytest tests/unit/ -q
@@ -34,6 +41,10 @@ A few practical notes about the layout:
 ### Frontend unit (Vitest)
 
 ```bash
+# with just
+just test-frontend           # one-shot
+
+# raw
 cd frontend
 npm install                  # first time only
 npm run test:unit            # one-shot
@@ -47,20 +58,16 @@ Vitest runs in [`happy-dom`](https://github.com/capricorn86/happy-dom) — a lig
 Playwright assumes the stack is **already running** on `http://localhost:5000`. The Playwright config doesn't auto-start anything.
 
 ```bash
-# 1. install browsers once
+# with just (handles stack up/down + Playwright in one go)
+just test-e2e                # smoke spec (~30s)
+just test-e2e-full           # full suite (a few minutes)
+
+# raw — useful if you're iterating on specs and don't want the stack restarted each time
 cd frontend
-npm run test:e2e:install     # downloads chromium ~150 MB
-
-# 2. bring up the test stack (tmpfs GraphDB + Flask)
+npm run test:e2e:install     # downloads chromium ~150 MB (once)
 ../scripts/start-test-stack.sh
-
-# 3. run the smoke spec (fast — ~30s)
-npx playwright test tests/e2e/smoke.spec.js --reporter=line
-
-# 4. or run the whole suite (a few minutes)
-npm run test:e2e
-
-# 5. teardown
+npx playwright test tests/e2e/smoke.spec.js --reporter=line   # one spec
+npm run test:e2e                                              # all specs
 docker compose -f ../docker-compose.yml -f ../docker-compose.test.yml down -v
 ```
 

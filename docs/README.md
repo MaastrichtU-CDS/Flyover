@@ -10,6 +10,10 @@ Read these in order if you're new:
 
 Each doc ends with a **Learn more** section linking to the canonical guides for the tools used (Vue, Vite, Pinia, Playwright, Vitest, pytest, json-ld.org, etc.). If a concept here is new to you, those are the rabbit holes.
 
+## Task runner
+
+Common workflows are recipes in the repo's [`justfile`](../justfile). Run `just --list` (after `cargo install just`, `brew install just`, or `apt install just` on Ubuntu 22.10+) to see everything — dev stack, tests, lint/format, build. The frontend/testing docs reference recipes inline (e.g., `just test-backend-unit`) but always include the raw command underneath, so working without `just` is fine.
+
 ## Conventions in this docs/ folder
 
 - Diagrams are [Mermaid](https://mermaid.js.org/) and render natively in GitHub's Markdown preview.

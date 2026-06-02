@@ -75,16 +75,18 @@ flowchart TD
 Two processes, side by side.
 
 ```bash
-# terminal 1 — Flask backend (Docker is easiest; or run uv directly)
-docker compose up -d flyover      # or: cd backend/flyover && uv run python -m flyover.main
+# terminal 1 — backend with hot-reload (Flask --reload + bind-mount)
+just dev
+# (or raw: docker compose -f docker-compose.yml -f docker-compose.dev.yml up)
 
 # terminal 2 — Vite dev server with HMR
-cd frontend
-npm install
-npm run dev                       # serves the SPA at http://localhost:5173/
+just dev-frontend
+# (or raw: cd frontend && npm install && npm run dev)
 ```
 
-Open `http://localhost:5173/`. The Vite dev server has HMR (hot module replacement): edit a `.vue` file and the browser re-renders without losing component state.
+The backend stack is the [`docker-compose.dev.yml`](../docker-compose.dev.yml) overlay — bind-mounts `backend/flyover/` into the container and runs Flask's dev server with `--reload`, so Python edits respawn in ~1s. Vite at `:5173` proxies API paths through to Flask on `:5000`, so the two halves talk to each other transparently.
+
+Open `http://localhost:5173/` — **not** `:5000`. Only `:5173` has HMR. The Vite dev server has HMR (hot module replacement): edit a `.vue` file and the browser re-renders without losing component state.
 
 **Why does the SPA talk to Flask in dev mode?** Because the dev server is a different port (`5173`), normally the browser would block API calls to `5000` as cross-origin. [`vite.config.js`](../frontend/vite.config.js) avoids that by proxying a curated list of paths through the dev server itself:
 
