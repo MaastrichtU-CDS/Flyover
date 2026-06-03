@@ -10,8 +10,25 @@ function openDb() {
   if (dbPromise) return dbPromise
   dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onerror = () => reject(req.error)
-    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => {
+      dbPromise = null
+      reject(req.error)
+    }
+    req.onsuccess = () => {
+      const db = req.result
+      // If the DB is deleted or upgraded from another tab — or from DevTools
+      // — the browser fires versionchange on open connections. Close ours so
+      // the deletion isn't blocked, and drop the cache so the next openDb
+      // creates a fresh connection.
+      db.onversionchange = () => {
+        db.close()
+        dbPromise = null
+      }
+      db.onclose = () => {
+        dbPromise = null
+      }
+      resolve(db)
+    }
     req.onupgradeneeded = (e) => {
       const db = e.target.result
       if (!db.objectStoreNames.contains('variables')) {
@@ -31,10 +48,33 @@ function openDb() {
   return dbPromise
 }
 
-async function tx(storeName, mode, fn) {
-  const db = await openDb()
+function startTransaction(db, storeName, mode) {
   return new Promise((resolve, reject) => {
-    const t = db.transaction([storeName], mode)
+    let t
+    try {
+      t = db.transaction([storeName], mode)
+    } catch (err) {
+      reject(err)
+      return
+    }
+    resolve(t)
+  })
+}
+
+async function tx(storeName, mode, fn) {
+  let db = await openDb()
+  let t
+  try {
+    t = await startTransaction(db, storeName, mode)
+  } catch (err) {
+    // Likely InvalidStateError because the cached connection was closed by a
+    // versionchange we didn't observe (e.g., the user deleted the IDB from
+    // DevTools). Drop the cache and re-open once.
+    dbPromise = null
+    db = await openDb()
+    t = await startTransaction(db, storeName, mode)
+  }
+  return new Promise((resolve, reject) => {
     const store = t.objectStore(storeName)
     const result = fn(store)
     t.oncomplete = () => resolve(result?.result ?? result)
