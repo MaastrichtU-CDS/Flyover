@@ -16,7 +16,7 @@ const ENGLISH_CSV = path.resolve(
 // would also work but adds churn that's not what we're verifying here.
 async function seedSemanticMap(page, mapping) {
   // Visit the SPA first so the IndexedDB origin matches.
-  await page.goto('/app/')
+  await page.goto('/')
   await page.evaluate(async (data) => {
     const dbi = await new Promise((resolve, reject) => {
       const req = indexedDB.open('FlyoverDB', 2)
@@ -47,7 +47,7 @@ test.describe('Annotate flow', () => {
 
   test('annotate landing page renders without console errors', async ({ page }) => {
     const errors = watchConsoleErrors(page)
-    await page.goto('/app/annotate')
+    await page.goto('/annotate')
     await expect(page.locator('h1').first()).toContainText(/Semantic Annotation/)
     expect(errors).toEqual([])
   })
@@ -59,7 +59,7 @@ test.describe('Annotate flow', () => {
     const mapping = JSON.parse(await fs.readFile(DEFAULT_MAPPING_JSONLD, 'utf8'))
     await seedSemanticMap(page, mapping)
 
-    await page.goto('/app/annotate/review')
+    await page.goto('/annotate/review')
     await expect(page.locator('h1').first()).toContainText(/Review Annotation Data/)
 
     // Either a "Start Annotation" button or a "No semantic map" warning will
@@ -86,7 +86,7 @@ test.describe('Annotate flow', () => {
     await runIngestFlow(page)
     const mapping = JSON.parse(await fs.readFile(DEFAULT_MAPPING_JSONLD, 'utf8'))
     await seedSemanticMap(page, mapping)
-    await page.goto('/app/annotate/review')
+    await page.goto('/annotate/review')
 
     const startBtn = page.getByRole('button', { name: /Start Annotation/i })
     await expect(startBtn).toBeVisible({ timeout: 15_000 })
@@ -95,6 +95,6 @@ test.describe('Annotate flow', () => {
     // Wait long enough for the two-fetch sequence to attempt-and-fail.
     await page.waitForTimeout(3_000)
     // We should NOT have navigated to /annotate/verify.
-    await expect(page).toHaveURL(/\/app\/annotate\/review/)
+    await expect(page).toHaveURL(/\/annotate\/review/)
   })
 })

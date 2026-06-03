@@ -4,17 +4,17 @@ import { test, expect } from '@playwright/test'
 // against the real Flask + GraphDB stack.
 
 const ROUTES = [
-  { path: '/app/', heading: /Welcome to Flyover/ },
-  { path: '/app/ingest', heading: /Ingest your data/ },
-  { path: '/app/describe', heading: /(Data submission finalised|No Data Found)/ },
-  { path: '/app/describe/variables', heading: /Describe your data/ },
-  { path: '/app/describe/variable-details', heading: /Describe categories and units/ },
-  { path: '/app/annotate', heading: /Semantic Annotation/ },
-  { path: '/app/annotate/review', heading: /Review Annotation Data/ },
-  { path: '/app/annotate/verify', heading: /Annotation Verification/ },
-  { path: '/app/share', heading: /Share/ },
-  { path: '/app/share/mock', heading: /Generate Mock Data/ },
-  { path: '/app/share/publish', heading: /Publish Your Data/ },
+  { path: '/', heading: /Welcome to Flyover/ },
+  { path: '/ingest', heading: /Ingest your data/ },
+  { path: '/describe', heading: /(Data submission finalised|No Data Found)/ },
+  { path: '/describe/variables', heading: /Describe your data/ },
+  { path: '/describe/variable-details', heading: /Describe categories and units/ },
+  { path: '/annotate', heading: /Semantic Annotation/ },
+  { path: '/annotate/review', heading: /Review Annotation Data/ },
+  { path: '/annotate/verify', heading: /Annotation Verification/ },
+  { path: '/share', heading: /Share/ },
+  { path: '/share/mock', heading: /Generate Mock Data/ },
+  { path: '/share/publish', heading: /Publish Your Data/ },
 ]
 
 test.describe('SPA routes render', () => {
@@ -40,11 +40,9 @@ test.describe('SPA routes render', () => {
 
 test('legacy URLs redirect into the SPA', async ({ page }) => {
   const cases = [
-    { from: '/', to: '/app/' },
-    { from: '/ingest', to: '/app/ingest' },
-    { from: '/describe_landing', to: '/app/describe' },
-    { from: '/annotation-review', to: '/app/annotate/review' },
-    { from: '/share_publish', to: '/app/share/publish' },
+    { from: '/describe_landing', to: '/describe' },
+    { from: '/annotation-review', to: '/annotate/review' },
+    { from: '/share_publish', to: '/share/publish' },
   ]
   for (const { from, to } of cases) {
     await page.goto(from)
@@ -53,8 +51,8 @@ test('legacy URLs redirect into the SPA', async ({ page }) => {
 })
 
 test('navigation between SPA pages works without full reload', async ({ page }) => {
-  await page.goto('/app/')
+  await page.goto('/')
   await page.getByRole('link', { name: /Ingest/ }).first().click()
-  await expect(page).toHaveURL(/\/app\/ingest$/)
+  await expect(page).toHaveURL(/\/ingest$/)
   await expect(page.locator('h1').first()).toContainText(/Ingest your data/)
 })

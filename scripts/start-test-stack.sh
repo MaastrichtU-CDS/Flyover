@@ -11,7 +11,7 @@ docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
 echo "Waiting for stack to become ready..."
 for i in $(seq 1 60); do
   if curl -fsS http://localhost:7200/rest/repositories 2>/dev/null | grep -q userRepo \
-     && curl -fsS http://localhost:5000/app/ -o /dev/null 2>&1; then
+     && curl -fsS http://localhost:5000/ -o /dev/null 2>&1; then
     echo "Stack ready after ${i} attempts"
     exit 0
   fi

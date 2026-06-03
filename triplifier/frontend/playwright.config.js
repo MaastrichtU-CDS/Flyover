@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 // Tests assume `docker compose up` is running so http://localhost:5000
-// serves the Flask app and the SPA at /app/.
+// serves the Flask app and the SPA at /.
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,

@@ -30,12 +30,12 @@ def get_app_context() -> dict:
 
 @describe_bp.route("/describe_landing")
 def describe_landing():
-    return redirect("/app/describe")
+    return redirect("/describe")
 
 
 @describe_bp.route("/describe_variables", methods=["GET"])
 def describe_variables_get():
-    return redirect("/app/describe/variables")
+    return redirect("/describe/variables")
 
 
 @describe_bp.route("/api/v1/describe-variables-state", methods=["GET"])
@@ -139,14 +139,14 @@ def retrieve_descriptive_info():
             del session_cache.DescriptiveInfoDetails[database]
 
     if session_cache.DescriptiveInfoDetails:
-        return redirect("/app/describe/variable-details")
+        return redirect("/describe/variable-details")
     else:
-        return redirect("/app/share")
+        return redirect("/share")
 
 
 @describe_bp.route("/describe_variable_details")
 def describe_variable_details():
-    return redirect("/app/describe/variable-details")
+    return redirect("/describe/variable-details")
 
 
 def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
@@ -265,4 +265,4 @@ def retrieve_detailed_descriptive_info():
                 variable, database, updated_info.get(variable, {})
             )
 
-    return redirect("/app/annotate/review")
+    return redirect("/annotate/review")

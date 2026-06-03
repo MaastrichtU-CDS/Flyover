@@ -149,14 +149,14 @@ app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
 
 
-# Serve the built Vue SPA under /app/. The Vite build output is copied into
-# data_descriptor/spa/ by the Dockerfile; in non-Docker dev the directory may
-# not exist yet, in which case requests return 404.
+# Serve the built Vue SPA at the application root. The Vite build output is
+# copied into data_descriptor/spa/ by the Dockerfile; in non-Docker dev the
+# directory may not exist yet, in which case requests return 404.
 SPA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spa")
 
 
-@app.route("/app/")
-@app.route("/app/<path:subpath>")
+@app.route("/")
+@app.route("/<path:subpath>")
 def serve_spa(subpath: str = ""):
     if not os.path.isdir(SPA_DIR):
         abort(404)

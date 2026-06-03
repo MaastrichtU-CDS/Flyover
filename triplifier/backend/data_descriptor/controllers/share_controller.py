@@ -31,7 +31,7 @@ def get_app_context() -> dict:
 
 @share_bp.route("/share_landing")
 def share_landing():
-    return redirect("/app/share")
+    return redirect("/share")
 
 
 @share_bp.route("/downloadSemanticMap", methods=["GET"])
@@ -72,12 +72,12 @@ def favicon():
 
 @share_bp.route("/share_mock")
 def share_mock():
-    return redirect("/app/share/mock")
+    return redirect("/share/mock")
 
 
 @share_bp.route("/share_publish")
 def share_publish():
-    return redirect("/app/share/publish")
+    return redirect("/share/publish")
 
 
 @share_bp.route("/api/generate-mock-data", methods=["POST"])

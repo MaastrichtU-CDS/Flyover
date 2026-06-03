@@ -17,7 +17,7 @@ test.describe('Describe flow', () => {
 
     await page.getByRole('button', { name: /^\s*Skip\s*$/i }).click()
     await page.getByRole('button', { name: /Click here to describe the data/i }).click()
-    await page.waitForURL(/\/app\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
+    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
     await expect(page.locator('h1').first()).toContainText(/Describe your data/)
 
     // Submit is disabled until at least one column is described — this guards
@@ -33,7 +33,7 @@ test.describe('Describe flow', () => {
     // We use a fresh page; if the previous test ingested data the warning
     // won't show, but the page must still render without console errors.
     const errors = watchConsoleErrors(page)
-    await page.goto('/app/describe')
+    await page.goto('/describe')
     await expect(page.locator('h1').first()).toBeVisible()
     expect(errors).toEqual([])
   })

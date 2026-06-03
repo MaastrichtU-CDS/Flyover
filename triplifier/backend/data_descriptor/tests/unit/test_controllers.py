@@ -98,20 +98,6 @@ def _make_app(*blueprints):
 # ---------------------------------------------------------------------------
 
 
-class TestIngestControllerLanding(unittest.TestCase):
-    """Tests for the landing page route."""
-
-    def setUp(self):
-        self.app = _make_app(ingest_bp)
-        self.client = self.app.test_client()
-
-    def test_landing_redirects_to_spa(self):
-        """GET / redirects to the SPA landing page."""
-        response = self.client.get("/")
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/")
-
-
 class TestIngestControllerUploadSemanticMap(unittest.TestCase):
     """Tests for POST /upload-semantic-map."""
 
@@ -354,7 +340,7 @@ class TestShareControllerShareLanding(unittest.TestCase):
         """GET /share_landing redirects to the SPA share page."""
         response = self.client.get("/share_landing")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/share")
+        self.assertEqual(response.headers.get("Location"), "/share")
 
 
 class TestShareControllerShareMock(unittest.TestCase):
@@ -368,7 +354,7 @@ class TestShareControllerShareMock(unittest.TestCase):
         """GET /share_mock redirects to the SPA share-mock page."""
         response = self.client.get("/share_mock")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/share/mock")
+        self.assertEqual(response.headers.get("Location"), "/share/mock")
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +373,7 @@ class TestDescribeControllerLanding(unittest.TestCase):
         """GET /describe_landing redirects to the SPA describe page."""
         response = self.client.get("/describe_landing")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/describe")
+        self.assertEqual(response.headers.get("Location"), "/describe")
 
     def test_describe_landing_redirect_is_independent_of_data_state(self):
         """Redirect happens regardless of whether RDF data already exists."""
@@ -395,7 +381,7 @@ class TestDescribeControllerLanding(unittest.TestCase):
         ctx["rdf_store_service"].check_data_exists.return_value = True
         response = self.client.get("/describe_landing")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/describe")
+        self.assertEqual(response.headers.get("Location"), "/describe")
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +400,7 @@ class TestAnnotateControllerLanding(unittest.TestCase):
         """GET /annotation_landing redirects to the SPA annotate page."""
         response = self.client.get("/annotation_landing")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/annotate")
+        self.assertEqual(response.headers.get("Location"), "/annotate")
 
     def test_annotation_landing_redirect_is_independent_of_data_state(self):
         """Redirect happens regardless of whether RDF data already exists."""
@@ -422,7 +408,7 @@ class TestAnnotateControllerLanding(unittest.TestCase):
         ctx["rdf_store_service"].check_data_exists.return_value = True
         response = self.client.get("/annotation_landing")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/app/annotate")
+        self.assertEqual(response.headers.get("Location"), "/annotate")
 
 
 if __name__ == "__main__":

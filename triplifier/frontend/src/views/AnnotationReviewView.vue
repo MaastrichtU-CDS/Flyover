@@ -138,17 +138,17 @@ function showNoDataWarning(message) {
       '<strong>Cannot proceed with annotation</strong><br>' +
       message +
       '<br><br>' +
-      '<a href="/app/describe" class="btn btn-primary"><i class="fas fa-backward"></i> Go to Describe</a> ' +
-      '<a href="/app/ingest" class="btn btn-secondary"><i class="fas fa-fast-backward"></i> Go to Ingest</a> ' +
-      '<a href="/app/" class="btn btn-light"><i class="fas fa-home"></i> Return to Home</a>'
+      '<a href="/describe" class="btn btn-primary"><i class="fas fa-backward"></i> Go to Describe</a> ' +
+      '<a href="/ingest" class="btn btn-secondary"><i class="fas fa-fast-backward"></i> Go to Ingest</a> ' +
+      '<a href="/" class="btn btn-light"><i class="fas fa-home"></i> Return to Home</a>'
   } else {
     noDataMessage.value =
       '<i class="fas fa-exclamation-triangle"></i> ' +
       '<strong>No semantic map found</strong><br>' +
       'Please ensure you have completed the describe workflow and have a semantic map in your browser storage.' +
       '<br><br>' +
-      '<a href="/app/describe" class="btn btn-primary">Go to Describe</a> ' +
-      '<a href="/app/" class="btn btn-light">Return to Home</a>'
+      '<a href="/describe" class="btn btn-primary">Go to Describe</a> ' +
+      '<a href="/" class="btn btn-light">Return to Home</a>'
   }
 }
 

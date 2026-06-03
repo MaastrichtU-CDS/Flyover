@@ -38,7 +38,7 @@ def safe_remove_file(filepath: str) -> None:
 
 @annotate_bp.route("/annotation_landing")
 def annotation_landing():
-    return redirect("/app/annotate")
+    return redirect("/annotate")
 
 
 @annotate_bp.route("/upload-annotation-json", methods=["POST"])
@@ -171,7 +171,7 @@ def upload_annotation_json():
 
 @annotate_bp.route("/annotation-review")
 def annotation_review():
-    return redirect("/app/annotate/review")
+    return redirect("/annotate/review")
 
 
 @annotate_bp.route("/start-annotation", methods=["POST"])
@@ -268,7 +268,7 @@ def start_annotation():
 
 @annotate_bp.route("/annotation-verify")
 def annotation_verify():
-    return redirect("/app/annotate/verify")
+    return redirect("/annotate/verify")
 
 
 @annotate_bp.route("/api/v1/annotation-verify-state", methods=["GET"])

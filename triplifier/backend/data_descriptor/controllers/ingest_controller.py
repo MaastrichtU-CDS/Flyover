@@ -34,16 +34,6 @@ def get_app_context() -> dict:
     return ctx
 
 
-@ingest_bp.route("/")
-def landing():
-    return redirect("/app/")
-
-
-@ingest_bp.route("/ingest")
-def index():
-    return redirect("/app/ingest")
-
-
 @ingest_bp.route("/upload-semantic-map", methods=["POST"])
 def upload_semantic_map():
     """Handle semantic map file upload."""
@@ -144,7 +134,7 @@ def submit_indexeddb_semantic_map():
             {
                 "success": True,
                 "message": "Semantic map loaded from browser storage",
-                "redirect_url": "/app/annotate/review",
+                "redirect_url": "/annotate/review",
                 "statistics": result.statistics,
             }
         )
@@ -182,7 +172,7 @@ def upload_file():
     if file_type == "CSV" and csv_files:
         is_valid, error = IngestService.validate_csv_files(csv_files)
         if not is_valid:
-            return redirect(f"/app/ingest?error={error}")
+            return redirect(f"/ingest?error={error}")
 
         separator = request.form.get("csv_separator_sign", ",")
         decimal = request.form.get("csv_decimal_sign", ".")
@@ -192,7 +182,7 @@ def upload_file():
         )
 
         if error:
-            return redirect(f"/app/ingest?error={error}")
+            return redirect(f"/ingest?error={error}")
 
         session_cache.csvData = dataframes
         session_cache.csvTableNames = table_names
@@ -237,14 +227,14 @@ def upload_file():
             if file_type == "CSV" and start_background:
                 start_background(session_cache)
 
-        return redirect("/app/describe")
+        return redirect("/describe")
     else:
-        return redirect(f"/app/ingest?error=Error: {message}")
+        return redirect(f"/ingest?error=Error: {message}")
 
 
 @ingest_bp.route("/data-submission")
 def data_submission():
-    return redirect("/app/describe")
+    return redirect("/describe")
 
 
 @ingest_bp.route("/api/rdf-store-databases", methods=["GET"])

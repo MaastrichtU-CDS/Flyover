@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // This test posts a real CSV through /upload, which runs the triplifier
-// and then redirects to /app/describe on success. It mutates the running
+// and then redirects to /describe on success. It mutates the running
 // GraphDB — after running, the graph holds an extra dataset until you
 // recreate the rdf-store container or wipe ./graphdb/data/.
 
@@ -27,7 +27,7 @@ test.describe('Ingest flow', () => {
       errors.push(text)
     })
 
-    await page.goto('/app/ingest')
+    await page.goto('/ingest')
 
     // Pick CSV as the data source and select the fixture file.
     await page.locator('#CSV').check()
@@ -42,7 +42,7 @@ test.describe('Ingest flow', () => {
 
     // Submit and wait for the post-triplifier redirect into the SPA.
     await Promise.all([
-      page.waitForURL(/\/app\/describe(?:[?#].*)?$/, { timeout: 150_000 }),
+      page.waitForURL(/\/describe(?:[?#].*)?$/, { timeout: 150_000 }),
       submit.click(),
     ])
 

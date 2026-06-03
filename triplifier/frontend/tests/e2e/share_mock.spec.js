@@ -13,7 +13,7 @@ test.describe('Share-mock flow', () => {
 
   test('uploading a mapping reveals generation controls', async ({ page }) => {
     const errors = watchConsoleErrors(page)
-    await page.goto('/app/share/mock')
+    await page.goto('/share/mock')
     await expect(page.locator('h1').first()).toContainText(/Generate Mock Data/)
 
     await page.locator('input[type="file"]').first().setInputFiles(DEFAULT_MAPPING_JSONLD)
@@ -30,7 +30,7 @@ test.describe('Share-mock flow', () => {
 
   test('renders without crashing when no mapping is uploaded', async ({ page }) => {
     const errors = watchConsoleErrors(page)
-    await page.goto('/app/share/mock')
+    await page.goto('/share/mock')
     await expect(page.locator('h1').first()).toBeVisible()
     // Generation controls remain hidden without a mapping.
     await expect(page.locator('#sampleCount')).toHaveCount(0)
