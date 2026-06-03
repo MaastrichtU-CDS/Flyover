@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '@/services/api'
+import * as db from '@/lib/db'
 import { useStatusStore } from '@/stores/status'
 
 const status = useStatusStore()
@@ -31,6 +32,12 @@ onMounted(async () => {
     hasOntology.value = !!data?.exists
   } catch {
     hasOntology.value = false
+  }
+  try {
+    const row = await db.getData('metadata', 'semantic_map')
+    hasSemanticMap.value = !!row?.data
+  } catch {
+    hasSemanticMap.value = false
   }
 })
 </script>
