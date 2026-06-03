@@ -202,6 +202,66 @@ class TestValueMappingAnnotations(unittest.TestCase):
             "?component1 rdf:type db:clinical_table.tumour_location .", insert_query
         )
 
+    @patch("annotation_helper.src.miscellaneous.check_predicate")
+    @patch("annotation_helper.src.miscellaneous.materialize", False)
+    @patch("annotation_helper.src.miscellaneous.dry_run", False)
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_add_annotation_falls_back_when_reconstruction_yields_no_predicate(
+        self, mock_post, mock_check_predicate
+    ):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '{"boolean": true}'
+        mock_post.return_value = mock_response
+        mock_check_predicate.side_effect = [False, True]
+
+        annotation_data = {
+            "biological_sex": {
+                "predicate": "sio:SIO_000008",
+                "class": "ncit:C28421",
+                "local_definition": "gender",
+                "schema_reconstruction": [
+                    {
+                        "type": "class",
+                        "predicate": "sio:SIO_000235",
+                        "class": "mesh:D000091569",
+                        "class_label": "demographicClass",
+                        "aesthetic_label": "Demographic",
+                        "placement": "before",
+                    }
+                ],
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = add_annotation(
+                endpoint="http://localhost:7200/repositories/test/statements",
+                database="lung1",
+                prefixes="\n".join(
+                    [
+                        "PREFIX sio: <http://semanticscience.org/resource/>",
+                        "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>",
+                        "PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+                    ]
+                ),
+                annotation_data=annotation_data,
+                path=tmpdir,
+                save_query=False,
+            )
+
+        self.assertTrue(result["biological_sex"]["success"])
+        self.assertEqual(mock_check_predicate.call_count, 2)
+
+        update_queries = [
+            call[1]["data"]["update"]
+            for call in mock_post.call_args_list
+            if isinstance(call[1].get("data"), dict)
+            and "update" in call[1]["data"]
+        ]
+        self.assertTrue(
+            any("?tablerow sio:SIO_000008 ?component1." in q for q in update_queries)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

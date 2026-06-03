@@ -57,6 +57,8 @@ services:
     hostname: "data.local"
     networks:
       - proxynet
+    # volumes:
+    #   - ./triplifier/data_descriptor/annotation_helper/src/sparql_templates/template_materialize_value_mapping.rq:/app/data_descriptor/annotation_helper/src/sparql_templates/template_materialize_value_mapping.rq
     container_name: triplifier
 
 networks:

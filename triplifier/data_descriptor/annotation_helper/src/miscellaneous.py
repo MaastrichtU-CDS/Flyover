@@ -445,6 +445,7 @@ def add_annotation(
         core_query = ""
         query = ""
         annotation_success = False
+        predicate_inserted = False
 
         if construction_success:
             core_response, core_query = _add_core_annotation(
@@ -474,18 +475,58 @@ def add_annotation(
 
             # check whether the annotation was added successfully
             if dry_run is False and 200 <= response.status_code < 300:
-                annotation_success = check_predicate(
+                predicate_inserted = check_predicate(
                     endpoint=endpoint,
                     predicate=predicate,
                     variable=generic_category,
                     response=response,
                     prefixes=prefixes,
                 )
+
+                # If reconstruction-specific matching inserts no row-level predicate edges,
+                # fall back to the base variable annotation pattern so variable predicates
+                # (e.g., sio:SIO_000008) are still materialized from source data.
+                if predicate_inserted is False and components > 0:
+                    logging.info(
+                        f"Falling back to base annotation query for {generic_category} "
+                        "because reconstruction matching did not yield predicate triples."
+                    )
+                    fallback_response, fallback_query = _add_annotation(
+                        endpoint=endpoint,
+                        variable=generic_category,
+                        database_name=database,
+                        prefixes=prefixes,
+                        local_definition=local_definition,
+                        predicate=predicate,
+                        class_object=class_object,
+                        classes_insertion_before="",
+                        classes_insertion_after="",
+                        classes_where_before="",
+                        classes_where_after="",
+                        nodes_insertion="",
+                        components=0,
+                    )
+
+                    if (
+                        fallback_response is not None
+                        and 200 <= fallback_response.status_code < 300
+                    ):
+                        predicate_inserted = check_predicate(
+                            endpoint=endpoint,
+                            predicate=predicate,
+                            variable=generic_category,
+                            response=fallback_response,
+                            prefixes=prefixes,
+                        )
+                        query = f"{query}\n\n{fallback_query}"
+                        response = fallback_response
             else:
-                annotation_success = False
+                predicate_inserted = False
+
+            annotation_success = predicate_inserted
 
             if core_response is not None and 200 <= core_response.status_code < 300:
-                annotation_success = True
+                annotation_success = annotation_success or dry_run is True
 
             if dry_run is True:
                 annotation_success = True
@@ -1596,11 +1637,14 @@ def materialize_inferences(endpoint, database_name):
     This generates explicit rdf:type statements that would otherwise
     require a reasoner to infer.
 
-    Two specific materializations are performed:
+     Three specific materializations are performed:
     1. owl:equivalentClass → rdf:type: for each equivalentClass relationship,
        instances of the local class also get rdf:type for the equivalent class.
     2. template_mapping.rq ?term → rdf:type: for value mapping terms defined
        with owl:equivalentClass restrictions, matching instances get rdf:type ?term.
+     3. schema reconstruction predicates: for explicit predicate edges created in
+         the annotation graph between instance resources, those edges are copied
+         to the materialized graph.
 
     :param str endpoint: endpoint to post the materialization queries to
     :param str database_name: database name used to construct graph URIs
@@ -1648,7 +1692,25 @@ def materialize_inferences(endpoint, database_name):
             f"HTTP status: {status}."
         )
 
-    return eq_response, eq_query, vm_response, vm_query
+    # materialize schema reconstruction predicate edges
+    sr_response, sr_query = _materialize_schema_reconstruction_predicates(
+        endpoint=endpoint,
+        annotation_graph_uri=annotation_graph_uri,
+        materialized_graph_uri=materialized_graph_uri,
+    )
+
+    if sr_response is not None and 200 <= sr_response.status_code < 300:
+        logging.info(
+            "Successfully materialized schema reconstruction predicate edges."
+        )
+    else:
+        status = sr_response.status_code if sr_response is not None else "N/A"
+        logging.warning(
+            f"Materialization of schema reconstruction predicate edges may have failed. "
+            f"HTTP status: {status}."
+        )
+
+    return eq_response, eq_query, vm_response, vm_query, sr_response, sr_query
 
 
 def _materialize_equivalent_class(
@@ -1709,6 +1771,42 @@ def _materialize_value_mapping(
     if not isinstance(template_file, str):
         template_file = os.path.join(
             template_dir, "template_materialize_value_mapping.rq"
+        )
+
+    query = read_file(template_file)
+
+    replacements = {
+        _annotation_graph_uri: annotation_graph_uri,
+        _materialized_graph_uri: materialized_graph_uri,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def _materialize_schema_reconstruction_predicates(
+    endpoint, annotation_graph_uri, materialized_graph_uri, template_file=None
+):
+    """
+    Materialize explicit schema-reconstruction predicate edges.
+    This copies instance-level predicate edges from the annotation graph into
+    the materialized graph while excluding ontology/meta predicates.
+
+    :param str endpoint: endpoint to post the query to
+    :param str annotation_graph_uri: URI of the annotation graph to read from
+    :param str materialized_graph_uri: URI of the materialized graph to write to
+    :param str template_file: optional override for the template file path
+    :return: tuple of (response, query)
+    """
+    logging.debug("Materializing schema reconstruction predicate edges.")
+
+    if not isinstance(template_file, str):
+        template_file = os.path.join(
+            template_dir, "template_materialize_schema_reconstruction_predicates.rq"
         )
 
     query = read_file(template_file)

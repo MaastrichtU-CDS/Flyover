@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from annotation_helper.src.miscellaneous import (
     materialize_inferences,
     _materialize_equivalent_class,
+    _materialize_schema_reconstruction_predicates,
     _materialize_value_mapping,
     read_file,
 )
@@ -165,7 +166,7 @@ class TestMaterializeValueMapping(unittest.TestCase):
         )
 
         self.assertIn("?term", query)
-        self.assertIn("?instance rdf:type ?term", query)
+        self.assertIn("?valueCell rdf:type ?term", query)
         self.assertIn("rdfs:subClassOf", query)
         self.assertIn("owl:intersectionOf", query)
         self.assertIn("GRAPH ?dataGraph", query)
@@ -229,17 +230,84 @@ class TestMaterializeValueMapping(unittest.TestCase):
         self.assertIn("http://materialized.local/testdb/", insert_section)
 
 
+class TestMaterializeSchemaReconstructionPredicates(unittest.TestCase):
+    """Test schema reconstruction predicate-edge materialization query generation."""
+
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_query_replaces_graph_uris(self, mock_post):
+        """Test that annotation and materialized graph URIs are correctly substituted."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        response, query = _materialize_schema_reconstruction_predicates(
+            endpoint="http://localhost:7200/repositories/test/statements",
+            annotation_graph_uri="http://annotation.local/testdb/",
+            materialized_graph_uri="http://materialized.local/testdb/",
+        )
+
+        self.assertIn("http://annotation.local/testdb/", query)
+        self.assertIn("http://materialized.local/testdb/", query)
+        self.assertNotIn("ANNOTATION_GRAPH_URI", query)
+        self.assertNotIn("MATERIALIZED_GRAPH_URI", query)
+
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_query_targets_instance_edges_and_excludes_meta_predicates(self, mock_post):
+        """Test that query keeps instance edges and excludes schema/meta predicates."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        response, query = _materialize_schema_reconstruction_predicates(
+            endpoint="http://localhost:7200/repositories/test/statements",
+            annotation_graph_uri="http://annotation.local/testdb/",
+            materialized_graph_uri="http://materialized.local/testdb/",
+        )
+
+        self.assertIn("?subject ?predicate ?object .", query)
+        self.assertIn("FILTER(isIRI(?subject) && isIRI(?object))", query)
+        self.assertIn(
+            'FILTER(STRSTARTS(STR(?subject), "http://data.local/"))',
+            query,
+        )
+        self.assertIn(
+            'FILTER(!STRSTARTS(STR(?subject), "http://data.local/rdf/ontology/"))',
+            query,
+        )
+        self.assertIn("FILTER(?predicate != rdf:type)", query)
+        self.assertIn("FILTER(?predicate != owl:equivalentClass)", query)
+        self.assertIn("FILTER(?predicate != dbo:has_column)", query)
+
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_query_inserts_into_materialized_graph(self, mock_post):
+        """Test that INSERT targets the materialized graph."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        response, query = _materialize_schema_reconstruction_predicates(
+            endpoint="http://localhost:7200/repositories/test/statements",
+            annotation_graph_uri="http://annotation.local/testdb/",
+            materialized_graph_uri="http://materialized.local/testdb/",
+        )
+
+        insert_section = query.split("WHERE")[0]
+        self.assertIn("http://materialized.local/testdb/", insert_section)
+
+
 class TestMaterializeInferences(unittest.TestCase):
     """Test the main materialize_inferences function."""
 
+    @patch("annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates")
     @patch("annotation_helper.src.miscellaneous._materialize_value_mapping")
     @patch("annotation_helper.src.miscellaneous._materialize_equivalent_class")
-    def test_calls_both_materializations(self, mock_eq_class, mock_val_map):
-        """Test that both materialization queries are executed."""
+    def test_calls_all_materializations(self, mock_eq_class, mock_val_map, mock_sr):
+        """Test that all materialization queries are executed."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_eq_class.return_value = (mock_response, "eq_query")
         mock_val_map.return_value = (mock_response, "vm_query")
+        mock_sr.return_value = (mock_response, "sr_query")
 
         materialize_inferences(
             endpoint="http://localhost:7200/repositories/test/statements",
@@ -256,15 +324,22 @@ class TestMaterializeInferences(unittest.TestCase):
             annotation_graph_uri="http://annotation.local/testdb/",
             materialized_graph_uri="http://materialized.local/testdb/",
         )
+        mock_sr.assert_called_once_with(
+            endpoint="http://localhost:7200/repositories/test/statements",
+            annotation_graph_uri="http://annotation.local/testdb/",
+            materialized_graph_uri="http://materialized.local/testdb/",
+        )
 
+    @patch("annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates")
     @patch("annotation_helper.src.miscellaneous._materialize_value_mapping")
     @patch("annotation_helper.src.miscellaneous._materialize_equivalent_class")
-    def test_constructs_correct_graph_uris(self, mock_eq_class, mock_val_map):
+    def test_constructs_correct_graph_uris(self, mock_eq_class, mock_val_map, mock_sr):
         """Test that annotation and materialized graph URIs are correctly constructed."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_eq_class.return_value = (mock_response, "eq_query")
         mock_val_map.return_value = (mock_response, "vm_query")
+        mock_sr.return_value = (mock_response, "sr_query")
 
         materialize_inferences(
             endpoint="http://localhost:7200/repositories/test/statements",
@@ -281,19 +356,32 @@ class TestMaterializeInferences(unittest.TestCase):
             eq_call_kwargs["materialized_graph_uri"],
             "http://materialized.local/my_database/",
         )
+        sr_call_kwargs = mock_sr.call_args[1]
+        self.assertEqual(
+            sr_call_kwargs["annotation_graph_uri"],
+            "http://annotation.local/my_database/",
+        )
+        self.assertEqual(
+            sr_call_kwargs["materialized_graph_uri"],
+            "http://materialized.local/my_database/",
+        )
 
+    @patch("annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates")
     @patch("annotation_helper.src.miscellaneous._materialize_value_mapping")
     @patch("annotation_helper.src.miscellaneous._materialize_equivalent_class")
-    def test_returns_responses_and_queries(self, mock_eq_class, mock_val_map):
+    def test_returns_responses_and_queries(self, mock_eq_class, mock_val_map, mock_sr):
         """Test that the function returns all responses and queries."""
         mock_eq_response = MagicMock()
         mock_eq_response.status_code = 200
         mock_val_response = MagicMock()
         mock_val_response.status_code = 200
+        mock_sr_response = MagicMock()
+        mock_sr_response.status_code = 200
         mock_eq_class.return_value = (mock_eq_response, "eq_query")
         mock_val_map.return_value = (mock_val_response, "vm_query")
+        mock_sr.return_value = (mock_sr_response, "sr_query")
 
-        eq_resp, eq_q, vm_resp, vm_q = materialize_inferences(
+        eq_resp, eq_q, vm_resp, vm_q, sr_resp, sr_q = materialize_inferences(
             endpoint="http://localhost:7200/repositories/test/statements",
             database_name="testdb",
         )
@@ -302,6 +390,8 @@ class TestMaterializeInferences(unittest.TestCase):
         self.assertEqual(eq_q, "eq_query")
         self.assertEqual(vm_resp, mock_val_response)
         self.assertEqual(vm_q, "vm_query")
+        self.assertEqual(sr_resp, mock_sr_response)
+        self.assertEqual(sr_q, "sr_query")
 
 
 class TestMaterializeConfigFlag(unittest.TestCase):
