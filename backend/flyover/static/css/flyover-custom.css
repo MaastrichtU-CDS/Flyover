@@ -970,10 +970,9 @@ body {
 
 .toggle-content {
     display: none;
-    width: 100%;
+    box-sizing: border-box;
     transition: max-height 0.2s ease-out;
     max-height: 0;
-    overflow-x: hidden;
     overflow-y: auto;
 }
 
