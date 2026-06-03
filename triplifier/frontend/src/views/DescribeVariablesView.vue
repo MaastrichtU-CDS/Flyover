@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
@@ -203,9 +203,25 @@ function startLoadingAnimation() {
   }, 1000)
 }
 
+function resetSubmitState() {
+  isSubmitting.value = false
+  loadingIconIsPen.value = false
+  if (_loadingInterval) {
+    clearInterval(_loadingInterval)
+    _loadingInterval = null
+  }
+}
+
+// The form does a native POST → server redirect → SPA mounts variable-details.
+// When the user clicks Back, the browser restores this page from BFCache with
+// isSubmitting still true and the interval still ticking — reset on restore.
+function onPageShow(e) {
+  if (e.persisted) resetSubmitState()
+}
+
 function onFormSubmit() {
   startLoadingAnimation()
-  // native form POSTs to /units → redirects to /describe_variable_details (legacy)
+  // native form POSTs to /units → redirects to /describe/variable-details
 }
 
 async function loadAndApplySemanticMapping() {
@@ -224,6 +240,7 @@ async function loadAndApplySemanticMapping() {
 }
 
 onMounted(async () => {
+  window.addEventListener('pageshow', onPageShow)
   try {
     const { data } = await api.get('/api/v1/describe-variables-state')
     columnInfoData.value = data.column_info || {}
@@ -251,6 +268,11 @@ onMounted(async () => {
   preselectedDescriptions.value = ps.preselectedDescriptions || {}
   preselectedDatatypes.value = ps.preselectedDatatypes || {}
   descriptionToDatatype.value = ps.descriptionToDatatype || {}
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pageshow', onPageShow)
+  if (_loadingInterval) clearInterval(_loadingInterval)
 })
 </script>
 
@@ -345,7 +367,7 @@ onMounted(async () => {
                     placeholder="If other, please specify"
                     :disabled="getDescriptionValue(dbName, item) !== 'Other'"
                     :value="getCommentValue(dbName, item)"
-                    @change="onCommentChange(dbName, item, $event)"
+                    @input="onCommentChange(dbName, item, $event)"
                   >
 
                   <div class="datatype-container">
