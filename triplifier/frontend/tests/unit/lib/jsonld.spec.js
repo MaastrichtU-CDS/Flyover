@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+vi.mock('@/lib/db', () => ({
+  saveData: vi.fn(async () => {}),
+  getData: vi.fn(async () => null),
+}))
+
 import {
   formatToTitleCase,
   formatToSnakeCase,
@@ -7,6 +13,9 @@ import {
   normalizeLocalMappings,
   forEachColumn,
   findColumnForVariable,
+  setMapping,
+  getMapping,
+  updateCategoryMapping,
 } from '@/lib/jsonld.js'
 
 describe('formatToTitleCase', () => {
@@ -155,5 +164,62 @@ describe('findColumnForVariable', () => {
   it('filters by matchingDatabase using csv-equivalence', () => {
     expect(findColumnForVariable(databases, 'age', null, 'data')?.colData).toBeTruthy()
     expect(findColumnForVariable(databases, 'age', null, 'unrelated')).toBeNull()
+  })
+})
+
+describe('updateCategoryMapping', () => {
+  function freshMapping() {
+    return {
+      databases: {
+        db1: {
+          name: 'data.csv',
+          tables: {
+            t1: {
+              sourceFile: 'data.csv',
+              columns: {
+                sex: {
+                  mapsTo: 'schema:variable/sex',
+                  localColumn: 'sex',
+                  localMappings: {},
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+  }
+
+  beforeEach(() => {
+    setMapping(freshMapping())
+  })
+
+  it('writes the new term key for a valid selection', async () => {
+    await updateCategoryMapping('data', 'sex', 'sex', 'M', 'Male', null)
+    const cols = getMapping().databases.db1.tables.t1.columns.sex
+    expect(cols.localMappings.male).toEqual(['M'])
+  })
+
+  it('does not write "other" when selectedOption is "Other"', async () => {
+    await updateCategoryMapping('data', 'sex', 'sex', 'unknown', 'Other', null)
+    const cols = getMapping().databases.db1.tables.t1.columns.sex
+    expect(cols.localMappings.other).toBeUndefined()
+    expect(Object.keys(cols.localMappings)).toEqual([])
+  })
+
+  it('still strips the previous term when switching from a real term to "Other"', async () => {
+    await updateCategoryMapping('data', 'sex', 'sex', 'M', 'Male', null)
+    await updateCategoryMapping('data', 'sex', 'sex', 'M', 'Other', 'Male')
+    const cols = getMapping().databases.db1.tables.t1.columns.sex
+    expect(cols.localMappings.male).toBeUndefined()
+    expect(cols.localMappings.other).toBeUndefined()
+  })
+
+  it('writes the new term when switching from "Other" to a real term', async () => {
+    await updateCategoryMapping('data', 'sex', 'sex', 'M', 'Other', null)
+    await updateCategoryMapping('data', 'sex', 'sex', 'M', 'Male', 'Other')
+    const cols = getMapping().databases.db1.tables.t1.columns.sex
+    expect(cols.localMappings.male).toEqual(['M'])
+    expect(cols.localMappings.other).toBeUndefined()
   })
 })

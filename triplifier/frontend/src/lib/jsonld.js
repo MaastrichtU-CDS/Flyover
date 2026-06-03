@@ -230,7 +230,11 @@ export async function updateCategoryMapping(
     }
   }
 
-  if (termKey) {
+  // "Other" is the catch-all option for values the schema doesn't define a
+  // term for; the user's free-text override is captured separately as a
+  // comment in descriptive_info. Skip the write so we don't create a bogus
+  // "other" localMappings key that the schema validator would reject.
+  if (termKey && selectedOption !== 'Other') {
     if (!colData.localMappings[termKey]) colData.localMappings[termKey] = []
     else if (!Array.isArray(colData.localMappings[termKey])) {
       colData.localMappings[termKey] = [colData.localMappings[termKey]]
