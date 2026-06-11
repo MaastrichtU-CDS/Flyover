@@ -81,8 +81,12 @@ const selectedDescriptionsByDb = computed(() => {
   }
   for (const [key, desc] of Object.entries(preselectedDescriptions.value)) {
     if (!desc || desc === 'Other') continue
-    const dbName = key.split('_')[0]
     if (formStateCache[key]) continue
+    // Keys are "${dbName}_${localColumn}" and dbName can itself contain
+    // underscores (e.g. "synthetic_dutch_150"), so naive splitting truncates
+    // the name. Look up the actual dbName by prefix-matching.
+    const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    if (!dbName) continue
     if (!out[dbName]) out[dbName] = {}
     if (!out[dbName][desc]) out[dbName][desc] = key
   }
@@ -214,6 +218,7 @@ function startLoadingAnimation() {
 
 function stopLoadingAnimation() {
   isSubmitting.value = false
+  loadingIconIsPen.value = false
   if (_loadingInterval) {
     clearInterval(_loadingInterval)
     _loadingInterval = null
@@ -222,7 +227,7 @@ function stopLoadingAnimation() {
 
 function onFormSubmit() {
   startLoadingAnimation()
-  // native form POSTs to /units → redirects to /describe_variable_details (legacy)
+  // native form POSTs to /units → redirects to /describe/variable-details
 }
 
 // When the browser restores this page from BFCache (e.g. user hits Back after
@@ -248,6 +253,7 @@ async function loadAndApplySemanticMapping() {
 }
 
 onMounted(async () => {
+  window.addEventListener('pageshow', onPageShow)
   try {
     const { data } = await api.get('/api/v1/describe-variables-state')
     columnInfoData.value = data.column_info || {}
@@ -275,8 +281,6 @@ onMounted(async () => {
   preselectedDescriptions.value = ps.preselectedDescriptions || {}
   preselectedDatatypes.value = ps.preselectedDatatypes || {}
   descriptionToDatatype.value = ps.descriptionToDatatype || {}
-
-  window.addEventListener('pageshow', onPageShow)
 })
 
 onBeforeUnmount(() => {

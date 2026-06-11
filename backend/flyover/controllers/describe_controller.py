@@ -180,6 +180,12 @@ def _populate_details_from_jsonld(
         )
         return
 
+    # The JSON-LD may reference columns the user's data doesn't actually
+    # contain. Without filtering, those phantom variables would surface on
+    # the details page even though the user never saw or chose them on
+    # /describe/variables.
+    columns_by_database = rdf_store_service.get_column_info_by_database() or {}
+
     for database in session_cache.databases:
         if not database:
             continue
@@ -191,6 +197,8 @@ def _populate_details_from_jsonld(
         if database not in session_cache.descriptive_info:
             session_cache.descriptive_info[database] = {}
 
+        actual_columns = set(columns_by_database.get(database, []))
+
         for var_key in mapping.get_all_variable_keys():
             var_info = mapping.get_variable(var_key)
             if not var_info:
@@ -200,6 +208,9 @@ def _populate_details_from_jsonld(
             local_column = mapping.get_local_column(var_key)
 
             if not local_column or not data_type:
+                continue
+
+            if actual_columns and local_column not in actual_columns:
                 continue
 
             display_name = f'{var_key.replace("_", " ").title()} (or "{local_column}")'

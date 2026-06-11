@@ -58,6 +58,12 @@ onMounted(async () => {
   } catch {
     hasOntology.value = false
   }
+  try {
+    const row = await db.getData('metadata', 'semantic_map')
+    hasSemanticMap.value = !!row?.data
+  } catch {
+    hasSemanticMap.value = false
+  }
 })
 </script>
 

@@ -16,6 +16,8 @@ import {
   setMapping,
   getMapping,
   updateCategoryMapping,
+  updateMappingFromForm,
+  initializeEmptyMapping,
 } from '@/lib/jsonld.js'
 
 describe('Frontend unit: jsonld / formatToTitleCase', () => {
@@ -219,4 +221,181 @@ describe('Frontend unit: jsonld / updateCategoryMapping', () => {
     const col = getMapping().databases.db_a.tables.t1.columns.sex_col
     expect(col.localMappings).toEqual({})
   })
+
+  it('writes the new term when switching from "Other" back to a real category', async () => {
+    await updateCategoryMapping('patients', 'sex', 'sex', 'M', 'Other', null)
+    await updateCategoryMapping('patients', 'sex', 'sex', 'M', 'Male', 'Other')
+    const col = getMapping().databases.db_a.tables.t1.columns.sex_col
+    expect(col.localMappings).toEqual({ male: ['M'] })
+  })
+
+  it('removes the previous term when the user deselects (selectedOption empty)', async () => {
+    await updateCategoryMapping('patients', 'sex', 'sex', 'M', 'Male', null)
+    await updateCategoryMapping('patients', 'sex', 'sex', 'M', '', 'Male')
+    const col = getMapping().databases.db_a.tables.t1.columns.sex_col
+    expect(col.localMappings).toEqual({})
+  })
 })
+
+describe('Frontend unit: jsonld / updateMappingFromForm — deselection and tab-switching robustness', () => {
+  beforeEach(() => {
+    initializeEmptyMapping()
+  })
+
+  function formEntry(database, localColumn, description, datatype = '') {
+    return {
+      [`${database}_${localColumn}`]: {
+        database,
+        description,
+        datatype,
+        comment: '',
+      },
+    }
+  }
+
+  it('adds a column and schema variable for a selected description', async () => {
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    const m = getMapping()
+    expect(m.schema.variables.age).toMatchObject({
+      name: 'age',
+      dataType: 'continuous',
+    })
+    const cols = m.databases.patients.tables.data.columns
+    expect(cols.age).toMatchObject({
+      mapsTo: 'schema:variable/age',
+      localColumn: 'age_yrs',
+    })
+  })
+
+  it('removes the column from IDB when description is cleared (deselect)', async () => {
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    await updateMappingFromForm(formEntry('patients', 'age_yrs', '', ''))
+    const m = getMapping()
+    const cols = m.databases.patients?.tables?.data?.columns || {}
+    expect(cols.age).toBeUndefined()
+    expect(m.schema.variables.age).toBeUndefined()
+  })
+
+  it('removes the column when description is changed to "Other"', async () => {
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Other', '')
+    )
+    const m = getMapping()
+    const cols = m.databases.patients?.tables?.data?.columns || {}
+    expect(cols.age).toBeUndefined()
+    expect(m.schema.variables.age).toBeUndefined()
+  })
+
+  it('swaps a description (Age → Weight) without leaving the old column behind', async () => {
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Weight', 'continuous')
+    )
+    const m = getMapping()
+    const cols = m.databases.patients.tables.data.columns
+    expect(cols.weight).toMatchObject({
+      mapsTo: 'schema:variable/weight',
+      localColumn: 'age_yrs',
+    })
+    expect(cols.age).toBeUndefined()
+    expect(m.schema.variables.age).toBeUndefined()
+    expect(m.schema.variables.weight).toBeDefined()
+  })
+
+  it('does not touch columns from databases not present in the form payload', async () => {
+    await updateMappingFromForm({
+      ...formEntry('patients', 'age_yrs', 'Age', 'continuous'),
+      ...formEntry('lab', 'h_g', 'Hemoglobin', 'continuous'),
+    })
+    await updateMappingFromForm(formEntry('patients', 'age_yrs', '', ''))
+    const m = getMapping()
+    expect(m.databases.lab.tables.data.columns.hemoglobin).toMatchObject({
+      localColumn: 'h_g',
+    })
+    expect(m.schema.variables.hemoglobin).toBeDefined()
+    expect(m.databases.patients?.tables?.data?.columns?.age).toBeUndefined()
+    expect(m.schema.variables.age).toBeUndefined()
+  })
+
+  it('preserves an unrelated column in the same database', async () => {
+    await updateMappingFromForm({
+      ...formEntry('patients', 'age_yrs', 'Age', 'continuous'),
+      ...formEntry('patients', 'sex', 'Biological Sex', 'categorical'),
+    })
+    await updateMappingFromForm(formEntry('patients', 'age_yrs', '', ''))
+    const m = getMapping()
+    const cols = m.databases.patients.tables.data.columns
+    expect(cols.age).toBeUndefined()
+    expect(cols.biological_sex).toMatchObject({ localColumn: 'sex' })
+    expect(m.schema.variables.biological_sex).toBeDefined()
+    expect(m.schema.variables.age).toBeUndefined()
+  })
+
+  it('GCs schema variables that the form orphans across syncs', async () => {
+    await updateMappingFromForm({
+      ...formEntry('cohort_a', 'age_yrs', 'Age', 'continuous'),
+      ...formEntry('cohort_b', 'leeftijd', 'Age', 'continuous'),
+    })
+    expect(getMapping().schema.variables.age).toBeDefined()
+    await updateMappingFromForm(formEntry('cohort_a', 'age_yrs', '', ''))
+    expect(getMapping().schema.variables.age).toBeDefined()
+    await updateMappingFromForm(formEntry('cohort_b', 'leeftijd', '', ''))
+    expect(getMapping().schema.variables.age).toBeUndefined()
+  })
+
+  it('reapplying the same description is idempotent and keeps state stable', async () => {
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    const beforeCols = JSON.stringify(getMapping().databases.patients.tables.data.columns)
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    const afterCols = JSON.stringify(getMapping().databases.patients.tables.data.columns)
+    expect(afterCols).toBe(beforeCols)
+  })
+
+  it('discards a column whose mapping survived from a prior, now-stale IDB state', async () => {
+    setMapping({
+      '@context': {},
+      '@id': 'mapping:root',
+      '@type': 'mapping:SemanticMapping',
+      schema: {
+        variables: {
+          age: { name: 'age', description: 'Age', dataType: 'continuous' },
+        },
+      },
+      databases: {
+        patients: {
+          name: 'patients',
+          tables: {
+            data: {
+              sourceFile: 'patients',
+              columns: {
+                age: {
+                  mapsTo: 'schema:variable/age',
+                  variable: 'age',
+                  localColumn: 'age_yrs',
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    await updateMappingFromForm(formEntry('patients', 'age_yrs', '', ''))
+    const m = getMapping()
+    expect(m.databases.patients.tables.data.columns.age).toBeUndefined()
+    expect(m.schema.variables.age).toBeUndefined()
+  })
+})
+

@@ -27,7 +27,7 @@ export async function runIngestFlow(page, csvPath = DEFAULT_CSV) {
   const submit = page.getByRole('button', { name: /^\s*(?:Processing\.\.\.)?\s*Submit Files\s*$/i })
   await expect(submit).toBeEnabled()
   await Promise.all([
-    page.waitForURL(/\/app\/describe(?:[?#].*)?$/, { timeout: 150_000 }),
+    page.waitForURL(/\/describe(?:[?#].*)?$/, { timeout: 150_000 }),
     submit.click(),
   ])
 }

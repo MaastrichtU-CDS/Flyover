@@ -58,3 +58,4 @@ annotation_ui_demo.html
 .pre-commit-config.yaml
 CLAUDE.md
 .claudeignore
+frontend/node_modules/

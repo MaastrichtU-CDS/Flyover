@@ -42,7 +42,7 @@ test.describe('Frontend e2e: Ingest flow', () => {
 
     // Submit and wait for the post-triplifier redirect into the SPA.
     await Promise.all([
-      page.waitForURL(/\/app\/describe(?:[?#].*)?$/, { timeout: 150_000 }),
+      page.waitForURL(/\/describe(?:[?#].*)?$/, { timeout: 150_000 }),
       submit.click(),
     ])
 
