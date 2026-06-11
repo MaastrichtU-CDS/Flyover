@@ -277,92 +277,160 @@ function ensureDatabaseExists(databaseName) {
   }
 }
 
+// Deterministic projection from the describe-variables form state onto the
+// JSON-LD mapping. The form is the source of truth: every entry in `formData`
+// is either upserted (description selected) or removed (description empty or
+// "Other"). Without the remove path, deselecting a value left a stale column
+// behind in IndexedDB — that ghost data then reappeared on re-mount.
+//
+// We only touch columns whose localColumn appears in `formData`, so entries
+// the form doesn't know about (e.g. another database that wasn't on screen)
+// are left alone. After applying, orphaned schema.variables are GCed so the
+// mapping stays a clean reflection of what columns currently reference.
 export async function updateMappingFromForm(formData) {
   if (!mapping) initializeEmptyMapping()
+
+  // Group form entries by database so we can decide per (db, localColumn)
+  // whether the entry is "active" (description selected) or a tombstone.
+  const targetsByDb = {}
   for (const [key, data] of Object.entries(formData)) {
-    const descriptionDisplay = data.description
-    if (!descriptionDisplay || descriptionDisplay === 'Other') continue
-    const databaseName = data.database
+    const databaseName = data?.database
     if (!databaseName) continue
-
     const prefix = databaseName + '_'
-    const localColumnName = key.startsWith(prefix) ? key.substring(prefix.length) : key
-    const varName = formatToSnakeCase(descriptionDisplay)
+    const localColumnName = key.startsWith(prefix)
+      ? key.substring(prefix.length)
+      : key
+    const descriptionDisplay = data.description
+    const isActive = descriptionDisplay && descriptionDisplay !== 'Other'
+    if (!targetsByDb[databaseName]) targetsByDb[databaseName] = new Map()
+    targetsByDb[databaseName].set(
+      localColumnName,
+      isActive
+        ? {
+            varName: formatToSnakeCase(descriptionDisplay),
+            descriptionDisplay,
+            dataType: data.datatype || null,
+          }
+        : null
+    )
+  }
 
-    if (!mapping.schema.variables[varName]) {
-      mapping.schema.variables[varName] = {
-        name: varName,
-        description: descriptionDisplay,
-        dataType: data.datatype || null,
-      }
-    } else if (data.datatype) {
-      mapping.schema.variables[varName].dataType = data.datatype
-    }
-
-    forEachColumn(mapping.databases || {}, (colData, colKey, tableData) => {
-      const colVarKey = getVariableKeyFromColumn(colData)
-      if (
-        colVarKey !== varName &&
-        colData.mapsTo !== `schema:variable/${varName}` &&
-        colData.localColumn === localColumnName
-      ) {
-        delete tableData.columns[colKey]
-      }
-    })
-
-    let columnFound = false
+  // Pass 1 — sweep stale columns. For each (db, localColumn) covered by the
+  // form, delete any column whose variable no longer matches the form's
+  // current choice (or any column at all when the form's choice is empty).
+  for (const [databaseName, localColumns] of Object.entries(targetsByDb)) {
     forEachColumn(
       mapping.databases || {},
-      (colData, colKey, tableData, tableKey, dbData) => {
-        if (columnFound) return false
+      (colData, colKey, tableData, _tableKey, dbData) => {
         if (
           !graphDatabaseFindNameMatch(dbData.name, databaseName) &&
           !graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
         )
           return
+        const localCol = colData.localColumn
+        if (localCol == null || !localColumns.has(localCol)) return
+        const target = localColumns.get(localCol)
         const colVarKey = getVariableKeyFromColumn(colData)
+        if (target == null) {
+          delete tableData.columns[colKey]
+          return
+        }
         if (
-          colVarKey === varName ||
-          colData.mapsTo === `schema:variable/${varName}`
+          colVarKey !== target.varName &&
+          colData.mapsTo !== `schema:variable/${target.varName}`
         ) {
-          colData.localColumn = localColumnName
-          columnFound = true
-          return false
+          delete tableData.columns[colKey]
         }
       }
     )
+  }
 
-    if (!columnFound) {
-      let dbFound = false
+  // Pass 2 — upsert the active entries.
+  for (const [databaseName, localColumns] of Object.entries(targetsByDb)) {
+    for (const [localColumnName, target] of localColumns) {
+      if (!target) continue
+      const { varName, descriptionDisplay, dataType } = target
+
+      if (!mapping.schema.variables[varName]) {
+        mapping.schema.variables[varName] = {
+          name: varName,
+          description: descriptionDisplay,
+          dataType: dataType || null,
+        }
+      } else if (dataType) {
+        mapping.schema.variables[varName].dataType = dataType
+      }
+
+      let columnFound = false
       forEachColumn(
         mapping.databases || {},
-        (colData, colKey, tableData, tableKey, dbData) => {
+        (colData, _colKey, tableData, _tableKey, dbData) => {
+          if (columnFound) return false
           if (
             !graphDatabaseFindNameMatch(dbData.name, databaseName) &&
             !graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
           )
             return
-          dbFound = true
-          tableData.columns[varName] = {
+          const colVarKey = getVariableKeyFromColumn(colData)
+          if (
+            colVarKey === varName ||
+            colData.mapsTo === `schema:variable/${varName}`
+          ) {
+            colData.localColumn = localColumnName
+            columnFound = true
+            return false
+          }
+        }
+      )
+
+      if (!columnFound) {
+        let dbFound = false
+        forEachColumn(
+          mapping.databases || {},
+          (_colData, _colKey, tableData, _tableKey, dbData) => {
+            if (dbFound) return false
+            if (
+              !graphDatabaseFindNameMatch(dbData.name, databaseName) &&
+              !graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
+            )
+              return
+            dbFound = true
+            tableData.columns[varName] = {
+              mapsTo: `schema:variable/${varName}`,
+              variable: varName,
+              localColumn: localColumnName,
+            }
+            return false
+          }
+        )
+        if (!dbFound) {
+          ensureDatabaseExists(databaseName)
+          const dbKey = formatToSnakeCase(databaseName)
+          const tk = Object.keys(mapping.databases[dbKey].tables)[0]
+          mapping.databases[dbKey].tables[tk].columns[varName] = {
             mapsTo: `schema:variable/${varName}`,
             variable: varName,
             localColumn: localColumnName,
           }
-          return false
-        }
-      )
-      if (!dbFound) {
-        ensureDatabaseExists(databaseName)
-        const dbKey = formatToSnakeCase(databaseName)
-        const tk = Object.keys(mapping.databases[dbKey].tables)[0]
-        mapping.databases[dbKey].tables[tk].columns[varName] = {
-          mapsTo: `schema:variable/${varName}`,
-          variable: varName,
-          localColumn: localColumnName,
         }
       }
     }
   }
+
+  // Pass 3 — GC orphaned schema.variables. A variable with no column
+  // referencing it can never produce data, so it should not linger in IDB
+  // and reappear on the next mount.
+  if (mapping.schema?.variables) {
+    const referenced = new Set()
+    forEachColumn(mapping.databases || {}, (colData) => {
+      const k = getVariableKeyFromColumn(colData)
+      if (k) referenced.add(k)
+    })
+    for (const varName of Object.keys(mapping.schema.variables)) {
+      if (!referenced.has(varName)) delete mapping.schema.variables[varName]
+    }
+  }
+
   return await saveMapping()
 }
 
