@@ -554,7 +554,7 @@
             },
             "age_at_diagnosis": {
               "mapsTo": "schema:variable/age_at_diagnosis",
-              "localColumn": "leeftijd_bij_diagnose",
+              "localColumn": "leeftijd_diagnose",
               "localMappings": {
                 "missing_or_unspecified": ""
               }
@@ -571,7 +571,7 @@
             },
             "hpv_status": {
               "mapsTo": "schema:variable/hpv_status",
-              "localColumn": "hpv_p16_status",
+              "localColumn": "totaal_hpv_p16_status",
               "localMappings": {
                 "positive": "positief",
                 "negative": "negatief",
@@ -589,7 +589,7 @@
             },
             "t_stage": {
               "mapsTo": "schema:variable/t_stage",
-              "localColumn": "klinisch_t",
+              "localColumn": "t_stad",
               "localMappings": {
                 "1": "1",
                 "2": "2",
@@ -600,7 +600,7 @@
             },
             "n_stage": {
               "mapsTo": "schema:variable/n_stage",
-              "localColumn": "klinisch_n",
+              "localColumn": "n_stad",
               "localMappings": {
                 "0": "0",
                 "1": "1",
@@ -611,7 +611,7 @@
             },
             "m_stage": {
               "mapsTo": "schema:variable/m_stage",
-              "localColumn": "klinisch_m",
+              "localColumn": "m_stad",
               "localMappings": {
                 "0": "0",
                 "1": "1",
@@ -620,7 +620,7 @@
             },
             "survival_status": {
               "mapsTo": "schema:variable/survival_status",
-              "localColumn": "overlevingsstatus",
+              "localColumn": "event_overall_survival",
               "localMappings": {
                 "Dead": "overleden",
                 "Alive": "levend",
@@ -629,7 +629,7 @@
             },
             "survival_days": {
               "mapsTo": "schema:variable/survival_days",
-              "localColumn": "overleving_dagen",
+              "localColumn": "overall_survival_in_days",
               "localMappings": {
                 "missing_or_unspecified": ""
               }

@@ -15,6 +15,7 @@ const continueDisabled = ref(true)
 const fileInput = ref(null)
 const selectedFileName = ref('')
 const uploading = ref(false)
+const validationErrors = ref([])
 
 async function readFileAsText(file) {
   return new Promise((resolve, reject) => {
@@ -37,9 +38,48 @@ async function uploadSemanticMap() {
     return
   }
   uploading.value = true
+  validationErrors.value = []
   try {
     const text = await readFileAsText(file)
-    const jsonld = JSON.parse(text)
+    let jsonld
+    try {
+      jsonld = JSON.parse(text)
+    } catch (e) {
+      validationErrors.value = [
+        {
+          path: '(file)',
+          severity: 'error',
+          message: `Invalid JSON: ${e.message || e}`,
+          suggestion: 'Check for missing commas, brackets, or quotes.',
+        },
+      ]
+      return
+    }
+
+    // Validate against the schema and check that every localColumn exists in
+    // the loaded CSV. Gate IDB save on the result so the user sees a clear
+    // problem list here instead of broken UI two screens later.
+    let validation
+    try {
+      const { data } = await api.post('/api/v1/validate-mapping', jsonld)
+      validation = data
+    } catch (e) {
+      const payload = e?.response?.data
+      if (payload?.validation_errors) {
+        validation = { valid: false, validation_errors: payload.validation_errors }
+      } else {
+        status.error(
+          `Validation request failed: ${payload?.error || e.message || e}`
+        )
+        return
+      }
+    }
+
+    if (!validation.valid) {
+      validationErrors.value = validation.validation_errors || []
+      return
+    }
+
     await db.saveData('metadata', {
       key: 'semantic_map',
       data: jsonld,
@@ -177,6 +217,31 @@ onMounted(async () => {
             </small>
           </div>
 
+          <div
+            v-if="validationErrors.length"
+            class="alert alert-danger validation-errors"
+          >
+            <strong>
+              <i class="fas fa-exclamation-triangle" />
+              The semantic map could not be loaded ({{ validationErrors.length }}
+              issue{{ validationErrors.length === 1 ? '' : 's' }}):
+            </strong>
+            <ul>
+              <li
+                v-for="(err, idx) in validationErrors"
+                :key="idx"
+              >
+                <code>{{ err.path }}</code> — {{ err.message }}
+                <div
+                  v-if="err.suggestion"
+                  class="suggestion"
+                >
+                  <i class="fas fa-lightbulb" /> {{ err.suggestion }}
+                </div>
+              </li>
+            </ul>
+          </div>
+
           <div class="form-group">
             <button
               type="submit"
@@ -229,5 +294,23 @@ onMounted(async () => {
     rgba(118, 75, 162, 0.75) 100%
   );
   color: white;
+}
+
+.validation-errors {
+  margin-top: 1rem;
+}
+.validation-errors ul {
+  margin-top: 0.5rem;
+  padding-left: 1.25rem;
+}
+.validation-errors code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.validation-errors .suggestion {
+  font-size: 0.85em;
+  opacity: 0.85;
+  margin-top: 0.15rem;
 }
 </style>

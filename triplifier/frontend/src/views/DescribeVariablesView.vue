@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick } from 'v
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { useStatusStore } from '@/stores/status'
+
+const status = useStatusStore()
 
 const PAGE_SIZE = 10
 const AUTO_FILL_FEEDBACK_MS = 3000
@@ -62,6 +65,19 @@ function ensureCacheEntry(key, dbName) {
   }
 }
 
+// Keys of every (database, column) pair the user can actually see — i.e. every
+// CSV column the backend reported. A preselection whose key isn't in this set
+// references a column that doesn't exist in the loaded CSV; we treat it as a
+// no-op so it doesn't disable global-variable options for real columns.
+const visibleColumnKeys = computed(() => {
+  const s = new Set()
+  if (!columnInfoData.value) return s
+  for (const [dbName, cols] of Object.entries(columnInfoData.value)) {
+    for (const item of cols || []) s.add(`${dbName}_${item}`)
+  }
+  return s
+})
+
 const selectedDescriptionsByDb = computed(() => {
   const out = {}
   for (const [key, cached] of Object.entries(formStateCache)) {
@@ -73,6 +89,7 @@ const selectedDescriptionsByDb = computed(() => {
   for (const [key, desc] of Object.entries(preselectedDescriptions.value)) {
     if (!desc || desc === 'Other') continue
     if (formStateCache[key]) continue
+    if (!visibleColumnKeys.value.has(key)) continue
     // Keys are "${dbName}_${localColumn}" and dbName can itself contain
     // underscores (e.g. "synthetic_dutch_150"), so naive splitting truncates
     // the name. Look up the actual dbName by prefix-matching.
@@ -119,7 +136,15 @@ function autoPopulateDatatype(dbName, item) {
 function onDescriptionChange(dbName, item, e) {
   const key = `${dbName}_${item}`
   ensureCacheEntry(key, dbName)
-  formStateCache[key].description = e.target.value
+  const value = e.target.value
+  formStateCache[key].description = value
+  // Deselecting must fully clear the preselected hint too; otherwise the stale
+  // value leaks back via preselectedHiddenEntries and reappears in the details
+  // view as a ghost "none" row.
+  if (!value) {
+    delete preselectedDescriptions.value[key]
+    delete preselectedDatatypes.value[key]
+  }
   autoPopulateDatatype(dbName, item)
   syncToIndexedDB()
 }
@@ -272,7 +297,44 @@ onMounted(async () => {
   preselectedDescriptions.value = ps.preselectedDescriptions || {}
   preselectedDatatypes.value = ps.preselectedDatatypes || {}
   descriptionToDatatype.value = ps.descriptionToDatatype || {}
+  dropOrphanPreselections()
 })
+
+function dropOrphanPreselections() {
+  // Orphans = JSON-LD preselections for columns that don't exist in the loaded
+  // CSV. Without this, they silently occupy global-variable slots and disable
+  // dropdown options for the columns that do exist.
+  //
+  // Batch the filter into single ref assignments rather than per-key deletes —
+  // each delete on a Vue ref triggers reactivity, which can stack up if there
+  // are many orphans and ripple into expensive re-renders.
+  const visible = visibleColumnKeys.value
+  if (!visible.size) return
+  const keptDescriptions = {}
+  const keptDatatypes = {}
+  const dropped = []
+  for (const [key, val] of Object.entries(preselectedDescriptions.value)) {
+    if (visible.has(key)) {
+      keptDescriptions[key] = val
+    } else {
+      dropped.push(key)
+    }
+  }
+  if (!dropped.length) return
+  for (const [key, val] of Object.entries(preselectedDatatypes.value)) {
+    if (visible.has(key)) keptDatatypes[key] = val
+  }
+  preselectedDescriptions.value = keptDescriptions
+  preselectedDatatypes.value = keptDatatypes
+
+  const preview = dropped.slice(0, 3).join(', ')
+  const rest = dropped.length > 3 ? ` (and ${dropped.length - 3} more)` : ''
+  status.warning(
+    `Ignoring ${dropped.length} JSON-LD mapping${
+      dropped.length === 1 ? '' : 's'
+    } whose column${dropped.length === 1 ? '' : 's are'} not in the loaded CSV: ${preview}${rest}`
+  )
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener('pageshow', onPageShow)

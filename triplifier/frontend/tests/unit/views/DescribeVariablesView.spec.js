@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
@@ -31,6 +32,7 @@ function mountView() {
 
 describe('DescribeVariablesView — description uniqueness across rows', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     api.get.mockReset()
     jsonld.computePreselectionsForDatabases.mockReset()
   })
@@ -88,6 +90,7 @@ describe('DescribeVariablesView — description uniqueness across rows', () => {
 
 describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     api.get.mockReset()
     jsonld.computePreselectionsForDatabases.mockReset()
     jsonld.updateMappingFromForm.mockReset()
@@ -170,5 +173,63 @@ describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
     await flushPromises()
     const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
     expect(Object.keys(payload)).toEqual(['patients_sex'])
+  })
+})
+
+describe('DescribeVariablesView — JSON-LD/CSV mismatch handling', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    api.get.mockReset()
+    jsonld.computePreselectionsForDatabases.mockReset()
+  })
+
+  it('does not disable a global option when the only preselection points at a non-existent column', async () => {
+    // Bug 2: when the JSON-LD references a localColumn that does not exist in
+    // the loaded CSV, that preselection used to count as "used" and disabled
+    // the matching global-variable option for every real column.
+    api.get.mockResolvedValue({
+      data: { column_info: { patients: ['age', 'sex'] } },
+    })
+    jsonld.computePreselectionsForDatabases.mockReturnValue({
+      // ghost: 'patients_geslacht' is not in column_info above
+      preselectedDescriptions: { patients_geslacht: 'Biological Sex' },
+      preselectedDatatypes: {},
+      descriptionToDatatype: {},
+    })
+
+    const w = mountView()
+    await flushPromises()
+
+    const sexSelect = w.find('select[name="ncit_comment_patients_sex"]')
+    expect(sexSelect.exists()).toBe(true)
+    const sexOption = sexSelect.find('option[value="Biological Sex"]')
+    expect(sexOption.exists()).toBe(true)
+    expect(sexOption.attributes('disabled')).toBeUndefined()
+  })
+
+  it('drops orphan preselections at mount and emits a status warning', async () => {
+    api.get.mockResolvedValue({
+      data: { column_info: { patients: ['age', 'sex'] } },
+    })
+    jsonld.computePreselectionsForDatabases.mockReturnValue({
+      preselectedDescriptions: {
+        patients_age: 'Age',
+        patients_ghost: 'Biological Sex',
+      },
+      preselectedDatatypes: {},
+      descriptionToDatatype: {},
+    })
+
+    const { useStatusStore } = await import('@/stores/status.js')
+    const status = useStatusStore()
+
+    mountView()
+    await flushPromises()
+
+    const warnings = status.messages.filter((m) => m.level === 'warning')
+    expect(warnings.length).toBe(1)
+    expect(warnings[0].text).toContain('patients_ghost')
+    // Real preselection survives, ghost does not
+    expect(warnings[0].text).not.toContain('patients_age')
   })
 })

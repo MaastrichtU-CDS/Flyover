@@ -201,6 +201,106 @@ class TestIngestControllerSubmitIndexedDB(unittest.TestCase):
         self.assertIn("redirect_url", body)
 
 
+class TestIngestControllerValidateMapping(unittest.TestCase):
+    """Tests for POST /api/v1/validate-mapping (pure validation + CSV cross-check)."""
+
+    def setUp(self):
+        self.app = _make_app(ingest_bp)
+        self.client = self.app.test_client()
+
+    def test_no_body_returns_400(self):
+        response = self.client.post(
+            "/api/v1/validate-mapping", content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_valid_mapping_no_csv_returns_valid(self):
+        """A schema-valid mapping returns valid=True when no CSV is loaded."""
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps(_MINIMAL_VALID_JSONLD),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        self.assertTrue(body["valid"])
+        self.assertEqual(body["validation_errors"], [])
+        self.assertFalse(body["csv_checked"])
+
+    def test_schema_invalid_mapping_returns_invalid(self):
+        """A mapping missing required fields returns valid=False with errors."""
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps({"name": "incomplete"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        self.assertFalse(body["valid"])
+        self.assertTrue(len(body["validation_errors"]) > 0)
+
+    def test_valid_mapping_with_csv_columns_present_returns_valid(self):
+        """Schema-valid mapping whose localColumns exist in the CSV returns valid."""
+        ctx = self.app.config["APP_CONTEXT"]
+        ctx["rdf_store_service"].get_column_info_by_database.return_value = {
+            "test_db": ["id", "other_col"]
+        }
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps(_MINIMAL_VALID_JSONLD),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        self.assertTrue(body["valid"])
+        self.assertTrue(body["csv_checked"])
+
+    def test_valid_mapping_with_orphan_column_returns_invalid(self):
+        """A localColumn not in the loaded CSV produces an orphan error."""
+        ctx = self.app.config["APP_CONTEXT"]
+        ctx["rdf_store_service"].get_column_info_by_database.return_value = {
+            "test_db": ["other_col"]  # no "id"
+        }
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps(_MINIMAL_VALID_JSONLD),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        self.assertFalse(body["valid"])
+        self.assertTrue(body["csv_checked"])
+        orphan = next(
+            (e for e in body["validation_errors"] if e.get("value") == "id"), None
+        )
+        self.assertIsNotNone(orphan)
+        self.assertEqual(orphan["severity"], "error")
+        self.assertIn("not present", orphan["message"].lower())
+
+    def test_wrapped_mapping_payload_accepted(self):
+        """Accepts {"mapping": {...}} as well as the bare mapping object."""
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps({"mapping": _MINIMAL_VALID_JSONLD}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        self.assertTrue(body["valid"])
+
+    def test_does_not_mutate_session_cache(self):
+        """The endpoint must not touch session_cache.jsonld_mapping."""
+        ctx = self.app.config["APP_CONTEXT"]
+        sentinel = object()
+        ctx["session_cache"].jsonld_mapping = sentinel
+        self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps(_MINIMAL_VALID_JSONLD),
+            content_type="application/json",
+        )
+        self.assertIs(ctx["session_cache"].jsonld_mapping, sentinel)
+
+
 class TestIngestControllerRdfStoreDatabases(unittest.TestCase):
     """Tests for GET /api/rdf-store-databases."""
 

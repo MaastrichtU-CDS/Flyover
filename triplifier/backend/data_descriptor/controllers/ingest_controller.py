@@ -146,6 +146,118 @@ def submit_indexeddb_semantic_map():
         return jsonify({"error": f"Unexpected error: {e}"}), 400
 
 
+def _collect_orphan_column_issues(mapping_data, columns_by_database):
+    """Find localColumn references in the mapping that aren't present in the CSV.
+
+    Returns a list of UI-formatted issue dicts (same shape as
+    MappingValidator.format_errors_for_ui) so the frontend can render them
+    alongside schema validation errors.
+    """
+    if not columns_by_database:
+        return []
+
+    available = set()
+    for cols in columns_by_database.values():
+        for c in cols or []:
+            available.add(c)
+
+    issues = []
+    databases = (mapping_data or {}).get("databases") or {}
+    if not isinstance(databases, dict):
+        return []
+
+    for db_key, db_data in databases.items():
+        if not isinstance(db_data, dict):
+            continue
+        tables = db_data.get("tables") or {}
+        if not isinstance(tables, dict):
+            continue
+        for table_key, table_data in tables.items():
+            if not isinstance(table_data, dict):
+                continue
+            columns = table_data.get("columns") or {}
+            if not isinstance(columns, dict):
+                continue
+            for col_key, col_data in columns.items():
+                if not isinstance(col_data, dict):
+                    continue
+                local_column = col_data.get("localColumn")
+                if not local_column or local_column in available:
+                    continue
+                issues.append(
+                    {
+                        "path": f"databases.{db_key}.tables.{table_key}.columns.{col_key}.localColumn",
+                        "severity": "error",
+                        "message": (
+                            f"localColumn '{local_column}' is not present "
+                            "in any loaded CSV"
+                        ),
+                        "suggestion": (
+                            "Check the column name for typos or upload a CSV that "
+                            "includes this column. Available columns: "
+                            + ", ".join(sorted(available))
+                        ),
+                        "value": local_column,
+                    }
+                )
+    return issues
+
+
+@ingest_bp.route("/api/v1/validate-mapping", methods=["POST"])
+def validate_mapping():
+    """Validate a JSON-LD mapping against the schema and the loaded CSV columns.
+
+    Pure validation — does not mutate the session cache. Returns schema errors
+    plus, when CSV column info is available, an error per localColumn that
+    doesn't exist in any loaded CSV.
+    """
+    try:
+        mapping_data = request.get_json(silent=True)
+    except Exception as e:
+        return jsonify({"error": f"Invalid JSON body: {e}"}), 400
+
+    if not mapping_data or not isinstance(mapping_data, dict):
+        return jsonify({"error": "No mapping data provided"}), 400
+
+    # Accept either the mapping object directly or wrapped as {"mapping": ...}
+    if "mapping" in mapping_data and isinstance(mapping_data["mapping"], dict):
+        mapping_data = mapping_data["mapping"]
+
+    validator = MappingValidator()
+    result = validator.validate(mapping_data)
+    schema_errors = validator.format_errors_for_ui(result)
+
+    csv_checked = False
+    orphan_errors = []
+    try:
+        ctx = get_app_context()
+        rdf_store_service = ctx.get("rdf_store_service")
+        if rdf_store_service is not None:
+            columns_by_database = (
+                rdf_store_service.get_column_info_by_database() or {}
+            )
+            if columns_by_database:
+                csv_checked = True
+                orphan_errors = _collect_orphan_column_issues(
+                    mapping_data, columns_by_database
+                )
+    except Exception as e:
+        # CSV cross-check is best-effort — never let it fail the schema check.
+        logger.warning(f"CSV cross-check skipped: {e}")
+
+    all_errors = schema_errors + orphan_errors
+    is_valid = result.is_valid and not orphan_errors
+
+    return jsonify(
+        {
+            "valid": is_valid,
+            "validation_errors": all_errors,
+            "statistics": result.statistics,
+            "csv_checked": csv_checked,
+        }
+    )
+
+
 @ingest_bp.route("/upload", methods=["POST"])
 def upload_file():
     """Handle file upload for CSV or PostgreSQL data."""
