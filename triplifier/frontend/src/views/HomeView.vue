@@ -1,7 +1,11 @@
 <script setup>
 import { useRouter } from 'vue-router'
+import { useNavigation } from '@/composables/useNavigation'
+import { useStatusStore } from '@/stores/status'
 
 const router = useRouter()
+const { dataExists } = useNavigation()
+const status = useStatusStore()
 
 const cards = [
   {
@@ -33,6 +37,7 @@ const cards = [
       'Local definitions',
       'Variable labelling',
     ],
+    requiresData: true,
   },
   {
     id: 'annotate',
@@ -48,6 +53,7 @@ const cards = [
       'Metadata-driven',
       'Value mapping',
     ],
+    requiresData: true,
   },
   {
     id: 'share',
@@ -66,7 +72,17 @@ const cards = [
   },
 ]
 
+function isDisabled(card) {
+  return !!card.requiresData && !dataExists.value
+}
+
 function open(card) {
+  if (isDisabled(card)) {
+    status.warning(
+      'Please complete the Ingest step first by submitting your data.'
+    )
+    return
+  }
   router.push(card.to)
 }
 </script>
@@ -96,6 +112,13 @@ function open(card) {
         <div
           :id="`${card.id}-card`"
           class="workflow-card"
+          :class="{ disabled: isDisabled(card) }"
+          :aria-disabled="isDisabled(card)"
+          :title="
+            isDisabled(card)
+              ? 'First complete the data ingest step to proceed with this step.'
+              : null
+          "
           role="button"
           tabindex="0"
           @click="open(card)"
@@ -149,5 +172,17 @@ function open(card) {
 }
 .workflow-card {
   cursor: pointer;
+}
+/* Match legacy index.js behaviour: when Describe/Annotate are gated by a
+   missing ingest, dim the card and block the pointer so users can't open the
+   step. Legacy flyover-custom.css already styles .workflow-card.disabled with
+   opacity 0.6 / cursor not-allowed — the SFC's scoped `cursor: pointer` rule
+   above would otherwise out-cascade it, so restate it here. */
+.workflow-card.disabled {
+  cursor: not-allowed;
+}
+.workflow-card.disabled:hover {
+  transform: none;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 </style>
