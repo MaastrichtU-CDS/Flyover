@@ -233,9 +233,7 @@ def validate_mapping():
         ctx = get_app_context()
         rdf_store_service = ctx.get("rdf_store_service")
         if rdf_store_service is not None:
-            columns_by_database = (
-                rdf_store_service.get_column_info_by_database() or {}
-            )
+            columns_by_database = rdf_store_service.get_column_info_by_database() or {}
             if columns_by_database:
                 csv_checked = True
                 orphan_errors = _collect_orphan_column_issues(
