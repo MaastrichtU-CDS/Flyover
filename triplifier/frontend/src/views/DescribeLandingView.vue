@@ -16,6 +16,7 @@ const fileInput = ref(null)
 const selectedFileName = ref('')
 const uploading = ref(false)
 const validationErrors = ref([])
+const validationWarnings = ref([])
 
 async function readFileAsText(file) {
   return new Promise((resolve, reject) => {
@@ -39,6 +40,7 @@ async function uploadSemanticMap() {
   }
   uploading.value = true
   validationErrors.value = []
+  validationWarnings.value = []
   try {
     const text = await readFileAsText(file)
     let jsonld
@@ -59,6 +61,7 @@ async function uploadSemanticMap() {
     // Validate against the schema and check that every localColumn exists in
     // the loaded CSV. Gate IDB save on the result so the user sees a clear
     // problem list here instead of broken UI two screens later.
+    // Schema errors block upload, column warnings do not.
     let validation
     try {
       const { data } = await api.post('/api/v1/validate-mapping', jsonld)
@@ -66,7 +69,12 @@ async function uploadSemanticMap() {
     } catch (e) {
       const payload = e?.response?.data
       if (payload?.validation_errors) {
-        validation = { valid: false, validation_errors: payload.validation_errors }
+        validation = { 
+          valid: false, 
+          validation_errors: payload.validation_errors, 
+          validation_warnings: [],
+          cleaned_mapping: payload.cleaned_mapping
+        }
       } else {
         status.error(
           `Validation request failed: ${payload?.error || e.message || e}`
@@ -75,21 +83,38 @@ async function uploadSemanticMap() {
       }
     }
 
+    // Block upload only on schema errors (validation.valid === false)
+    // Allow upload with warnings (validation_warnings may be present)
     if (!validation.valid) {
       validationErrors.value = validation.validation_errors || []
       return
     }
 
+    // Store warnings if present (non-blocking)
+    validationWarnings.value = validation.validation_warnings || []
+
+    // Use cleaned mapping if available, otherwise use the original
+    const mappingToSave = validation.cleaned_mapping || jsonld
+    console.log(validation.cleaned_mapping)
+
     await db.saveData('metadata', {
       key: 'semantic_map',
-      data: jsonld,
+      data: mappingToSave,
       filename: file.name,
       timestamp: new Date().toISOString(),
     })
-    semanticMapVisible.value = false
-    status.success(
-      'Global semantic map uploaded successfully. This will guide the semantic mapping process and help standardise your data annotations.'
-    )
+    
+    // If there are warnings, keep the card visible so users can see the warnings in the box
+    // If no warnings, hide the card
+    const hasWarnings = validationWarnings.value.length > 0
+    if (hasWarnings) {
+      semanticMapVisible.value = true
+    } else {
+      semanticMapVisible.value = false
+      status.success(
+        'Global semantic map uploaded successfully. This will guide the semantic mapping process and help standardise your data annotations.'
+      )
+    }
     continueDisabled.value = false
   } catch (e) {
     status.error(`Failed to save semantic map file: ${e.message || e}`)
@@ -104,6 +129,21 @@ function skipSemanticMap() {
     'Semantic map upload skipped. You can proceed to describe your data manually.'
   )
   continueDisabled.value = false
+}
+
+function escapeHtml(text) {
+  if (!text) return ''
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
+function formatWarnings() {
+  if (validationWarnings.value.length === 0) return ''
+  
+  const warning = validationWarnings.value[0]
+  // message contains trusted HTML from backend (<br> for line breaks)
+  return `<i class="fas fa-exclamation-triangle"></i> ${warning.message}`
 }
 
 function continueToDescribe() {
@@ -242,6 +282,12 @@ onMounted(async () => {
             </ul>
           </div>
 
+          <div
+            v-if="validationWarnings.length"
+            class="alert alert-warning alert-compact validation-warnings"
+            v-html="formatWarnings()"
+          />
+
           <div class="form-group">
             <button
               type="submit"
@@ -312,5 +358,9 @@ onMounted(async () => {
   font-size: 0.85em;
   opacity: 0.85;
   margin-top: 0.15rem;
+}
+
+.validation-warnings {
+  margin-top: 1rem;
 }
 </style>

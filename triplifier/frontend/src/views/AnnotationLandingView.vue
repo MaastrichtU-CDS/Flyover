@@ -42,9 +42,9 @@ const uploadStatusHtml = computed(() => {
   if (!uploadStatus.value.message) return ''
   const t = uploadStatus.value.type || 'success'
   const alertClass =
-    t === 'error' ? 'alert-danger' : t === 'info' ? 'alert-info' : 'alert-success'
+    t === 'error' ? 'alert-danger' : t === 'warning' ? 'alert-warning' : t === 'info' ? 'alert-info' : 'alert-success'
   const icon =
-    t === 'error' ? 'exclamation-triangle' : t === 'info' ? 'info-circle' : 'check-circle'
+    t === 'error' ? 'exclamation-triangle' : t === 'warning' ? 'exclamation-triangle' : t === 'info' ? 'info-circle' : 'check-circle'
   return `<div class="alert ${alertClass} alert-compact"><i class="fas fa-${icon}"></i> ${uploadStatus.value.message}</div>`
 })
 
@@ -211,7 +211,7 @@ async function handleJsonUpload() {
       try {
         await db.saveData('metadata', {
           key: 'semantic_map',
-          data: json,
+          data: result.cleaned_mapping || json,
           timestamp: new Date().toISOString(),
         })
       } catch (e) {
@@ -224,7 +224,14 @@ async function handleJsonUpload() {
       if (result.non_matching_jsonld?.length) {
         msg += `<i class="fas fa-exclamation-triangle text-warning"></i> ${result.non_matching_jsonld.length} data source(s) in semantic map not found in RDF store.<br>`
       }
-      showUploadStatus(msg, 'success')
+      if (result.removed_columns?.length) {
+        msg += `<i class="fas fa-exclamation-triangle text-warning"></i> ${result.removed_columns.length} column mapping(s) were removed because they are not present in the loaded data: <strong>${result.removed_columns.map(escapeHtml).join(', ')}</strong>.<br>`
+      }
+      const statusType =
+        result.non_matching_jsonld?.length || result.removed_columns?.length
+          ? 'warning'
+          : 'success'
+      showUploadStatus(msg, statusType)
       showUploadInfo.value = false
       existingJsonldWarning.value = false
       indexedDbSection.value.show = false

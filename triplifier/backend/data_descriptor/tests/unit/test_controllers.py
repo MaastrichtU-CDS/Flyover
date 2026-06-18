@@ -245,6 +245,8 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         ctx["rdf_store_service"].get_column_info_by_database.return_value = {
             "test_db": ["id", "other_col"]
         }
+        # Set loaded databases in session cache - use the database name from the mapping
+        ctx["session_cache"].databases = ["test_db"]
         response = self.client.post(
             "/api/v1/validate-mapping",
             data=json.dumps(_MINIMAL_VALID_JSONLD),
@@ -254,13 +256,18 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         body = json.loads(response.data)
         self.assertTrue(body["valid"])
         self.assertTrue(body["csv_checked"])
+        self.assertEqual(body["validation_warnings"], [])
+        # databases_checked contains the database name from the mapping, not the key
+        self.assertIn("Test Database", body["databases_checked"])
 
-    def test_valid_mapping_with_orphan_column_returns_invalid(self):
-        """A localColumn not in the loaded CSV produces an orphan error."""
+    def test_valid_mapping_with_orphan_column_returns_valid_with_warning(self):
+        """A localColumn not in the loaded CSV produces a warning, not an error."""
         ctx = self.app.config["APP_CONTEXT"]
         ctx["rdf_store_service"].get_column_info_by_database.return_value = {
             "test_db": ["other_col"]  # no "id"
         }
+        # Set loaded databases in session cache
+        ctx["session_cache"].databases = ["test_db"]
         response = self.client.post(
             "/api/v1/validate-mapping",
             data=json.dumps(_MINIMAL_VALID_JSONLD),
@@ -268,14 +275,20 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.data)
-        self.assertFalse(body["valid"])
+        # Should be valid (schema is valid), but have warnings for column mismatch
+        self.assertTrue(body["valid"])
         self.assertTrue(body["csv_checked"])
-        orphan = next(
-            (e for e in body["validation_errors"] if e.get("value") == "id"), None
+        # Check that the orphan column is now a warning, not an error
+        orphan_warning = next(
+            (w for w in body["validation_warnings"] if w.get("value") == "id"), None
         )
-        self.assertIsNotNone(orphan)
-        self.assertEqual(orphan["severity"], "error")
-        self.assertIn("not present", orphan["message"].lower())
+        self.assertIsNotNone(orphan_warning)
+        self.assertEqual(orphan_warning["severity"], "warning")
+        self.assertIn("not present", orphan_warning["message"].lower())
+        # Should have no schema errors
+        self.assertEqual(body["validation_errors"], [])
+        # databases_checked contains the database name from the mapping, not the key
+        self.assertIn("Test Database", body["databases_checked"])
 
     def test_wrapped_mapping_payload_accepted(self):
         """Accepts {"mapping": {...}} as well as the bare mapping object."""
@@ -287,6 +300,105 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = json.loads(response.data)
         self.assertTrue(body["valid"])
+
+    def test_unloaded_database_skipped_silently(self):
+        """Databases not in loaded list are skipped silently (no errors, no warnings)."""
+        ctx = self.app.config["APP_CONTEXT"]
+        # Data exists for test_db in RDF store
+        ctx["rdf_store_service"].get_column_info_by_database.return_value = {
+            "test_db": ["id", "other_col"]
+        }
+        # But a different database is loaded in session cache (not test_db)
+        ctx["session_cache"].databases = ["different_db"]
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps(_MINIMAL_VALID_JSONLD),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        # Should be valid (schema is valid, test_db is not loaded so not checked)
+        self.assertTrue(body["valid"])
+        self.assertTrue(body["csv_checked"])
+        # No warnings because the database is not loaded
+        self.assertEqual(body["validation_warnings"], [])
+        self.assertEqual(body["databases_checked"], [])
+
+    def test_mixed_loaded_unloaded_databases(self):
+        """Test with mapping containing both loaded and unloaded databases."""
+        # Create a mapping with multiple databases
+        mixed_mapping = {
+            "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+            "@type": "mapping:DataMapping",
+            "name": "Mixed Test Mapping",
+            "schema": {
+                "@type": "schema:SemanticSchema",
+                "variables": {
+                    "identifier": {
+                        "@type": "schema:IdentifierVariable",
+                        "dataType": "identifier",
+                        "predicate": "sio:SIO_000673",
+                        "class": "ncit:C25364",
+                    }
+                },
+            },
+            "databases": {
+                "loaded_db": {
+                    "@type": "mapping:Database",
+                    "name": "Loaded Database",
+                    "tables": {
+                        "test_table": {
+                            "@type": "mapping:Table",
+                            "columns": {
+                                "identifier": {
+                                    "mapsTo": "schema:variable/identifier",
+                                    "localColumn": "missing_col",
+                                }
+                            },
+                        }
+                    },
+                },
+                "unloaded_db": {
+                    "@type": "mapping:Database",
+                    "name": "Unloaded Database",
+                    "tables": {
+                        "test_table": {
+                            "@type": "mapping:Table",
+                            "columns": {
+                                "identifier": {
+                                    "mapsTo": "schema:variable/identifier",
+                                    "localColumn": "missing_col",
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        }
+        ctx = self.app.config["APP_CONTEXT"]
+        ctx["rdf_store_service"].get_column_info_by_database.return_value = {
+            "loaded_db": ["id", "other_col"],
+            "unloaded_db": ["id", "other_col"]
+        }
+        # Only loaded_db is loaded in session
+        ctx["session_cache"].databases = ["loaded_db"]
+        response = self.client.post(
+            "/api/v1/validate-mapping",
+            data=json.dumps(mixed_mapping),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = json.loads(response.data)
+        # Should be valid (schema is valid)
+        self.assertTrue(body["valid"])
+        # Should have warning for loaded_db's missing column
+        self.assertEqual(len(body["validation_warnings"]), 1)
+        self.assertEqual(body["validation_warnings"][0]["value"], "missing_col")
+        self.assertEqual(body["validation_warnings"][0]["severity"], "warning")
+        # Should have checked loaded_db but not unloaded_db
+        # databases_checked contains the database name from the mapping
+        self.assertIn("Loaded Database", body["databases_checked"])
+        self.assertNotIn("Unloaded Database", body["databases_checked"])
 
     def test_does_not_mutate_session_cache(self):
         """The endpoint must not touch session_cache.jsonld_mapping."""

@@ -10,7 +10,7 @@ import logging
 
 from flask import Blueprint, jsonify, redirect, request
 
-from services import IngestService
+from services import IngestService, RDFStoreService
 from validation import MappingValidator
 from loaders import JSONLDMapping
 
@@ -71,6 +71,39 @@ def upload_semantic_map():
                 400,
             )
 
+        # Clean the mapping of orphan columns right at the start
+        # This ensures faulty mappings don't persist anywhere
+        try:
+            ctx = get_app_context()
+            rdf_store_service = ctx.get("rdf_store_service")
+            if rdf_store_service is not None:
+                columns_by_database = rdf_store_service.get_column_info_by_database() or {}
+                
+                # Always try to populate loaded_databases from session cache or RDF store
+                loaded_databases = []
+                if session_cache and hasattr(session_cache, 'databases'):
+                    loaded_databases = session_cache.databases or []
+                else:
+                    # Populate session_cache.databases if not already set
+                    try:
+                        loaded_databases = rdf_store_service.get_databases() or []
+                        if session_cache:
+                            session_cache.databases = loaded_databases
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch databases from RDF store: {e}")
+                        loaded_databases = []
+                
+                if columns_by_database:
+                    _, _, orphan_columns = _collect_orphan_column_issues(
+                        mapping_data, columns_by_database, loaded_databases
+                    )
+                    # Clean the mapping immediately, before validation
+                    if orphan_columns:
+                        mapping_data = _remove_orphan_columns_from_mapping(mapping_data, orphan_columns)
+        except Exception as e:
+            logger.warning(f"Orphan column check skipped: {e}")
+
+        # Now validate the cleaned mapping
         validator = MappingValidator()
         result = validator.validate(mapping_data)
 
@@ -93,6 +126,7 @@ def upload_semantic_map():
                 "success": True,
                 "message": "JSON-LD semantic mapping uploaded successfully",
                 "statistics": result.statistics,
+                "cleaned_mapping": mapping_data,
             }
         )
 
@@ -136,6 +170,7 @@ def submit_indexeddb_semantic_map():
                 "message": "Semantic map loaded from browser storage",
                 "redirect_url": "/annotate/review",
                 "statistics": result.statistics,
+                "cleaned_mapping": mapping_data,
             }
         )
 
@@ -146,61 +181,207 @@ def submit_indexeddb_semantic_map():
         return jsonify({"error": f"Unexpected error: {e}"}), 400
 
 
-def _collect_orphan_column_issues(mapping_data, columns_by_database):
+def _collect_orphan_column_issues(mapping_data, columns_by_database, loaded_databases=None):
     """Find localColumn references in the mapping that aren't present in the CSV.
 
-    Returns a list of UI-formatted issue dicts (same shape as
-    MappingValidator.format_errors_for_ui) so the frontend can render them
-    alongside schema validation errors.
+    Only validates databases that are currently loaded (in loaded_databases).
+    For unloaded databases, validation is skipped entirely.
+    For loaded databases, returns warnings (not errors) for column mismatches.
+
+    Args:
+        mapping_data: The JSON-LD mapping data
+        columns_by_database: Dict mapping database names to lists of column names
+        loaded_databases: List of currently loaded database names (optional)
+
+    Returns a tuple of (warnings, databases_checked, orphan_columns):
+        - warnings: List of UI-formatted warning dicts for column mismatches
+        - databases_checked: List of database names that were validated
+        - orphan_columns: List of (db_key, table_key, col_key) tuples for columns to remove
     """
     if not columns_by_database:
-        return []
+        return [], [], []
 
-    available = set()
+    # Build a set of all available columns across all databases
+    available_columns = set()
     for cols in columns_by_database.values():
         for c in cols or []:
-            available.add(c)
+            available_columns.add(c)
 
-    issues = []
+    warnings = []
+    databases_checked = []
+    orphan_columns = []
+    orphan_columns_by_db = {}
     databases = (mapping_data or {}).get("databases") or {}
     if not isinstance(databases, dict):
-        return []
+        return [], [], []
 
     for db_key, db_data in databases.items():
         if not isinstance(db_data, dict):
             continue
+
+        # Get the database name - use 'name' field or fall back to the key
+        db_name = db_data.get("name", db_key)
+        if not db_name:
+            continue
+
         tables = db_data.get("tables") or {}
         if not isinstance(tables, dict):
+            tables = {}
+
+        # The RDF store groups columns by the CSV file name, which in the
+        # mapping corresponds to a table's `sourceFile` (e.g.
+        # "synthetic_dutch_150"), not the database `name`
+        # ("Centre B Electronic Health Records") or the database key
+        # ("centre_b_ehr"). So when deciding whether a mapping database is
+        # loaded — and which columns are available — we must also match on the
+        # table sourceFiles, mirroring the frontend matching logic.
+        source_files = []
+        for table_data in tables.values():
+            if isinstance(table_data, dict):
+                source_file = table_data.get("sourceFile")
+                if source_file:
+                    source_files.append(source_file)
+
+        # Candidate names that may correspond to a loaded database.
+        candidate_names = [n for n in [db_name, db_key, *source_files] if n]
+
+        # Check if this database is loaded
+        is_loaded = False
+        if loaded_databases:
+            for loaded_db in loaded_databases:
+                if any(
+                    RDFStoreService.graph_database_find_name_match(name, str(loaded_db))
+                    for name in candidate_names
+                ):
+                    is_loaded = True
+                    break
+        elif columns_by_database:
+            # If no loaded_databases specified but we have columns_by_database,
+            # check if this database has columns in the store
+            for existing_db in columns_by_database.keys():
+                if any(
+                    RDFStoreService.graph_database_find_name_match(name, str(existing_db))
+                    for name in candidate_names
+                ):
+                    is_loaded = True
+                    break
+
+        # Skip unloaded databases entirely (no validation, no warnings)
+        if not is_loaded:
             continue
+
+        # This database is loaded - validate its columns
+        databases_checked.append(db_name)
+        if not tables:
+            continue
+
         for table_key, table_data in tables.items():
             if not isinstance(table_data, dict):
                 continue
             columns = table_data.get("columns") or {}
             if not isinstance(columns, dict):
                 continue
+
+            # Resolve the columns available for this specific table. Match on
+            # the table sourceFile first (the RDF store key), then fall back to
+            # the database name/key for older mappings without a sourceFile.
+            table_source_file = table_data.get("sourceFile")
+            table_match_names = [
+                n for n in [table_source_file, db_name, db_key] if n
+            ]
+            table_available_columns = set()
+            for loaded_db_name, cols in columns_by_database.items():
+                if any(
+                    RDFStoreService.graph_database_find_name_match(
+                        name, str(loaded_db_name)
+                    )
+                    for name in table_match_names
+                ):
+                    for c in cols or []:
+                        table_available_columns.add(c)
+
             for col_key, col_data in columns.items():
                 if not isinstance(col_data, dict):
                     continue
                 local_column = col_data.get("localColumn")
-                if not local_column or local_column in available:
+                if not local_column:
                     continue
-                issues.append(
-                    {
-                        "path": f"databases.{db_key}.tables.{table_key}.columns.{col_key}.localColumn",
-                        "severity": "error",
-                        "message": (
-                            f"localColumn '{local_column}' is not present "
-                            "in any loaded CSV"
-                        ),
-                        "suggestion": (
-                            "Check the column name for typos or upload a CSV that "
-                            "includes this column. Available columns: "
-                            + ", ".join(sorted(available))
-                        ),
-                        "value": local_column,
-                    }
-                )
-    return issues
+                # Only check against columns available for this specific table
+                if local_column in table_available_columns:
+                    continue
+                # Track orphan column by database
+                if db_name not in orphan_columns_by_db:
+                    orphan_columns_by_db[db_name] = []
+                orphan_columns_by_db[db_name].append(local_column)
+                # Track this column for removal
+                orphan_columns.append((db_key, table_key, col_key, col_data.get("mapsTo")))
+    
+    # Generate a single compact warning for all orphan columns
+    if orphan_columns_by_db:
+        # Build database info for the message
+        db_info = []
+        all_orphan_columns = []
+        for db_name, cols in orphan_columns_by_db.items():
+            db_info.append(f"{db_name}: {', '.join(cols)}")
+            all_orphan_columns.extend(cols)
+        
+        db_list = "; ".join(db_info)
+        db_count = len(orphan_columns_by_db)
+        warnings.append(
+            {
+                "severity": "warning",
+                "message": f"{len(all_orphan_columns)} column mapping(s) in {db_count} database(s) ({db_list}) were faulty.<br>You can still proceed, but these mappings will be removed.",
+                "values": all_orphan_columns,
+            }
+        )
+    
+    return warnings, databases_checked, orphan_columns
+
+
+def _remove_orphan_columns_from_mapping(mapping_data, orphan_columns):
+    """Remove orphan column entries from the mapping data.
+    
+    Removes only the specific column entries (variables) that have orphan localColumn 
+    references (columns that don't exist in the loaded CSV data). This ensures the 
+    faulty mappings (including the mapsTo section for those columns) do not persist 
+    in IndexedDB.
+    
+    Args:
+        mapping_data: The JSON-LD mapping data
+        orphan_columns: List of (db_key, table_key, col_key, maps_to) tuples for columns to remove
+        
+    Returns:
+        The modified mapping_data with orphan column entries removed
+    """
+    if not orphan_columns:
+        return mapping_data
+    
+    databases = mapping_data.get("databases") or {}
+    if not isinstance(databases, dict):
+        return mapping_data
+    
+    # Create a deep copy to avoid modifying the original during iteration
+    import copy
+    cleaned_mapping = copy.deepcopy(mapping_data)
+    
+    for db_key, table_key, col_key, maps_to in orphan_columns:
+        # Navigate to the column and remove it
+        db_data = cleaned_mapping.get("databases", {}).get(db_key)
+        if not isinstance(db_data, dict):
+            continue
+        
+        table_data = db_data.get("tables", {}).get(table_key)
+        if not isinstance(table_data, dict):
+            continue
+        
+        columns = table_data.get("columns")
+        if not isinstance(columns, dict):
+            continue
+        
+        # Remove the column entry (which includes localColumn, mapsTo, and valueMappings)
+        if col_key in columns:
+            del columns[col_key]
+    return cleaned_mapping
 
 
 @ingest_bp.route("/api/v1/validate-mapping", methods=["POST"])
@@ -208,8 +389,11 @@ def validate_mapping():
     """Validate a JSON-LD mapping against the schema and the loaded CSV columns.
 
     Pure validation — does not mutate the session cache. Returns schema errors
-    plus, when CSV column info is available, an error per localColumn that
-    doesn't exist in any loaded CSV.
+    (blocking) plus column warnings for loaded databases (non-blocking).
+    Unloaded databases in the mapping are skipped silently.
+    
+    When column warnings are found, returns a cleaned version of the mapping
+    with the problematic columns removed.
     """
     try:
         mapping_data = request.get_json(silent=True)
@@ -228,30 +412,62 @@ def validate_mapping():
     schema_errors = validator.format_errors_for_ui(result)
 
     csv_checked = False
-    orphan_errors = []
+    validation_warnings = []
+    databases_checked = []
+    cleaned_mapping = None
+    
     try:
         ctx = get_app_context()
         rdf_store_service = ctx.get("rdf_store_service")
+        session_cache = ctx.get("session_cache")
         if rdf_store_service is not None:
             columns_by_database = rdf_store_service.get_column_info_by_database() or {}
+            
+            # Always try to populate loaded_databases from session cache or RDF store
+            loaded_databases = []
+            if session_cache and hasattr(session_cache, 'databases'):
+                loaded_databases = session_cache.databases or []
+            else:
+                # Populate session_cache.databases if not already set
+                try:
+                    loaded_databases = rdf_store_service.get_databases() or []
+                    if session_cache:
+                        session_cache.databases = loaded_databases
+                except Exception as e:
+                    logger.warning(f"Failed to fetch databases from RDF store: {e}")
+                    loaded_databases = []
+            
             if columns_by_database:
                 csv_checked = True
-                orphan_errors = _collect_orphan_column_issues(
-                    mapping_data, columns_by_database
+                
+                validation_warnings, databases_checked, orphan_columns = _collect_orphan_column_issues(
+                    mapping_data, columns_by_database, loaded_databases
                 )
+                
+                # If there are orphan columns, clean the mapping
+                if orphan_columns:
+                    cleaned_mapping = _remove_orphan_columns_from_mapping(mapping_data, orphan_columns)
+                # If there are warnings but no orphan_columns (shouldn't happen, but safe fallback)
+                elif validation_warnings:
+                    # This shouldn't occur, but if it does, ensure we have a cleaned mapping
+                    cleaned_mapping = mapping_data
     except Exception as e:
         # CSV cross-check is best-effort — never let it fail the schema check.
         logger.warning(f"CSV cross-check skipped: {e}")
 
-    all_errors = schema_errors + orphan_errors
-    is_valid = result.is_valid and not orphan_errors
+    # Schema errors are blocking, column warnings are non-blocking
+    # valid is True if there are no schema errors, regardless of warnings
+    is_valid = result.is_valid
 
     return jsonify(
         {
             "valid": is_valid,
-            "validation_errors": all_errors,
+            "validation_errors": schema_errors,
+            "validation_warnings": validation_warnings,
             "statistics": result.statistics,
             "csv_checked": csv_checked,
+            "databases_checked": databases_checked,
+            "cleaned_mapping": cleaned_mapping,
         }
     )
 
