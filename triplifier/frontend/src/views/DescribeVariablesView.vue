@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
         <button
           type="submit"
           class="btn btn-primary"
-          :disabled="!hasAnyDescription"
+          :disabled="!hasAnyDescription || isSubmitting"
           :class="{ processing: isSubmitting }"
         >
           <template v-if="!isSubmitting">

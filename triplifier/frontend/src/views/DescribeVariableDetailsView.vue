@@ -103,6 +103,10 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
       categorySelections[selKey] = preselectedValues.value[backendKey]
       previousSelections[selKey] = preselectedValues.value[backendKey]
     }
+    // Default to empty string if no selection exists
+    if (!(selKey in categorySelections)) {
+      categorySelections[selKey] = ''
+    }
 
     processedCategories.push({
       value,

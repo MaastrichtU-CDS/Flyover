@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNavigation } from '@/composables/useNavigation'
 import { useStatusStore } from '@/stores/status'
@@ -6,6 +7,8 @@ import { useStatusStore } from '@/stores/status'
 const router = useRouter()
 const { dataExists } = useNavigation()
 const status = useStatusStore()
+
+const showTooltip = ref(null)
 
 const cards = [
   {
@@ -107,22 +110,21 @@ function open(card) {
       <div
         v-for="card in cards"
         :key="card.id"
-        class="col-xl-3 col-lg-3 col-md-6 mb-4"
+        class="col-xl-3 col-lg-3 col-md-6 mb-4 card-container"
       >
         <div
           :id="`${card.id}-card`"
           class="workflow-card"
           :class="{ disabled: isDisabled(card) }"
           :aria-disabled="isDisabled(card)"
-          :title="
-            isDisabled(card)
-              ? 'First complete the data ingest step to proceed with this step.'
-              : null
-          "
           role="button"
           tabindex="0"
           @click="open(card)"
           @keyup.enter="open(card)"
+          @mouseenter="showTooltip = card.id"
+          @mouseleave="showTooltip = null"
+          @focus="showTooltip = card.id"
+          @blur="showTooltip = null"
         >
           <div
             class="step-icon"
@@ -147,6 +149,13 @@ function open(card) {
               <i class="fas fa-check" /> {{ feature }}
             </li>
           </ul>
+        </div>
+        <div
+          v-if="showTooltip === card.id && isDisabled(card)"
+          class="bootstrap-tooltip"
+          role="tooltip"
+        >
+          First complete the data ingest step to proceed with this step.
         </div>
       </div>
     </div>
@@ -184,5 +193,37 @@ function open(card) {
 .workflow-card.disabled:hover {
   transform: none;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom tooltip for disabled cards */
+.card-container {
+  position: relative;
+}
+
+.bootstrap-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  z-index: 1080;
+  line-height: 1.5;
+}
+
+.bootstrap-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0.4rem 0.4rem 0;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.9) transparent transparent;
 }
 </style>
