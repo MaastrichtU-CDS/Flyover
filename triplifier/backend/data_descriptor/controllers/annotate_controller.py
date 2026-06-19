@@ -146,19 +146,29 @@ def upload_annotation_json():
             removed_columns = []
             try:
                 if rdf_store_service is not None:
-                    columns_by_database = rdf_store_service.get_column_info_by_database() or {}
+                    columns_by_database = (
+                        rdf_store_service.get_column_info_by_database() or {}
+                    )
                     if columns_by_database:
                         # Get loaded databases - use the databases list we already fetched
                         loaded_databases = databases
-                        
-                        from .ingest_controller import _collect_orphan_column_issues, _remove_orphan_columns_from_mapping
-                        orphan_warnings, _, orphan_columns = _collect_orphan_column_issues(
-                            json_data, columns_by_database, loaded_databases
+
+                        from .ingest_controller import (
+                            _collect_orphan_column_issues,
+                            _remove_orphan_columns_from_mapping,
                         )
-                        
+
+                        orphan_warnings, _, orphan_columns = (
+                            _collect_orphan_column_issues(
+                                json_data, columns_by_database, loaded_databases
+                            )
+                        )
+
                         # Clean the mapping immediately, before validation
                         if orphan_columns:
-                            json_data = _remove_orphan_columns_from_mapping(json_data, orphan_columns)
+                            json_data = _remove_orphan_columns_from_mapping(
+                                json_data, orphan_columns
+                            )
                             # Record which local column mappings were removed so the
                             # user can be warned about them in the UI.
                             for warning in orphan_warnings:
@@ -167,7 +177,7 @@ def upload_annotation_json():
                                     removed_columns.extend(values)
             except Exception as e:
                 logger.warning(f"Orphan column check skipped: {e}")
-            
+
             # Use the cleaned mapping for both session cache entries
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath

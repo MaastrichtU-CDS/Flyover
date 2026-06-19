@@ -372,13 +372,13 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
                             },
                         }
                     },
-                }
+                },
             },
         }
         ctx = self.app.config["APP_CONTEXT"]
         ctx["rdf_store_service"].get_column_info_by_database.return_value = {
             "loaded_db": ["id", "other_col"],
-            "unloaded_db": ["id", "other_col"]
+            "unloaded_db": ["id", "other_col"],
         }
         # Only loaded_db is loaded in session
         ctx["session_cache"].databases = ["loaded_db"]
