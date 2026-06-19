@@ -280,7 +280,8 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         self.assertTrue(body["csv_checked"])
         # Check that the orphan column is now a warning, not an error
         orphan_warning = next(
-            (w for w in body["validation_warnings"] if "id" in w.get("values", [])), None
+            (w for w in body["validation_warnings"] if "id" in w.get("values", [])),
+            None,
         )
         self.assertIsNotNone(orphan_warning)
         self.assertEqual(orphan_warning["severity"], "warning")
