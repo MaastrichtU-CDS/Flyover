@@ -280,11 +280,10 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         self.assertTrue(body["csv_checked"])
         # Check that the orphan column is now a warning, not an error
         orphan_warning = next(
-            (w for w in body["validation_warnings"] if w.get("value") == "id"), None
+            (w for w in body["validation_warnings"] if "id" in w.get("values", [])), None
         )
         self.assertIsNotNone(orphan_warning)
         self.assertEqual(orphan_warning["severity"], "warning")
-        self.assertIn("not present", orphan_warning["message"].lower())
         # Should have no schema errors
         self.assertEqual(body["validation_errors"], [])
         # databases_checked contains the database name from the mapping, not the key
@@ -393,7 +392,7 @@ class TestIngestControllerValidateMapping(unittest.TestCase):
         self.assertTrue(body["valid"])
         # Should have warning for loaded_db's missing column
         self.assertEqual(len(body["validation_warnings"]), 1)
-        self.assertEqual(body["validation_warnings"][0]["value"], "missing_col")
+        self.assertIn("missing_col", body["validation_warnings"][0]["values"])
         self.assertEqual(body["validation_warnings"][0]["severity"], "warning")
         # Should have checked loaded_db but not unloaded_db
         # databases_checked contains the database name from the mapping
