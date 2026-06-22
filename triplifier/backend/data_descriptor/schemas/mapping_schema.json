@@ -153,14 +153,12 @@
         "@type": {
           "description": "Variable type classification",
           "type": "string",
-          "pattern": "^(schema:)?(IdentifierVariable|CategoricalVariable|ContinuousVariable|OrdinalVariable|DateVariable|TextVariable)$",
+          "pattern": "^(schema:)?(IdentifierVariable|CategoricalVariable|ContinuousVariable|StandardisedVariable)$",
           "enum": [
             "schema:IdentifierVariable",
             "schema:CategoricalVariable",
             "schema:ContinuousVariable",
-            "schema:OrdinalVariable",
-            "schema:DateVariable",
-            "schema:TextVariable"
+            "schema:StandardisedVariable"
           ]
         },
         "dataType": {
@@ -170,9 +168,7 @@
             "identifier",
             "categorical",
             "continuous",
-            "ordinal",
-            "date",
-            "text"
+            "standardised"
           ]
         },
         "predicate": {
