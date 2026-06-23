@@ -35,8 +35,8 @@ services:
     container_name: rdf-store
 
   triplifier:
-   # image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
-    # If preferred, the triplifier image can be built from the Dockerfile
+    #image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
     build:
        context: ./triplifier
     ports:
