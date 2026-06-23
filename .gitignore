@@ -60,3 +60,4 @@ annotation_ui_demo.html
 CLAUDE.md
 .claudeignore
 frontend/node_modules/
+.junie
