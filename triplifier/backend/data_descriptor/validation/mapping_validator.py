@@ -124,7 +124,7 @@ def _get_error_suggestion(error: ValidationError) -> str:
     suggestions = {
         "required": lambda e: f"Add the missing field(s): {', '.join(e.validator_value)}",
         "type": lambda e: f"Change the value to type: {e.validator_value}",
-        "enum": lambda e: f"Use one of: {', '.join(repr(v) for v in e.validator_value)}",
+        "enum": lambda e: f"'{e.instance}' is not supported, for ",
         "pattern": lambda e: f"Value must match pattern: {e.validator_value}",
         "minLength": lambda e: f"Value must be at least {e.validator_value} character(s)",
         "minProperties": lambda e: f"Object must have at least {e.validator_value} property/properties",
@@ -161,7 +161,7 @@ def _get_field_documentation(path: list) -> str:
         "mapsTo": "Reference to schema variable (e.g., 'schema:variable/biological_sex')",
         "localColumn": "Column name in your local data source",
         "localMappings": "Mapping of schema terms to local values",
-        "dataType": "Variable data type: identifier, categorical, continuous, ordinal, date, or text",
+        "dataType": "Variable data type can only contain: identifier, categorical, continuous, or standardised",
         "predicate": "RDF predicate (property) URI for this variable",
         "class": "RDF class (concept) URI for this variable",
         "schemaReconstruction": "List of nodes defining the RDF graph structure",
