@@ -91,20 +91,27 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
       ? termKey.charAt(0).toUpperCase() + termKey.slice(1).replace(/_/g, ' ')
       : ''
 
-    // Pre-seed reactive selections from the local mappings, but only once
+    // Pre-seed reactive selections from the local mappings. `parsedDatabases`
+    // is recomputed once the JSON-LD mapping finishes loading (it depends on
+    // `mapperLoaded`); on the first pass — before the mapping is in memory —
+    // `preselectedValue` is empty and we would otherwise default `selKey` to
+    // ''. We must therefore prefill whenever the current selection is still
+    // empty (not only when the key is brand-new), so the local mappings from
+    // the uploaded map (e.g. biological sex → man/vrouw) appear on the page.
     const selKey = `${database}_${localVariable}_${value}`
-    if (!(selKey in categorySelections) && preselectedValue) {
+    const backendKey = `${database}_${localVariable}_category_"${value}"`
+    if (preselectedValue && !categorySelections[selKey]) {
       categorySelections[selKey] = preselectedValue
       previousSelections[selKey] = preselectedValue
-    }
-    // Pre-seed from server preselectedValues
-    const backendKey = `${database}_${localVariable}_category_"${value}"`
-    if (preselectedValues.value?.[backendKey] && !categorySelections[selKey]) {
+    } else if (
+      preselectedValues.value?.[backendKey] &&
+      !categorySelections[selKey]
+    ) {
+      // Fall back to the server-computed preselections.
       categorySelections[selKey] = preselectedValues.value[backendKey]
       previousSelections[selKey] = preselectedValues.value[backendKey]
-    }
-    // Default to empty string if no selection exists
-    if (!(selKey in categorySelections)) {
+    } else if (!(selKey in categorySelections)) {
+      // Default to empty string if no selection exists yet.
       categorySelections[selKey] = ''
     }
 
