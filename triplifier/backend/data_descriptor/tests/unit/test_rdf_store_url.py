@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "utils"))
 
 from rdf_store_url import (
     build_graph_store_endpoint,

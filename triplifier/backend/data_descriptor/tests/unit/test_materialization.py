@@ -487,7 +487,7 @@ class TestMaterializeTemplateFiles(unittest.TestCase):
     def setUp(self):
         """Set up the template directory path."""
         self.template_dir = os.path.join(
-            Path(__file__).parent.parent,
+            Path(__file__).parent.parent.parent,
             "annotation_helper",
             "src",
             "sparql_templates",

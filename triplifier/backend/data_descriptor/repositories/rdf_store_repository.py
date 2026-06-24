@@ -27,6 +27,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Accept header used for SPARQL ASK queries. JSON results are preferred (q=1),
+# but a wildcard fallback is included so strict stores (notably GraphDB) cannot
+# answer with HTTP 406 Not Acceptable during content negotiation. RDF4J, the
+# QLever adapter and GraphDB all honour the q-values and return JSON.
+ASK_QUERY_ACCEPT = "application/sparql-results+json, application/json;q=0.9, */*;q=0.1"
+
 
 class RDFStoreRepository:
     """
@@ -95,10 +101,19 @@ class RDFStoreRepository:
             endpoint = build_repository_endpoint(
                 self.rdf_store_url, self.repo, endpoint_suffix
             )
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            # SELECT results are parsed as CSV (see `_parse_csv_result`), so we
+            # must explicitly request CSV. RDF4J and GraphDB happen to return
+            # CSV-parseable output without an Accept header, but the QLever
+            # adapter defaults to SPARQL-results JSON when none is given, which
+            # then gets mis-parsed by polars. Asking for `text/csv` makes every
+            # backend return the same CSV format. Updates ignore the header.
+            if query_type != "update":
+                headers["Accept"] = "text/csv"
             response = requests.post(
                 endpoint,
                 data={query_type: query},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers=headers,
                 timeout=timeout,
             )
             return response.text
@@ -121,7 +136,7 @@ class RDFStoreRepository:
             response = requests.get(
                 build_repository_endpoint(self.rdf_store_url, self.repo),
                 params={"query": query},
-                headers={"Accept": "application/sparql-results+json"},
+                headers={"Accept": ASK_QUERY_ACCEPT},
                 timeout=timeout,
             )
             if response.status_code == 200:
@@ -144,7 +159,7 @@ class RDFStoreRepository:
             response = requests.get(
                 build_repository_endpoint(self.rdf_store_url, self.repo),
                 params={"query": query},
-                headers={"Accept": "application/sparql-results+json"},
+                headers={"Accept": ASK_QUERY_ACCEPT},
                 timeout=30,
             )
 

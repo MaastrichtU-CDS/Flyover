@@ -95,6 +95,12 @@ def retrieve_descriptive_info():
     session_cache.descriptive_info = {}
     session_cache.DescriptiveInfoDetails = {}
 
+    # `databases` is normally populated by the describe-variables-state call,
+    # but guard against it being unset (e.g. if that earlier request failed)
+    # so we don't crash with "'NoneType' object is not iterable".
+    if not session_cache.databases:
+        session_cache.databases = rdf_store_service.get_databases()
+
     for database in session_cache.databases:
         if not database:
             continue
