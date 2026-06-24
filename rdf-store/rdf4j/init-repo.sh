@@ -30,7 +30,7 @@ fi
 catalina.sh stop 2>/dev/null || true
 echo "Waiting for port 7200 to be released..."
 for i in $(seq 1 30); do
-    if ! ss -tlnp 2>/dev/null | grep -q ':7200 ' && ! netstat -tlnp 2>/dev/null | grep -q ':7200 '; then
+    if ! ss -tlnp | grep -q ':7200 '; then
         echo "Port 7200 is free."
         break
     fi

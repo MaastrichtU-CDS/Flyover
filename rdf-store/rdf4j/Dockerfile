@@ -6,6 +6,12 @@ LABEL org.opencontainers.image.description="RDF4J Workbench for Flyover project"
 # The base image sets a non-root user; switch to root to install files.
 USER root
 
+# Install curl and iproute2 (for ss command) needed by init-repo.sh
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Change Tomcat port from 8080 to 7200 so the RDF4J service is reachable on
 # the same port that GraphDB uses, making it easier to switch between stores.
 RUN sed -i 's/Connector port="8080"/Connector port="7200"/' \
