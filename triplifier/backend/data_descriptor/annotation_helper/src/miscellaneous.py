@@ -1700,9 +1700,7 @@ def materialize_inferences(endpoint, database_name):
     )
 
     if sr_response is not None and 200 <= sr_response.status_code < 300:
-        logging.info(
-            "Successfully materialized schema reconstruction predicate edges."
-        )
+        logging.info("Successfully materialized schema reconstruction predicate edges.")
     else:
         status = sr_response.status_code if sr_response is not None else "N/A"
         logging.warning(

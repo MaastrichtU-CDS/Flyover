@@ -298,7 +298,9 @@ class TestMaterializeSchemaReconstructionPredicates(unittest.TestCase):
 class TestMaterializeInferences(unittest.TestCase):
     """Test the main materialize_inferences function."""
 
-    @patch("annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates")
+    @patch(
+        "annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates"
+    )
     @patch("annotation_helper.src.miscellaneous._materialize_value_mapping")
     @patch("annotation_helper.src.miscellaneous._materialize_equivalent_class")
     def test_calls_all_materializations(self, mock_eq_class, mock_val_map, mock_sr):
@@ -330,7 +332,9 @@ class TestMaterializeInferences(unittest.TestCase):
             materialized_graph_uri="http://materialized.local/testdb/",
         )
 
-    @patch("annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates")
+    @patch(
+        "annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates"
+    )
     @patch("annotation_helper.src.miscellaneous._materialize_value_mapping")
     @patch("annotation_helper.src.miscellaneous._materialize_equivalent_class")
     def test_constructs_correct_graph_uris(self, mock_eq_class, mock_val_map, mock_sr):
@@ -366,7 +370,9 @@ class TestMaterializeInferences(unittest.TestCase):
             "http://materialized.local/my_database/",
         )
 
-    @patch("annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates")
+    @patch(
+        "annotation_helper.src.miscellaneous._materialize_schema_reconstruction_predicates"
+    )
     @patch("annotation_helper.src.miscellaneous._materialize_value_mapping")
     @patch("annotation_helper.src.miscellaneous._materialize_equivalent_class")
     def test_returns_responses_and_queries(self, mock_eq_class, mock_val_map, mock_sr):

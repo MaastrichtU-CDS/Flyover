@@ -255,8 +255,7 @@ class TestValueMappingAnnotations(unittest.TestCase):
         update_queries = [
             call[1]["data"]["update"]
             for call in mock_post.call_args_list
-            if isinstance(call[1].get("data"), dict)
-            and "update" in call[1]["data"]
+            if isinstance(call[1].get("data"), dict) and "update" in call[1]["data"]
         ]
         self.assertTrue(
             any("?tablerow sio:SIO_000008 ?component1." in q for q in update_queries)
