@@ -1108,20 +1108,38 @@ def _add_annotation(
         variable_component_name = f"?component{components}"
         variable_insertion = f"{predicate} {variable_component_name}."
 
+    annotation_graph_uri = f"http://annotation.local/{database_name}/"
+
+    # The variable-level pattern is matched against the source data named
+    # graph(s) produced by the triplifier (e.g., http://data.local/...). Scoping
+    # this explicitly is required for triple stores such as RDF4J that do not
+    # expose a union default graph.
     variable_where = (
-        f"?tablerow dbo:has_column {variable_component_name} .\n\n    "
+        f"?tablerow dbo:has_column {variable_component_name} .\n\n        "
         f"{variable_component_name} rdf:type db:{database_name}.{local_definition} ."
     )
 
-    # concatenate the insertions and where statements in a logical order
+    # The schema-reconstruction grouping-class patterns must be matched against
+    # the annotation graph, where the reconstruction class instances were created
+    # by _construct_extra_class. These cannot be read from the data graph.
+    reconstruction_where = f"{classes_where_before}{classes_where_after}"
+    if reconstruction_where.strip():
+        reconstruction_annotation_where = (
+            f"GRAPH <{annotation_graph_uri}> {{\n\n        "
+            f"{reconstruction_where}\n    }}"
+        )
+    else:
+        reconstruction_annotation_where = ""
+
+    # concatenate the insertions in a logical order
     full_insertion = f"{classes_insertion_before}{variable_insertion}{classes_insertion_after}{nodes_insertion}"
-    full_where = f"{classes_where_before}{variable_where}{classes_where_after}"
 
     # establish what components go where
     replacements = {
         f"{_variable_predicate} ?component0.": full_insertion,
-        "?tablerow dbo:has_column ?component0 .\n\n    "
-        f"?component0 rdf:type db:{_database}.{_variable_definition} .": full_where,
+        "?tablerow dbo:has_column ?component0 .\n\n        "
+        f"?component0 rdf:type db:{_database}.{_variable_definition} .": variable_where,
+        "# RECONSTRUCTION_ANNOTATION_WHERE": reconstruction_annotation_where,
         _database: database_name,
         _variable_definition: local_definition,
         _variable_class: class_object,

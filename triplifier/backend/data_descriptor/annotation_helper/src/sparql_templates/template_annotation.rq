@@ -31,10 +31,15 @@ INSERT {
 }
 
 WHERE {
-    ?tablerow rdf:type db:databasename .
+    GRAPH ?dataGraph {
+        ?tablerow rdf:type db:databasename .
 
-    ?tablerow dbo:has_column ?component0 .
+        ?tablerow dbo:has_column ?component0 .
 
-    ?component0 rdf:type db:databasename.localvariable .
+        ?component0 rdf:type db:databasename.localvariable .
+    }
 
+    FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
+
+    # RECONSTRUCTION_ANNOTATION_WHERE
 }
