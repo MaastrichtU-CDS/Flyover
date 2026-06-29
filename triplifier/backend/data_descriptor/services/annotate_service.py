@@ -106,7 +106,7 @@ class AnnotateService:
         prefixes: str,
         annotated_variables: Dict[str, Any],
         temp_dir: str = "/tmp/annotation_temp",
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """
         Execute annotation for variables.
 
@@ -118,14 +118,14 @@ class AnnotateService:
             temp_dir: Temporary directory for annotation files.
 
         Returns:
-            Tuple of (success, error_message).
+            Tuple of (annotation_results, error_message).
         """
         try:
             from annotation_helper.src.miscellaneous import add_annotation
 
             os.makedirs(temp_dir, exist_ok=True)
 
-            add_annotation(
+            annotation_results = add_annotation(
                 endpoint=endpoint,
                 database=database,
                 prefixes=prefixes,
@@ -135,11 +135,19 @@ class AnnotateService:
                 save_query=True,
             )
 
-            return True, None
+            if isinstance(annotation_results, dict):
+                return annotation_results, None
+
+            logger.warning(
+                "Annotation helper returned unexpected result for database %s: %r",
+                database,
+                annotation_results,
+            )
+            return {}, None
 
         except Exception as e:
             logger.error(f"Annotation error for database {database}: {e}")
-            return False, str(e)
+            return None, str(e)
 
     @staticmethod
     def prepare_annotation_data(

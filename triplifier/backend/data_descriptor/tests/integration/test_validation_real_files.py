@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from validation import MappingValidator
 
-_EXAMPLE_DIR = Path(__file__).parent.parent.parent.parent.parent / "example_data"
+_EXAMPLE_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / "example_data"
 
 
 class TestMappingValidatorWithRealFiles(unittest.TestCase):

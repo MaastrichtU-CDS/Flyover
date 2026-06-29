@@ -14,7 +14,24 @@ import requests
 
 from .query_builder import QueryBuilder
 
+try:
+    from ..utils.rdf_store_url import (
+        build_repository_endpoint,
+        normalise_rdf_store_base_url,
+    )
+except ImportError:
+    from utils.rdf_store_url import (  # type: ignore[no-redef]
+        build_repository_endpoint,
+        normalise_rdf_store_base_url,
+    )
+
 logger = logging.getLogger(__name__)
+
+# Accept header used for SPARQL ASK queries. JSON results are preferred (q=1),
+# but a wildcard fallback is included so strict stores (notably GraphDB) cannot
+# answer with HTTP 406 Not Acceptable during content negotiation. RDF4J, the
+# QLever adapter and GraphDB all honour the q-values and return JSON.
+ASK_QUERY_ACCEPT = "application/sparql-results+json, application/json;q=0.9, */*;q=0.1"
 
 
 class RDFStoreRepository:
@@ -33,7 +50,7 @@ class RDFStoreRepository:
             rdf_store_url: Base URL of the RDF store instance.
             repo: Repository name.
         """
-        self.rdf_store_url = rdf_store_url
+        self.rdf_store_url = normalise_rdf_store_base_url(rdf_store_url, repo)
         self.repo = repo
         self.query_builder = QueryBuilder()
 
@@ -81,11 +98,22 @@ class RDFStoreRepository:
             Query result as string, or None on error.
         """
         try:
-            endpoint = f"{self.rdf_store_url}/repositories/{self.repo}{endpoint_suffix}"
+            endpoint = build_repository_endpoint(
+                self.rdf_store_url, self.repo, endpoint_suffix
+            )
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            # SELECT results are parsed as CSV (see `_parse_csv_result`), so we
+            # must explicitly request CSV. RDF4J and GraphDB happen to return
+            # CSV-parseable output without an Accept header, but the QLever
+            # adapter defaults to SPARQL-results JSON when none is given, which
+            # then gets mis-parsed by polars. Asking for `text/csv` makes every
+            # backend return the same CSV format. Updates ignore the header.
+            if query_type != "update":
+                headers["Accept"] = "text/csv"
             response = requests.post(
                 endpoint,
                 data={query_type: query},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers=headers,
                 timeout=timeout,
             )
             return response.text
@@ -106,9 +134,9 @@ class RDFStoreRepository:
         """
         try:
             response = requests.get(
-                f"{self.rdf_store_url}/repositories/{self.repo}",
+                build_repository_endpoint(self.rdf_store_url, self.repo),
                 params={"query": query},
-                headers={"Accept": "application/sparql-results+json"},
+                headers={"Accept": ASK_QUERY_ACCEPT},
                 timeout=timeout,
             )
             if response.status_code == 200:
@@ -129,9 +157,9 @@ class RDFStoreRepository:
         query = QueryBuilder.check_data_graph_exists_query()
         try:
             response = requests.get(
-                f"{self.rdf_store_url}/repositories/{self.repo}",
+                build_repository_endpoint(self.rdf_store_url, self.repo),
                 params={"query": query},
-                headers={"Accept": "application/sparql-results+json"},
+                headers={"Accept": ASK_QUERY_ACCEPT},
                 timeout=30,
             )
 

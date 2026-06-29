@@ -11,6 +11,11 @@ template_dir = os.path.join(script_dir, "sparql_templates")
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
 dry_run = False
 
+# specify whether to materialize inferences in a separate graph
+materialize = (
+    os.environ.get("FLYOVER_MATERIALIZE_INFERENCES", "false").lower() == "true"
+)
+
 # not a beauty but works
 _database = "databasename"
 _variable_definition = "localvariable"
@@ -29,6 +34,7 @@ _class_iri_label = "reconstructioniri"
 
 _prefixes_to_add = "PREFIX PLACEHOLDER: <>"
 _annotation_graph_uri = "ANNOTATION_GRAPH_URI"
+_materialized_graph_uri = "MATERIALIZED_GRAPH_URI"
 
 
 def add_annotation(
@@ -199,6 +205,7 @@ def add_annotation(
     construction_queries = {}
     value_mapping_queries = None
     construction_success = True
+    annotation_results = {}
 
     if isinstance(annotation_data, str) and isinstance(path, str):
         annotation_data = read_file(file_name=annotation_data, path=path)
@@ -435,8 +442,20 @@ def add_annotation(
 
         # reset construction_success for each variable
         construction_success = True
+        core_query = ""
+        query = ""
+        annotation_success = False
+        predicate_inserted = False
 
         if construction_success:
+            core_response, core_query = _add_core_annotation(
+                endpoint=endpoint,
+                prefixes=prefixes,
+                database_name=database,
+                local_definition=local_definition,
+                class_object=class_object,
+            )
+
             # add the annotation with specified reconstructions
             response, query = _add_annotation(
                 endpoint=endpoint,
@@ -455,22 +474,72 @@ def add_annotation(
             )
 
             # check whether the annotation was added successfully
-            if dry_run is False:
-                annotation_success = check_predicate(
+            if dry_run is False and 200 <= response.status_code < 300:
+                predicate_inserted = check_predicate(
                     endpoint=endpoint,
                     predicate=predicate,
                     variable=generic_category,
                     response=response,
                     prefixes=prefixes,
                 )
+
+                # If reconstruction-specific matching inserts no row-level predicate edges,
+                # fall back to the base variable annotation pattern so variable predicates
+                # (e.g., sio:SIO_000008) are still materialized from source data.
+                if predicate_inserted is False and components > 0:
+                    logging.info(
+                        f"Falling back to base annotation query for {generic_category} "
+                        "because reconstruction matching did not yield predicate triples."
+                    )
+                    fallback_response, fallback_query = _add_annotation(
+                        endpoint=endpoint,
+                        variable=generic_category,
+                        database_name=database,
+                        prefixes=prefixes,
+                        local_definition=local_definition,
+                        predicate=predicate,
+                        class_object=class_object,
+                        classes_insertion_before="",
+                        classes_insertion_after="",
+                        classes_where_before="",
+                        classes_where_after="",
+                        nodes_insertion="",
+                        components=0,
+                    )
+
+                    if (
+                        fallback_response is not None
+                        and 200 <= fallback_response.status_code < 300
+                    ):
+                        predicate_inserted = check_predicate(
+                            endpoint=endpoint,
+                            predicate=predicate,
+                            variable=generic_category,
+                            response=fallback_response,
+                            prefixes=prefixes,
+                        )
+                        query = f"{query}\n\n{fallback_query}"
+                        response = fallback_response
             else:
+                predicate_inserted = False
+
+            annotation_success = predicate_inserted
+
+            if core_response is not None and 200 <= core_response.status_code < 300:
+                annotation_success = annotation_success or dry_run is True
+
+            if dry_run is True:
                 annotation_success = True
 
             # add the value mapping if necessary and possible
             if annotation_success and isinstance(
                 variable_data.get("value_mapping"), dict
             ):
-                value_mapping_responses, value_mapping_queries = add_mapping(
+                (
+                    value_mapping_responses,
+                    value_mapping_queries,
+                    value_mapping_statuses,
+                ) = add_mapping(
                     endpoint=endpoint,
                     prefixes=prefixes,
                     variable=generic_category,
@@ -478,6 +547,14 @@ def add_annotation(
                     value_map=variable_data["value_mapping"],
                     database_name=database,
                 )
+                if isinstance(value_mapping_statuses, dict) and value_mapping_statuses:
+                    annotation_success = annotation_success and all(
+                        value_mapping_statuses.values()
+                    )
+                elif _has_actionable_value_mapping_terms(
+                    variable_data["value_mapping"]
+                ):
+                    annotation_success = False
 
             # remove the 'has_column' section
             if remove_has_column:
@@ -494,6 +571,27 @@ def add_annotation(
                 )
                 # store the removal queries for saving
                 removal_queries.update({label: removal})
+
+            annotation_results[generic_category] = {
+                "success": bool(annotation_success),
+                "core_annotation_inserted": (
+                    core_response is not None and 200 <= core_response.status_code < 300
+                ),
+                "reconstruction_inserted": (
+                    response is not None and 200 <= response.status_code < 300
+                ),
+                "value_mappings_inserted": bool(
+                    not isinstance(variable_data.get("value_mapping"), dict)
+                    or (
+                        isinstance(value_mapping_statuses, dict)
+                        and value_mapping_statuses
+                        and all(value_mapping_statuses.values())
+                    )
+                    or not _has_actionable_value_mapping_terms(
+                        variable_data.get("value_mapping")
+                    )
+                ),
+            }
 
         if save_query:
             if os.path.exists(os.path.join(path, "generated_queries")) is False:
@@ -519,7 +617,7 @@ def add_annotation(
 
             write_file(
                 f"{generic_category}",
-                query,
+                f"{core_query}\n\n{query}".strip(),
                 os.path.join(path, "generated_queries", generic_category),
                 ".rq",
             )
@@ -597,6 +695,25 @@ def add_annotation(
         response = None
         construction_success = True
         annotation_success = None
+        value_mapping_statuses = None
+
+    # materialize inferences if enabled. This runs after the annotation has
+    # already been written, so a failure here must not propagate and cause the
+    # successful annotation to be reported as failed; log it and continue.
+    if materialize and dry_run is False:
+        try:
+            materialize_inferences(
+                endpoint=endpoint,
+                database_name=database,
+            )
+        except Exception as exc:
+            logging.error(
+                "Materialization of inferences failed for database %s: %s",
+                database,
+                exc,
+            )
+
+    return annotation_results
 
 
 def get_unique_prefixes(query, prefixes):
@@ -607,17 +724,43 @@ def get_unique_prefixes(query, prefixes):
     :param str prefixes: The input prefixes string.
     :return: A string of unique prefixes.
     """
-    # Extract prefixes from the template query
-    template_prefixes = set()
+
+    def _extract_prefix_label(line):
+        line = line.strip()
+        if not line.startswith("PREFIX"):
+            return None
+
+        parts = line.split()
+        if len(parts) < 2:
+            return None
+
+        return parts[1].rstrip(":")
+
+    # Track prefix labels already declared by the template so we do not emit
+    # duplicate PREFIX lines. RDF4J rejects duplicate declarations even when
+    # they resolve to the same namespace.
+    seen_labels = set()
     for line in query.split("\n"):
-        if line.startswith("PREFIX"):
-            template_prefixes.add(line)
+        label = _extract_prefix_label(line)
+        if label is not None:
+            seen_labels.add(label)
 
-    # Extract prefixes from the input prefixes string
-    input_prefixes = set(prefixes.split("\n"))
+    unique_prefixes = []
+    for line in prefixes.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
 
-    # Only add prefixes that are not already in the template
-    unique_prefixes = input_prefixes - template_prefixes
+        label = _extract_prefix_label(stripped)
+        if label is None:
+            continue
+
+        if label in seen_labels:
+            continue
+
+        unique_prefixes.append(stripped)
+        seen_labels.add(label)
+
     return "\n".join(unique_prefixes)
 
 
@@ -636,6 +779,7 @@ def add_mapping(
     """
     responses = []
     queries = {}
+    statuses = {}
 
     if isinstance(value_map.get("terms"), dict):
         for term, term_data in value_map["terms"].items():
@@ -674,14 +818,47 @@ def add_mapping(
 
                 responses.append(response)
                 queries.update({f"{term}_{lt}": query})
+                statuses[f"{term}_{lt}"] = check_value_mapping(
+                    endpoint=endpoint,
+                    prefixes=prefixes,
+                    database_name=database_name,
+                    variable=variable,
+                    response=response,
+                    target_class=target_class,
+                    super_class=super_class,
+                    local_term=lt,
+                )
 
-        return responses, queries
+        return responses, queries, statuses
     else:
         logging.warning(
             f"Value map for variable {variable} is incorrectly defined, "
             f"please see function docstring for an example."
         )
-        return None, None
+        return None, None, None
+
+
+def _has_actionable_value_mapping_terms(value_map):
+    """
+    Determine whether the value map contains at least one concrete local term to insert.
+    """
+    if not isinstance(value_map, dict) or not isinstance(value_map.get("terms"), dict):
+        return False
+
+    for term_data in value_map["terms"].values():
+        if not isinstance(term_data, dict):
+            continue
+
+        if not isinstance(term_data.get("target_class"), str):
+            continue
+
+        local_term = term_data.get("local_term")
+        if isinstance(local_term, str):
+            return True
+        if isinstance(local_term, list) and any(isinstance(v, str) for v in local_term):
+            return True
+
+    return False
 
 
 def check_data_class(
@@ -764,6 +941,48 @@ def check_predicate(endpoint, prefixes, predicate, variable, response):
         return False
 
 
+def check_value_mapping(
+    endpoint,
+    prefixes,
+    database_name,
+    variable,
+    response,
+    target_class,
+    super_class,
+    local_term,
+):
+    """
+    Check whether an OWL restriction value mapping was added to the annotation graph.
+    """
+    if 200 <= response.status_code < 300:
+        response, check_query = _check_for_value_mapping(
+            endpoint=endpoint,
+            prefixes=prefixes,
+            database_name=database_name,
+            target_class=target_class,
+            super_class=super_class,
+            local_term=local_term,
+        )
+        _response = json.loads(response.text)
+        if _response.get("boolean", True) is True:
+            logging.info(
+                f"Value mapping '{local_term}' was successfully annotated for {variable}."
+            )
+            return True
+
+        logging.warning(
+            f"Query for {variable} was successfully run on endpoint {endpoint}, "
+            f"but OWL restriction mapping for local value '{local_term}' was not found."
+        )
+        return False
+
+    logging.warning(
+        f"Value mapping query for {variable} was not successfully run on endpoint: {endpoint}.\n"
+        f"HTTP response code: {response.status_code}."
+    )
+    return False
+
+
 def read_file(file_name, path=None):
     """
     read a file and store its contents
@@ -824,6 +1043,23 @@ def write_file(file_name, content, path=None, file_extension=None):
         logging.error(f"An error occurred while writing the file: {e}")
 
 
+def _expand_prefixed_identifier(identifier, prefix_to_uri):
+    """
+    Expand a CURIE-like identifier to a full IRI string when possible.
+    """
+    if not isinstance(identifier, str):
+        return identifier
+
+    if ":" not in identifier:
+        return identifier
+
+    prefix, local = identifier.split(":", 1)
+    if prefix in prefix_to_uri:
+        return f"{prefix_to_uri[prefix]}{local}"
+
+    return identifier
+
+
 def _add_annotation(
     endpoint,
     prefixes,
@@ -881,20 +1117,38 @@ def _add_annotation(
         variable_component_name = f"?component{components}"
         variable_insertion = f"{predicate} {variable_component_name}."
 
+    annotation_graph_uri = f"http://annotation.local/{database_name}/"
+
+    # The variable-level pattern is matched against the source data named
+    # graph(s) produced by the triplifier (e.g., http://data.local/...). Scoping
+    # this explicitly is required for triple stores such as RDF4J that do not
+    # expose a union default graph.
     variable_where = (
-        f"?tablerow dbo:has_column {variable_component_name} .\n\n    "
+        f"?tablerow dbo:has_column {variable_component_name} .\n\n        "
         f"{variable_component_name} rdf:type db:{database_name}.{local_definition} ."
     )
 
-    # concatenate the insertions and where statements in a logical order
+    # The schema-reconstruction grouping-class patterns must be matched against
+    # the annotation graph, where the reconstruction class instances were created
+    # by _construct_extra_class. These cannot be read from the data graph.
+    reconstruction_where = f"{classes_where_before}{classes_where_after}"
+    if reconstruction_where.strip():
+        reconstruction_annotation_where = (
+            f"GRAPH <{annotation_graph_uri}> {{\n\n        "
+            f"{reconstruction_where}\n    }}"
+        )
+    else:
+        reconstruction_annotation_where = ""
+
+    # concatenate the insertions in a logical order
     full_insertion = f"{classes_insertion_before}{variable_insertion}{classes_insertion_after}{nodes_insertion}"
-    full_where = f"{classes_where_before}{variable_where}{classes_where_after}"
 
     # establish what components go where
     replacements = {
         f"{_variable_predicate} ?component0.": full_insertion,
-        "?tablerow dbo:has_column ?component0 .\n\n    "
-        f"?component0 rdf:type db:{_database}.{_variable_definition} .": full_where,
+        "?tablerow dbo:has_column ?component0 .\n\n        "
+        f"?component0 rdf:type db:{_database}.{_variable_definition} .": variable_where,
+        "# RECONSTRUCTION_ANNOTATION_WHERE": reconstruction_annotation_where,
         _database: database_name,
         _variable_definition: local_definition,
         _variable_class: class_object,
@@ -909,6 +1163,56 @@ def _add_annotation(
         query = query.replace(old, new)
 
     # run the query
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def _add_core_annotation(
+    endpoint,
+    prefixes,
+    database_name,
+    local_definition,
+    class_object,
+):
+    """
+    Insert the ontology-level annotation triples independently from any
+    instance-level reconstruction patterns.
+    """
+    query = """
+PREFIX db: <http://data.local/rdf/ontology/>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+PREFIX PLACEHOLDER: <>
+
+INSERT DATA {
+    GRAPH <ANNOTATION_GRAPH_URI> {
+        db:databasename.localvariable owl:equivalentClass PLACEHOLDER:variableclass .
+        db:databasename owl:equivalentClass ncit:C16960 .
+        dbo:has_value owl:sameAs roo:P100042 .
+        dbo:has_unit owl:sameAs roo:P100047 .
+        dbo:cell_of rdf:type owl:ObjectProperty ;
+            owl:inverseOf dbo:has_cell .
+    }
+}
+"""
+
+    prefixes = get_unique_prefixes(query, prefixes)
+
+    replacements = {
+        _prefixes_to_add: prefixes,
+        _annotation_graph_uri: f"http://annotation.local/{database_name}/",
+        _database: database_name,
+        _variable_definition: local_definition,
+        _variable_class: class_object,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
     response = __post_query(endpoint, query)
 
     return response, query
@@ -978,19 +1282,8 @@ def _add_mapping(
         super_class.split(":")[0] if ":" in super_class else super_class
     )
 
-    target_class = target_class.replace(":", "")
-    super_class = super_class.replace(":", "")
-
-    # Replace the prefix with the URI in the target_class and super_class
-    if target_class_prefix in prefix_to_uri:
-        target_class = target_class.replace(
-            target_class_prefix, prefix_to_uri[target_class_prefix]
-        )
-
-    if super_class_prefix in prefix_to_uri:
-        super_class = super_class.replace(
-            super_class_prefix, prefix_to_uri[super_class_prefix]
-        )
+    target_class = _expand_prefixed_identifier(target_class, prefix_to_uri)
+    super_class = _expand_prefixed_identifier(super_class, prefix_to_uri)
 
     # add the target_class, super_class, and local_term
     query = query % (target_class, super_class, local_term)
@@ -1057,7 +1350,11 @@ def _check_for_data_class(
     response = __post_query(
         endpoint=endpoint.rsplit("/statements", 1)[0],
         query=query,
-        data_style="query=" + query,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/sparql-results+json",
+        },
+        data_style={"query": query},
     )
 
     return response, query
@@ -1101,7 +1398,85 @@ def _check_for_predicate(endpoint, prefixes, predicate, template_file=None):
     response = __post_query(
         endpoint=endpoint.rsplit("/statements", 1)[0],
         query=query,
-        data_style="query=" + query,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/sparql-results+json",
+        },
+        data_style={"query": query},
+    )
+
+    return response, query
+
+
+def _check_for_value_mapping(
+    endpoint,
+    prefixes,
+    database_name,
+    target_class,
+    super_class,
+    local_term,
+):
+    """
+    Check whether the OWL restriction mapping exists in the annotation graph.
+    """
+    prefix_to_uri = {}
+    for line in prefixes.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("PREFIX"):
+            continue
+
+        parts = stripped.split()
+        if len(parts) < 3:
+            continue
+
+        prefix_to_uri[parts[1][:-1]] = parts[2][1:-1]
+
+    prefix_to_uri.update(
+        {
+            "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+            "owl": "http://www.w3.org/2002/07/owl#",
+            "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "dbo": "http://um-cds/ontologies/databaseontology/",
+        }
+    )
+
+    target_class_uri = _expand_prefixed_identifier(target_class, prefix_to_uri)
+    super_class_uri = _expand_prefixed_identifier(super_class, prefix_to_uri)
+    annotation_graph_uri = f"http://annotation.local/{database_name}/"
+    local_term_literal = json.dumps(local_term)
+
+    query = f"""
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+
+ASK {{
+    GRAPH <{annotation_graph_uri}> {{
+        <{target_class_uri}> rdf:type owl:Class ;
+            rdfs:subClassOf <{super_class_uri}> ;
+            owl:equivalentClass ?eqClass .
+        ?eqClass owl:intersectionOf ?list .
+        ?list rdf:rest*/rdf:first ?cellRestriction .
+        ?cellRestriction owl:onProperty dbo:cell_of ;
+            owl:someValuesFrom <{super_class_uri}> .
+        ?list rdf:rest*/rdf:first ?valueRestriction .
+        ?valueRestriction owl:onProperty dbo:has_value ;
+            owl:hasValue {local_term_literal}^^xsd:string .
+    }}
+}}
+"""
+
+    response = __post_query(
+        endpoint=endpoint.rsplit("/statements", 1)[0],
+        query=query,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/sparql-results+json",
+        },
+        data_style={"query": query},
     )
 
     return response, query
@@ -1283,6 +1658,197 @@ def _remove_component(
     return response, query
 
 
+def materialize_inferences(endpoint, database_name):
+    """
+    Materialize inferred triples into a separate graph.
+    This generates explicit rdf:type statements that would otherwise
+    require a reasoner to infer.
+
+     Three specific materializations are performed:
+    1. owl:equivalentClass → rdf:type: for each equivalentClass relationship,
+       instances of the local class also get rdf:type for the equivalent class.
+    2. template_mapping.rq ?term → rdf:type: for value mapping terms defined
+       with owl:equivalentClass restrictions, matching instances get rdf:type ?term.
+     3. schema reconstruction predicates: for explicit predicate edges created in
+         the annotation graph between instance resources, those edges are copied
+         to the materialized graph.
+
+    :param str endpoint: endpoint to post the materialization queries to
+    :param str database_name: database name used to construct graph URIs
+    """
+    logging.info(
+        f"Materializing inferences for database {database_name} on endpoint {endpoint}"
+    )
+
+    annotation_graph_uri = f"http://annotation.local/{database_name}/"
+    materialized_graph_uri = f"http://materialized.local/{database_name}/"
+
+    # materialize owl:equivalentClass as rdf:type
+    eq_response, eq_query = _materialize_equivalent_class(
+        endpoint=endpoint,
+        annotation_graph_uri=annotation_graph_uri,
+        materialized_graph_uri=materialized_graph_uri,
+    )
+
+    if eq_response is not None and 200 <= eq_response.status_code < 300:
+        logging.info(
+            "Successfully materialized owl:equivalentClass as rdf:type statements."
+        )
+    else:
+        status = eq_response.status_code if eq_response is not None else "N/A"
+        logging.warning(
+            f"Materialization of owl:equivalentClass may have failed. "
+            f"HTTP status: {status}."
+        )
+
+    # materialize template_mapping.rq ?term as rdf:type
+    vm_response, vm_query = _materialize_value_mapping(
+        endpoint=endpoint,
+        annotation_graph_uri=annotation_graph_uri,
+        materialized_graph_uri=materialized_graph_uri,
+    )
+
+    if vm_response is not None and 200 <= vm_response.status_code < 300:
+        logging.info(
+            "Successfully materialized value mapping ?term as rdf:type statements."
+        )
+    else:
+        status = vm_response.status_code if vm_response is not None else "N/A"
+        logging.warning(
+            f"Materialization of value mapping ?term may have failed. "
+            f"HTTP status: {status}."
+        )
+
+    # materialize schema reconstruction predicate edges
+    sr_response, sr_query = _materialize_schema_reconstruction_predicates(
+        endpoint=endpoint,
+        annotation_graph_uri=annotation_graph_uri,
+        materialized_graph_uri=materialized_graph_uri,
+    )
+
+    if sr_response is not None and 200 <= sr_response.status_code < 300:
+        logging.info("Successfully materialized schema reconstruction predicate edges.")
+    else:
+        status = sr_response.status_code if sr_response is not None else "N/A"
+        logging.warning(
+            f"Materialization of schema reconstruction predicate edges may have failed. "
+            f"HTTP status: {status}."
+        )
+
+    return eq_response, eq_query, vm_response, vm_query, sr_response, sr_query
+
+
+def _materialize_equivalent_class(
+    endpoint, annotation_graph_uri, materialized_graph_uri, template_file=None
+):
+    """
+    Materialize owl:equivalentClass relationships as rdf:type statements.
+    For each A owl:equivalentClass B (where B is not a blank node) found
+    in the annotation graph, instances of type A also get rdf:type B
+    in the materialized graph.
+
+    :param str endpoint: endpoint to post the query to
+    :param str annotation_graph_uri: URI of the annotation graph to read from
+    :param str materialized_graph_uri: URI of the materialized graph to write to
+    :param str template_file: optional override for the template file path
+    :return: tuple of (response, query)
+    """
+    logging.debug("Materializing owl:equivalentClass as rdf:type statements.")
+
+    if not isinstance(template_file, str):
+        template_file = os.path.join(
+            template_dir, "template_materialize_equivalent_class.rq"
+        )
+
+    query = read_file(template_file)
+
+    replacements = {
+        _annotation_graph_uri: annotation_graph_uri,
+        _materialized_graph_uri: materialized_graph_uri,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def _materialize_value_mapping(
+    endpoint, annotation_graph_uri, materialized_graph_uri, template_file=None
+):
+    """
+    Materialize value mapping ?term classes as rdf:type statements.
+    For each ?term class defined via template_mapping.rq with an
+    owl:equivalentClass restriction (intersection of cell_of and has_value),
+    instances matching the restriction pattern get rdf:type ?term
+    in the materialized graph.
+
+    :param str endpoint: endpoint to post the query to
+    :param str annotation_graph_uri: URI of the annotation graph to read from
+    :param str materialized_graph_uri: URI of the materialized graph to write to
+    :param str template_file: optional override for the template file path
+    :return: tuple of (response, query)
+    """
+    logging.debug("Materializing value mapping ?term as rdf:type statements.")
+
+    if not isinstance(template_file, str):
+        template_file = os.path.join(
+            template_dir, "template_materialize_value_mapping.rq"
+        )
+
+    query = read_file(template_file)
+
+    replacements = {
+        _annotation_graph_uri: annotation_graph_uri,
+        _materialized_graph_uri: materialized_graph_uri,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
+def _materialize_schema_reconstruction_predicates(
+    endpoint, annotation_graph_uri, materialized_graph_uri, template_file=None
+):
+    """
+    Materialize explicit schema-reconstruction predicate edges.
+    This copies instance-level predicate edges from the annotation graph into
+    the materialized graph while excluding ontology/meta predicates.
+
+    :param str endpoint: endpoint to post the query to
+    :param str annotation_graph_uri: URI of the annotation graph to read from
+    :param str materialized_graph_uri: URI of the materialized graph to write to
+    :param str template_file: optional override for the template file path
+    :return: tuple of (response, query)
+    """
+    logging.debug("Materializing schema reconstruction predicate edges.")
+
+    if not isinstance(template_file, str):
+        template_file = os.path.join(
+            template_dir, "template_materialize_schema_reconstruction_predicates.rq"
+        )
+
+    query = read_file(template_file)
+
+    replacements = {
+        _annotation_graph_uri: annotation_graph_uri,
+        _materialized_graph_uri: materialized_graph_uri,
+    }
+
+    for old, new in replacements.items():
+        query = query.replace(old, new)
+
+    response = __post_query(endpoint, query)
+
+    return response, query
+
+
 def __post_query(endpoint, query, headers=None, data_style=None):
     """
     run a query and return the response
@@ -1296,8 +1862,9 @@ def __post_query(endpoint, query, headers=None, data_style=None):
     if isinstance(headers, dict) is False:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    if isinstance(data_style, str) is False:
-        data_style = "update=" + query
+    if isinstance(data_style, (str, dict)) is False:
+        # Send updates as form fields so RDF4J parses the request body correctly.
+        data_style = {"update": query}
 
     if dry_run is False:
         annotation_response = requests.post(

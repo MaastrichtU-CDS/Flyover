@@ -15,6 +15,7 @@ from werkzeug.utils import secure_filename
 from services import AnnotateService
 from validation import MappingValidator
 from loaders import JSONLDMapping
+from utils.rdf_store_url import build_repository_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,9 @@ def start_annotation():
         if not databases:
             return jsonify({"success": False, "error": "No databases available"})
 
-        endpoint = f"{rdf_store_url}/repositories/{session_cache.repo}/statements"
+        endpoint = build_repository_endpoint(
+            rdf_store_url, session_cache.repo, "/statements"
+        )
         map_table_names = get_table_names(session_cache)
 
         annotation_data = AnnotateService.prepare_annotation_data(
@@ -264,7 +267,7 @@ def start_annotation():
         for database, data in annotation_data.items():
             logger.info(f"Processing annotation for database: {database}")
 
-            success, error = AnnotateService.execute_annotation(
+            annotation_results, error = AnnotateService.execute_annotation(
                 endpoint,
                 database,
                 data["prefixes"],
@@ -273,19 +276,32 @@ def start_annotation():
 
             for var_name in data["variables"]:
                 status_key = f"{database}.{var_name}"
-                if success:
-                    session_cache.annotation_status[status_key] = {
-                        "success": True,
-                        "message": "Annotation completed",
-                        "database": database,
-                    }
-                    total_annotated += 1
-                else:
+                if annotation_results is None:
                     session_cache.annotation_status[status_key] = {
                         "success": False,
                         "error": error,
                         "database": database,
                     }
+                    continue
+
+                result = annotation_results.get(var_name, {})
+                is_success = result.get("success", False)
+
+                session_cache.annotation_status[status_key] = {
+                    "success": is_success,
+                    "message": (
+                        "Annotation completed successfully"
+                        if is_success
+                        else "Annotation failed"
+                    ),
+                    "database": database,
+                    "details": result,
+                }
+
+                if not is_success and error:
+                    session_cache.annotation_status[status_key]["error"] = error
+
+                total_annotated += int(is_success)
 
         if total_annotated == 0:
             return jsonify(

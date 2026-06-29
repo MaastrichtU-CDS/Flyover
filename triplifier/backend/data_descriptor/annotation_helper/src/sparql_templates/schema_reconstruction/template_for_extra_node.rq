@@ -23,7 +23,9 @@ INSERT {
 }
 
 WHERE {
+    GRAPH ?dataGraph {
+        ?tablerow rdf:type db:databasename .
+    }
 
-    ?tablerow rdf:type db:databasename .
-
+    FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
 }

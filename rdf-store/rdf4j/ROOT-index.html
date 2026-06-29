@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<!--
+  Landing page for the RDF4J container's ROOT web application.
+
+  RDF4J normally serves its UI under the /rdf4j-workbench suffix, so visiting
+  http://localhost:7200/ would otherwise show Tomcat's default page. This file
+  replaces the ROOT app so that opening the bare host:port redirects straight
+  to the workbench, matching the "just go to localhost:7200" experience users
+  get with GraphDB.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url=/rdf4j-workbench/">
+    <title>Flyover RDF store</title>
+    <script>window.location.replace("/rdf4j-workbench/");</script>
+</head>
+<body>
+    <p>Redirecting to the <a href="/rdf4j-workbench/">RDF4J Workbench</a>&hellip;</p>
+</body>
+</html>

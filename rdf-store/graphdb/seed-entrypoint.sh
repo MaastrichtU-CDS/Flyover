@@ -1,4 +1,5 @@
 #!/bin/sh
+# TODO verify that this works with GraphDB agnostic RDF-STORE setup
 set -e
 
 # Populate /opt/graphdb/home from the baked-in seed if files don't already exist.

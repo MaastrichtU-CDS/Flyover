@@ -38,12 +38,27 @@ Clone the repository and start the services:
 docker-compose up -d --pull always
 ```
 
-| Service        | URL                                            | Description                         |
-|----------------|------------------------------------------------|-------------------------------------|
-| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data       |
-| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (GraphDB) |
+| Service        | URL                                            | Description                             |
+|----------------|------------------------------------------------|-----------------------------------------|
+| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data           |
+| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (active store)|
 
 > **Note:** On Windows, please use WSL2 with Docker. On macOS/Linux, Docker can be used directly.
+
+### Choosing the RDF store
+
+Flyover can run on **GraphDB**, **RDF4J**, or **QLever** — the application
+behaves identically with any of them. The backend is selected with a single
+`COMPOSE_PROFILES` setting in the [`.env`](.env) file (default: `rdf4j`):
+
+```bash
+# .env
+COMPOSE_PROFILES=qlever   # or: graphdb | rdf4j
+```
+
+After changing the preset, recreate the stack with `docker compose up -d --build`.
+See [`rdf-store/README.md`](rdf-store/README.md) for the differences between the
+backends and details of the QLever integration.
 
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
 on configuration and environment variables.

@@ -39,8 +39,18 @@ coverage.xml
 htmlcov/
 triplifier/.coverage
 
-# GraphDB data and logs (generated files)
+# RDF store data and logs (generated at runtime, not tracked).
+# Settings/config files under these directories are kept (only data and logs
+# are ignored).
+# GraphDB
 graphdb/data/
+rdf-store/graphdb/data/
+# RDF4J
+rdf-store/rdf4j/data/
+rdf-store/rdf4j/logs/
+# QLever (on-disk index)
+rdf-store/qlever/data/
+!rdf-store/qlever/data/.gitkeep
 
 # Test and demo files (but keep actual test suites)
 test_annotation_ui.py

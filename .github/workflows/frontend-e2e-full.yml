@@ -13,6 +13,10 @@ jobs:
     name: Full Playwright suite against tmpfs stack
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # The CI test stack always runs against GraphDB; activate its profile for
+    # every step so build, up, logs and teardown all target the right service.
+    env:
+      COMPOSE_PROFILES: graphdb
     # Only run on PRs if the run-full-e2e label is present. Always run on the
     # other triggers (schedule, dispatch).
     if: >

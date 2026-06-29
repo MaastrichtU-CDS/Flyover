@@ -18,6 +18,11 @@ from .session_helpers import (
     COLUMN_INFO_QUERY,
     DATABASE_NAME_PATTERN,
 )
+from .rdf_store_url import (
+    normalise_rdf_store_base_url,
+    build_repository_endpoint,
+    build_graph_store_endpoint,
+)
 
 __all__ = [
     "clean_column_names",
@@ -31,4 +36,7 @@ __all__ = [
     "process_variable_for_annotation",
     "COLUMN_INFO_QUERY",
     "DATABASE_NAME_PATTERN",
+    "normalise_rdf_store_base_url",
+    "build_repository_endpoint",
+    "build_graph_store_endpoint",
 ]

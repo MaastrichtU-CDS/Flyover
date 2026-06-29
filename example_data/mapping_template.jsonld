@@ -486,5 +486,123 @@
       }
     }
   },
-  "databases": {}
+  "databases": {
+    "REPLACE_WITH_YOUR_DATABASE_KEY": {
+      "@id": "mapping:database/REPLACE_WITH_YOUR_DATABASE_KEY",
+      "@type": "mapping:Database",
+      "name": "REPLACE_WITH_YOUR_DATABASE_NAME",
+      "description": "",
+      "tables": {
+        "REPLACE_WITH_YOUR_TABLE_KEY": {
+          "@id": "mapping:table/REPLACE_WITH_YOUR_TABLE_KEY",
+          "@type": "mapping:Table",
+          "sourceFile": "REPLACE_WITH_YOUR_SOURCE_FILE",
+          "description": "",
+          "columns": {
+            "identifier": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_identifier"
+            },
+            "biological_sex": {
+              "mapsTo": "schema:variable/biological_sex",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_biological_sex",
+              "localMappings": {
+                "male": "REPLACE_WITH_LOCAL_VALUE",
+                "female": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "age_at_diagnosis": {
+              "mapsTo": "schema:variable/age_at_diagnosis",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_age_at_diagnosis",
+              "localMappings": {
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "performance_status": {
+              "mapsTo": "schema:variable/performance_status",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_performance_status",
+              "localMappings": {
+                "0": "REPLACE_WITH_LOCAL_VALUE",
+                "1": "REPLACE_WITH_LOCAL_VALUE",
+                "2": "REPLACE_WITH_LOCAL_VALUE",
+                "3": "REPLACE_WITH_LOCAL_VALUE",
+                "4": "REPLACE_WITH_LOCAL_VALUE",
+                "5": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "hpv_status": {
+              "mapsTo": "schema:variable/hpv_status",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_hpv_status",
+              "localMappings": {
+                "positive": "REPLACE_WITH_LOCAL_VALUE",
+                "negative": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "tumour_location": {
+              "mapsTo": "schema:variable/tumour_location",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_tumour_location",
+              "localMappings": {
+                "oropharynx": "REPLACE_WITH_LOCAL_VALUE",
+                "larynx": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "t_stage": {
+              "mapsTo": "schema:variable/t_stage",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_t_stage",
+              "localMappings": {
+                "x": "REPLACE_WITH_LOCAL_VALUE",
+                "0": "REPLACE_WITH_LOCAL_VALUE",
+                "1": "REPLACE_WITH_LOCAL_VALUE",
+                "2": "REPLACE_WITH_LOCAL_VALUE",
+                "3": "REPLACE_WITH_LOCAL_VALUE",
+                "4": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "n_stage": {
+              "mapsTo": "schema:variable/n_stage",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_n_stage",
+              "localMappings": {
+                "x": "REPLACE_WITH_LOCAL_VALUE",
+                "0": "REPLACE_WITH_LOCAL_VALUE",
+                "1": "REPLACE_WITH_LOCAL_VALUE",
+                "2": "REPLACE_WITH_LOCAL_VALUE",
+                "3": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "m_stage": {
+              "mapsTo": "schema:variable/m_stage",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_m_stage",
+              "localMappings": {
+                "0": "REPLACE_WITH_LOCAL_VALUE",
+                "1": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "survival_status": {
+              "mapsTo": "schema:variable/survival_status",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_survival_status",
+              "localMappings": {
+                "Dead": "REPLACE_WITH_LOCAL_VALUE",
+                "Alive": "REPLACE_WITH_LOCAL_VALUE",
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            },
+            "survival_days": {
+              "mapsTo": "schema:variable/survival_days",
+              "localColumn": "REPLACE_WITH_LOCAL_COLUMN_FOR_survival_days",
+              "localMappings": {
+                "missing_or_unspecified": "REPLACE_WITH_LOCAL_VALUE"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

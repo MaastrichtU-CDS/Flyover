@@ -47,6 +47,11 @@ except (ImportError, ValueError):
                 sanitise_table_name,
             )
 
+try:
+    from ..utils.rdf_store_url import build_graph_store_endpoint
+except (ImportError, ValueError):
+    from utils.rdf_store_url import build_graph_store_endpoint  # type: ignore[no-redef]
+
 logger = logging.getLogger(__name__)
 
 
@@ -756,11 +761,11 @@ class IngestService:
                     messages.append(f"Missing files for table {table_name}")
                     continue
 
-                # Upload ontology file
-                ontology_url = (
-                    f"{rdf_store_url}/repositories/{repo}"
-                    f"/rdf-graphs/service?graph="
-                    f"http://ontology.local/{table_name}/"
+                # Upload ontology file (SPARQL Graph Store Protocol)
+                ontology_url = build_graph_store_endpoint(
+                    rdf_store_url,
+                    repo,
+                    f"http://ontology.local/{table_name}/",
                 )
 
                 success, status, method = self.upload_file_to_rdf_store(
@@ -782,17 +787,17 @@ class IngestService:
                     overall_success = False
                     continue
 
-                # Upload data file
-                data_url = (
-                    f"{rdf_store_url}/repositories/{repo}"
-                    f"/rdf-graphs/service?graph="
-                    f"http://data.local/{table_name}/"
+                # Upload data file (SPARQL Graph Store Protocol)
+                data_url = build_graph_store_endpoint(
+                    rdf_store_url,
+                    repo,
+                    f"http://data.local/{table_name}/",
                 )
 
                 success, status, method = self.upload_file_to_rdf_store(
                     data_path,
                     data_url,
-                    "application/x-turtle",
+                    "text/turtle",
                     not data_background,
                     data_timeout,
                 )
@@ -848,10 +853,10 @@ class IngestService:
             if upload_ontology:
                 ontology_path = os.path.join(root_dir, "ontology.owl")
                 if os.path.exists(ontology_path):
-                    ontology_url = (
-                        f"{rdf_store_url}/repositories/{repo}"
-                        f"/rdf-graphs/service?graph="
-                        f"http://ontology.local/"
+                    ontology_url = build_graph_store_endpoint(
+                        rdf_store_url,
+                        repo,
+                        "http://ontology.local/",
                     )
                     success, status, method = self.upload_file_to_rdf_store(
                         ontology_path,
@@ -873,12 +878,16 @@ class IngestService:
             if upload_data:
                 data_path = os.path.join(root_dir, "output.ttl")
                 if os.path.exists(data_path):
-                    data_url = f"{rdf_store_url}/repositories/{repo}/rdf-graphs/service?graph=http://data.local/"
+                    data_url = build_graph_store_endpoint(
+                        rdf_store_url,
+                        repo,
+                        "http://data.local/",
+                    )
 
                     success, status, method = self.upload_file_to_rdf_store(
                         data_path,
                         data_url,
-                        "application/x-turtle",
+                        "text/turtle",
                         not data_background,
                         data_timeout,
                     )
