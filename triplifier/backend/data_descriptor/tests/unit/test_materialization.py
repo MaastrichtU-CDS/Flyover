@@ -480,6 +480,49 @@ class TestMaterializeConfigFlag(unittest.TestCase):
 
         mock_materialize.assert_not_called()
 
+    @patch("annotation_helper.src.miscellaneous.materialize_inferences")
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    @patch("annotation_helper.src.miscellaneous.materialize", True)
+    @patch("annotation_helper.src.miscellaneous.dry_run", False)
+    def test_add_annotation_survives_materialize_failure(
+        self, mock_post, mock_materialize
+    ):
+        """A materialization failure must not fail the written annotation."""
+        from annotation_helper.src.miscellaneous import add_annotation
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '{"boolean": true}'
+        mock_post.return_value = mock_response
+
+        # Materialization runs after the annotation is already written; even if
+        # it blows up (e.g. the RDF store is briefly unreachable) the annotation
+        # itself must still be reported as successful.
+        mock_materialize.side_effect = RuntimeError("rdf store unreachable")
+
+        annotation_data = {
+            "test_var": {
+                "predicate": "roo:P100018",
+                "class": "ncit:C28421",
+                "local_definition": "test_column",
+            }
+        }
+
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = add_annotation(
+                endpoint="http://localhost:7200/repositories/test/statements",
+                database="test_db",
+                prefixes="PREFIX roo: <http://www.cancerdata.org/roo/>\nPREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>",
+                annotation_data=annotation_data,
+                path=tmpdir,
+                save_query=False,
+            )
+
+        mock_materialize.assert_called_once()
+        self.assertIsInstance(result, dict)
+
 
 class TestMaterializeTemplateFiles(unittest.TestCase):
     """Test that the SPARQL template files exist and are well-formed."""

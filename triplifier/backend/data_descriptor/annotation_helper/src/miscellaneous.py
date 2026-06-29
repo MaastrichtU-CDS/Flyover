@@ -697,12 +697,21 @@ def add_annotation(
         annotation_success = None
         value_mapping_statuses = None
 
-    # materialize inferences if enabled
+    # materialize inferences if enabled. This runs after the annotation has
+    # already been written, so a failure here must not propagate and cause the
+    # successful annotation to be reported as failed; log it and continue.
     if materialize and dry_run is False:
-        materialize_inferences(
-            endpoint=endpoint,
-            database_name=database,
-        )
+        try:
+            materialize_inferences(
+                endpoint=endpoint,
+                database_name=database,
+            )
+        except Exception as exc:
+            logging.error(
+                "Materialization of inferences failed for database %s: %s",
+                database,
+                exc,
+            )
 
     return annotation_results
 
