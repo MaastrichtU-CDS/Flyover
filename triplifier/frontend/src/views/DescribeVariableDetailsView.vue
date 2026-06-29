@@ -93,26 +93,26 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
 
     // Pre-seed reactive selections from the local mappings. `parsedDatabases`
     // is recomputed once the JSON-LD mapping finishes loading (it depends on
-    // `mapperLoaded`); on the first pass — before the mapping is in memory —
-    // `preselectedValue` is empty and we would otherwise default `selKey` to
-    // ''. We must therefore prefill whenever the current selection is still
-    // empty (not only when the key is brand-new), so the local mappings from
-    // the uploaded map (e.g. biological sex → man/vrouw) appear on the page.
+    // `mapperLoaded`). We seed only when the key has never been set (key
+    // presence, not truthiness) so that a deliberate empty selection — the
+    // user clearing a preselected category — is preserved and does not snap
+    // back. The empty default is deferred until the mapping has loaded;
+    // otherwise the first pass would lock in '' before the local mappings
+    // (e.g. biological sex → man/vrouw) are available.
     const selKey = `${database}_${localVariable}_${value}`
     const backendKey = `${database}_${localVariable}_category_"${value}"`
-    if (preselectedValue && !categorySelections[selKey]) {
-      categorySelections[selKey] = preselectedValue
-      previousSelections[selKey] = preselectedValue
-    } else if (
-      preselectedValues.value?.[backendKey] &&
-      !categorySelections[selKey]
-    ) {
-      // Fall back to the server-computed preselections.
-      categorySelections[selKey] = preselectedValues.value[backendKey]
-      previousSelections[selKey] = preselectedValues.value[backendKey]
-    } else if (!(selKey in categorySelections)) {
-      // Default to empty string if no selection exists yet.
-      categorySelections[selKey] = ''
+    if (!(selKey in categorySelections)) {
+      if (preselectedValue) {
+        categorySelections[selKey] = preselectedValue
+        previousSelections[selKey] = preselectedValue
+      } else if (preselectedValues.value?.[backendKey]) {
+        // Fall back to the server-computed preselections.
+        categorySelections[selKey] = preselectedValues.value[backendKey]
+        previousSelections[selKey] = preselectedValues.value[backendKey]
+      } else if (mapperLoaded.value) {
+        // Default to empty string only once the mapping is loaded.
+        categorySelections[selKey] = ''
+      }
     }
 
     processedCategories.push({
@@ -172,6 +172,10 @@ const parsedDatabases = computed(() => {
   }
   return result
 })
+
+// Exposed for unit tests: the category selection map is the source of truth
+// that drives persistence, and asserting on it avoids the v-model/DOM desync.
+defineExpose({ categorySelections })
 
 function toggleDatabase(name) {
   expandedDatabases[name] = !expandedDatabases[name]
