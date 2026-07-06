@@ -1,0 +1,34 @@
+# Materialization query: schema reconstruction predicates
+# Copy explicit predicate edges produced by annotation/schema reconstruction
+# from the annotation graph into the materialized graph.
+
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+
+INSERT {
+    GRAPH <MATERIALIZED_GRAPH_URI> {
+        ?subject ?predicate ?object .
+    }
+}
+WHERE {
+    GRAPH <ANNOTATION_GRAPH_URI> {
+        ?subject ?predicate ?object .
+
+        # Only copy instance-level edges (not ontology/meta triples)
+        FILTER(isIRI(?subject) && isIRI(?object))
+        FILTER(STRSTARTS(STR(?subject), "http://data.local/"))
+        FILTER(!STRSTARTS(STR(?subject), "http://data.local/rdf/ontology/"))
+
+        # Exclude meta/structural predicates; keep mapping predicates
+        FILTER(?predicate != rdf:type)
+        FILTER(?predicate != rdfs:subClassOf)
+        FILTER(?predicate != owl:equivalentClass)
+        FILTER(?predicate != owl:sameAs)
+        FILTER(?predicate != dbo:has_column)
+        FILTER(?predicate != dbo:has_cell)
+        FILTER(?predicate != dbo:has_value)
+        FILTER(?predicate != dbo:cell_of)
+    }
+}

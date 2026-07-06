@@ -8,7 +8,7 @@ functionality for business logic operations.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -300,6 +300,109 @@ class TestAnnotateServiceVerification(unittest.TestCase):
         self.assertEqual(len(unannotated), 1)
         self.assertIn("test_db.var1", annotated)
         self.assertIn("test_db.var2", unannotated)
+
+
+class TestAnnotateServiceExecution(unittest.TestCase):
+    """Test annotation execution result handling."""
+
+    @patch("annotation_helper.src.miscellaneous.add_annotation")
+    def test_execute_annotation_returns_per_variable_results(self, mock_add_annotation):
+        """Test that annotation execution preserves helper result details."""
+        mock_add_annotation.return_value = {
+            "gender": {"success": True, "value_mappings_inserted": True}
+        }
+
+        result, error = AnnotateService.execute_annotation(
+            endpoint="http://example.test/statements",
+            database="test_db",
+            prefixes="PREFIX ncit: <http://example.test/>",
+            annotated_variables={"gender": {"class": "ncit:C28421"}},
+            temp_dir="/tmp/flyover-test-annotation",
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            result,
+            {"gender": {"success": True, "value_mappings_inserted": True}},
+        )
+
+    @patch("annotation_helper.src.miscellaneous.add_annotation")
+    def test_execute_annotation_returns_error_on_exception(self, mock_add_annotation):
+        """Test that annotation execution surfaces helper exceptions."""
+        mock_add_annotation.side_effect = RuntimeError("rdf4j update failed")
+
+        result, error = AnnotateService.execute_annotation(
+            endpoint="http://example.test/statements",
+            database="test_db",
+            prefixes="",
+            annotated_variables={"gender": {"class": "ncit:C28421"}},
+            temp_dir="/tmp/flyover-test-annotation",
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(error, "rdf4j update failed")
+
+
+class TestRDFStoreServiceNameMatcher(unittest.TestCase):
+    """Test RDFStoreService database name matching."""
+
+    def test_exact_match(self):
+        """Test exact database name match."""
+        from services import RDFStoreService
+
+        self.assertTrue(RDFStoreService.graph_database_find_name_match("mydb", "mydb"))
+
+    def test_none_matches_all(self):
+        """Test that None database name matches all databases."""
+        from services import RDFStoreService
+
+        self.assertTrue(RDFStoreService.graph_database_find_name_match(None, "any_db"))
+
+    def test_empty_matches_all(self):
+        """Test that empty string database name matches all databases."""
+        from services import RDFStoreService
+
+        self.assertTrue(RDFStoreService.graph_database_find_name_match("", "any_db"))
+
+    def test_csv_extension_match(self):
+        """Test matching with/without .csv extension."""
+        from services import RDFStoreService
+
+        self.assertTrue(
+            RDFStoreService.graph_database_find_name_match("mydb.csv", "mydb")
+        )
+        self.assertTrue(
+            RDFStoreService.graph_database_find_name_match("mydb", "mydb.csv")
+        )
+
+    def test_csv_strip_uses_slice_not_rstrip(self):
+        """Test that .csv removal uses slice, not rstrip (which strips chars)."""
+        from services import RDFStoreService
+
+        # rstrip(".csv") would incorrectly strip 'v','s','c','.' chars
+        # from names like "table_csv.csv" → "table_" instead of "table_csv"
+        self.assertTrue(
+            RDFStoreService.graph_database_find_name_match("table_csv.csv", "table_csv")
+        )
+        self.assertFalse(
+            RDFStoreService.graph_database_find_name_match("table_csv.csv", "table_")
+        )
+
+    def test_no_match(self):
+        """Test that different database names don't match."""
+        from services import RDFStoreService
+
+        self.assertFalse(RDFStoreService.graph_database_find_name_match("db_a", "db_b"))
+
+    def test_substring_no_match(self):
+        """Test that substring database names don't match."""
+        from services import RDFStoreService
+
+        self.assertFalse(
+            RDFStoreService.graph_database_find_name_match(
+                "synthetic_dutch_150", "synthetic_dutch_1500"
+            )
+        )
 
 
 if __name__ == "__main__":

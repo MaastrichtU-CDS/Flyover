@@ -117,6 +117,36 @@ def convert_value_mapping(schema_value_mapping, local_mappings):
     return {"terms": converted_terms} if converted_terms else None
 
 
+def build_annotation_variable_entry(schema_var, local_definition, local_mappings=None):
+    """
+    Build one annotation-helper variable entry from a JSON-LD schema variable.
+
+    Semantic rule:
+    - `predicate` drives the `?row -> ?columnInstance` edge
+    - `class` is the ontology mapping target
+    - `@type` is schema metadata only and must not change annotation semantics
+    """
+    var_entry = {
+        "predicate": schema_var.get("predicate"),
+        "class": schema_var.get("class"),
+        "local_definition": local_definition,
+    }
+
+    schema_reconstruction = convert_schema_reconstruction(
+        schema_var.get("schemaReconstruction")
+    )
+    if schema_reconstruction:
+        var_entry["schema_reconstruction"] = schema_reconstruction
+
+    value_mapping = convert_value_mapping(
+        schema_var.get("valueMapping"), local_mappings
+    )
+    if value_mapping:
+        var_entry["value_mapping"] = value_mapping
+
+    return var_entry
+
+
 def parse_jsonld_for_table(jsonld_content, database_key, table_key):
     """
     Parse JSON-LD content and extract configuration for a specific table.
@@ -183,27 +213,11 @@ def parse_jsonld_for_table(jsonld_content, database_key, table_key):
             )
             continue
 
-        # Build the variable info entry
-        var_entry = {
-            "predicate": schema_var.get("predicate"),
-            "class": schema_var.get("class"),
-            "local_definition": local_definition,
-        }
-
-        # Convert and add schema_reconstruction if present
-        schema_reconstruction = convert_schema_reconstruction(
-            schema_var.get("schemaReconstruction")
+        var_entry = build_annotation_variable_entry(
+            schema_var,
+            local_definition,
+            column_data.get("localMappings"),
         )
-        if schema_reconstruction:
-            var_entry["schema_reconstruction"] = schema_reconstruction
-
-        # Convert and add value_mapping if present
-        local_mappings = column_data.get("localMappings")
-        value_mapping = convert_value_mapping(
-            schema_var.get("valueMapping"), local_mappings
-        )
-        if value_mapping:
-            var_entry["value_mapping"] = value_mapping
 
         # Use the schema variable name as the key (for consistency)
         variable_info[schema_var_name] = var_entry

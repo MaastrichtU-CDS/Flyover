@@ -405,6 +405,8 @@ class QueryBuilder:
         """
         ask_query_parts = []
 
+        annotation_graph = f"http://annotation.local/{database}/"
+
         # Add the main equivalentClass statement
         ask_query_parts.append(
             f"db:{database}.{local_definition} owl:equivalentClass {var_class} ."
@@ -420,7 +422,10 @@ class QueryBuilder:
 
         return f"""
             {prefixes}
-            ASK {{
+            ASK {{ 
+            GRAPH <{annotation_graph}>
+             {{
               {' '.join(ask_query_parts)}
+             }}
             }}
         """

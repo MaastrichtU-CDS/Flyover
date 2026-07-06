@@ -346,6 +346,22 @@ class TestJSONLDMapping(unittest.TestCase):
         )
         self.assertEqual(var_info["value_mapping"]["terms"]["male"]["local_term"], "M")
 
+    def test_to_annotation_entry_uses_predicate_and_class_not_var_type(self):
+        """Test that annotation semantics come from predicate/class, not @type."""
+        mapping = JSONLDMapping.from_dict(self.mapping_data)
+        var = mapping.get_variable("biological_sex")
+
+        entry = var.to_annotation_entry(
+            local_definition="sex",
+            local_mappings={"male": "M", "female": "F"},
+        )
+
+        self.assertEqual(var.var_type, "schema:CategoricalVariable")
+        self.assertEqual(entry["predicate"], "sio:SIO_000008")
+        self.assertEqual(entry["class"], "ncit:C28421")
+        self.assertEqual(entry["local_definition"], "sex")
+        self.assertEqual(entry["value_mapping"]["terms"]["male"]["local_term"], "M")
+
     def test_get_prefixes_string(self):
         """Test getting prefixes as SPARQL PREFIX string."""
         mapping = JSONLDMapping.from_dict(self.mapping_data)

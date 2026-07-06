@@ -1,20 +1,99 @@
+# ══════════════════════════════════════════════════════════════════════
+# RDF STORE — pick ONE backend through the active Compose profile.
+#
+# GraphDB is the default: `docker-compose up` (no flags) starts GraphDB.
+# The default is set by COMPOSE_PROFILES=graphdb in the committed .env
+# file, which is intentionally checked into git so that every user gets
+# the same out-of-the-box experience.
+#
+# To use a different backend, override the variable before running:
+#     COMPOSE_PROFILES=rdf4j   docker-compose up   → Eclipse RDF4J (no reasoning)
+#     COMPOSE_PROFILES=qlever  docker-compose up   → QLever        (no reasoning)
+#
+# IMPORTANT — always run `docker-compose down` with the same
+# COMPOSE_PROFILES value that was used for `up`, so that Compose can
+# locate and stop the correct RDF-store container.  Because .env is
+# committed, plain `docker-compose down` will always stop GraphDB
+# correctly.  If you started with a different backend, export (or
+# inline) the matching variable:
+#     COMPOSE_PROFILES=rdf4j  docker-compose down
+#
+# Every backend is published as the container "rdf-store" on port 7200 and
+# speaks the same RDF4J/GraphDB-compatible REST API, so the triplifier
+# connects to it in exactly the same way regardless of the chosen store.
+# ══════════════════════════════════════════════════════════════════════
+
+# Settings shared by whichever store ends up published as "rdf-store".
+x-rdf-store-common: &rdf-store-common
+  container_name: rdf-store
+  ports:
+    - "127.0.0.1:7200:7200"
+  networks:
+    - proxynet
+
 services:
-  rdf-store:
+  # ─── Option A: GraphDB ──────────────────────────────────────────────
+  rdf-store-graphdb:
+    <<: *rdf-store-common
+    profiles: ["graphdb"]
     image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
-    # If preferred, the graphdb image can be built from the Dockerfile in the graphdb directory
-    #build:
-    #  context: ./graphdb
-    ports:
-      - "127.0.0.1:7200:7200"
+    # If preferred, the graphdb image can be built from the Dockerfile:
+    # build:
+    #   context: ./rdf-store/graphdb
     volumes:
-      - ./graphdb/data:/opt/graphdb/home
+      - ./rdf-store/graphdb/data:/opt/graphdb/home
     environment:
       - GDB_HEAP_SIZE=8g
       - GDB_MIN_MEM=4g
       - GDB_MAX_MEM=12g
+
+  # ─── Option B: RDF4J ────────────────────────────────────────────────
+  # The Dockerfile auto-creates the "userRepo" repository on first start.
+  rdf-store-rdf4j:
+    <<: *rdf-store-common
+    profiles: ["rdf4j"]
+    build:
+      context: ./rdf-store/rdf4j
+    volumes:
+      - ./rdf-store/rdf4j/data:/var/rdf4j
+      - ./rdf-store/rdf4j/logs:/usr/local/tomcat/logs\
+    environment:
+      # Use all available CPU cores and up to 75 % of host RAM for the JVM heap.
+      # -XX:+UseContainerSupport (default in JDK 11+) makes the JVM honour
+      # Docker's CPU/memory limits instead of reading raw host values.
+      # MaxRAMPercentage caps the heap at 75 % of available RAM, leaving the
+      # remainder for the OS, Tomcat's off-heap allocations, and other processes.
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+
+  # ─── Option C: QLever ───────────────────────────────────────────────
+  # The QLever engine only speaks a plain SPARQL HTTP endpoint, so a thin
+  # adapter (published as "rdf-store") translates the RDF4J/GraphDB REST API
+  # used by the triplifier onto QLever. The engine is an internal service;
+  # its on-disk index is persisted under ./rdf-store/qlever/data, mirroring
+  # the data volumes used by GraphDB and RDF4J.
+  qlever-engine:
+    profiles: ["qlever"]
+    build:
+      context: ./rdf-store/qlever/engine
+    volumes:
+      - ./rdf-store/qlever/data:/data
+    environment:
+      # Access token required by QLever to accept SPARQL UPDATE requests.
+      - QLEVER_ACCESS_TOKEN=${QLEVER_ACCESS_TOKEN:-flyover}
     networks:
       - proxynet
-    container_name: rdf-store
+    container_name: qlever-engine
+
+  rdf-store-qlever:
+    <<: *rdf-store-common
+    profiles: ["qlever"]
+    build:
+      context: ./rdf-store/qlever/adapter
+    environment:
+      - QLEVER_ENDPOINT=http://qlever-engine:7019
+      - QLEVER_ACCESS_TOKEN=${QLEVER_ACCESS_TOKEN:-flyover}
+    depends_on:
+      - qlever-engine
 
   triplifier:
     image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
@@ -24,15 +103,21 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     environment:
-      - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
-      - FLYOVER_REPOSITORY_NAME=userRepo
+      - FLYOVER_RDF_STORE_URL=${FLYOVER_RDF_STORE_URL:-http://rdf-store:7200}
+      - FLYOVER_REPOSITORY_NAME=${FLYOVER_REPOSITORY_NAME:-userRepo}
       - FLASK_ENV=production
+      # Enable manual materialization of inferred triples in a separate graph.
+      # Set to true when the RDF store does not perform reasoning (RDF4J, QLever),
+      # and to false when using GraphDB (which reasons natively).
+      - FLYOVER_MATERIALIZE_INFERENCES=${FLYOVER_MATERIALIZE_INFERENCES:-true}
       # Optional: Override default timeout settings
       # - GUNICORN_TIMEOUT=300
       # - RDF_REQUEST_TIMEOUT=3600
     hostname: "data.local"
     networks:
       - proxynet
+    # volumes:
+    #   - ./triplifier/data_descriptor/annotation_helper/src/sparql_templates/template_materialize_value_mapping.rq:/app/data_descriptor/annotation_helper/src/sparql_templates/template_materialize_value_mapping.rq
     container_name: triplifier
 
 networks:

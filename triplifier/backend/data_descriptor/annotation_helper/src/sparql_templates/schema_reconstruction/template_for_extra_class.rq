@@ -31,8 +31,11 @@ INSERT {
 }
 
 WHERE {
+    GRAPH ?dataGraph {
+        ?tablerow rdf:type db:databasename .
+    }
+
+    FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
+
     BIND(IRI(CONCAT(str(?tablerow), "/reconstructioniri")) as ?class) .
-
-    ?tablerow rdf:type db:databasename .
-
 }

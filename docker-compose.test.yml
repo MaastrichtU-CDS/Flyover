@@ -1,7 +1,9 @@
 services:
-  rdf-store:
+  # The CI test stack always runs against GraphDB (profile: graphdb).
+  # Activate it with: COMPOSE_PROFILES=graphdb docker compose -f docker-compose.yml -f docker-compose.test.yml ...
+  rdf-store-graphdb:
     build:
-      context: ./graphdb
+      context: ./rdf-store/graphdb
     image: flyover-graphdb-test:local
     volumes: !reset []
     tmpfs:
@@ -14,3 +16,6 @@ services:
   triplifier:
     build:
       context: ./triplifier
+    environment:
+      - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
+      - FLYOVER_MATERIALIZE_INFERENCES=false

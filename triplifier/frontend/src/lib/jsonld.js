@@ -349,15 +349,18 @@ export async function updateMappingFromForm(formData) {
   for (const [databaseName, localColumns] of Object.entries(targetsByDb)) {
     for (const [localColumnName, target] of localColumns) {
       if (!target) continue
-      const { varName, descriptionDisplay, dataType } = target
+      const { varName, dataType } = target
 
-      if (!mapping.schema.variables[varName]) {
-        mapping.schema.variables[varName] = {
-          name: varName,
-          description: descriptionDisplay,
-          dataType: dataType || null,
-        }
-      } else if (dataType) {
+      // Only touch schema.variables for variables the uploaded/global schema
+      // already defines. A fully-specified SchemaVariable requires @type,
+      // dataType, predicate and class; we cannot synthesise those from the
+      // describe form, so writing a {name, description, dataType} stub would
+      // produce a schema-invalid mapping (the "@type/predicate/class is a
+      // required property" submit error). When the user maps a column to a
+      // variable that does not exist in the schema yet, we therefore only
+      // create the entry in the databases → columns section (mirroring how
+      // localColumn / localMappings live there), and leave the schema alone.
+      if (mapping.schema?.variables?.[varName] && dataType) {
         mapping.schema.variables[varName].dataType = dataType
       }
 

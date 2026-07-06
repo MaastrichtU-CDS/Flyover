@@ -249,17 +249,52 @@ describe('updateMappingFromForm — deselection and tab-switching robustness', (
     }
   }
 
-  it('adds a column and schema variable for a selected description', async () => {
+  it('adds only a column (no schema stub) for a variable not in the schema', async () => {
     await updateMappingFromForm(
       formEntry('patients', 'age_yrs', 'Age', 'continuous')
     )
     const m = getMapping()
-    expect(m.schema.variables.age).toMatchObject({
-      name: 'age',
-      dataType: 'continuous',
-    })
+    // A variable that the uploaded schema does not define must NOT be written
+    // into schema.variables: a SchemaVariable requires @type/predicate/class,
+    // which the describe form cannot supply, so a stub would fail validation.
+    expect(m.schema.variables.age).toBeUndefined()
     const cols = m.databases.patients.tables.data.columns
     expect(cols.age).toMatchObject({
+      mapsTo: 'schema:variable/age',
+      localColumn: 'age_yrs',
+    })
+  })
+
+  it('updates dataType on an existing schema variable without re-creating it', async () => {
+    setMapping({
+      '@context': {},
+      '@id': 'mapping:root',
+      '@type': 'mapping:SemanticMapping',
+      schema: {
+        variables: {
+          age: {
+            '@id': 'schema:variable/age',
+            '@type': 'schema:ContinuousVariable',
+            dataType: 'continuous',
+            predicate: 'sio:SIO_000008',
+            class: 'ncit:C156420',
+          },
+        },
+      },
+      databases: {},
+    })
+    await updateMappingFromForm(
+      formEntry('patients', 'age_yrs', 'Age', 'continuous')
+    )
+    const m = getMapping()
+    // The pre-existing, fully-specified schema variable is preserved.
+    expect(m.schema.variables.age).toMatchObject({
+      '@type': 'schema:ContinuousVariable',
+      predicate: 'sio:SIO_000008',
+      class: 'ncit:C156420',
+      dataType: 'continuous',
+    })
+    expect(m.databases.patients.tables.data.columns.age).toMatchObject({
       mapsTo: 'schema:variable/age',
       localColumn: 'age_yrs',
     })
@@ -308,9 +343,9 @@ describe('updateMappingFromForm — deselection and tab-switching robustness', (
     })
     // The old column was removed.
     expect(cols.age).toBeUndefined()
-    // The old schema variable was GCed.
+    // Neither variable is defined in the schema — both live only as columns.
     expect(m.schema.variables.age).toBeUndefined()
-    expect(m.schema.variables.weight).toBeDefined()
+    expect(m.schema.variables.weight).toBeUndefined()
   })
 
   it('does not touch columns from databases not present in the form payload', async () => {
@@ -327,7 +362,6 @@ describe('updateMappingFromForm — deselection and tab-switching robustness', (
     expect(m.databases.lab.tables.data.columns.hemoglobin).toMatchObject({
       localColumn: 'h_g',
     })
-    expect(m.schema.variables.hemoglobin).toBeDefined()
     // `patients` got cleaned up.
     expect(m.databases.patients?.tables?.data?.columns?.age).toBeUndefined()
     expect(m.schema.variables.age).toBeUndefined()
@@ -344,11 +378,28 @@ describe('updateMappingFromForm — deselection and tab-switching robustness', (
     const cols = m.databases.patients.tables.data.columns
     expect(cols.age).toBeUndefined()
     expect(cols.biological_sex).toMatchObject({ localColumn: 'sex' })
-    expect(m.schema.variables.biological_sex).toBeDefined()
     expect(m.schema.variables.age).toBeUndefined()
   })
 
-  it('GCs schema variables that the form orphans across syncs', async () => {
+  it('GCs an existing schema variable once the form orphans it across syncs', async () => {
+    // Seed a fully-specified schema variable (as an uploaded map would have).
+    setMapping({
+      '@context': {},
+      '@id': 'mapping:root',
+      '@type': 'mapping:SemanticMapping',
+      schema: {
+        variables: {
+          age: {
+            '@id': 'schema:variable/age',
+            '@type': 'schema:ContinuousVariable',
+            dataType: 'continuous',
+            predicate: 'sio:SIO_000008',
+            class: 'ncit:C156420',
+          },
+        },
+      },
+      databases: {},
+    })
     // Two columns initially map to the same variable (Age) in different DBs.
     await updateMappingFromForm({
       ...formEntry('cohort_a', 'age_yrs', 'Age', 'continuous'),

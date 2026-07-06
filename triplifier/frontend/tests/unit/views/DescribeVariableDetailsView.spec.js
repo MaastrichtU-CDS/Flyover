@@ -1,4 +1,5 @@
 import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/services/api', () => ({
@@ -52,6 +53,8 @@ describe('DescribeVariableDetailsView', () => {
     db.saveData.mockClear()
     jsonld.loadFromIndexedDB.mockClear()
     jsonld.updateCategoryMapping.mockClear()
+    jsonld.getLocalMappingsForVariable.mockReturnValue({})
+    jsonld.getCategoryOptionsForVariable.mockReturnValue([])
   })
 
   it('renders the form posting to /end', async () => {
@@ -118,6 +121,27 @@ describe('DescribeVariableDetailsView', () => {
     expect(args[2]).toBe('sex') // globalVarName
     expect(args[3]).toBe('M') // categoryValue
     expect(args[4]).toBe('Male') // selected
+  })
+
+  it('keeps a preselected category cleared after the user deselects it', async () => {
+    // Local mapping preselects 'M' -> 'Male'; the option must exist to be held.
+    jsonld.getLocalMappingsForVariable.mockReturnValue({ male: 'M', female: 'F' })
+    jsonld.getCategoryOptionsForVariable.mockReturnValue(['Male', 'Female'])
+    api.get.mockResolvedValue({ data: STATE })
+    const w = mountView()
+    await flushPromises()
+
+    // Assert on the selection model (source of truth), not the DOM: the bug
+    // reverts the model while leaving the DOM showing the user's empty choice.
+    const selKey = 'patients_sex_M'
+    expect(w.vm.categorySelections[selKey]).toBe('Male')
+
+    // The user clears it back to the blank option; it must not snap back.
+    await w.findAll('select.category-select')[0].setValue('')
+    await flushPromises()
+    await nextTick()
+
+    expect(w.vm.categorySelections[selKey]).toBe('')
   })
 
   it('does not crash when /api/v1/describe-variable-details-state rejects', async () => {

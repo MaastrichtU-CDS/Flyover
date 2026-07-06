@@ -12,6 +12,10 @@ jobs:
     name: Playwright smoke against tmpfs stack
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The CI test stack always runs against GraphDB; activate its profile for
+    # every step so build, up, logs and teardown all target the right service.
+    env:
+      COMPOSE_PROFILES: graphdb
 
     steps:
       - uses: actions/checkout@v4

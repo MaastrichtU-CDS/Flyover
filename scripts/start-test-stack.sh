@@ -6,6 +6,11 @@ set -e
 REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# The CI test stack always runs against GraphDB. Force the graphdb profile so
+# the rdf-store-graphdb service (and its build context) is activated,
+# regardless of any COMPOSE_PROFILES value coming from the environment or .env.
+export COMPOSE_PROFILES=graphdb
+
 docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
 
 echo "Waiting for stack to become ready..."
