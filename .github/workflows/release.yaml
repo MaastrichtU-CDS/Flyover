@@ -58,7 +58,7 @@ jobs:
       - name: Build and push GraphDB Docker image
         uses: docker/build-push-action@v4
         with:
-          context: ./graphdb
+          context: ./rdf-store/graphdb
           push: true
           tags: ${{ steps.meta-graphdb.outputs.tags }}
           labels: ${{ steps.meta-graphdb.outputs.labels }}
