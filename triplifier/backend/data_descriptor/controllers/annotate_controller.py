@@ -8,6 +8,8 @@ including annotation execution and verification.
 import json
 import logging
 import os
+import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, redirect, request
 from werkzeug.utils import secure_filename
@@ -264,44 +266,68 @@ def start_annotation():
         session_cache.annotation_status = {}
         total_annotated = 0
 
-        for database, data in annotation_data.items():
+        def _annotate_database(database, data):
+            """Run annotation for a single database and return (database, results, error)."""
             logger.info(f"Processing annotation for database: {database}")
-
+            # Give each database its own temp directory so that concurrent
+            # annotation runs never race on directory creation or overwrite
+            # each other's generated query files (add_annotation writes into
+            # <temp_dir>/generated_queries using non-atomic os.mkdir calls).
+            temp_dir = os.path.join(
+                tempfile.gettempdir(),
+                "annotation_temp",
+                secure_filename(database) or "db",
+            )
             annotation_results, error = AnnotateService.execute_annotation(
                 endpoint,
                 database,
                 data["prefixes"],
                 data["variables"],
+                temp_dir=temp_dir,
             )
+            return database, data, annotation_results, error
 
-            for var_name in data["variables"]:
-                status_key = f"{database}.{var_name}"
-                if annotation_results is None:
+        # Annotation runs are I/O-bound (they fire HTTP requests at the RDF
+        # store and wait on the network), so the worker count is not tied to
+        # CPU cores. Fire all databases in parallel, capped to a sane upper
+        # bound to avoid overwhelming the store with too many connections.
+        max_workers = min(len(annotation_data), 32)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_annotate_database, database, data): database
+                for database, data in annotation_data.items()
+            }
+            for future in as_completed(futures):
+                database, data, annotation_results, error = future.result()
+
+                for var_name in data["variables"]:
+                    status_key = f"{database}.{var_name}"
+                    if annotation_results is None:
+                        session_cache.annotation_status[status_key] = {
+                            "success": False,
+                            "error": error,
+                            "database": database,
+                        }
+                        continue
+
+                    result = annotation_results.get(var_name, {})
+                    is_success = result.get("success", False)
+
                     session_cache.annotation_status[status_key] = {
-                        "success": False,
-                        "error": error,
+                        "success": is_success,
+                        "message": (
+                            "Annotation completed successfully"
+                            if is_success
+                            else "Annotation failed"
+                        ),
                         "database": database,
+                        "details": result,
                     }
-                    continue
 
-                result = annotation_results.get(var_name, {})
-                is_success = result.get("success", False)
+                    if not is_success and error:
+                        session_cache.annotation_status[status_key]["error"] = error
 
-                session_cache.annotation_status[status_key] = {
-                    "success": is_success,
-                    "message": (
-                        "Annotation completed successfully"
-                        if is_success
-                        else "Annotation failed"
-                    ),
-                    "database": database,
-                    "details": result,
-                }
-
-                if not is_success and error:
-                    session_cache.annotation_status[status_key]["error"] = error
-
-                total_annotated += int(is_success)
+                    total_annotated += int(is_success)
 
         if total_annotated == 0:
             return jsonify(

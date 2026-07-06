@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Get the directory where this script is located
@@ -302,7 +303,28 @@ def add_annotation(
             construction_queries.update({node_label: construction_query})
 
     # annotate variables
-    for generic_category, variable_data in annotation_data.items():
+    # Snapshot the construction queries built above so each parallel variable
+    # task starts from the same baseline (a task may locally reset this when it
+    # carries its own schema reconstruction).
+    base_construction_queries = (
+        dict(construction_queries) if isinstance(construction_queries, dict) else {}
+    )
+
+    # Pre-create the shared query output directories once so the parallel
+    # variable tasks below never race on directory creation.
+    if save_query:
+        os.makedirs(os.path.join(path, "generated_queries"), exist_ok=True)
+        os.makedirs(
+            os.path.join(path, "generated_queries", "schema_reconstruction"),
+            exist_ok=True,
+        )
+
+    def _annotate_variable(generic_category, variable_data):
+        # Each variable is annotated independently; keep all mutable state local
+        # to this call so the variables of a table can run in parallel safely.
+        construction_queries = dict(base_construction_queries)
+        value_mapping_queries = None
+        value_mapping_statuses = None
         components = 0
 
         # specify certain components to remove, e.g., dbo:has_column or other predicates
@@ -314,7 +336,7 @@ def add_annotation(
         class_object = variable_data.get("class")
         local_definition = variable_data.get("local_definition", None)
         if local_definition is None:
-            continue
+            return
 
         # break the loop if annotation data is not properly defined
         if not all(
@@ -324,7 +346,7 @@ def add_annotation(
                 f"Annotation data for variable {generic_category} is incorrectly formatted, "
                 f"please see function docstring for an example."
             )
-            continue
+            return
 
         classes_insertion_before = ""
         classes_insertion_after = ""
@@ -681,21 +703,22 @@ def add_annotation(
                     ".rq",
                 )
 
-        components = 0
-        components_to_remove = {}
-        removal_queries = {}
-        classes_insertion_before = ""
-        classes_insertion_after = ""
-        classes_where_before = ""
-        classes_where_after = ""
-        nodes_insertion = ""
-        construction_queries = None
-        value_mapping_queries = None
-        query = None
-        response = None
-        construction_success = True
-        annotation_success = None
-        value_mapping_statuses = None
+    # Fire the annotation for every variable of this table in parallel. Each
+    # variable triggers its own small series of independent HTTP requests to
+    # the RDF store, so the work is I/O-bound and benefits from running the
+    # variables concurrently instead of one after another. Every task writes a
+    # unique variable key into annotation_results, so the writes never collide.
+    variable_items = list(annotation_data.items())
+    max_workers = min(len(variable_items), 32) or 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_annotate_variable, generic_category, variable_data)
+            for generic_category, variable_data in variable_items
+        ]
+        for future in as_completed(futures):
+            # Re-raise any unexpected per-variable failure so it is reported
+            # upstream, mirroring the original sequential behaviour.
+            future.result()
 
     # materialize inferences if enabled. This runs after the annotation has
     # already been written, so a failure here must not propagate and cause the
