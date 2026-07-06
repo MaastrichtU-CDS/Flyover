@@ -1,10 +1,22 @@
 # ══════════════════════════════════════════════════════════════════════
 # RDF STORE — pick ONE backend through the active Compose profile.
 #
-# The backend is selected with the COMPOSE_PROFILES variable (see .env):
-#     COMPOSE_PROFILES=graphdb   → Ontotext GraphDB (with reasoning)
-#     COMPOSE_PROFILES=rdf4j     → Eclipse RDF4J     (no reasoning)
-#     COMPOSE_PROFILES=qlever    → QLever            (no reasoning)
+# GraphDB is the default: `docker-compose up` (no flags) starts GraphDB.
+# The default is set by COMPOSE_PROFILES=graphdb in the committed .env
+# file, which is intentionally checked into git so that every user gets
+# the same out-of-the-box experience.
+#
+# To use a different backend, override the variable before running:
+#     COMPOSE_PROFILES=rdf4j   docker-compose up   → Eclipse RDF4J (no reasoning)
+#     COMPOSE_PROFILES=qlever  docker-compose up   → QLever        (no reasoning)
+#
+# IMPORTANT — always run `docker-compose down` with the same
+# COMPOSE_PROFILES value that was used for `up`, so that Compose can
+# locate and stop the correct RDF-store container.  Because .env is
+# committed, plain `docker-compose down` will always stop GraphDB
+# correctly.  If you started with a different backend, export (or
+# inline) the matching variable:
+#     COMPOSE_PROFILES=rdf4j  docker-compose down
 #
 # Every backend is published as the container "rdf-store" on port 7200 and
 # speaks the same RDF4J/GraphDB-compatible REST API, so the triplifier
@@ -24,10 +36,10 @@ services:
   rdf-store-graphdb:
     <<: *rdf-store-common
     profiles: ["graphdb"]
-    #image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
+    image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
     # If preferred, the graphdb image can be built from the Dockerfile:
-    build:
-       context: ./rdf-store/graphdb
+    # build:
+    #   context: ./rdf-store/graphdb
     volumes:
       - ./rdf-store/graphdb/data:/opt/graphdb/home
     environment:
@@ -86,13 +98,6 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     environment:
-      # ── RDF store base URL as seen from inside the container network ──
-      # All backends expose the same RDF4J/GraphDB-compatible REST API at the
-      # server root, so the triplifier always uses the identical base URL
-      # regardless of the active store:
-      #   GraphDB : http://rdf-store:7200
-      #   RDF4J   : http://rdf-store:7200   (rewritten to /rdf4j-server internally)
-      #   QLever  : http://rdf-store:7200   (served by the QLever adapter)
       - FLYOVER_RDF_STORE_URL=${FLYOVER_RDF_STORE_URL:-http://rdf-store:7200}
       - FLYOVER_REPOSITORY_NAME=${FLYOVER_REPOSITORY_NAME:-userRepo}
       - FLASK_ENV=production

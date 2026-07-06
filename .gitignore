@@ -8,7 +8,9 @@ __pycache__/
 # Virtual environments
 venv/
 env/
-.env
+
+# Local env overrides (not tracked; use .env for shared project defaults)
+.env.local
 
 # IDE
 .vscode/
