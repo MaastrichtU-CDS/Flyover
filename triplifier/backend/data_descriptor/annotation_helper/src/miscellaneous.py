@@ -1,12 +1,47 @@
 import json
 import logging
 import os
+import re
+import threading
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
 template_dir = os.path.join(script_dir, "sparql_templates")
+
+# Per-annotation-graph write locks.
+#
+# The variables of a single datatable all write into the *same* annotation named
+# graph (http://annotation.local/<database>/). When two SPARQL UPDATE (write)
+# requests hit that identical graph context at the same time, RDF4J records them
+# as multiple, identically-named graph contexts (the "duplicate graph" symptom).
+#
+# To still allow the variables of a table to be processed concurrently (so the
+# read-only verification queries and the query construction of different
+# variables overlap instead of running strictly one after another), we serialize
+# only the *writes* that target a given annotation graph. Writes to different
+# graphs (e.g. different databases annotated in parallel by the controller) use
+# different locks and therefore still run concurrently, and read queries are
+# never locked.
+_graph_write_locks = {}
+_graph_write_locks_guard = threading.Lock()
+
+# Matches the annotation named graph a write query targets, e.g.
+# http://annotation.local/synthetic_dutch_150/
+_ANNOTATION_GRAPH_PATTERN = re.compile(r"http://annotation\.local/[^>\s]+")
+
+
+def _get_graph_write_lock(graph_uri):
+    """Return a process-wide lock dedicated to the given annotation graph URI."""
+    with _graph_write_locks_guard:
+        lock = _graph_write_locks.get(graph_uri)
+        if lock is None:
+            lock = threading.Lock()
+            _graph_write_locks[graph_uri] = lock
+        return lock
+
 
 # specify whether to do a 'dry-run', i.e., whether to actually post the query (wet) or just write queries (dry)
 dry_run = False
@@ -702,21 +737,34 @@ def add_annotation(
                     ".rq",
                 )
 
-    # Annotate the variables of this table one after another.
+    # Annotate the variables of this table concurrently.
     #
-    # Every variable of a table writes into the *same* annotation named graph
-    # (http://annotation.local/<database>/). Firing those SPARQL UPDATE requests
-    # concurrently makes several writers hit the identical graph context at the
-    # same time, which RDF4J records as multiple, identically-named graph
-    # contexts in the repository (the "duplicate graph" symptom). Writing the
-    # variables sequentially keeps a single writer per graph, so each datatable
-    # ends up with exactly one annotation graph.
+    # Every variable triggers its own small series of requests to the RDF store:
+    # read-only verification queries (ASK/SELECT) and SPARQL UPDATE writes. That
+    # work is I/O-bound, so running the variables in a small thread pool lets the
+    # query construction and the read-only round-trips of different variables
+    # overlap instead of running strictly one after another.
     #
-    # Cross-table parallelism is still available and safe: the controller runs
-    # add_annotation for different databases concurrently, and each of those
-    # targets a distinct annotation graph, so it never causes this contention.
-    for generic_category, variable_data in annotation_data.items():
-        _annotate_variable(generic_category, variable_data)
+    # The one thing that must NOT overlap is two writes into the *same*
+    # annotation named graph (http://annotation.local/<database>/): RDF4J records
+    # simultaneous writers to one context as multiple, identically-named graph
+    # contexts (the "duplicate graph" symptom). __post_query therefore serializes
+    # writes per annotation graph via a dedicated lock, so this pool stays safe
+    # (a single writer per graph at any instant) while still overlapping
+    # everything else. Cross-table parallelism from the controller keeps working
+    # too, because different databases use different graphs and thus different
+    # locks.
+    variable_items = list(annotation_data.items())
+    max_workers = min(len(variable_items), 32) or 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_annotate_variable, generic_category, variable_data)
+            for generic_category, variable_data in variable_items
+        ]
+        for future in as_completed(futures):
+            # Re-raise any unexpected per-variable failure so it is reported
+            # upstream, mirroring the original sequential behaviour.
+            future.result()
 
     # materialize inferences if enabled. This runs after the annotation has
     # already been written, so a failure here must not propagate and cause the
@@ -1887,14 +1935,31 @@ def __post_query(endpoint, query, headers=None, data_style=None):
         # Send updates as form fields so RDF4J parses the request body correctly.
         data_style = {"update": query}
 
-    if dry_run is False:
-        annotation_response = requests.post(
+    if dry_run is True:
+        return "not-a-http-response"
+
+    # A write is a SPARQL UPDATE request (sent as an "update" form field). When
+    # such a write targets an annotation named graph we serialize it against
+    # other writes to the *same* graph, so concurrently annotated variables of a
+    # table never produce duplicate, identically-named graph contexts. Read
+    # queries (data_style={"query": ...}) and writes to other graphs are not
+    # blocked, so processing still overlaps as much as is safe.
+    write_lock = None
+    if isinstance(data_style, dict) and "update" in data_style:
+        match = _ANNOTATION_GRAPH_PATTERN.search(query or "")
+        if match:
+            write_lock = _get_graph_write_lock(match.group(0))
+
+    def _do_post():
+        return requests.post(
             endpoint,
             data=data_style,
             headers=headers,
             timeout=int(os.environ.get("RDF_REQUEST_TIMEOUT", 3600)),
         )
-    else:
-        annotation_response = "not-a-http-response"
 
-    return annotation_response
+    if write_lock is not None:
+        with write_lock:
+            return _do_post()
+
+    return _do_post()
