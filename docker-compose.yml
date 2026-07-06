@@ -56,9 +56,14 @@ services:
       context: ./rdf-store/rdf4j
     volumes:
       - ./rdf-store/rdf4j/data:/var/rdf4j
-      - ./rdf-store/rdf4j/logs:/usr/local/tomcat/logs
+      - ./rdf-store/rdf4j/logs:/usr/local/tomcat/logs\
     environment:
-      - "JAVA_OPTS=-Xms4g -Xmx12g"
+      # Use all available CPU cores and up to 75 % of host RAM for the JVM heap.
+      # -XX:+UseContainerSupport (default in JDK 11+) makes the JVM honour
+      # Docker's CPU/memory limits instead of reading raw host values.
+      # MaxRAMPercentage caps the heap at 75 % of available RAM, leaving the
+      # remainder for the OS, Tomcat's off-heap allocations, and other processes.
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
 
   # ─── Option C: QLever ───────────────────────────────────────────────
   # The QLever engine only speaks a plain SPARQL HTTP endpoint, so a thin
