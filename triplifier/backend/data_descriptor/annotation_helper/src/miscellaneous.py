@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 # Get the directory where this script is located
@@ -303,15 +302,15 @@ def add_annotation(
             construction_queries.update({node_label: construction_query})
 
     # annotate variables
-    # Snapshot the construction queries built above so each parallel variable
-    # task starts from the same baseline (a task may locally reset this when it
-    # carries its own schema reconstruction).
+    # Snapshot the construction queries built above so each variable starts from
+    # the same baseline (a variable may locally reset this when it carries its
+    # own schema reconstruction).
     base_construction_queries = (
         dict(construction_queries) if isinstance(construction_queries, dict) else {}
     )
 
-    # Pre-create the shared query output directories once so the parallel
-    # variable tasks below never race on directory creation.
+    # Pre-create the shared query output directories once, before annotating the
+    # individual variables below.
     if save_query:
         os.makedirs(os.path.join(path, "generated_queries"), exist_ok=True)
         os.makedirs(
@@ -321,7 +320,7 @@ def add_annotation(
 
     def _annotate_variable(generic_category, variable_data):
         # Each variable is annotated independently; keep all mutable state local
-        # to this call so the variables of a table can run in parallel safely.
+        # to this call so a variable never leaks state into the next one.
         construction_queries = dict(base_construction_queries)
         value_mapping_queries = None
         value_mapping_statuses = None
@@ -703,22 +702,21 @@ def add_annotation(
                     ".rq",
                 )
 
-    # Fire the annotation for every variable of this table in parallel. Each
-    # variable triggers its own small series of independent HTTP requests to
-    # the RDF store, so the work is I/O-bound and benefits from running the
-    # variables concurrently instead of one after another. Every task writes a
-    # unique variable key into annotation_results, so the writes never collide.
-    variable_items = list(annotation_data.items())
-    max_workers = min(len(variable_items), 32) or 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(_annotate_variable, generic_category, variable_data)
-            for generic_category, variable_data in variable_items
-        ]
-        for future in as_completed(futures):
-            # Re-raise any unexpected per-variable failure so it is reported
-            # upstream, mirroring the original sequential behaviour.
-            future.result()
+    # Annotate the variables of this table one after another.
+    #
+    # Every variable of a table writes into the *same* annotation named graph
+    # (http://annotation.local/<database>/). Firing those SPARQL UPDATE requests
+    # concurrently makes several writers hit the identical graph context at the
+    # same time, which RDF4J records as multiple, identically-named graph
+    # contexts in the repository (the "duplicate graph" symptom). Writing the
+    # variables sequentially keeps a single writer per graph, so each datatable
+    # ends up with exactly one annotation graph.
+    #
+    # Cross-table parallelism is still available and safe: the controller runs
+    # add_annotation for different databases concurrently, and each of those
+    # targets a distinct annotation graph, so it never causes this contention.
+    for generic_category, variable_data in annotation_data.items():
+        _annotate_variable(generic_category, variable_data)
 
     # materialize inferences if enabled. This runs after the annotation has
     # already been written, so a failure here must not propagate and cause the
