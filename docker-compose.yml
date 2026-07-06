@@ -96,10 +96,10 @@ services:
       - qlever-engine
 
   triplifier:
-    #image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
+    image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
     # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    build:
-       context: ./triplifier
+    #build:
+    #   context: ./triplifier
     ports:
       - "127.0.0.1:5000:5000"
     environment:
