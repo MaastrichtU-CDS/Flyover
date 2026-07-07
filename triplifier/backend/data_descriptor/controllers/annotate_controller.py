@@ -230,11 +230,13 @@ def start_annotation():
     name_matcher = ctx.get("name_matcher")
     get_table_names = ctx.get("get_table_names")
     has_semantic_map = ctx.get("has_semantic_map")
-    
+
     # Check if request contains a filtered semantic map for this annotation run.
     # The frontend sends the filtered semantic map directly as the request body.
     request_data = request.get_json(silent=True) or {}
-    filtered_semantic_map = request_data.get("semantic_map") if isinstance(request_data, dict) else None
+    filtered_semantic_map = (
+        request_data.get("semantic_map") if isinstance(request_data, dict) else None
+    )
     # If not wrapped in a "semantic_map" key, the body itself may be the map
     if filtered_semantic_map is None and request_data:
         filtered_semantic_map = request_data
@@ -252,10 +254,9 @@ def start_annotation():
         validator = MappingValidator()
         validation_result = validator.validate(filtered_semantic_map)
         if not validation_result.is_valid:
-            return jsonify({
-                "success": False,
-                "error": "Filtered semantic map validation failed"
-            })
+            return jsonify(
+                {"success": False, "error": "Filtered semantic map validation failed"}
+            )
 
         original_semantic_map = session_cache.jsonld_mapping
         session_cache.jsonld_mapping = JSONLDMapping.from_dict(filtered_semantic_map)
