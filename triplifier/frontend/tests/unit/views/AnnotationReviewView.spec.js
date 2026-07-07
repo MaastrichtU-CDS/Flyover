@@ -127,11 +127,13 @@ describe('AnnotationReviewView', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch.mock.calls[0][0]).toBe('/submit-indexeddb-semantic-map')
     expect(fetch.mock.calls[0][1].method).toBe('POST')
-    // We now send the FULL semantic map to preserve original for Share page
+    // We send the FULL semantic map to preserve original for Share page
     const submittedMap = JSON.parse(fetch.mock.calls[0][1].body)
     expect(submittedMap).toEqual(SEMANTIC_MAP)
     expect(fetch.mock.calls[1][0]).toBe('/start-annotation')
-    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({})
+    // We send the filtered semantic map (all tables selected by default) to annotation endpoint
+    const annotationBody = JSON.parse(fetch.mock.calls[1][1].body)
+    expect(annotationBody).toEqual(SEMANTIC_MAP)
     expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
   })
 
@@ -291,14 +293,17 @@ describe('AnnotationReviewView', () => {
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledTimes(2)
-    // The first call should be to submit the filtered semantic map (only selected databases)
+    // The first call should be to submit the FULL semantic map (to preserve original for Share page)
     const submittedMap = JSON.parse(fetch.mock.calls[0][1].body)
     expect(submittedMap.databases).toBeDefined()
-    // Should only contain the selected database (patients.csv)
+    // Should contain both databases since we send the full map
     expect(submittedMap.databases.db_a).toBeDefined()
-    expect(submittedMap.databases.db_b).toBeUndefined()
-    // The second call to start-annotation with empty body (uses filtered semantic map from session)
+    expect(submittedMap.databases.db_b).toBeDefined()
+    // The second call to start-annotation with filtered semantic map (only selected tables)
     const annotationBody = JSON.parse(fetch.mock.calls[1][1].body)
-    expect(annotationBody).toEqual({})
+    expect(annotationBody.databases).toBeDefined()
+    // Should only contain the selected database (patients.csv)
+    expect(annotationBody.databases.db_a).toBeDefined()
+    expect(annotationBody.databases.db_b).toBeUndefined()
   })
 })
