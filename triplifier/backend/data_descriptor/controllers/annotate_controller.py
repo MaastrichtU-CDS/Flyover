@@ -230,6 +230,35 @@ def start_annotation():
     name_matcher = ctx.get("name_matcher")
     get_table_names = ctx.get("get_table_names")
     has_semantic_map = ctx.get("has_semantic_map")
+    
+    # Check if request contains a filtered semantic map for this annotation run.
+    # The frontend sends the filtered semantic map directly as the request body.
+    request_data = request.get_json(silent=True) or {}
+    filtered_semantic_map = request_data.get("semantic_map") if isinstance(request_data, dict) else None
+    # If not wrapped in a "semantic_map" key, the body itself may be the map
+    if filtered_semantic_map is None and request_data:
+        filtered_semantic_map = request_data
+
+    # Treat an empty dict as "no filter provided"
+    if not filtered_semantic_map:
+        filtered_semantic_map = None
+
+    # If a filtered semantic map is provided, temporarily swap it into the session
+    # for this annotation run only. The original is always restored afterwards so
+    # that the Share page (and every other route) continues to see the full map.
+    original_semantic_map = None
+    if filtered_semantic_map:
+        # Validate the filtered semantic map before using it
+        validator = MappingValidator()
+        validation_result = validator.validate(filtered_semantic_map)
+        if not validation_result.is_valid:
+            return jsonify({
+                "success": False,
+                "error": "Filtered semantic map validation failed"
+            })
+
+        original_semantic_map = session_cache.jsonld_mapping
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(filtered_semantic_map)
 
     try:
         if not has_semantic_map(session_cache):
@@ -347,6 +376,12 @@ def start_annotation():
     except Exception as e:
         logger.error(f"Annotation error: {e}")
         return jsonify({"success": False, "error": str(e)})
+
+    finally:
+        # Always restore the original (full) semantic map so that the Share
+        # page and all other routes are never affected by the per-run filter.
+        if original_semantic_map is not None:
+            session_cache.jsonld_mapping = original_semantic_map
 
 
 @annotate_bp.route("/annotation-verify")

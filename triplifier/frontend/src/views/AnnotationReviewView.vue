@@ -16,6 +16,7 @@ const nonMatchingJsonld = ref([])
 const nonMatchingRdfStore = ref([])
 const databasePages = reactive({})
 const expandedDatabases = reactive({})
+const selectedTables = reactive({})
 const annotationProcessing = ref(false)
 const annotationButtonText = ref('Start Annotation Process')
 
@@ -243,9 +244,10 @@ function processAnnotationData(data) {
     return
   }
 
-  for (const td of Object.values(annotated)) {
+  for (const [tableName, td] of Object.entries(annotated)) {
     databasePages[td.rdfStoreName] = 1
     expandedDatabases[td.rdfStoreName] = false
+    selectedTables[tableName] = true
   }
   annotatedTableVariables.value = annotated
   loading.value = false
@@ -299,6 +301,10 @@ function toggleDatabase(name) {
   expandedDatabases[name] = !expandedDatabases[name]
 }
 
+function toggleTableSelection(tableName) {
+  selectedTables[tableName] = !selectedTables[tableName]
+}
+
 function hasValueMapping(varInfo) {
   return (
     varInfo.value_mapping &&
@@ -311,14 +317,70 @@ const startBtnIcon = computed(() =>
   annotationProcessing.value ? 'fa-spinner fa-spin' : 'fa-play'
 )
 
+function createFilteredSemanticMap(selectedTableNames) {
+  if (!semanticMapData.value || !selectedTableNames.length) return semanticMapData.value
+
+  const selectedSet = new Set(selectedTableNames)
+  const filteredMap = JSON.parse(JSON.stringify(semanticMapData.value))
+  
+  if (!filteredMap.databases) return filteredMap
+
+  // Remove unselected tables
+  for (const dbKey in filteredMap.databases) {
+    const db = filteredMap.databases[dbKey]
+    if (!db.tables) continue
+    
+    for (const tableKey in db.tables) {
+      const tableName = db.tables[tableKey].sourceFile || tableKey
+      if (!selectedSet.has(tableName) && !selectedSet.has(tableKey)) {
+        delete db.tables[tableKey]
+      }
+    }
+    
+    if (Object.keys(db.tables).length === 0) {
+      delete filteredMap.databases[dbKey]
+    }
+  }
+
+  return filteredMap
+}
+
 async function startAnnotationProcess() {
   if (!semanticMapData.value) {
     alert('No semantic map data available. Please reload the page.')
     return
   }
+  
+  // Check if any tables are selected
+  const anySelected = Object.values(selectedTables).some(selected => selected)
+  if (!anySelected) {
+    alert('Please select at least one table to annotate.')
+    return
+  }
+  
   annotationProcessing.value = true
   annotationButtonText.value = 'Submitting semantic map...'
   try {
+    // Get the selected table names
+    const selectedTableNames = Object.entries(selectedTables)
+      .filter(([tableName, isSelected]) => isSelected)
+      .map(([tableName]) => tableName)
+
+    // Create a filtered semantic map that only includes selected tables
+    const filteredSemanticMap = createFilteredSemanticMap(selectedTableNames)
+    
+    // Ensure we don't send empty semantic map
+    const hasTables = Object.values(filteredSemanticMap.databases || {}).some(db => 
+      Object.keys(db.tables || {}).length > 0
+    )
+    if (!hasTables) {
+      alert('No tables selected for annotation')
+      annotationProcessing.value = false
+      annotationButtonText.value = 'Start Annotation Process'
+      return
+    }
+
+    // Send FULL semantic map to preserve original for Share page
     const submitRes = await fetch('/submit-indexeddb-semantic-map', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -328,9 +390,7 @@ async function startAnnotationProcess() {
     if (!submitRes.ok || !submit.success) {
       let msg = submit.error || 'Failed to submit semantic map.'
       if (submit.validation_errors?.length) {
-        msg +=
-          '\n\nValidation errors:\n' +
-          submit.validation_errors.map((e) => `- ${e.message}`).join('\n')
+        msg += '\n\nValidation errors:\n' + submit.validation_errors.map((e) => `- ${e.message}`).join('\n')
       }
       alert(msg)
       annotationProcessing.value = false
@@ -338,9 +398,12 @@ async function startAnnotationProcess() {
       return
     }
     annotationButtonText.value = 'Processing Annotations...'
+    
+    // Try sending filtered map to annotation endpoint
     const annRes = await fetch('/start-annotation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filteredSemanticMap),
     })
     const ann = await annRes.json()
     if (ann.success) {
@@ -413,15 +476,26 @@ onMounted(load)
           v-for="(dbData, dbName) in annotatedTableVariables"
           :key="dbName"
         >
-          <h2 class="database-heading">
-            <i class="fas fa-database" /> {{ dbData.rdfStoreName }}
-          </h2>
-          <button
-            type="button"
-            class="toggle-button"
-            :class="{ open: expandedDatabases[dbData.rdfStoreName] }"
-            @click="toggleDatabase(dbData.rdfStoreName)"
-          >
+          <div class="database-header">
+            <h2 class="database-heading">
+              <i class="fas fa-database" /> {{ dbData.rdfStoreName }}
+              <span 
+                class="table-selector"
+                @click.stop="toggleTableSelection(dbName)"
+                :class="{ selected: selectedTables[dbName] }"
+              >
+                <i class="fas" :class="selectedTables[dbName] ? 'fa-check' : 'fa-times'" />
+                <span class="selector-tooltip">
+                  {{ selectedTables[dbName] ? 'Deselect for annotation' : 'Select for annotation' }}
+                </span>
+              </span>
+            </h2>
+            <button
+              type="button"
+              class="toggle-button"
+              :class="{ open: expandedDatabases[dbData.rdfStoreName] }"
+              @click="toggleDatabase(dbData.rdfStoreName)"
+            >
             <span class="toggle-text">{{
               expandedDatabases[dbData.rdfStoreName] ? 'Show less' : 'Show more'
             }}</span>
@@ -433,7 +507,8 @@ onMounted(load)
                   : 'fa-chevron-up'
               "
             />
-          </button>
+            </button>
+          </div>
 
           <div
             class="content"
@@ -625,3 +700,89 @@ onMounted(load)
     </div>
   </div>
 </template>
+
+<style scoped>
+.database-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.database-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.table-selector {
+  position: relative;
+  cursor: pointer;
+  color: #6c757d;
+  font-size: 0.75em;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table-selector:hover {
+  color: #495057;
+  background-color: #f8f9fa;
+}
+
+.table-selector.selected {
+  color: #28a745;
+}
+
+.table-selector.selected:hover {
+  color: #218838;
+  background-color: #f8f9fa;
+}
+
+.selector-tooltip {
+  visibility: hidden;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  z-index: 1080;
+  line-height: 1.5;
+  opacity: 0;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.selector-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0.4rem 0.4rem 0;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.9) transparent transparent;
+}
+
+.table-selector:hover .selector-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+.toggle-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+</style>

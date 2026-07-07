@@ -127,8 +127,11 @@ describe('AnnotationReviewView', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch.mock.calls[0][0]).toBe('/submit-indexeddb-semantic-map')
     expect(fetch.mock.calls[0][1].method).toBe('POST')
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(SEMANTIC_MAP)
+    // We now send the FULL semantic map to preserve original for Share page
+    const submittedMap = JSON.parse(fetch.mock.calls[0][1].body)
+    expect(submittedMap).toEqual(SEMANTIC_MAP)
     expect(fetch.mock.calls[1][0]).toBe('/start-annotation')
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({})
     expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
   })
 
@@ -148,5 +151,154 @@ describe('AnnotationReviewView', () => {
 
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(routerPush).not.toHaveBeenCalled()
+  })
+
+  it('renders table selectors for each database', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    db.getData.mockImplementation(async (_store, key) => {
+      if (key === 'semantic_map') return { data: SEMANTIC_MAP }
+      return null
+    })
+
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.findAll('.table-selector').length).toBeGreaterThan(0)
+    expect(w.find('.table-selector i.fa-check').exists()).toBe(true)
+  })
+
+  it('has all tables selected by default', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    db.getData.mockImplementation(async (_store, key) => {
+      if (key === 'semantic_map') return { data: SEMANTIC_MAP }
+      return null
+    })
+
+    const w = mountView()
+    await flushPromises()
+
+    const selectors = w.findAll('.table-selector')
+    expect(selectors.length).toBeGreaterThan(0)
+    
+    // All selectors should have the 'selected' class by default (tables are selected by default)
+    selectors.forEach(selector => {
+      expect(selector.classes()).toContain('selected')
+    })
+  })
+
+  it('toggles table selection when clicking selector', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    db.getData.mockImplementation(async (_store, key) => {
+      if (key === 'semantic_map') return { data: SEMANTIC_MAP }
+      return null
+    })
+
+    const w = mountView()
+    await flushPromises()
+
+    const firstSelector = w.find('.table-selector')
+    expect(firstSelector.classes()).toContain('selected')
+    expect(firstSelector.find('i.fa-check').exists()).toBe(true)
+
+    await firstSelector.trigger('click')
+    await flushPromises()
+
+    expect(firstSelector.classes()).not.toContain('selected')
+    expect(firstSelector.find('i.fa-times').exists()).toBe(true)
+
+    // Click again to re-select
+    await firstSelector.trigger('click')
+    await flushPromises()
+
+    expect(firstSelector.classes()).toContain('selected')
+    expect(firstSelector.find('i.fa-check').exists()).toBe(true)
+  })
+
+  it('shows alert when trying to annotate with no tables selected', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    db.getData.mockImplementation(async (_store, key) => {
+      if (key === 'semantic_map') return { data: SEMANTIC_MAP }
+      return null
+    })
+    
+    const alertMock = vi.fn()
+    vi.stubGlobal('alert', alertMock)
+
+    const w = mountView()
+    await flushPromises()
+
+    // Deselect all tables
+    const selectors = w.findAll('.table-selector')
+    for (const selector of selectors) {
+      await selector.trigger('click')
+    }
+    await flushPromises()
+
+    await w.find('button.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(alertMock).toHaveBeenCalledWith('Please select at least one table to annotate.')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('passes filtered semantic map to annotation endpoint', async () => {
+    // Create a semantic map with two databases
+    const TWO_DB_MAP = {
+      schema: {
+        variables: {
+          age: { predicate: 'roo:P100027', class: 'ncit:C25150', dataType: 'continuous' },
+        },
+      },
+      databases: {
+        db_a: {
+          tables: {
+            patients: {
+              sourceFile: 'patients.csv',
+              columns: { age_col: { mapsTo: 'schema:variable/age', localColumn: 'age' } },
+            },
+          },
+        },
+        db_b: {
+          tables: {
+            other: {
+              sourceFile: 'other.csv',
+              columns: { age_col: { mapsTo: 'schema:variable/age', localColumn: 'age' } },
+            },
+          },
+        },
+      },
+    }
+
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv', 'other.csv'] } })
+    db.getData.mockImplementation(async (_store, key) => {
+      if (key === 'semantic_map') return { data: TWO_DB_MAP }
+      return null
+    })
+    fetch.mockResolvedValueOnce(jsonResponse({ success: true }))
+    fetch.mockResolvedValueOnce(jsonResponse({ success: true }))
+
+    const w = mountView()
+    await flushPromises()
+
+    // Deselect the second database by clicking its selector
+    const selectors = w.findAll('.table-selector')
+    if (selectors.length > 1) {
+      await selectors[1].trigger('click')
+      await flushPromises()
+    }
+
+    await w.find('button.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    // The first call should be to submit the filtered semantic map (only selected databases)
+    const submittedMap = JSON.parse(fetch.mock.calls[0][1].body)
+    expect(submittedMap.databases).toBeDefined()
+    // Should only contain the selected database (patients.csv)
+    expect(submittedMap.databases.db_a).toBeDefined()
+    expect(submittedMap.databases.db_b).toBeUndefined()
+    // The second call to start-annotation with empty body (uses filtered semantic map from session)
+    const annotationBody = JSON.parse(fetch.mock.calls[1][1].body)
+    expect(annotationBody).toEqual({})
   })
 })
