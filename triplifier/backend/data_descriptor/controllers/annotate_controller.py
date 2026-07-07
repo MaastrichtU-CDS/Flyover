@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import tempfile
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, redirect, request
@@ -29,6 +30,72 @@ def get_app_context() -> dict:
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
+
+
+def _extract_filtered_semantic_map(request_data: dict) -> Optional[dict]:
+    """
+    Extract filtered semantic map from request data.
+
+    The frontend may send the filtered semantic map either:
+    - Wrapped in a "semantic_map" key, or
+    - As the raw request body itself
+
+    Returns None if no valid filtered map is provided.
+    """
+    if not request_data:
+        return None
+
+    filtered_semantic_map = (
+        request_data.get("semantic_map") if isinstance(request_data, dict) else None
+    )
+
+    # If not wrapped in a "semantic_map" key, the body itself may be the map
+    if filtered_semantic_map is None and request_data:
+        filtered_semantic_map = request_data
+
+    # Treat an empty dict as "no filter provided"
+    if not filtered_semantic_map:
+        return None
+
+    return filtered_semantic_map
+
+
+def _apply_filtered_semantic_map(
+    session_cache, filtered_semantic_map: dict
+) -> Optional[dict]:
+    """
+    Validate and temporarily apply a filtered semantic map for this annotation run.
+
+    Returns the original semantic map that was replaced, or None if no filter was applied.
+
+    The original map should be restored after annotation completes so that
+    the Share page (and every other route) continues to see the full map.
+    """
+    if not filtered_semantic_map:
+        return None
+
+    # Validate the filtered semantic map before using it
+    validator = MappingValidator()
+    validation_result = validator.validate(filtered_semantic_map)
+    if not validation_result.is_valid:
+        return None
+
+    original_semantic_map = session_cache.jsonld_mapping
+    session_cache.jsonld_mapping = JSONLDMapping.from_dict(filtered_semantic_map)
+    return original_semantic_map
+
+
+def _restore_original_semantic_map(
+    session_cache, original_semantic_map: Optional[dict]
+) -> None:
+    """
+    Restore the original semantic map after annotation completes.
+
+    This ensures the Share page and all other routes are never affected
+    by the per-run filter.
+    """
+    if original_semantic_map is not None:
+        session_cache.jsonld_mapping = original_semantic_map
 
 
 def safe_remove_file(filepath: str) -> None:
@@ -144,8 +211,8 @@ def upload_annotation_json():
                     400,
                 )
 
-            # Clean the mapping of orphan columns right at the start
-            # This ensures faulty mappings don't persist anywhere
+            # Clean the mapping of orphan columns right at the start.
+            # This ensures faulty mappings don't persist anywhere.
             removed_columns = []
             try:
                 if rdf_store_service is not None:
@@ -153,9 +220,6 @@ def upload_annotation_json():
                         rdf_store_service.get_column_info_by_database() or {}
                     )
                     if columns_by_database:
-                        # Get loaded databases - use the databases list we already fetched
-                        loaded_databases = databases
-
                         from .ingest_controller import (
                             _collect_orphan_column_issues,
                             _remove_orphan_columns_from_mapping,
@@ -163,11 +227,10 @@ def upload_annotation_json():
 
                         orphan_warnings, _, orphan_columns = (
                             _collect_orphan_column_issues(
-                                json_data, columns_by_database, loaded_databases
+                                json_data, columns_by_database, databases
                             )
                         )
 
-                        # Clean the mapping immediately, before validation
                         if orphan_columns:
                             json_data = _remove_orphan_columns_from_mapping(
                                 json_data, orphan_columns
@@ -181,11 +244,9 @@ def upload_annotation_json():
             except Exception as e:
                 logger.warning(f"Orphan column check skipped: {e}")
 
-            # Use the cleaned mapping for both session cache entries
             session_cache.global_semantic_map = json_data
             session_cache.annotation_json_path = filepath
 
-            # Now validate the cleaned mapping
             validator = MappingValidator()
             result = validator.validate(json_data)
             if result.is_valid:
@@ -231,35 +292,20 @@ def start_annotation():
     get_table_names = ctx.get("get_table_names")
     has_semantic_map = ctx.get("has_semantic_map")
 
-    # Check if request contains a filtered semantic map for this annotation run.
-    # The frontend sends the filtered semantic map directly as the request body.
     request_data = request.get_json(silent=True) or {}
-    filtered_semantic_map = (
-        request_data.get("semantic_map") if isinstance(request_data, dict) else None
+    filtered_semantic_map = _extract_filtered_semantic_map(request_data)
+
+    # Temporarily apply filtered semantic map for this annotation run only.
+    # The original is always restored afterwards so that the Share page
+    # (and every other route) continues to see the full map.
+    original_semantic_map = _apply_filtered_semantic_map(
+        session_cache, filtered_semantic_map
     )
-    # If not wrapped in a "semantic_map" key, the body itself may be the map
-    if filtered_semantic_map is None and request_data:
-        filtered_semantic_map = request_data
 
-    # Treat an empty dict as "no filter provided"
-    if not filtered_semantic_map:
-        filtered_semantic_map = None
-
-    # If a filtered semantic map is provided, temporarily swap it into the session
-    # for this annotation run only. The original is always restored afterwards so
-    # that the Share page (and every other route) continues to see the full map.
-    original_semantic_map = None
-    if filtered_semantic_map:
-        # Validate the filtered semantic map before using it
-        validator = MappingValidator()
-        validation_result = validator.validate(filtered_semantic_map)
-        if not validation_result.is_valid:
-            return jsonify(
-                {"success": False, "error": "Filtered semantic map validation failed"}
-            )
-
-        original_semantic_map = session_cache.jsonld_mapping
-        session_cache.jsonld_mapping = JSONLDMapping.from_dict(filtered_semantic_map)
+    if original_semantic_map is None and filtered_semantic_map:
+        return jsonify(
+            {"success": False, "error": "Filtered semantic map validation failed"}
+        )
 
     try:
         if not has_semantic_map(session_cache):
@@ -381,8 +427,7 @@ def start_annotation():
     finally:
         # Always restore the original (full) semantic map so that the Share
         # page and all other routes are never affected by the per-run filter.
-        if original_semantic_map is not None:
-            session_cache.jsonld_mapping = original_semantic_map
+        _restore_original_semantic_map(session_cache, original_semantic_map)
 
 
 @annotate_bp.route("/annotation-verify")

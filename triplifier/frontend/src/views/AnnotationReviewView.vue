@@ -325,7 +325,12 @@ function createFilteredSemanticMap(selectedTableNames) {
   
   if (!filteredMap.databases) return filteredMap
 
-  // Remove unselected tables
+  removeUnselectedTables(filteredMap, selectedSet)
+
+  return filteredMap
+}
+
+function removeUnselectedTables(filteredMap, selectedSet) {
   for (const dbKey in filteredMap.databases) {
     const db = filteredMap.databases[dbKey]
     if (!db.tables) continue
@@ -341,8 +346,70 @@ function createFilteredSemanticMap(selectedTableNames) {
       delete filteredMap.databases[dbKey]
     }
   }
+}
 
-  return filteredMap
+function validateTableSelection() {
+  if (!Object.values(selectedTables).some(selected => selected)) {
+    alert('Please select at least one table to annotate.')
+    return false
+  }
+  return true
+}
+
+function getSelectedTableNames() {
+  return Object.entries(selectedTables)
+    .filter(([tableName, isSelected]) => isSelected)
+    .map(([tableName]) => tableName)
+}
+
+function validateFilteredMapHasTables(filteredSemanticMap) {
+  const hasTables = Object.values(filteredSemanticMap.databases || {}).some(db => 
+    Object.keys(db.tables || {}).length > 0
+  )
+  if (!hasTables) {
+    alert('No tables selected for annotation')
+    return false
+  }
+  return true
+}
+
+function resetAnnotationProcessingState() {
+  annotationProcessing.value = false
+  annotationButtonText.value = 'Start Annotation Process'
+}
+
+async function submitFullSemanticMap() {
+  const submitRes = await fetch('/submit-indexeddb-semantic-map', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(semanticMapData.value),
+  })
+  const submit = await submitRes.json()
+  
+  if (!submitRes.ok || !submit.success) {
+    let msg = submit.error || 'Failed to submit semantic map.'
+    if (submit.validation_errors?.length) {
+      msg += '\n\nValidation errors:\n' + submit.validation_errors.map((e) => `- ${e.message}`).join('\n')
+    }
+    alert(msg)
+    return false
+  }
+  return true
+}
+
+async function startAnnotationWithFilteredMap(filteredSemanticMap) {
+  const annRes = await fetch('/start-annotation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filteredSemanticMap),
+  })
+  const ann = await annRes.json()
+  
+  if (!ann.success) {
+    alert(`Error: ${ann.error}`)
+    return false
+  }
+  return true
 }
 
 async function startAnnotationProcess() {
@@ -351,73 +418,38 @@ async function startAnnotationProcess() {
     return
   }
   
-  // Check if any tables are selected
-  const anySelected = Object.values(selectedTables).some(selected => selected)
-  if (!anySelected) {
-    alert('Please select at least one table to annotate.')
-    return
-  }
+  if (!validateTableSelection()) return
   
   annotationProcessing.value = true
   annotationButtonText.value = 'Submitting semantic map...'
   try {
-    // Get the selected table names
-    const selectedTableNames = Object.entries(selectedTables)
-      .filter(([tableName, isSelected]) => isSelected)
-      .map(([tableName]) => tableName)
-
-    // Create a filtered semantic map that only includes selected tables
+    const selectedTableNames = getSelectedTableNames()
     const filteredSemanticMap = createFilteredSemanticMap(selectedTableNames)
     
-    // Ensure we don't send empty semantic map
-    const hasTables = Object.values(filteredSemanticMap.databases || {}).some(db => 
-      Object.keys(db.tables || {}).length > 0
-    )
-    if (!hasTables) {
-      alert('No tables selected for annotation')
-      annotationProcessing.value = false
-      annotationButtonText.value = 'Start Annotation Process'
+    if (!validateFilteredMapHasTables(filteredSemanticMap)) {
+      resetAnnotationProcessingState()
       return
     }
 
     // Send FULL semantic map to preserve original for Share page
-    const submitRes = await fetch('/submit-indexeddb-semantic-map', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(semanticMapData.value),
-    })
-    const submit = await submitRes.json()
-    if (!submitRes.ok || !submit.success) {
-      let msg = submit.error || 'Failed to submit semantic map.'
-      if (submit.validation_errors?.length) {
-        msg += '\n\nValidation errors:\n' + submit.validation_errors.map((e) => `- ${e.message}`).join('\n')
-      }
-      alert(msg)
-      annotationProcessing.value = false
-      annotationButtonText.value = 'Start Annotation Process'
+    const submitSuccess = await submitFullSemanticMap()
+    if (!submitSuccess) {
+      resetAnnotationProcessingState()
       return
     }
+    
     annotationButtonText.value = 'Processing Annotations...'
     
-    // Try sending filtered map to annotation endpoint
-    const annRes = await fetch('/start-annotation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(filteredSemanticMap),
-    })
-    const ann = await annRes.json()
-    if (ann.success) {
+    const annotationSuccess = await startAnnotationWithFilteredMap(filteredSemanticMap)
+    if (annotationSuccess) {
       router.push('/annotate/verify')
     } else {
-      alert(`Error: ${ann.error}`)
-      annotationProcessing.value = false
-      annotationButtonText.value = 'Start Annotation Process'
+      resetAnnotationProcessingState()
     }
   } catch (e) {
     console.error(e)
     alert('An error occurred while processing. Please try again.')
-    annotationProcessing.value = false
-    annotationButtonText.value = 'Start Annotation Process'
+    resetAnnotationProcessingState()
   }
 }
 
