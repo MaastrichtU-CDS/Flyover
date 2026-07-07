@@ -623,5 +623,125 @@ class TestAnnotateControllerLanding(unittest.TestCase):
         self.assertEqual(response.headers.get("Location"), "/annotate")
 
 
+class TestAnnotateControllerStartAnnotationFiltering(unittest.TestCase):
+    """Tests for POST /start-annotation with a filtered semantic map.
+
+    The key invariant under test: when a filtered semantic map is submitted the
+    session_cache.jsonld_mapping must be restored to its original value after
+    the request completes — regardless of whether annotation succeeds or fails.
+    This ensures that the Share page (and every other route) always sees the
+    full, unfiltered map.
+    """
+
+    # A minimal valid JSON-LD map used as the "full" session map.
+    _FULL_MAP = _MINIMAL_VALID_JSONLD
+
+    # A filtered subset that removes the only database.
+    _FILTERED_MAP = {
+        "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+        "@type": "mapping:DataMapping",
+        "name": "Test Mapping",
+        "schema": {
+            "@type": "schema:SemanticSchema",
+            "variables": {
+                "identifier": {
+                    "@type": "schema:IdentifierVariable",
+                    "dataType": "identifier",
+                    "predicate": "sio:SIO_000673",
+                    "class": "ncit:C25364",
+                }
+            },
+        },
+        "databases": {},  # empty — only selected table removed
+    }
+
+    def _make_annotate_app(self, prepare_return=None, execute_return=None):
+        """Build a minimal Flask app whose AnnotateService is fully mocked."""
+        from unittest.mock import patch, MagicMock
+
+        app = Flask(
+            __name__,
+            template_folder=str(Path(__file__).parent.parent.parent / "templates"),
+        )
+        app.secret_key = "test-secret"
+
+        original_mapping = MagicMock()
+        mock_session = MagicMock()
+        mock_session.jsonld_mapping = original_mapping
+        mock_session.annotation_status = {}
+        mock_session.repo = "test_repo"
+
+        mock_rdf = MagicMock()
+        mock_rdf.get_databases.return_value = ["test_db"]
+
+        app.config["APP_CONTEXT"] = {
+            "session_cache": mock_session,
+            "rdf_store_service": mock_rdf,
+            "rdf_store_url": "http://localhost:7200",
+            "upload_folder": "/tmp",
+            "formulate_local_map": MagicMock(return_value={}),
+            "get_semantic_map": MagicMock(return_value={}),
+            "get_table_names": MagicMock(return_value=["test_table"]),
+            "has_semantic_map": MagicMock(return_value=True),
+            "name_matcher": MagicMock(return_value=True),
+        }
+        app.register_blueprint(annotate_bp)
+        return app, mock_session, original_mapping
+
+    def test_filtered_map_does_not_permanently_replace_session_mapping(self):
+        """After a filtered annotation, the original mapping must be restored."""
+        from unittest.mock import patch, MagicMock
+
+        app, mock_session, original_mapping = self._make_annotate_app()
+
+        with app.test_client() as client:
+            with patch(
+                "controllers.annotate_controller.AnnotateService.prepare_annotation_data",
+                return_value={},  # no annotation data → early return, still hits finally
+            ), patch(
+                "controllers.annotate_controller.MappingValidator"
+            ) as MockValidator:
+                mock_result = MagicMock()
+                mock_result.is_valid = True
+                MockValidator.return_value.validate.return_value = mock_result
+
+                response = client.post(
+                    "/start-annotation",
+                    data=json.dumps(self._FILTERED_MAP),
+                    content_type="application/json",
+                )
+
+        # The request should complete (success=False is fine because there is
+        # no annotation data), but crucially the mapping must be restored.
+        self.assertIsNotNone(response)
+        self.assertIs(
+            mock_session.jsonld_mapping,
+            original_mapping,
+            "session_cache.jsonld_mapping was not restored to the original after "
+            "a filtered annotation run — this would break the Share page.",
+        )
+
+    def test_no_filtered_map_leaves_session_mapping_unchanged(self):
+        """When no filtered map is sent, the session mapping must not be touched."""
+        from unittest.mock import patch, MagicMock
+
+        app, mock_session, original_mapping = self._make_annotate_app()
+
+        with app.test_client() as client:
+            with patch(
+                "controllers.annotate_controller.AnnotateService.prepare_annotation_data",
+                return_value={},
+            ):
+                # POST with no body → no filtered map
+                response = client.post("/start-annotation")
+
+        self.assertIs(
+            mock_session.jsonld_mapping,
+            original_mapping,
+            "session_cache.jsonld_mapping should never be altered when no filtered "
+            "map is provided.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

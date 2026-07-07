@@ -36,7 +36,8 @@ function changePage(d) {
 function statusIcon(s) {
   if (s === 'success') return 'fa-check-circle success'
   if (s === 'error') return 'fa-times-circle error'
-  if (s === 'undescribed') return 'fa-times-circle error'
+  if (s === 'skipped') return 'fa-minus-circle skipped'
+  if (s === 'undescribed') return 'fa-minus-circle skipped'
   return 'fa-spinner spinner'
 }
 
@@ -59,13 +60,31 @@ async function verifyOne(v) {
 onMounted(async () => {
   try {
     const { data } = await api.get('/api/v1/annotation-verify-state')
-    const described = Object.keys(data.variable_data || {}).map((fullName) => ({
-      fullName,
-      displayName: `${fullName.split('.').slice(-1)[0]} (${fullName.split('.')[0]})`,
-      database: fullName.split('.')[0],
-      status: 'pending',
-      message: 'Checking annotation...',
-    }))
+
+    // Build the set of databases that were actually included in the annotation
+    // run (i.e. appear in annotation_status). Databases absent from this set
+    // were intentionally skipped (filtered out) and should not be shown as
+    // failed — they simply were not annotated.
+    const annotationStatus = data.annotation_status || {}
+    const annotatedDatabases = new Set(
+      Object.keys(annotationStatus).map((key) => key.split('.')[0])
+    )
+    const anyAnnotationRan = Object.keys(annotationStatus).length > 0
+
+    const described = Object.keys(data.variable_data || {}).map((fullName) => {
+      const db = fullName.split('.')[0]
+      // If an annotation run happened but this database was not part of it,
+      // mark the variable as skipped rather than pending (verification would
+      // fail for the wrong reason and mislead the user).
+      const wasSkipped = anyAnnotationRan && !annotatedDatabases.has(db)
+      return {
+        fullName,
+        displayName: `${fullName.split('.').slice(-1)[0]} (${db})`,
+        database: db,
+        status: wasSkipped ? 'skipped' : 'pending',
+        message: wasSkipped ? 'Not annotated' : 'Checking annotation...',
+      }
+    })
     const seen = new Set()
     const undescribed = (data.unannotated_variables || [])
       .map((n) => n.split('.').slice(-1)[0])
@@ -128,6 +147,9 @@ onMounted(async () => {
             <option value="error">
               Failed
             </option>
+            <option value="skipped">
+              Not Annotated
+            </option>
             <option value="pending">
               Pending
             </option>
@@ -144,7 +166,7 @@ onMounted(async () => {
         v-for="v in pageVariables"
         :key="v.fullName"
         class="variable-item"
-        :class="{ unannotated: v.status === 'undescribed' }"
+        :class="{ unannotated: v.status === 'undescribed' || v.status === 'skipped' }"
       >
         <span class="variable-name">{{ v.displayName }}</span>
         <div class="status-indicator">
@@ -190,3 +212,10 @@ onMounted(async () => {
     <br><br>
   </div>
 </template>
+
+<style scoped>
+.success { color: #28a745; }
+.error   { color: #dc3545; }
+.skipped { color: #6c757d; }
+.spinner { color: #6c757d; }
+</style>
