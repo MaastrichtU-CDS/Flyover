@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export const DEFAULT_CSV = path.resolve(
   __dirname,
-  '../../../../../example_data/centre_a_english/synthetic_dutch_150.csv'
+  '../../../../../example_data/centre_a_english/synthetic_english_150.csv'
 )
 
 export const DEFAULT_MAPPING_JSONLD = path.resolve(

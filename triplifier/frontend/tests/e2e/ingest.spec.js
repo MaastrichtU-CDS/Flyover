@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_CSV = path.resolve(
   __dirname,
-  '../../../../example_data/centre_a_english/synthetic_dutch_150.csv'
+  '../../../../example_data/centre_a_english/synthetic_english_150.csv'
 )
 
 test.describe('Ingest flow', () => {
