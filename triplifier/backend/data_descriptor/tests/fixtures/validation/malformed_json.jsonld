@@ -1,0 +1,10 @@
+{
+  "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+  "@type": "mapping:DataMapping",
+  "name": "Broken Mapping",
+  "schema": {
+    "@type": "schema:SemanticSchema",
+    "variables": {}
+  }
+  "databases": {}
+}

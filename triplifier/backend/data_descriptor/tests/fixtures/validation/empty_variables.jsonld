@@ -1,0 +1,25 @@
+{
+  "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+  "@type": "mapping:DataMapping",
+  "name": "Empty Variables",
+  "schema": {
+    "@type": "schema:SemanticSchema",
+    "variables": {}
+  },
+  "databases": {
+    "db1": {
+      "@type": "mapping:Database",
+      "tables": {
+        "t1": {
+          "@type": "mapping:Table",
+          "columns": {
+            "id": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": "id"
+            }
+          }
+        }
+      }
+    }
+  }
+}
