@@ -7,8 +7,7 @@
   "required": [
     "@context",
     "@type",
-    "schema",
-    "databases"
+    "schema"
   ],
   "properties": {
     "@context": {
@@ -76,7 +75,6 @@
     "databases": {
       "description": "Database definitions containing tables and column mappings",
       "type": "object",
-      "minProperties": 1,
       "additionalProperties": {
         "$ref": "#/definitions/Database"
       }
