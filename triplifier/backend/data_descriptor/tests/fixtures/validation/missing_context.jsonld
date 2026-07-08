@@ -1,0 +1,31 @@
+{
+  "@type": "mapping:DataMapping",
+  "name": "Missing Context",
+  "schema": {
+    "@type": "schema:SemanticSchema",
+    "variables": {
+      "identifier": {
+        "@type": "schema:IdentifierVariable",
+        "dataType": "identifier",
+        "predicate": "sio:SIO_000673",
+        "class": "ncit:C25364"
+      }
+    }
+  },
+  "databases": {
+    "db1": {
+      "@type": "mapping:Database",
+      "tables": {
+        "t1": {
+          "@type": "mapping:Table",
+          "columns": {
+            "id": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": "id"
+            }
+          }
+        }
+      }
+    }
+  }
+}
