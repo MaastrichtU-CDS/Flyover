@@ -177,7 +177,7 @@ class TestAcceptedSchemaBranches(unittest.TestCase):
 
 
 class TestMissingRequiredTopLevelFields(unittest.TestCase):
-    """Each required top-level field must produce a validation error when absent."""
+    """Required top-level fields must produce a validation error when absent. Note: databases is optional."""
 
     def setUp(self):
         """Set up a shared validator instance."""
@@ -213,15 +213,11 @@ class TestMissingRequiredTopLevelFields(unittest.TestCase):
             [i.message for i in result.issues],
         )
 
-    def test_missing_databases_is_invalid(self):
-        """Removing databases must fail validation with a reference to databases."""
+    def test_missing_databases_is_valid(self):
+        """Removing databases must pass validation as it is optional."""
         mapping = {k: v for k, v in _VALID_MAPPING.items() if k != "databases"}
         result = self.validator.validate(mapping)
-        self.assertFalse(result.is_valid)
-        self.assertTrue(
-            any("databases" in i.message.lower() for i in result.issues),
-            [i.message for i in result.issues],
-        )
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +400,7 @@ class TestMissingRequiredVariableFields(unittest.TestCase):
 
 
 class TestEmptyCollections(unittest.TestCase):
-    """Objects that require at least one entry must reject empty values."""
+    """Objects that require at least one entry must reject empty values. Note: databases is optional and can be empty."""
 
     def setUp(self):
         """Set up a shared validator instance."""
@@ -424,19 +420,12 @@ class TestEmptyCollections(unittest.TestCase):
             [i.message for i in result.issues],
         )
 
-    def test_empty_databases_object_is_rejected(self):
-        """An empty databases object must fail schema validation."""
+    def test_empty_databases_object_is_valid(self):
+        """An empty databases object must pass schema validation as it is optional."""
         mapping = copy.deepcopy(_VALID_MAPPING)
         mapping["databases"] = {}
         result = self.validator.validate(mapping)
-        self.assertFalse(result.is_valid)
-        self.assertTrue(
-            any(
-                "databases" in i.path or "minProperties" in i.message
-                for i in result.issues
-            ),
-            [i.message for i in result.issues],
-        )
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
 
     def test_empty_tables_object_is_rejected(self):
         """An empty tables object inside a database must fail validation."""
@@ -748,9 +737,15 @@ class TestFixtureFiles(unittest.TestCase):
         """The missing_schema fixture must fail with a schema reference."""
         self._assert_fixture_invalid("missing_schema.jsonld", "schema")
 
-    def test_missing_databases_fixture_fails_validation(self):
-        """The missing_databases fixture must fail with a databases reference."""
-        self._assert_fixture_invalid("missing_databases.jsonld", "databases")
+    def test_missing_databases_fixture_passes_validation(self):
+        """The missing_databases fixture must pass validation as databases is optional."""
+        fixture_path = _FIXTURES_DIR / "missing_databases.jsonld"
+        self.assertTrue(
+            fixture_path.exists(),
+            f"Fixture file missing: {fixture_path}",
+        )
+        result = self.validator.validate_file(fixture_path)
+        self.assertTrue(result.is_valid, [i.message for i in result.issues])
 
     def test_invalid_type_fixture_fails_validation(self):
         """The invalid_type fixture must fail with a @type reference."""
