@@ -3,7 +3,7 @@ Unit tests for the MappingValidator class.
 
 Tests cover:
 - Valid JSON-LD file validation
-- Missing required fields (@context, schema, databases)
+- Missing required fields (@context, schema)
 - Pattern validation failures
 - Cross-reference validation (mapsTo references)
 - JSON syntax error handling
@@ -143,12 +143,12 @@ class TestMappingValidator(unittest.TestCase):
         self.assertFalse(result.is_valid)
 
     def test_validate_missing_databases(self):
-        """Test validation fails when databases is missing."""
-        invalid_mapping = {
+        """Test validation succeeds when databases is missing (optional field)."""
+        mapping_without_databases = {
             k: v for k, v in self.valid_mapping.items() if k != "databases"
         }
-        result = self.validator.validate(invalid_mapping)
-        self.assertFalse(result.is_valid)
+        result = self.validator.validate(mapping_without_databases)
+        self.assertTrue(result.is_valid)
 
     def test_validate_invalid_type_pattern(self):
         """Test validation fails for invalid @type pattern."""
