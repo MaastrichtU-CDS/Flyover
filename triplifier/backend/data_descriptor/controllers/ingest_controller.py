@@ -354,6 +354,9 @@ def _remove_orphan_columns_from_mapping(mapping_data, orphan_columns):
     faulty mappings (including the mapsTo section for those columns) do not persist
     in IndexedDB.
 
+    Also removes empty tables and databases that result from column removal to prevent
+    validation errors about empty dictionaries.
+
     Args:
         mapping_data: The JSON-LD mapping data
         orphan_columns: List of (db_key, table_key, col_key, maps_to) tuples for columns to remove
@@ -368,13 +371,13 @@ def _remove_orphan_columns_from_mapping(mapping_data, orphan_columns):
     if not isinstance(databases, dict):
         return mapping_data
 
-    # Create a deep copy to avoid modifying the original during iteration
     import copy
-
     cleaned_mapping = copy.deepcopy(mapping_data)
 
+    # First pass: remove all the specified columns
+    columns_removed = set()  # Track (db_key, table_key) for tables that had columns removed
+    
     for db_key, table_key, col_key, maps_to in orphan_columns:
-        # Navigate to the column and remove it
         db_data = cleaned_mapping.get("databases", {}).get(db_key)
         if not isinstance(db_data, dict):
             continue
@@ -387,9 +390,32 @@ def _remove_orphan_columns_from_mapping(mapping_data, orphan_columns):
         if not isinstance(columns, dict):
             continue
 
-        # Remove the column entry (which includes localColumn, mapsTo, and valueMappings)
         if col_key in columns:
             del columns[col_key]
+            columns_removed.add((db_key, table_key))
+
+    # Second pass: remove empty tables
+    empty_databases = set()
+    for db_key, table_key in columns_removed:
+        db_data = cleaned_mapping.get("databases", {}).get(db_key)
+        if not isinstance(db_data, dict):
+            continue
+
+        tables = db_data.get("tables", {})
+        if not isinstance(tables, dict):
+            continue
+
+        if table_key in tables and not tables[table_key].get("columns"):
+            del tables[table_key]
+            if not tables:  # Database is now empty
+                empty_databases.add(db_key)
+
+    # Remove empty databases
+    databases_cleaned = cleaned_mapping.get("databases", {})
+    for db_key in empty_databases:
+        if db_key in databases_cleaned:
+            del databases_cleaned[db_key]
+
     return cleaned_mapping
 
 
