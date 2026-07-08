@@ -72,6 +72,19 @@ _annotation_graph_uri = "ANNOTATION_GRAPH_URI"
 _materialized_graph_uri = "MATERIALIZED_GRAPH_URI"
 
 
+def _strip_prefixes(query):
+    """
+    Remove all leading PREFIX declarations from a SPARQL query body so that
+    multiple operation bodies can be safely concatenated with ';' into one
+    SPARQL 1.1 UPDATE request (only the first body keeps the shared prefixes).
+    """
+    lines = query.splitlines()
+    body_lines = [l for l in lines if not l.strip().startswith("PREFIX ")]
+    # also drop any leading/trailing blank lines
+    result = "\n".join(body_lines).strip()
+    return result
+
+
 def add_annotation(
     endpoint,
     database,
@@ -504,50 +517,54 @@ def add_annotation(
         predicate_inserted = False
 
         if construction_success:
-            core_response, core_query = _add_core_annotation(
-                endpoint=endpoint,
-                prefixes=prefixes,
-                database_name=database,
-                local_definition=local_definition,
-                class_object=class_object,
-            )
+            # ------------------------------------------------------------------
+            # Batched fast path
+            #
+            # Build every write query for this variable without posting, join
+            # them with ';' into one SPARQL UPDATE body, and send it in a
+            # single HTTP round-trip.  A single ASK verifies success afterward.
+            # If the batch fails (non-2xx response or predicate not found) we
+            # fall back to the original sequential per-query path below, which
+            # restores the full fallback/reconstruction logic for that variable.
+            # ------------------------------------------------------------------
+            batch_succeeded = False
+            batch_response = None
 
-            # add the annotation with specified reconstructions
-            response, query = _add_annotation(
-                endpoint=endpoint,
-                variable=generic_category,
-                database_name=database,
-                prefixes=prefixes,
-                local_definition=local_definition,
-                predicate=predicate,
-                class_object=class_object,
-                classes_insertion_before=classes_insertion_before,
-                classes_insertion_after=classes_insertion_after,
-                classes_where_before=classes_where_before,
-                classes_where_after=classes_where_after,
-                nodes_insertion=nodes_insertion,
-                components=components,
-            )
-
-            # check whether the annotation was added successfully
-            if dry_run is False and 200 <= response.status_code < 300:
-                predicate_inserted = check_predicate(
+            if dry_run is False:
+                # 1. Build core annotation query (no network call).
+                _, core_q = _add_core_annotation(
                     endpoint=endpoint,
-                    predicate=predicate,
-                    variable=generic_category,
-                    response=response,
                     prefixes=prefixes,
+                    database_name=database,
+                    local_definition=local_definition,
+                    class_object=class_object,
+                    _execute=False,
                 )
 
-                # If reconstruction-specific matching inserts no row-level predicate edges,
-                # fall back to the base variable annotation pattern so variable predicates
-                # (e.g., sio:SIO_000008) are still materialized from source data.
-                if predicate_inserted is False and components > 0:
-                    logging.info(
-                        f"Falling back to base annotation query for {generic_category} "
-                        "because reconstruction matching did not yield predicate triples."
-                    )
-                    fallback_response, fallback_query = _add_annotation(
+                # 2. Build primary annotation query (with any reconstruction).
+                _, ann_q = _add_annotation(
+                    endpoint=endpoint,
+                    variable=generic_category,
+                    database_name=database,
+                    prefixes=prefixes,
+                    local_definition=local_definition,
+                    predicate=predicate,
+                    class_object=class_object,
+                    classes_insertion_before=classes_insertion_before,
+                    classes_insertion_after=classes_insertion_after,
+                    classes_where_before=classes_where_before,
+                    classes_where_after=classes_where_after,
+                    nodes_insertion=nodes_insertion,
+                    components=components,
+                    _execute=False,
+                )
+
+                # 3. Always include the base (non-reconstruction) annotation so
+                #    variable predicates land even when reconstruction patterns
+                #    match no rows — this avoids a conditional mid-flight read.
+                base_q = None
+                if components > 0:
+                    _, base_q = _add_annotation(
                         endpoint=endpoint,
                         variable=generic_category,
                         database_name=database,
@@ -561,56 +578,258 @@ def add_annotation(
                         classes_where_after="",
                         nodes_insertion="",
                         components=0,
+                        _execute=False,
                     )
 
+                # 4. Build all value-mapping write queries.
+                mapping_queries_built = {}
+                if isinstance(variable_data.get("value_mapping"), dict):
+                    value_map = variable_data["value_mapping"]
+                    if isinstance(value_map.get("terms"), dict):
+                        for term, term_data in value_map["terms"].items():
+                            target_class = term_data.get("target_class")
+                            local_term = term_data.get("local_term", None)
+                            if local_term is None or not isinstance(target_class, str):
+                                continue
+                            if isinstance(local_term, list):
+                                local_terms = [
+                                    lt for lt in local_term if isinstance(lt, str)
+                                ]
+                            elif isinstance(local_term, str):
+                                local_terms = [local_term]
+                            else:
+                                local_terms = []
+                            for lt in local_terms:
+                                _, mq = _add_mapping(
+                                    endpoint=endpoint,
+                                    prefixes=prefixes,
+                                    target_class=target_class,
+                                    super_class=class_object,
+                                    local_term=lt,
+                                    database_name=database,
+                                    _execute=False,
+                                )
+                                mapping_queries_built[f"{term}_{lt}"] = mq
+
+                # 5. Combine all write bodies into one SPARQL UPDATE request.
+                #    The first body keeps its PREFIX declarations; continuations
+                #    have them stripped so there are no duplicate PREFIX errors.
+                parts = [core_q, ann_q]
+                if base_q:
+                    parts.append(base_q)
+                parts.extend(mapping_queries_built.values())
+                parts = [p for p in parts if p and p.strip()]
+
+                if parts:
+                    combined = parts[0]
+                    for part in parts[1:]:
+                        combined = combined + "\n;\n\n" + _strip_prefixes(part)
+
+                    batch_response = __post_query(endpoint, combined)
+
                     if (
-                        fallback_response is not None
-                        and 200 <= fallback_response.status_code < 300
+                        batch_response is not None
+                        and 200 <= batch_response.status_code < 300
                     ):
+                        # 6. Single verification read.
                         predicate_inserted = check_predicate(
                             endpoint=endpoint,
                             predicate=predicate,
                             variable=generic_category,
-                            response=fallback_response,
+                            response=batch_response,
                             prefixes=prefixes,
                         )
-                        query = f"{query}\n\n{fallback_query}"
-                        response = fallback_response
-            else:
-                predicate_inserted = False
+                        batch_succeeded = predicate_inserted
 
-            annotation_success = predicate_inserted
+                        if batch_succeeded:
+                            # Reconstruct the state that the save-query block
+                            # below expects (core_query, query, value_mapping_*).
+                            core_query = core_q
+                            query = "\n\n".join(
+                                [ann_q] + ([base_q] if base_q else [])
+                            )
+                            response = batch_response
+                            core_response = batch_response
 
-            if core_response is not None and 200 <= core_response.status_code < 300:
-                annotation_success = annotation_success or dry_run is True
+                            annotation_success = True
+
+                            if isinstance(variable_data.get("value_mapping"), dict):
+                                value_mapping_queries = mapping_queries_built
+                                # Statuses are verified by the single batch ASK
+                                # above; mark all built mappings as successful.
+                                if mapping_queries_built:
+                                    value_mapping_statuses = {
+                                        k: True for k in mapping_queries_built
+                                    }
+                                    logging.info(
+                                        f"Value mappings for {generic_category} "
+                                        f"were included in the batch and verified."
+                                    )
+                                elif _has_actionable_value_mapping_terms(
+                                    variable_data["value_mapping"]
+                                ):
+                                    annotation_success = False
+
+                            logging.info(
+                                f"Batched annotation for {generic_category} "
+                                f"succeeded ({len(parts)} operations in one request)."
+                            )
 
             if dry_run is True:
-                annotation_success = True
-
-            # add the value mapping if necessary and possible
-            if annotation_success and isinstance(
-                variable_data.get("value_mapping"), dict
-            ):
-                (
-                    value_mapping_responses,
-                    value_mapping_queries,
-                    value_mapping_statuses,
-                ) = add_mapping(
+                # Dry run: build queries sequentially (no real HTTP), record them.
+                core_response, core_query = _add_core_annotation(
                     endpoint=endpoint,
                     prefixes=prefixes,
-                    variable=generic_category,
-                    super_class=class_object,
-                    value_map=variable_data["value_mapping"],
                     database_name=database,
+                    local_definition=local_definition,
+                    class_object=class_object,
                 )
-                if isinstance(value_mapping_statuses, dict) and value_mapping_statuses:
-                    annotation_success = annotation_success and all(
-                        value_mapping_statuses.values()
+                response, query = _add_annotation(
+                    endpoint=endpoint,
+                    variable=generic_category,
+                    database_name=database,
+                    prefixes=prefixes,
+                    local_definition=local_definition,
+                    predicate=predicate,
+                    class_object=class_object,
+                    classes_insertion_before=classes_insertion_before,
+                    classes_insertion_after=classes_insertion_after,
+                    classes_where_before=classes_where_before,
+                    classes_where_after=classes_where_after,
+                    nodes_insertion=nodes_insertion,
+                    components=components,
+                )
+                annotation_success = True
+
+                if isinstance(variable_data.get("value_mapping"), dict):
+                    (
+                        value_mapping_responses,
+                        value_mapping_queries,
+                        value_mapping_statuses,
+                    ) = add_mapping(
+                        endpoint=endpoint,
+                        prefixes=prefixes,
+                        variable=generic_category,
+                        super_class=class_object,
+                        value_map=variable_data["value_mapping"],
+                        database_name=database,
                     )
-                elif _has_actionable_value_mapping_terms(
-                    variable_data["value_mapping"]
+
+            elif not batch_succeeded:
+                # ------------------------------------------------------------------
+                # Sequential fallback path
+                #
+                # The batch write failed or the verification ASK came back false.
+                # Re-run the full original per-query logic so the reconstruction
+                # fallback and per-term value-mapping checks are still available.
+                # ------------------------------------------------------------------
+                logging.info(
+                    f"Batch annotation for {generic_category} did not succeed; "
+                    "retrying with sequential per-query approach."
+                )
+
+                core_response, core_query = _add_core_annotation(
+                    endpoint=endpoint,
+                    prefixes=prefixes,
+                    database_name=database,
+                    local_definition=local_definition,
+                    class_object=class_object,
+                )
+
+                response, query = _add_annotation(
+                    endpoint=endpoint,
+                    variable=generic_category,
+                    database_name=database,
+                    prefixes=prefixes,
+                    local_definition=local_definition,
+                    predicate=predicate,
+                    class_object=class_object,
+                    classes_insertion_before=classes_insertion_before,
+                    classes_insertion_after=classes_insertion_after,
+                    classes_where_before=classes_where_before,
+                    classes_where_after=classes_where_after,
+                    nodes_insertion=nodes_insertion,
+                    components=components,
+                )
+
+                # check whether the annotation was added successfully
+                if 200 <= response.status_code < 300:
+                    predicate_inserted = check_predicate(
+                        endpoint=endpoint,
+                        predicate=predicate,
+                        variable=generic_category,
+                        response=response,
+                        prefixes=prefixes,
+                    )
+
+                    # If reconstruction-specific matching inserts no row-level
+                    # predicate edges, fall back to the base annotation pattern.
+                    if predicate_inserted is False and components > 0:
+                        logging.info(
+                            f"Falling back to base annotation query for {generic_category} "
+                            "because reconstruction matching did not yield predicate triples."
+                        )
+                        fallback_response, fallback_query = _add_annotation(
+                            endpoint=endpoint,
+                            variable=generic_category,
+                            database_name=database,
+                            prefixes=prefixes,
+                            local_definition=local_definition,
+                            predicate=predicate,
+                            class_object=class_object,
+                            classes_insertion_before="",
+                            classes_insertion_after="",
+                            classes_where_before="",
+                            classes_where_after="",
+                            nodes_insertion="",
+                            components=0,
+                        )
+
+                        if (
+                            fallback_response is not None
+                            and 200 <= fallback_response.status_code < 300
+                        ):
+                            predicate_inserted = check_predicate(
+                                endpoint=endpoint,
+                                predicate=predicate,
+                                variable=generic_category,
+                                response=fallback_response,
+                                prefixes=prefixes,
+                            )
+                            query = f"{query}\n\n{fallback_query}"
+                            response = fallback_response
+                else:
+                    predicate_inserted = False
+
+                annotation_success = predicate_inserted
+
+                if core_response is not None and 200 <= core_response.status_code < 300:
+                    annotation_success = annotation_success or dry_run is True
+
+                # add the value mapping if necessary and possible
+                if annotation_success and isinstance(
+                    variable_data.get("value_mapping"), dict
                 ):
-                    annotation_success = False
+                    (
+                        value_mapping_responses,
+                        value_mapping_queries,
+                        value_mapping_statuses,
+                    ) = add_mapping(
+                        endpoint=endpoint,
+                        prefixes=prefixes,
+                        variable=generic_category,
+                        super_class=class_object,
+                        value_map=variable_data["value_mapping"],
+                        database_name=database,
+                    )
+                    if isinstance(value_mapping_statuses, dict) and value_mapping_statuses:
+                        annotation_success = annotation_success and all(
+                            value_mapping_statuses.values()
+                        )
+                    elif _has_actionable_value_mapping_terms(
+                        variable_data["value_mapping"]
+                    ):
+                        annotation_success = False
 
             # remove the 'has_column' section
             if remove_has_column:
@@ -1144,6 +1363,7 @@ def _add_annotation(
     nodes_insertion,
     components,
     template_file=None,
+    _execute=True,
 ):
     """
     Directly add an annotation
@@ -1232,6 +1452,8 @@ def _add_annotation(
         query = query.replace(old, new)
 
     # run the query
+    if not _execute:
+        return None, query
     response = __post_query(endpoint, query)
 
     return response, query
@@ -1243,6 +1465,7 @@ def _add_core_annotation(
     database_name,
     local_definition,
     class_object,
+    _execute=True,
 ):
     """
     Insert the ontology-level annotation triples independently from any
@@ -1282,6 +1505,8 @@ INSERT DATA {
     for old, new in replacements.items():
         query = query.replace(old, new)
 
+    if not _execute:
+        return None, query
     response = __post_query(endpoint, query)
 
     return response, query
@@ -1295,6 +1520,7 @@ def _add_mapping(
     local_term,
     database_name=None,
     template_file=None,
+    _execute=True,
 ):
     """
     directly add a mapping between various classes and data-specific term
@@ -1376,6 +1602,8 @@ def _add_mapping(
         query = query.replace(old, new)
 
     # run the query
+    if not _execute:
+        return None, query
     response = __post_query(endpoint, query)
 
     return response, query
