@@ -1,17 +1,19 @@
 """
-Extended unit tests for MappingValidator — semantic and cross-field validation.
+Unit tests for MappingValidator — behaviour, helpers, and cross-field validation.
 
 Tests cover:
+- ValidationIssue and ValidationResult dataclasses
 - _format_path and _get_value_preview helper functions
 - Cross-field validation: localMappings keys vs schema terms, mapsTo existence
 - Semantic validation: empty predicate/class URIs
 - Boundary cases: large mappings, Unicode in variable names, special characters,
   XSS-like and SQL-injection-like string payloads
 - Statistics collection for complex mappings
-- format_errors_for_ui output structure (new cases not in test_validation.py)
+- format_errors_for_ui output structure
 - Graceful degradation when the schema file is absent
+- validate_file edge cases (path types, missing files)
 
-These tests complement test_validation.py and do not duplicate its cases.
+The JSON Schema contract itself is exercised in test_mapping_schema.py.
 """
 
 import copy
@@ -87,6 +89,63 @@ def _make_valid_mapping(**overrides) -> dict:
     }
     base.update(overrides)
     return base
+
+
+# ---------------------------------------------------------------------------
+# Dataclass unit tests — ValidationIssue and ValidationResult
+# ---------------------------------------------------------------------------
+
+
+class TestValidationIssue(unittest.TestCase):
+    """Unit tests for the ValidationIssue dataclass."""
+
+    def test_create_error_issue(self):
+        """An error-level issue must retain its severity, path, and message."""
+        issue = ValidationIssue(
+            severity="error",
+            path="schema.variables.test",
+            message="Missing required field",
+            value=None,
+            suggestion="Add the required field",
+        )
+        self.assertEqual(issue.severity, "error")
+        self.assertEqual(issue.path, "schema.variables.test")
+        self.assertEqual(issue.message, "Missing required field")
+
+    def test_create_warning_issue(self):
+        """A warning-level issue must retain its severity and message."""
+        issue = ValidationIssue(
+            severity="warning",
+            path="databases.db1.tables.t1.mapsTo",
+            message="References undefined variable",
+            value="schema:variable/undefined",
+        )
+        self.assertEqual(issue.severity, "warning")
+        self.assertIn("undefined", issue.message)
+
+
+class TestValidationResult(unittest.TestCase):
+    """Unit tests for the ValidationResult dataclass."""
+
+    def test_valid_result(self):
+        """A valid result must have no issues or warnings by default."""
+        result = ValidationResult(is_valid=True)
+        self.assertTrue(result.is_valid)
+        self.assertEqual(len(result.issues), 0)
+        self.assertEqual(len(result.warnings), 0)
+
+    def test_invalid_result_with_issues(self):
+        """An invalid result must expose the issues it was created with."""
+        result = ValidationResult(
+            is_valid=False,
+            issues=[
+                ValidationIssue(
+                    severity="error", path="@context", message="Missing @context"
+                )
+            ],
+        )
+        self.assertFalse(result.is_valid)
+        self.assertEqual(len(result.issues), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -443,16 +502,42 @@ class TestStatisticsCollection(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# format_errors_for_ui — new cases only (basic structure in test_validation.py)
+# format_errors_for_ui
 # ---------------------------------------------------------------------------
 
 
 class TestFormatErrorsForUI(unittest.TestCase):
-    """format_errors_for_ui edge cases not covered in test_validation.py."""
+    """Structure and edge cases of the format_errors_for_ui output."""
 
     def setUp(self):
         """Set up a shared validator instance."""
         self.validator = MappingValidator()
+
+    def test_errors_and_warnings_are_combined_with_errors_first(self):
+        """Errors and warnings must both appear, with errors listed first."""
+        result = ValidationResult(
+            is_valid=False,
+            issues=[
+                ValidationIssue(
+                    severity="error",
+                    path="@context",
+                    message="Missing @context",
+                    suggestion="Add a @context object",
+                )
+            ],
+            warnings=[
+                ValidationIssue(
+                    severity="warning",
+                    path="databases.db.tables.t.columns.c.mapsTo",
+                    message="References undefined variable",
+                )
+            ],
+        )
+        formatted = self.validator.format_errors_for_ui(result)
+        self.assertEqual(len(formatted), 2)
+        self.assertEqual(formatted[0]["severity"], "error")
+        self.assertEqual(formatted[0]["path"], "@context")
+        self.assertEqual(formatted[1]["severity"], "warning")
 
     def test_valid_mapping_produces_empty_list(self):
         """A valid mapping must produce an empty list from format_errors_for_ui."""
@@ -523,6 +608,14 @@ class TestValidateFileEdgeCases(unittest.TestCase):
     def setUp(self):
         """Set up a shared validator instance."""
         self.validator = MappingValidator()
+
+    def test_nonexistent_file_returns_error_result(self):
+        """validate_file must return an invalid result for a non-existent file."""
+        result = self.validator.validate_file("/non/existent/file.jsonld")
+        self.assertFalse(result.is_valid)
+        self.assertTrue(
+            any("not found" in issue.message.lower() for issue in result.issues)
+        )
 
     def test_path_object_is_accepted_by_validate_file(self):
         """validate_file must accept a pathlib.Path object."""
