@@ -1,0 +1,55 @@
+{
+  "@context": {"@vocab": "https://github.com/MaastrichtU-CDS/Flyover/"},
+  "@type": "mapping:DataMapping",
+  "name": "Unicode Variable Names — Ünïcödé Tëst",
+  "description": "Mapping with Unicode in variable names and values",
+  "schema": {
+    "@type": "schema:SemanticSchema",
+    "variables": {
+      "identifiant_患者": {
+        "@type": "schema:IdentifierVariable",
+        "dataType": "identifier",
+        "predicate": "sio:SIO_000673",
+        "class": "ncit:C25364"
+      },
+      "sexe_biologique": {
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C28421",
+        "valueMapping": {
+          "terms": {
+            "männlich": {"targetClass": "ncit:C20197"},
+            "weiblich": {"targetClass": "ncit:C16576"}
+          }
+        }
+      }
+    }
+  },
+  "databases": {
+    "db_ünicode": {
+      "@type": "mapping:Database",
+      "name": "Ünïcödé Dätäbäse",
+      "tables": {
+        "tàble_données": {
+          "@type": "mapping:Table",
+          "sourceFile": "données.csv",
+          "columns": {
+            "identifiant_患者": {
+              "mapsTo": "schema:variable/identifiant_患者",
+              "localColumn": "患者_id"
+            },
+            "sexe_biologique": {
+              "mapsTo": "schema:variable/sexe_biologique",
+              "localColumn": "geschlecht",
+              "localMappings": {
+                "männlich": "M",
+                "weiblich": "F"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
