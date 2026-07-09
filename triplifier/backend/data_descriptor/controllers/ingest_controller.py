@@ -372,11 +372,14 @@ def _remove_orphan_columns_from_mapping(mapping_data, orphan_columns):
         return mapping_data
 
     import copy
+
     cleaned_mapping = copy.deepcopy(mapping_data)
 
     # First pass: remove all the specified columns
-    columns_removed = set()  # Track (db_key, table_key) for tables that had columns removed
-    
+    columns_removed = (
+        set()
+    )  # Track (db_key, table_key) for tables that had columns removed
+
     for db_key, table_key, col_key, maps_to in orphan_columns:
         db_data = cleaned_mapping.get("databases", {}).get(db_key)
         if not isinstance(db_data, dict):
