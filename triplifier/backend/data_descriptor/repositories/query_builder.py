@@ -404,6 +404,7 @@ class QueryBuilder:
             str: SPARQL ASK query.
         """
         ask_query_parts = []
+        data_parts = []
 
         annotation_graph = f"http://annotation.local/{database}/"
 
@@ -419,6 +420,16 @@ class QueryBuilder:
                     ask_query_parts.append(
                         f"{term_info['target_class']} rdfs:subClassOf {var_class} ."
                     )
+                    
+                    # Also check that there exists at least one cell with this value in the data graph
+                    data_parts.append(
+                        f"?cell_{i} dbo:has_value \"{escaped_local_value}\"^^xsd:string ."
+                    )
+
+        # Build data graph query part
+        data_graph_query = ""
+        if data_parts:
+            data_graph_query = f" GRAPH ?dataGraph {{ {' '.join(data_parts)} }} FILTER(STRSTARTS(STR(?dataGraph), \"http://data.local/\"))"
 
         return f"""
             {prefixes}
@@ -426,6 +437,6 @@ class QueryBuilder:
             GRAPH <{annotation_graph}>
              {{
               {' '.join(ask_query_parts)}
-             }}
+             }}{data_graph_query}
             }}
         """
