@@ -138,6 +138,10 @@ def retrieve_descriptive_info():
         if not session_cache.DescriptiveInfoDetails[database]:
             del session_cache.DescriptiveInfoDetails[database]
 
+    start_llm_job = ctx.get("maybe_start_llm_value_job")
+    if start_llm_job:
+        start_llm_job(session_cache)
+
     if session_cache.DescriptiveInfoDetails:
         return redirect("/describe/variable-details")
     else:

@@ -87,6 +87,8 @@ def _make_app(*blueprints):
         "upload_func": MagicMock(return_value=(True, [])),
         "start_background": MagicMock(),
         "name_matcher": MagicMock(return_value=True),
+        "maybe_start_llm_variable_job": MagicMock(),
+        "maybe_start_llm_value_job": MagicMock(),
     }
     for bp in blueprints:
         app.register_blueprint(bp)
@@ -218,6 +220,60 @@ class TestIngestControllerSubmitIndexedDB(unittest.TestCase):
         body = json.loads(response.data)
         self.assertTrue(body.get("success"))
         self.assertIn("redirect_url", body)
+
+
+class TestLLMTriggerPoints(unittest.TestCase):
+    """LLM suggestion jobs are kicked off by ingest/describe events.
+
+    The wrappers in APP_CONTEXT swallow their own exceptions (tested via
+    main.py's _maybe_start_* helpers); here we assert the controllers
+    invoke them at the right moments and survive their absence.
+    """
+
+    def test_semantic_map_upload_triggers_variable_job(self):
+        from io import BytesIO
+
+        app = _make_app(ingest_bp)
+        payload = json.dumps(_MINIMAL_VALID_JSONLD).encode()
+        data = {"semanticMapFile": (BytesIO(payload), "mapping.jsonld")}
+        app.test_client().post(
+            "/upload-semantic-map", data=data, content_type="multipart/form-data"
+        )
+        app.config["APP_CONTEXT"]["maybe_start_llm_variable_job"].assert_called_once()
+
+    def test_indexeddb_map_submission_triggers_variable_job(self):
+        app = _make_app(ingest_bp)
+        app.test_client().post(
+            "/submit-indexeddb-semantic-map",
+            data=json.dumps(_MINIMAL_VALID_JSONLD),
+            content_type="application/json",
+        )
+        app.config["APP_CONTEXT"]["maybe_start_llm_variable_job"].assert_called_once()
+
+    def test_invalid_map_does_not_trigger_variable_job(self):
+        app = _make_app(ingest_bp)
+        app.test_client().post(
+            "/submit-indexeddb-semantic-map",
+            data=json.dumps({"name": "incomplete"}),
+            content_type="application/json",
+        )
+        app.config["APP_CONTEXT"]["maybe_start_llm_variable_job"].assert_not_called()
+
+    def test_units_submission_triggers_value_job(self):
+        app = _make_app(describe_bp)
+        ctx = app.config["APP_CONTEXT"]
+        ctx["session_cache"].databases = []
+        response = app.test_client().post("/units", data={})
+        self.assertEqual(response.status_code, 302)
+        ctx["maybe_start_llm_value_job"].assert_called_once()
+
+    def test_routes_survive_missing_trigger_keys(self):
+        app = _make_app(describe_bp)
+        ctx = app.config["APP_CONTEXT"]
+        del ctx["maybe_start_llm_value_job"]
+        ctx["session_cache"].databases = []
+        response = app.test_client().post("/units", data={})
+        self.assertEqual(response.status_code, 302)
 
 
 class TestIngestControllerRdfStoreDatabases(unittest.TestCase):

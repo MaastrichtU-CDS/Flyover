@@ -88,6 +88,10 @@ def upload_semantic_map():
 
         session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
 
+        start_llm_job = ctx.get("maybe_start_llm_variable_job")
+        if start_llm_job:
+            start_llm_job(session_cache)
+
         return jsonify(
             {
                 "success": True,
@@ -129,6 +133,10 @@ def submit_indexeddb_semantic_map():
             )
 
         session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
+
+        start_llm_job = ctx.get("maybe_start_llm_variable_job")
+        if start_llm_job:
+            start_llm_job(session_cache)
 
         return jsonify(
             {
@@ -226,6 +234,10 @@ def upload_file():
 
             if file_type == "CSV" and start_background:
                 start_background(session_cache)
+
+            start_llm_job = ctx.get("maybe_start_llm_variable_job")
+            if start_llm_job:
+                start_llm_job(session_cache)
 
         return redirect("/describe")
     else:
