@@ -6,8 +6,11 @@ categorical values to semantic value-mapping terms.
 """
 
 from services.llm.ollama_client import OllamaClient, OllamaError
+from services.llm.suggestion_service import LLMConfig, LLMSuggestionService
 
 __all__ = [
     "OllamaClient",
     "OllamaError",
+    "LLMConfig",
+    "LLMSuggestionService",
 ]
