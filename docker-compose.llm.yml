@@ -1,0 +1,30 @@
+# Opt-in overlay enabling LLM mapping suggestions via a local Ollama server.
+# CPU-safe; for GPU acceleration chain the llm-gpu overlay on top:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.llm.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.llm.yml \
+#                  -f docker-compose.llm-gpu.yml up
+#
+# The model is pulled once at first boot (background, non-blocking) and
+# persisted in the ollama-models volume.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - proxynet
+    container_name: ollama
+
+  flyover:
+    environment:
+      - FLYOVER_LLM_ENABLED=true
+      - FLYOVER_OLLAMA_HOST=http://ollama:11434
+      # Optional overrides (defaults shown):
+      # - FLYOVER_LLM_MODEL=llama3.2:3b
+      # - FLYOVER_LLM_FALLBACK_MODELS=llama3.2:1b
+      # - FLYOVER_LLM_CHUNK_SIZE=8
+      # - FLYOVER_LLM_TIMEOUT_S=180
+
+volumes:
+  ollama-models:

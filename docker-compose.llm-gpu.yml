@@ -1,0 +1,16 @@
+# GPU add-on for the LLM overlay. Kept separate from docker-compose.llm.yml
+# because the nvidia device reservation hard-fails `docker compose up` on
+# hosts without the NVIDIA container runtime — chain it only where a GPU
+# exists:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.llm.yml \
+#                  -f docker-compose.llm-gpu.yml up
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

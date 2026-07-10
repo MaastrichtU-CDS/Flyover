@@ -19,6 +19,14 @@ dev:
 dev-frontend:
     cd frontend && npm run dev
 
+# Backend hot-reload stack + Ollama for LLM mapping suggestions (CPU inference).
+dev-llm:
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.llm.yml up
+
+# Prod-like stack + Ollama with NVIDIA GPU acceleration (requires the NVIDIA container runtime).
+up-llm-gpu:
+    docker compose -f docker-compose.yml -f docker-compose.llm.yml -f docker-compose.llm-gpu.yml up
+
 # --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
@@ -62,6 +70,7 @@ test-e2e-full:
 down:
     -docker compose -f docker-compose.yml -f docker-compose.dev.yml down
     -docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
+    -docker compose -f docker-compose.yml -f docker-compose.llm.yml down
     -docker compose down
 
 # --------------------------------------------------------------------------
