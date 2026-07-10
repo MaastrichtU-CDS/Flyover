@@ -64,6 +64,25 @@ describe('Frontend unit: jsonld / graphDatabaseFindNameMatch', () => {
   it('rejects unrelated names', () => {
     expect(graphDatabaseFindNameMatch('foo', 'bar')).toBe(false)
   })
+
+  it('matches a mapping name embedded at underscore boundaries', () => {
+    // Exported files commonly wrap the mapping table name in extra tokens.
+    expect(
+      graphDatabaseFindNameMatch(
+        'X_W25_1690_HADS_SEND',
+        'NKI_retrospective_data_X_W25_1690_HADS_SEND_mock'
+      )
+    ).toBe(true)
+  })
+
+  it('is case-insensitive', () => {
+    expect(graphDatabaseFindNameMatch('hads_send', 'Prefix_HADS_SEND_mock')).toBe(true)
+  })
+
+  it('rejects containment without token boundaries', () => {
+    expect(graphDatabaseFindNameMatch('T1', 'data_T12_mock')).toBe(false)
+    expect(graphDatabaseFindNameMatch('name', 'names_extended')).toBe(false)
+  })
 })
 
 describe('Frontend unit: jsonld / getVariableKeyFromColumn', () => {

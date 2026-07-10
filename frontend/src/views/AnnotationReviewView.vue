@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
+import * as jsonld from '@/lib/jsonld'
 
 const router = useRouter()
 const PAGE_SIZE = 10
@@ -32,13 +33,11 @@ function toTitleCase(k) {
 
 function findMatchingDatabase(mapDbName) {
   if (!mapDbName) return rdfStoreDatabases.value[0] || null
-  for (const d of rdfStoreDatabases.value) {
-    if (d === mapDbName) return d
-    const a = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName
-    const b = d.endsWith('.csv') ? d.slice(0, -4) : d
-    if (a === b) return d
-  }
-  return null
+  return (
+    rdfStoreDatabases.value.find((d) =>
+      jsonld.graphDatabaseFindNameMatch(mapDbName, d)
+    ) || null
+  )
 }
 
 function extractJsonLdTables(data) {

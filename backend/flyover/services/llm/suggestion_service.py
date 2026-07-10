@@ -86,6 +86,41 @@ class SuggestionJob:
         }
 
 
+def _preselected_for_database(
+    mapping: Any, database: str, all_databases: list[str]
+) -> tuple[set, set]:
+    """Return the (columns, variable keys) already mapped for a store database.
+
+    Mirrors the frontend's preselection rule: a mapping table applies to the
+    store database whose name matches its sourceFile (with the shared
+    delimited-containment fallback); the mapping database name is only used
+    when the sourceFile matches no store database at all. Columns and
+    variables that will be preselected in the UI are excluded from the LLM
+    job — suggesting them again would fight the mapping.
+    """
+    from services.rdf_store_service import RDFStoreService
+
+    match = RDFStoreService.graph_database_find_name_match
+    columns: set = set()
+    variables: set = set()
+    for db in getattr(mapping, "databases", {}).values():
+        for table in db.tables.values():
+            source = getattr(table, "source_file", "")
+            if source and any(match(source, d) for d in all_databases):
+                applies = match(source, database)
+            else:
+                applies = match(db.name, database)
+            if not applies:
+                continue
+            for column in table.columns.values():
+                if column.local_column:
+                    columns.add(column.local_column)
+                variable_key = column.get_variable_key()
+                if variable_key:
+                    variables.add(variable_key)
+    return columns, variables
+
+
 def _unavailable_job(phase: str, reason: str) -> SuggestionJob:
     """Build a job representing 'nothing to suggest', with a reason."""
     job = SuggestionJob(phase, fingerprint="")
@@ -160,14 +195,9 @@ class LLMSuggestionService:
 
         job = SuggestionJob(VARIABLES_PHASE, fingerprint)
         for database, columns in columns_by_db.items():
-            preselected_columns = {
-                mapping.get_local_column(key) for key in variable_keys
-            }
-            preselected_variables = {
-                key
-                for key in variable_keys
-                if mapping.get_local_column(key) in set(columns)
-            }
+            preselected_columns, preselected_variables = _preselected_for_database(
+                mapping, database, list(columns_by_db)
+            )
             candidates = [k for k in variable_keys if k not in preselected_variables]
             remaining = [c for c in columns if c not in preselected_columns]
             if not candidates or not remaining:

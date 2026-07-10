@@ -24,13 +24,51 @@ from services.llm.suggestion_service import (
 )
 
 
-class FakeMapping:
-    """Minimal stand-in for JSONLDMapping."""
+class FakeColumn:
+    """Minimal stand-in for ColumnMapping."""
 
-    def __init__(self, variable_keys, local_columns=None, value_mappings=None):
+    def __init__(self, local_column, variable_key):
+        self.local_column = local_column
+        self._variable_key = variable_key
+
+    def get_variable_key(self):
+        return self._variable_key
+
+
+class FakeMapping:
+    """Minimal stand-in for JSONLDMapping.
+
+    local_columns entries become columns of a single table whose empty
+    source_file/db name act as a global template (matches every store
+    database), preserving the pre-existing exclusion semantics. Pass
+    source_file/db_name to exercise per-database matching.
+    """
+
+    def __init__(
+        self,
+        variable_keys,
+        local_columns=None,
+        value_mappings=None,
+        source_file="",
+        db_name="",
+    ):
         self._keys = variable_keys
         self._local_columns = local_columns or {}
         self._value_mappings = value_mappings or {}
+        self.databases = {
+            "mapdb": SimpleNamespace(
+                name=db_name,
+                tables={
+                    "t": SimpleNamespace(
+                        source_file=source_file,
+                        columns={
+                            col: FakeColumn(col, key)
+                            for key, col in (local_columns or {}).items()
+                        },
+                    )
+                },
+            )
+        }
 
     def get_all_variable_keys(self):
         return list(self._keys)
@@ -140,6 +178,31 @@ class TestStartVariableJob(unittest.TestCase):
         cache = _cache(mapping)
         service.start_variable_job(cache, _rdf({"db": ["leeftijd", "geslacht"]}))
         self.assertEqual(client.calls, [(["geslacht"], ["sex"])])
+
+    def test_preselection_exclusion_is_per_database(self):
+        client = FakeClient(_match_by({}))
+        service = _service(client, chunk_size=8)
+        mapping = FakeMapping(
+            ["age", "sex"],
+            local_columns={"age": "leeftijd"},
+            source_file="X_W25_HADS",
+        )
+        cache = _cache(mapping)
+        service.start_variable_job(
+            cache,
+            _rdf(
+                {
+                    "NKI_X_W25_HADS_mock": ["leeftijd", "geslacht"],
+                    "NKI_X_W25_Tumor_mock": ["leeftijd"],
+                }
+            ),
+        )
+
+        # The mapping table only applies to the HADS store database, so
+        # leeftijd is excluded there but still suggested (with the full
+        # candidate list) for the unrelated Tumor database.
+        self.assertIn((["geslacht"], ["sex"]), client.calls)
+        self.assertIn((["leeftijd"], ["age", "sex"]), client.calls)
 
     def test_all_preselected_is_nothing_to_suggest(self):
         service = _service(FakeClient())

@@ -24,6 +24,31 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, field
 
+
+def _names_match(map_name: str, normalised_target: str) -> bool:
+    """Match a mapping db/table name against a normalised RDF store name.
+
+    Exact (case-insensitive, .csv-stripped) match, plus a delimited
+    containment fallback: exported files commonly embed the mapping name
+    between other tokens (e.g. "NKI_retrospective_data_X_W25_1690_HADS_SEND_mock"
+    for sourceFile "X_W25_1690_HADS_SEND"). Containment requires '_' or
+    string-edge boundaries so "T1" can't match "T12".
+    """
+    name = (map_name or "").removesuffix(".csv").lower()
+    if not name:
+        return False
+    if name == normalised_target:
+        return True
+    index = normalised_target.find(name)
+    while index != -1:
+        end = index + len(name)
+        before_ok = index == 0 or normalised_target[index - 1] == "_"
+        after_ok = end == len(normalised_target) or normalised_target[end] == "_"
+        if before_ok and after_ok:
+            return True
+        index = normalised_target.find(name, index + 1)
+    return False
+
 # ============================================================================
 # Schema Dataclasses
 # ============================================================================
@@ -620,25 +645,14 @@ class JSONLDMapping:
         if not self.databases:
             return None
 
-        rdf_store_no_ext = (
-            rdf_store_name[:-4] if rdf_store_name.endswith(".csv") else rdf_store_name
-        )
+        target = rdf_store_name.removesuffix(".csv").lower()
 
         for db_key, db in self.databases.items():
-            db_name_no_ext = db.name[:-4] if db.name.endswith(".csv") else db.name
-            if db.name == rdf_store_name or db_name_no_ext == rdf_store_no_ext:
+            if _names_match(db.name, target):
                 return db_key
 
             for table in db.tables.values():
-                source_no_ext = (
-                    table.source_file[:-4]
-                    if table.source_file.endswith(".csv")
-                    else table.source_file
-                )
-                if (
-                    table.source_file == rdf_store_name
-                    or source_no_ext == rdf_store_no_ext
-                ):
+                if _names_match(table.source_file, target):
                     return db_key
 
         return None

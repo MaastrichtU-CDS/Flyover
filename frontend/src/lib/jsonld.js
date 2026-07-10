@@ -76,12 +76,35 @@ export function forEachColumn(databases, callback) {
   }
 }
 
+function stripCsv(name) {
+  return name?.endsWith('.csv') ? name.slice(0, -4) : name
+}
+
+// True when needle occurs in haystack bounded by '_' or string edges —
+// plain substring matching would let "T1" match "T12".
+function delimitedContains(haystack, needle) {
+  if (!needle) return false
+  let index = haystack.indexOf(needle)
+  while (index !== -1) {
+    const end = index + needle.length
+    const beforeOk = index === 0 || haystack[index - 1] === '_'
+    const afterOk = end === haystack.length || haystack[end] === '_'
+    if (beforeOk && afterOk) return true
+    index = haystack.indexOf(needle, index + 1)
+  }
+  return false
+}
+
 export function graphDatabaseFindNameMatch(mapDbName, targetDb) {
   if (!mapDbName || mapDbName === '') return true
   if (mapDbName === targetDb) return true
-  const a = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName
-  const b = targetDb?.endsWith('.csv') ? targetDb.slice(0, -4) : targetDb
-  return a === b
+  const a = stripCsv(mapDbName).toLowerCase()
+  const b = (stripCsv(targetDb) || '').toLowerCase()
+  if (a === b) return true
+  // Exported/uploaded files commonly embed the mapping name between other
+  // tokens, e.g. store db "NKI_retrospective_data_X_W25_1690_HADS_SEND_mock"
+  // for mapping table sourceFile "X_W25_1690_HADS_SEND".
+  return delimitedContains(b, a)
 }
 
 export function findColumnForVariable(
@@ -467,11 +490,13 @@ export function computePreselectionsForDatabases(databases) {
       if (!localCol) return
       const sourceFile = tableData.sourceFile
       const dbName = dbData.name
-      const matchingDb = databases.find(
-        (d) =>
-          graphDatabaseFindNameMatch(sourceFile, d) ||
-          graphDatabaseFindNameMatch(dbName, d)
-      )
+      // Prefer the table's own sourceFile: with containment matching, the
+      // broader mapping-database name would otherwise claim every store
+      // database that embeds it and preselect columns across tables.
+      const matchingDb =
+        (sourceFile &&
+          databases.find((d) => graphDatabaseFindNameMatch(sourceFile, d))) ||
+        databases.find((d) => graphDatabaseFindNameMatch(dbName, d))
       if (matchingDb) {
         const key = `${matchingDb}_${localCol}`
         preselectedDescriptions[key] = descriptionDisplay

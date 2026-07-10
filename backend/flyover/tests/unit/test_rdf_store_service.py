@@ -334,11 +334,39 @@ class TestRDFStoreServiceGraphDatabaseFindNameMatch(unittest.TestCase):
         """Different database names return False."""
         self.assertFalse(RDFStoreService.graph_database_find_name_match("db_a", "db_b"))
 
-    def test_substring_no_match(self):
-        """Substring relationship does not match."""
-        self.assertFalse(
+    def test_delimited_containment_matches(self):
+        """A mapping name embedded at underscore boundaries matches.
+
+        Exported/uploaded files commonly wrap the mapping table name in
+        extra tokens, e.g. sourceFile "X_W25_1690_HADS_SEND" inside store
+        database "NKI_retrospective_data_X_W25_1690_HADS_SEND_mock".
+        """
+        self.assertTrue(
+            RDFStoreService.graph_database_find_name_match(
+                "X_W25_1690_HADS_SEND",
+                "NKI_retrospective_data_X_W25_1690_HADS_SEND_mock",
+            )
+        )
+        self.assertTrue(
             RDFStoreService.graph_database_find_name_match(
                 "short_name", "short_name_extended"
+            )
+        )
+
+    def test_non_delimited_substring_no_match(self):
+        """Containment without token boundaries does not match."""
+        self.assertFalse(
+            RDFStoreService.graph_database_find_name_match("T1", "data_T12_mock")
+        )
+        self.assertFalse(
+            RDFStoreService.graph_database_find_name_match("name", "names_extended")
+        )
+
+    def test_containment_is_case_insensitive(self):
+        """Matching ignores case differences between file and mapping names."""
+        self.assertTrue(
+            RDFStoreService.graph_database_find_name_match(
+                "hads_send", "Prefix_HADS_SEND_mock"
             )
         )
 

@@ -16,6 +16,21 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _delimited_contains(haystack: str, needle: str) -> bool:
+    """Return True when needle occurs in haystack bounded by '_' or edges."""
+    if not needle:
+        return False
+    index = haystack.find(needle)
+    while index != -1:
+        end = index + len(needle)
+        before_ok = index == 0 or haystack[index - 1] == "_"
+        after_ok = end == len(haystack) or haystack[end] == "_"
+        if before_ok and after_ok:
+            return True
+        index = haystack.find(needle, index + 1)
+    return False
+
+
 class RDFStoreService:
     """
     Service class for RDF store operations.
@@ -398,13 +413,26 @@ class RDFStoreService:
             return True
 
         # Fallback: try matching with/without .csv extension
-        map_name_no_ext = map_database_name.removesuffix(".csv")
-        target_no_ext = target_database.removesuffix(".csv")
+        map_name = map_database_name.removesuffix(".csv").lower()
+        target = target_database.removesuffix(".csv").lower()
 
-        if map_name_no_ext == target_no_ext:
+        if map_name == target:
             logger.debug(
                 f"Database name matched with .csv extension fallback: "
                 f"'{map_database_name}' matches '{target_database}'"
+            )
+            return True
+
+        # Fallback: uploaded/exported files commonly embed the mapping name
+        # between other tokens (e.g. RDF store database
+        # "NKI_retrospective_data_X_W25_1690_HADS_SEND_mock" for mapping table
+        # sourceFile "X_W25_1690_HADS_SEND"). Match when the mapping name
+        # appears in the target delimited by underscores or string edges —
+        # plain substring matching would let "T1" match "T12".
+        if _delimited_contains(target, map_name):
+            logger.debug(
+                f"Database name matched by delimited containment: "
+                f"'{map_database_name}' in '{target_database}'"
             )
             return True
 
