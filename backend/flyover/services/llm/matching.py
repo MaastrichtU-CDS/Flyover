@@ -10,6 +10,8 @@ import json
 
 from jsonschema import ValidationError, validate
 
+from services.llm.base import LLMProviderError
+
 MATCH_OUTPUT_SCHEMA = {
     "type": "object",
     "required": ["pairs"],
@@ -51,7 +53,7 @@ Rules:
 """
 
 
-class MatchingError(RuntimeError):
+class MatchingError(LLMProviderError):
     """Raised when model output cannot be parsed into valid match pairs."""
 
 
