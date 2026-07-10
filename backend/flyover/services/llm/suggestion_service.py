@@ -14,14 +14,13 @@ describe workflow.
 import hashlib
 import json
 import logging
-import os
 import re
-from dataclasses import dataclass, field
 from typing import Any
 
 import gevent
 
 from services.llm.base import LLMProvider
+from services.llm.config import LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -32,53 +31,6 @@ _MAX_CONSECUTIVE_CHUNK_FAILURES = 3
 _VALUE_CHUNK_MAX_ITEMS = 15
 
 _DISPLAY_NAME_RE = re.compile(r'^(?P<global>.*) \(or "(?P<local>.*)"\)$')
-
-
-@dataclass
-class LLMConfig:
-    """Configuration for the LLM suggestion feature, read from environment.
-
-    Attributes:
-        enabled: Whether the feature is active. Defaults to True when
-            FLYOVER_OLLAMA_HOST is set, False otherwise.
-        host: Ollama base URL.
-        model: Preferred Ollama model.
-        fallback_models: Models to try when the preferred one fails.
-        chunk_size: Columns per matching request in the variables phase.
-        request_timeout: Read timeout in seconds for Ollama requests.
-    """
-
-    enabled: bool = False
-    provider: str = "ollama"
-    host: str = "http://localhost:11434"
-    model: str = "llama3.2:3b"
-    fallback_models: list[str] = field(default_factory=lambda: ["llama3.2:1b"])
-    chunk_size: int = 8
-    request_timeout: float = 180.0
-
-    @classmethod
-    def from_env(cls) -> "LLMConfig":
-        """Build a config from FLYOVER_LLM_* / FLYOVER_OLLAMA_HOST env vars."""
-        host = os.getenv("FLYOVER_OLLAMA_HOST")
-        enabled_default = "true" if host else "false"
-        enabled = os.getenv("FLYOVER_LLM_ENABLED", enabled_default).lower() in (
-            "true",
-            "1",
-            "yes",
-        )
-        fallbacks = [
-            m.strip()
-            for m in os.getenv("FLYOVER_LLM_FALLBACK_MODELS", "llama3.2:1b").split(",")
-            if m.strip()
-        ]
-        return cls(
-            enabled=enabled,
-            host=host or "http://localhost:11434",
-            model=os.getenv("FLYOVER_LLM_MODEL", "llama3.2:3b"),
-            fallback_models=fallbacks,
-            chunk_size=int(os.getenv("FLYOVER_LLM_CHUNK_SIZE", "8")),
-            request_timeout=float(os.getenv("FLYOVER_LLM_TIMEOUT_S", "180")),
-        )
 
 
 class SuggestionJob:

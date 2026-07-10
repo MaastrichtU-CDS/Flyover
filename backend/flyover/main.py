@@ -147,7 +147,7 @@ session_cache = Cache()
 # FLYOVER_OLLAMA_HOST; disabled means zero background work and no LLM UI)
 llm_config = LLMConfig.from_env()
 llm_provider = OllamaProvider(
-    llm_config.host,
+    llm_config.base_url,
     llm_config.model,
     fallback_models=llm_config.fallback_models,
     read_timeout=llm_config.request_timeout,
