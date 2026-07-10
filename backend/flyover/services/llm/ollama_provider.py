@@ -1,9 +1,10 @@
-"""HTTP client for a local Ollama server.
+"""Ollama provider for LLM mapping suggestions.
 
 Ported from the standalone llm-mapper prototype (mapping_recommendation.py
-and pull_ollama_model.py). Provides model management (reachability check,
-pull with fallbacks) and a structured-output list matcher that maps items
-from one string list to semantically equivalent items in another.
+and pull_ollama_model.py). Speaks Ollama's native API to keep the two
+capabilities the OpenAI-compatible surface lacks: model management
+(pull with fallbacks) and grammar-constrained structured output via the
+native ``format`` field.
 """
 
 import json
@@ -11,6 +12,7 @@ import logging
 
 import requests
 
+from services.llm.base import LLMProvider, LLMProviderError
 from services.llm.matching import (
     MATCH_OUTPUT_SCHEMA,
     SYSTEM_PROMPT,
@@ -21,16 +23,8 @@ from services.llm.matching import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    "MATCH_OUTPUT_SCHEMA",
-    "SYSTEM_PROMPT",
-    "OllamaClient",
-    "OllamaError",
-    "estimate_num_ctx",
-]
 
-
-class OllamaError(RuntimeError):
+class OllamaError(LLMProviderError):
     """Raised when the Ollama server is unreachable or returns bad data."""
 
 
@@ -54,24 +48,33 @@ def estimate_num_ctx(list_a: list[str], list_b: list[str]) -> int:
     return num_ctx
 
 
-class OllamaClient:
-    """Client for the Ollama REST API with model management and matching.
+class OllamaProvider(LLMProvider):
+    """Provider for a local Ollama server with model auto-pull.
 
     Attributes:
         host: Base URL of the Ollama server, e.g. "http://ollama:11434".
-        connect_timeout: Seconds before an unreachable host fails.
-        read_timeout: Seconds before a hung generation or pull fails.
+        model: Preferred model; ensure_ready() may resolve a fallback.
+        fallback_models: Models to try when the preferred one fails to pull.
     """
+
+    name = "ollama"
 
     def __init__(
         self,
-        host: str,
+        base_url: str,
+        model: str,
+        fallback_models: list[str] | None = None,
         connect_timeout: float = 2.0,
         read_timeout: float = 180.0,
+        temperature: float = 0.1,
     ):
-        self.host = host.rstrip("/")
+        self.host = base_url.rstrip("/")
+        self.model = model
+        self.fallback_models = list(fallback_models or [])
         self.connect_timeout = connect_timeout
         self.read_timeout = read_timeout
+        self.temperature = temperature
+        self._resolved_model: str | None = None
 
     @property
     def _timeout(self) -> tuple[float, float]:
@@ -84,6 +87,21 @@ class OllamaClient:
             return True
         except requests.RequestException:
             return False
+
+    def ensure_ready(self) -> str:
+        """Ensure a usable model is present, pulling it if necessary.
+
+        Returns:
+            The name of the model that is available (the preferred model or
+            the first working fallback), remembered for subsequent
+            match_equivalents() calls.
+
+        Raises:
+            OllamaError: If the server is unreachable or no model could be
+                made available.
+        """
+        self._resolved_model = self.ensure_model(self.model, self.fallback_models)
+        return self._resolved_model
 
     def has_model(self, model_name: str) -> bool:
         """Return True if a model (any tag) is present on the server.
@@ -143,9 +161,7 @@ class OllamaClient:
     def ensure_model(
         self, model_name: str, fallback_models: list[str] | None = None
     ) -> str:
-        """Ensure a usable model is present, pulling it if necessary.
-
-        Tries the requested model first, then each fallback in order.
+        """Ensure a usable model is present, trying fallbacks in order.
 
         Args:
             model_name: Preferred model.
@@ -178,45 +194,26 @@ class OllamaClient:
             + (f" and fallbacks {fallback_models}" if fallback_models else "")
         )
 
-    def match_equivalents(
-        self,
-        list_a: list[str],
-        list_b: list[str],
-        model: str,
-        temperature: float = 0.1,
-    ) -> list[dict]:
+    def match_equivalents(self, list_a: list[str], list_b: list[str]) -> list[dict]:
         """Match each item in list_a to its semantic equivalent in list_b.
 
-        Sends a single schema-constrained chat request. The response is
-        validated and sanitised: confidences are clamped to [0, 1], matches
-        not literally present in list_b are nulled (hallucination guard),
-        pairs for unknown list_a items are dropped, duplicate matches within
-        the call are nulled (first wins), and items the model omitted are
-        returned with a null match.
-
-        Args:
-            list_a: Items to find matches for (e.g. CSV column names).
-            list_b: Candidate targets (e.g. semantic variable keys).
-            model: Ollama model name to use.
-            temperature: Sampling temperature.
-
-        Returns:
-            One dict per list_a item, in list_a order:
-            ``{"item", "match", "confidence", "reason"}``.
+        Sends a single grammar-constrained chat request to Ollama's native
+        /api/chat and runs the shared parse/validate/sanitise pipeline on
+        the response.
 
         Raises:
             OllamaError: On empty or schema-invalid responses.
             requests.RequestException: On transport failures.
         """
         payload = {
-            "model": model,
+            "model": self._resolved_model or self.model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": build_user_prompt(list_a, list_b)},
             ],
             "format": MATCH_OUTPUT_SCHEMA,
             "options": {
-                "temperature": temperature,
+                "temperature": self.temperature,
                 "num_ctx": estimate_num_ctx(list_a, list_b),
             },
             "stream": False,

@@ -5,11 +5,14 @@ the describe workflow: CSV columns to semantic variables, and local
 categorical values to semantic value-mapping terms.
 """
 
-from services.llm.ollama_client import OllamaClient, OllamaError
+from services.llm.base import LLMProvider, LLMProviderError
+from services.llm.ollama_provider import OllamaError, OllamaProvider
 from services.llm.suggestion_service import LLMConfig, LLMSuggestionService
 
 __all__ = [
-    "OllamaClient",
+    "LLMProvider",
+    "LLMProviderError",
+    "OllamaProvider",
     "OllamaError",
     "LLMConfig",
     "LLMSuggestionService",

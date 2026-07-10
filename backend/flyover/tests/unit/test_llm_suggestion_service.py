@@ -52,12 +52,12 @@ class FakeClient:
         self.matcher = matcher or (lambda items, candidates: [])
         self.ensure_model_error = None
 
-    def ensure_model(self, model, fallbacks=None):
+    def ensure_ready(self):
         if self.ensure_model_error:
             raise self.ensure_model_error
-        return model
+        return "test-model"
 
-    def match_equivalents(self, list_a, list_b, model):
+    def match_equivalents(self, list_a, list_b):
         self.calls.append((list(list_a), list(list_b)))
         result = self.matcher(list_a, list_b)
         if isinstance(result, Exception):
@@ -202,7 +202,7 @@ class TestStartVariableJob(unittest.TestCase):
 
         state = service.get_state(cache, VARIABLES_PHASE)
         self.assertEqual(state["status"], "failed")
-        self.assertEqual(state["error"]["kind"], "ollama_unavailable")
+        self.assertEqual(state["error"]["kind"], "llm_unavailable")
 
     def test_chunk_failure_continues_then_three_strikes_fails(self):
         client = FakeClient(lambda items, candidates: RuntimeError("boom"))

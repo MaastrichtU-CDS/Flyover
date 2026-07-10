@@ -21,7 +21,7 @@ from typing import Any
 
 import gevent
 
-from services.llm.ollama_client import OllamaClient
+from services.llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,7 @@ class LLMConfig:
     """
 
     enabled: bool = False
+    provider: str = "ollama"
     host: str = "http://localhost:11434"
     model: str = "llama3.2:3b"
     fallback_models: list[str] = field(default_factory=lambda: ["llama3.2:1b"])
@@ -147,7 +148,7 @@ class LLMSuggestionService:
     def __init__(
         self,
         config: LLMConfig,
-        client: OllamaClient,
+        client: LLMProvider,
         spawn: Any = None,
     ):
         """Create the service.
@@ -199,7 +200,7 @@ class LLMSuggestionService:
 
         fingerprint = _fingerprint(
             {"columns": columns_by_db, "variables": sorted(variable_keys)},
-            self.config.model,
+            f"{self.config.provider}:{self.config.model}",
         )
         reuse = self._reusable_status(jobs.get(VARIABLES_PHASE), fingerprint, force)
         if reuse:
@@ -290,7 +291,7 @@ class LLMSuggestionService:
                     (t["database"], t["local_column"], t["items"]) for t in targets
                 ]
             },
-            self.config.model,
+            f"{self.config.provider}:{self.config.model}",
         )
         reuse = self._reusable_status(jobs.get(VALUES_PHASE), fingerprint, force)
         if reuse:
@@ -505,13 +506,11 @@ class LLMSuggestionService:
         """Process a job's chunk queue until empty, failed, or superseded."""
         generation = job.generation
         try:
-            model = self.client.ensure_model(
-                self.config.model, self.config.fallback_models
-            )
+            model = self.client.ensure_ready()
         except Exception as exc:
             if job.generation == generation:
                 job.status = "failed"
-                job.error = {"kind": "ollama_unavailable", "message": str(exc)}
+                job.error = {"kind": "llm_unavailable", "message": str(exc)}
             logger.warning("LLM suggestion job failed to obtain a model: %s", exc)
             return
 
@@ -525,7 +524,7 @@ class LLMSuggestionService:
             chunk = job.pending.pop(0)
             try:
                 pairs = self.client.match_equivalents(
-                    chunk["items"], chunk["candidates"], model=model
+                    chunk["items"], chunk["candidates"]
                 )
             except Exception as exc:
                 if job.generation != generation:

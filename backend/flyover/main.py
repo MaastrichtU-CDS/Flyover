@@ -32,7 +32,7 @@ from services.ingest_service import (
     IngestService,
 )
 from services.describe_service import DescribeService
-from services.llm import LLMConfig, LLMSuggestionService, OllamaClient
+from services.llm import LLMConfig, LLMSuggestionService, OllamaProvider
 from services.rdf_store_service import RDFStoreService
 from utils.session_helpers import (
     get_semantic_map_for_annotation,
@@ -146,18 +146,21 @@ session_cache = Cache()
 # LLM mapping suggestion services (feature-flagged via FLYOVER_LLM_ENABLED /
 # FLYOVER_OLLAMA_HOST; disabled means zero background work and no LLM UI)
 llm_config = LLMConfig.from_env()
-ollama_client = OllamaClient(llm_config.host, read_timeout=llm_config.request_timeout)
-llm_service = LLMSuggestionService(llm_config, ollama_client)
+llm_provider = OllamaProvider(
+    llm_config.host,
+    llm_config.model,
+    fallback_models=llm_config.fallback_models,
+    read_timeout=llm_config.request_timeout,
+)
+llm_service = LLMSuggestionService(llm_config, llm_provider)
 
 def _warm_up_llm_model() -> None:
-    """Pull the configured Ollama model in the background at boot."""
+    """Warm the configured LLM provider up in the background at boot."""
     try:
-        model = ollama_client.ensure_model(
-            llm_config.model, llm_config.fallback_models
-        )
-        logger.info("LLM model ready: %s", model)
+        model = llm_provider.ensure_ready()
+        logger.info("LLM provider ready (%s): %s", llm_config.provider, model)
     except Exception as exc:
-        logger.warning("LLM model warm-up failed (feature stays available): %s", exc)
+        logger.warning("LLM warm-up failed (feature stays available): %s", exc)
 
 
 def _maybe_start_llm_variable_job(sc) -> None:
