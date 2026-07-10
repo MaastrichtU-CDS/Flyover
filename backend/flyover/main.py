@@ -32,6 +32,7 @@ from services.ingest_service import (
     IngestService,
 )
 from services.describe_service import DescribeService
+from services.llm import LLMConfig, LLMSuggestionService, OllamaClient
 from services.rdf_store_service import RDFStoreService
 from utils.session_helpers import (
     get_semantic_map_for_annotation,
@@ -136,17 +137,63 @@ class Cache:
         # Output files from triplification
         self.output_files = None
 
+        # LLM mapping suggestion jobs, keyed by phase ("variables"/"values")
+        self.llm_jobs = None
+
 
 session_cache = Cache()
 
+# LLM mapping suggestion services (feature-flagged via FLYOVER_LLM_ENABLED /
+# FLYOVER_OLLAMA_HOST; disabled means zero background work and no LLM UI)
+llm_config = LLMConfig.from_env()
+ollama_client = OllamaClient(llm_config.host, read_timeout=llm_config.request_timeout)
+llm_service = LLMSuggestionService(llm_config, ollama_client)
+
+def _warm_up_llm_model() -> None:
+    """Pull the configured Ollama model in the background at boot."""
+    try:
+        model = ollama_client.ensure_model(
+            llm_config.model, llm_config.fallback_models
+        )
+        logger.info("LLM model ready: %s", model)
+    except Exception as exc:
+        logger.warning("LLM model warm-up failed (feature stays available): %s", exc)
+
+
+def _maybe_start_llm_variable_job(sc) -> None:
+    """Start the variable suggestion job, swallowing every failure.
+
+    LLM trouble must never break the ingest/describe flow, so this wrapper
+    is what other controllers call.
+    """
+    try:
+        result = llm_service.start_variable_job(sc, rdf_store_service)
+        logger.info("LLM variable suggestion job: %s", result)
+    except Exception as exc:
+        logger.warning("LLM variable suggestion job failed to start: %s", exc)
+
+
+def _maybe_start_llm_value_job(sc) -> None:
+    """Start the value suggestion job, swallowing every failure."""
+    try:
+        result = llm_service.start_value_job(sc)
+        logger.info("LLM value suggestion job: %s", result)
+    except Exception as exc:
+        logger.warning("LLM value suggestion job failed to start: %s", exc)
+
+
+if llm_config.enabled:
+    gevent.spawn(_warm_up_llm_model)
+
 
 # Register controller blueprints
-from controllers import ingest_bp, describe_bp, annotate_bp, share_bp
+from controllers import ingest_bp, describe_bp, annotate_bp, share_bp, llm_bp
 
 app.register_blueprint(ingest_bp)
 app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
+app.register_blueprint(llm_bp)
 
 
 # Serve the built Vue SPA at the application root. The Vite build output is
@@ -260,6 +307,10 @@ app.config["APP_CONTEXT"] = {
     "get_semantic_map": lambda sc, database_key=None: get_semantic_map_for_annotation(
         sc, database_key
     ),
+    "llm_service": llm_service,
+    "llm_config": llm_config,
+    "maybe_start_llm_variable_job": _maybe_start_llm_variable_job,
+    "maybe_start_llm_value_job": _maybe_start_llm_value_job,
 }
 
 if __name__ == "__main__":
