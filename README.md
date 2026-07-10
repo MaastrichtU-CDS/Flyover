@@ -45,6 +45,26 @@ docker-compose up -d --pull always
 
 > **Note:** On Windows, please use WSL2 with Docker. On macOS/Linux, Docker can be used directly.
 
+### Optional: AI mapping suggestions
+
+Flyover can prefill the describe forms with AI-suggested mappings (CSV columns → semantic
+variables, categorical values → semantic terms) using a local [Ollama](https://ollama.com/)
+model — no data leaves your deployment. Enable it by chaining the LLM compose overlay:
+
+```bash
+# CPU inference
+docker compose -f docker-compose.yml -f docker-compose.llm.yml up -d
+
+# With an NVIDIA GPU (requires the NVIDIA container runtime)
+docker compose -f docker-compose.yml -f docker-compose.llm.yml -f docker-compose.llm-gpu.yml up -d
+```
+
+The model (default `llama3.2:3b`) is pulled automatically on first boot and cached in a
+Docker volume. Suggestions appear progressively in the describe forms and never overwrite
+values you have entered yourself. Without the overlay, no AI features are shown. See
+[docs/architecture.md](docs/architecture.md#llm-mapping-suggestions) for how it works and
+which `FLYOVER_LLM_*` environment variables tune it.
+
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
 on configuration and environment variables.
 
