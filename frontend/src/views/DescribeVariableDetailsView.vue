@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { useSuggestionsStore } from '@/stores/suggestions'
 
 const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Yes', label: 'Yes' },
@@ -25,6 +26,9 @@ const isProcessing = ref(false)
 const loadingIconIsPen = ref(false)
 const mapperLoaded = ref(false)
 let _loadingInterval = null
+let _submitGuardPassed = false
+
+const suggestions = useSuggestionsStore()
 
 // per-input form state — keyed by stable composite keys
 const continuousUnits = reactive({}) // `${db}_${var}` -> unit
@@ -179,6 +183,7 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   const selectedOption = categorySelections[key]
   const previousOption = previousSelections[key]
   previousSelections[key] = selectedOption
+  suggestions.markUserTouched(key)
   try {
     await jsonld.updateCategoryMapping(
       database,
@@ -193,6 +198,108 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   }
 }
 
+// ---------------------------------------------------------------------------
+// LLM suggestions: merge arriving value mappings into untouched selections
+// only, through the same updateCategoryMapping path a manual change takes.
+// ---------------------------------------------------------------------------
+
+async function applyCategorySuggestion(database, variable, cat, entry) {
+  categorySelections[cat.key] = entry.display
+  const previousOption = previousSelections[cat.key]
+  previousSelections[cat.key] = entry.display
+  suggestions.markApplied(cat.key)
+  try {
+    await jsonld.updateCategoryMapping(
+      database,
+      variable.localVariable,
+      variable.globalVarName,
+      String(cat.value),
+      entry.display,
+      previousOption
+    )
+  } catch (e) {
+    console.error('Failed to persist suggested category mapping:', e)
+  }
+}
+
+function applyArrivedSuggestions() {
+  for (const dbEntry of parsedDatabases.value) {
+    for (const variable of dbEntry.variables) {
+      if (variable.type !== 'categorical') continue
+      for (const cat of variable.categories) {
+        const entry = suggestions.values.byKey[cat.key]
+        if (!entry || entry.status !== 'done' || !entry.display) continue
+        if (categorySelections[cat.key]) continue
+        if (suggestions.isDismissed(cat.key)) continue
+        if (!variable.categoryOptions.includes(entry.display)) continue
+        applyCategorySuggestion(dbEntry.name, variable, cat, entry)
+      }
+    }
+  }
+}
+
+function dismissSuggestion(database, variable, cat) {
+  suggestions.dismiss(cat.key)
+  categorySelections[cat.key] = ''
+  onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+}
+
+function suggestionFor(key) {
+  return suggestions.values.byKey[key]
+}
+
+function variableSuggestionPending(dbName, variable) {
+  return variable.categories.some((cat) => {
+    const entry = suggestionFor(cat.key)
+    return !entry || entry.status === 'pending'
+  })
+}
+
+function variableSuggestionErrored(variable) {
+  return variable.categories.some((cat) => suggestionFor(cat.key)?.status === 'error')
+}
+
+function requestVariableFirst(dbName, variable, { retry = false } = {}) {
+  suggestions.bumpPriority('values', dbName, [variable.localVariable], { retry })
+}
+
+const suggestionsActive = computed(() =>
+  ['pulling_model', 'running'].includes(suggestions.values.status)
+)
+
+const unreviewedFieldCount = computed(
+  () => suggestions.unreviewedKeys().filter((key) => categorySelections[key]).length
+)
+
+function clearAllSuggestions() {
+  const cleared = new Set(suggestions.clearAllApplied())
+  for (const dbEntry of parsedDatabases.value) {
+    for (const variable of dbEntry.variables) {
+      if (variable.type !== 'categorical') continue
+      for (const cat of variable.categories) {
+        if (cleared.has(cat.key) && categorySelections[cat.key]) {
+          categorySelections[cat.key] = ''
+          onCategoryChange(
+            dbEntry.name,
+            variable.localVariable,
+            variable.globalVarName,
+            cat.value,
+            cat.key
+          )
+        }
+      }
+    }
+  }
+}
+
+watch(
+  () => suggestions.values.byKey,
+  () => {
+    if (mapperLoaded.value) applyArrivedSuggestions()
+  },
+  { deep: true }
+)
+
 const loadingIconClass = computed(() =>
   loadingIconIsPen.value ? 'fa-pen' : 'fa-edit'
 )
@@ -205,7 +312,21 @@ function startLoadingAnimation() {
   }, 1000)
 }
 
-async function onFormSubmit() {
+async function onFormSubmit(e) {
+  // Silently submitting unreviewed AI prefills is dangerous in medical data
+  // mapping — ask once, then let the native POST through.
+  if (!_submitGuardPassed && unreviewedFieldCount.value > 0) {
+    const n = unreviewedFieldCount.value
+    const ok = window.confirm(
+      `${n} category mapping${n === 1 ? ' was' : 's were'} filled in by AI and ` +
+        'not reviewed. Submit anyway?'
+    )
+    if (!ok) {
+      e.preventDefault()
+      return
+    }
+    _submitGuardPassed = true
+  }
   // Persist updated descriptive_info to IndexedDB before the native POST.
   try {
     const updated = JSON.parse(JSON.stringify(descriptiveInfo.value || {}))
@@ -261,6 +382,15 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load variable details state:', e)
   }
+
+  // Idempotent start: the backend kicked this job off when /units was
+  // submitted; this covers reloads and backend restarts.
+  await suggestions.init('values')
+  applyArrivedSuggestions()
+})
+
+onBeforeUnmount(() => {
+  suggestions.stopPolling()
 })
 </script>
 
@@ -272,6 +402,38 @@ onMounted(async () => {
       Please provide more information for the categorical and continuous variables that
       were defined in the variable description page.
     </p>
+
+    <div
+      v-if="suggestions.enabled && suggestions.values.status !== 'idle'"
+      class="llm-status-bar"
+    >
+      <i class="fas fa-robot" />
+      <span v-if="suggestions.values.status === 'pulling_model'">
+        <i class="fas fa-spinner fa-spin" /> Preparing the AI model…
+      </span>
+      <span v-else-if="suggestions.values.status === 'running'">
+        <i class="fas fa-spinner fa-spin" />
+        AI is suggesting category mappings ({{ suggestions.values.progress.done }}
+        of {{ suggestions.values.progress.total }} variables)
+      </span>
+      <span v-else-if="suggestions.values.status === 'done'">
+        AI suggestions ready — review the highlighted mappings
+      </span>
+      <span v-else-if="suggestions.values.status === 'failed'">
+        AI suggestions unavailable — fill in the mappings manually
+      </span>
+      <span v-else-if="suggestions.values.status === 'unavailable'">
+        Nothing for the AI to suggest
+      </span>
+      <button
+        v-if="unreviewedFieldCount"
+        type="button"
+        class="btn btn-sm btn-outline-secondary llm-clear-all"
+        @click="clearAllSuggestions"
+      >
+        Clear all AI suggestions
+      </button>
+    </div>
 
     <form
       class="form-horizontal"
@@ -362,6 +524,27 @@ onMounted(async () => {
                   />
                   <div class="variable-controls">
                     <button
+                      v-if="
+                        suggestionsActive &&
+                          variableSuggestionPending(dbEntry.name, variable)
+                      "
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary llm-section-button"
+                      title="Move this variable to the front of the AI suggestion queue"
+                      @click="requestVariableFirst(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-robot" /> Suggest now
+                    </button>
+                    <button
+                      v-else-if="variableSuggestionErrored(variable)"
+                      type="button"
+                      class="llm-retry"
+                      title="The AI suggestions for this variable failed — retry"
+                      @click="requestVariableFirst(dbEntry.name, variable, { retry: true })"
+                    >
+                      <i class="fas fa-rotate-right" /> retry AI
+                    </button>
+                    <button
                       type="button"
                       class="item-toggle-button"
                       :class="{ open: isVariableExpanded(dbEntry.name, varIdx) }"
@@ -384,11 +567,38 @@ onMounted(async () => {
                     <div class="category-item">
                       <div class="category-label">
                         {{ cat.displayValue }} (counted: {{ cat.count }})
+                        <span
+                          v-if="suggestions.isApplied(cat.key)"
+                          class="llm-badge"
+                          :class="{ confirmed: suggestions.isTouched(cat.key) }"
+                          :title="suggestionFor(cat.key)?.reason || 'AI suggestion'"
+                        >
+                          <template v-if="suggestions.isTouched(cat.key)">
+                            <i class="fas fa-check" /> reviewed
+                          </template>
+                          <template v-else>
+                            <i class="fas fa-robot" />
+                            {{ Math.round((suggestionFor(cat.key)?.confidence || 0) * 100) }}%
+                            <button
+                              type="button"
+                              class="llm-dismiss"
+                              title="Dismiss this AI suggestion"
+                              @click="dismissSuggestion(dbEntry.name, variable, cat)"
+                            >
+                              &times;
+                            </button>
+                          </template>
+                        </span>
                       </div>
                       <div class="category-controls">
                         <select
                           v-model="categorySelections[cat.key]"
                           class="form-control category-select"
+                          :class="{
+                            'llm-suggested':
+                              suggestions.isApplied(cat.key) &&
+                              !suggestions.isTouched(cat.key),
+                          }"
                           :name="cat.backendKey"
                           @change="
                             onCategoryChange(
@@ -505,6 +715,73 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.llm-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-left: 4px solid rgba(118, 75, 162, 0.75);
+  background: rgba(118, 75, 162, 0.08);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.llm-clear-all {
+  margin-left: auto;
+}
+
+.llm-section-button {
+  font-size: 0.8em;
+}
+
+.llm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  background: rgba(118, 75, 162, 0.12);
+  color: rgb(90, 60, 130);
+  border: 1px dashed rgba(118, 75, 162, 0.6);
+  cursor: help;
+}
+
+.llm-badge.confirmed {
+  border-style: solid;
+  border-color: rgba(40, 140, 80, 0.6);
+  background: rgba(40, 140, 80, 0.1);
+  color: rgb(30, 110, 60);
+}
+
+.llm-dismiss {
+  border: none;
+  background: none;
+  padding: 0 0.1rem;
+  line-height: 1;
+  font-size: 1.1em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.llm-retry {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.75em;
+  color: rgb(90, 60, 130);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.llm-suggested {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
 .info-purple {
   font-size: 0.85em;
   border-left: 4px solid rgba(118, 75, 162, 0.75);

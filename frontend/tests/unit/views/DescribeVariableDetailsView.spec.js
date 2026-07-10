@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
@@ -12,6 +13,9 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/lib/jsonld', () => ({
   loadFromIndexedDB: vi.fn(async () => {}),
+  formatToTitleCase: vi.fn((s) =>
+    s == null ? '' : String(s).charAt(0).toUpperCase() + String(s).slice(1).replace(/_/g, ' ')
+  ),
   getCategoryOptionsForVariable: vi.fn(() => []),
   getLocalMappingsForVariable: vi.fn(() => ({})),
   updateCategoryMapping: vi.fn(async () => {}),
@@ -27,10 +31,18 @@ const RouterLinkStub = {
   template: '<a :href="String(to)"><slot /></a>',
 }
 
+let pinia
+
 function mountView() {
   return mount(DescribeVariableDetailsView, {
-    global: { stubs: { RouterLink: RouterLinkStub } },
+    global: { plugins: [pinia], stubs: { RouterLink: RouterLinkStub } },
   })
+}
+
+// The backend name attribute embeds double quotes (`..._category_"M"`), which
+// CSS attribute selectors can't express — match on the attribute directly.
+function findCategorySelect(w, name) {
+  return w.findAll('select.category-select').find((s) => s.attributes('name') === name)
 }
 
 const STATE = {
@@ -48,10 +60,15 @@ const STATE = {
 
 describe('Frontend unit: DescribeVariableDetailsView', () => {
   beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
     api.get.mockReset()
+    api.post.mockReset()
     db.saveData.mockClear()
     jsonld.loadFromIndexedDB.mockClear()
     jsonld.updateCategoryMapping.mockClear()
+    jsonld.getCategoryOptionsForVariable.mockReturnValue([])
+    jsonld.getLocalMappingsForVariable.mockReturnValue({})
   })
 
   it('renders the form posting to /end', async () => {
@@ -126,5 +143,114 @@ describe('Frontend unit: DescribeVariableDetailsView', () => {
     await flushPromises()
     expect(w.find('form').exists()).toBe(true)
     expect(w.findAll('.database-section')).toHaveLength(0)
+  })
+})
+
+describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging', () => {
+  const SEX_SUGGESTION = {
+    patients: {
+      sex: {
+        status: 'done',
+        variable_key: 'biological_sex',
+        values: {
+          M: { term_key: 'male', confidence: 0.95, reason: 'M abbreviates male' },
+        },
+      },
+    },
+  }
+
+  beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    api.get.mockReset()
+    api.post.mockReset()
+    db.saveData.mockClear()
+    db.getData.mockResolvedValue(null)
+    jsonld.updateCategoryMapping.mockClear()
+    jsonld.getCategoryOptionsForVariable.mockReturnValue(['Male', 'Female'])
+    jsonld.getLocalMappingsForVariable.mockReturnValue({})
+  })
+
+  function wireApi({ suggestions = {}, enabled = true, status = 'done' } = {}) {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/llm/status') {
+        return { data: { enabled, model: 'llama3.2:3b', ollama: 'ready' } }
+      }
+      if (url === '/api/v1/llm/suggestions/values') {
+        return {
+          data: {
+            enabled,
+            status,
+            progress: { chunks_done: 1, chunks_total: 1 },
+            error: null,
+            suggestions,
+          },
+        }
+      }
+      return { data: STATE }
+    })
+    api.post.mockResolvedValue({ data: { status: 'started' } })
+  }
+
+  it('applies an arriving suggestion through updateCategoryMapping', async () => {
+    wireApi({ suggestions: SEX_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+
+    const select = findCategorySelect(w, 'patients_sex_category_"M"')
+    expect(select.element.value).toBe('Male')
+    expect(w.find('.llm-badge').exists()).toBe(true)
+    expect(w.find('.llm-badge').text()).toContain('95%')
+
+    const args = jsonld.updateCategoryMapping.mock.calls.at(-1)
+    expect(args.slice(0, 5)).toEqual(['patients', 'sex', 'sex', 'M', 'Male'])
+  })
+
+  it('does not overwrite a mapping the JSON-LD already preseeds', async () => {
+    jsonld.getLocalMappingsForVariable.mockReturnValue({ female: ['M'] })
+    wireApi({ suggestions: SEX_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+
+    const select = findCategorySelect(w, 'patients_sex_category_"M"')
+    expect(select.element.value).toBe('Female')
+    expect(w.find('.llm-badge').exists()).toBe(false)
+  })
+
+  it('skips suggestions whose term is not among the variable options', async () => {
+    jsonld.getCategoryOptionsForVariable.mockReturnValue(['Yes', 'No'])
+    wireApi({ suggestions: SEX_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+
+    const select = findCategorySelect(w, 'patients_sex_category_"M"')
+    expect(select.element.value).toBe('')
+  })
+
+  it('dismissing clears the selection and blocks re-application', async () => {
+    wireApi({ suggestions: SEX_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+
+    await w.find('.llm-dismiss').trigger('click')
+    await flushPromises()
+
+    const select = findCategorySelect(w, 'patients_sex_category_"M"')
+    expect(select.element.value).toBe('')
+
+    const { useSuggestionsStore } = await import('@/stores/suggestions.js')
+    await useSuggestionsStore().refresh('values')
+    await flushPromises()
+    expect(select.element.value).toBe('')
+  })
+
+  it('renders zero LLM UI when the feature is disabled', async () => {
+    wireApi({ enabled: false })
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.llm-status-bar').exists()).toBe(false)
+    const started = api.post.mock.calls.some(([url]) => url.includes('/start'))
+    expect(started).toBe(false)
   })
 })
