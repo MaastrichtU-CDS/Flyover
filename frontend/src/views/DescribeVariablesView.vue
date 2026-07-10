@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, onBeforeUnmount, reactive, ref, nextTick } from 'vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, nextTick, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { useSuggestionsStore } from '@/stores/suggestions'
 
 const PAGE_SIZE = 10
 const AUTO_FILL_FEEDBACK_MS = 3000
@@ -21,6 +22,9 @@ const feedbackVisible = reactive({})
 const isSubmitting = ref(false)
 const loadingIconIsPen = ref(false)
 let _loadingInterval = null
+let _submitGuardPassed = false
+
+const suggestions = useSuggestionsStore()
 
 const databaseNames = computed(() =>
   columnInfoData.value ? Object.keys(columnInfoData.value) : []
@@ -130,6 +134,7 @@ function onDescriptionChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   formStateCache[key].description = e.target.value
   autoPopulateDatatype(dbName, item)
+  suggestions.markUserTouched(key)
   syncToIndexedDB()
 }
 
@@ -138,6 +143,7 @@ function onDatatypeChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   formStateCache[key].datatype = e.target.value
   if (autoFilledFields.has(key)) manualOverrides.add(key)
+  suggestions.markUserTouched(key)
   syncToIndexedDB()
 }
 
@@ -147,6 +153,108 @@ function onCommentChange(dbName, item, e) {
   formStateCache[key].comment = e.target.value
   syncToIndexedDB()
 }
+
+// ---------------------------------------------------------------------------
+// LLM suggestions: merge arrivals into untouched fields only, always through
+// the same code path a manual selection takes so option-disabling, hidden
+// field submission, and JSON-LD persistence keep working unchanged.
+// ---------------------------------------------------------------------------
+
+function suggestionFor(dbName, item) {
+  return suggestions.variables.byKey[`${dbName}_${item}`]
+}
+
+function applyArrivedSuggestions() {
+  let appliedAny = false
+  for (const entry of Object.values(suggestions.variables.byKey)) {
+    if (entry.status !== 'done' || !entry.display) continue
+    const key = `${entry.database}_${entry.column}`
+    if (formStateCache[key]?.description) continue
+    if (preselectedDescriptions.value[key]) continue
+    if (suggestions.isDismissed(key)) continue
+    if (!globalVariableNames.value.includes(entry.display)) continue
+    if (isDescriptionDisabled(entry.database, entry.column, entry.display)) continue
+
+    ensureCacheEntry(key, entry.database)
+    formStateCache[key].description = entry.display
+    autoPopulateDatatype(entry.database, entry.column)
+    suggestions.markApplied(key)
+    appliedAny = true
+  }
+  if (appliedAny) syncToIndexedDB()
+}
+
+function dismissSuggestion(dbName, item) {
+  const key = `${dbName}_${item}`
+  suggestions.dismiss(key)
+  if (formStateCache[key]) {
+    formStateCache[key].description = ''
+    autoPopulateDatatype(dbName, item)
+    syncToIndexedDB()
+  }
+}
+
+function retrySuggestion(dbName, item) {
+  suggestions.bumpPriority('variables', dbName, [item], { retry: true })
+}
+
+function clearAllSuggestions() {
+  for (const key of suggestions.clearAllApplied()) {
+    if (formStateCache[key]?.description) {
+      const dbName = formStateCache[key].database
+      const item = key.slice(dbName.length + 1)
+      formStateCache[key].description = ''
+      autoPopulateDatatype(dbName, item)
+    }
+  }
+  syncToIndexedDB()
+}
+
+function pendingColumnsFor(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  return cols.filter((item) => {
+    const entry = suggestionFor(dbName, item)
+    return !entry || entry.status === 'pending'
+  })
+}
+
+function requestSectionFirst(dbName) {
+  const pending = pendingColumnsFor(dbName)
+  if (pending.length) suggestions.bumpPriority('variables', dbName, pending)
+}
+
+function hintVisibleColumns(dbName) {
+  const pending = currentPageItems(dbName).filter((item) => {
+    const entry = suggestionFor(dbName, item)
+    return !entry || entry.status === 'pending'
+  })
+  if (pending.length) suggestions.bumpPriority('variables', dbName, pending)
+}
+
+const suggestionProgress = computed(() => {
+  const entries = Object.values(suggestions.variables.byKey)
+  return {
+    done: entries.filter((e) => e.status === 'done' || e.status === 'error').length,
+    total: entries.length,
+  }
+})
+
+const suggestionsActive = computed(() =>
+  ['pulling_model', 'running'].includes(suggestions.variables.status)
+)
+
+const unreviewedFieldCount = computed(
+  () =>
+    suggestions
+      .unreviewedKeys()
+      .filter((key) => formStateCache[key]?.description).length
+)
+
+watch(
+  () => suggestions.variables.byKey,
+  () => applyArrivedSuggestions(),
+  { deep: true }
+)
 
 async function syncToIndexedDB() {
   try {
@@ -158,12 +266,16 @@ async function syncToIndexedDB() {
 
 function toggleDatabase(dbName) {
   expandedDatabases[dbName] = !expandedDatabases[dbName]
+  if (expandedDatabases[dbName]) hintVisibleColumns(dbName)
 }
 
 function changePage(dbName, direction) {
   const cur = databasePages[dbName] || 1
   const next = cur + direction
-  if (next >= 1 && next <= totalPages(dbName)) databasePages[dbName] = next
+  if (next >= 1 && next <= totalPages(dbName)) {
+    databasePages[dbName] = next
+    hintVisibleColumns(dbName)
+  }
 }
 
 const hasAnyDescription = computed(() => {
@@ -225,7 +337,21 @@ function stopLoadingAnimation() {
   }
 }
 
-function onFormSubmit() {
+function onFormSubmit(e) {
+  // Silently submitting unreviewed AI prefills is dangerous in medical data
+  // mapping — ask once, then let the native POST through.
+  if (!_submitGuardPassed && unreviewedFieldCount.value > 0) {
+    const n = unreviewedFieldCount.value
+    const ok = window.confirm(
+      `${n} description${n === 1 ? ' was' : 's were'} filled in by AI and not ` +
+        'reviewed. Submit anyway?'
+    )
+    if (!ok) {
+      e.preventDefault()
+      return
+    }
+    _submitGuardPassed = true
+  }
   startLoadingAnimation()
   // native form POSTs to /units → redirects to /describe/variable-details
 }
@@ -281,11 +407,17 @@ onMounted(async () => {
   preselectedDescriptions.value = ps.preselectedDescriptions || {}
   preselectedDatatypes.value = ps.preselectedDatatypes || {}
   descriptionToDatatype.value = ps.descriptionToDatatype || {}
+
+  // Idempotent start (the backend usually began at ingest); the mapping is
+  // included in case it only survives in this browser's IndexedDB.
+  await suggestions.init('variables', { mapping: jsonld.getMapping() })
+  applyArrivedSuggestions()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pageshow', onPageShow)
   stopLoadingAnimation()
+  suggestions.stopPolling()
 })
 </script>
 
@@ -298,6 +430,38 @@ onBeforeUnmount(() => {
       For every database that you would like to describe, please select the type and
       description of your columns from the drop-down menu.
     </p>
+
+    <div
+      v-if="suggestions.enabled && suggestions.variables.status !== 'idle'"
+      class="llm-status-bar"
+    >
+      <i class="fas fa-robot" />
+      <span v-if="suggestions.variables.status === 'pulling_model'">
+        <i class="fas fa-spinner fa-spin" /> Preparing the AI model…
+      </span>
+      <span v-else-if="suggestions.variables.status === 'running'">
+        <i class="fas fa-spinner fa-spin" />
+        AI suggestions: {{ suggestionProgress.done }} of
+        {{ suggestionProgress.total }} variables
+      </span>
+      <span v-else-if="suggestions.variables.status === 'done'">
+        AI suggestions ready — review the highlighted fields
+      </span>
+      <span v-else-if="suggestions.variables.status === 'failed'">
+        AI suggestions unavailable — fill in descriptions manually
+      </span>
+      <span v-else-if="suggestions.variables.status === 'unavailable'">
+        Nothing for the AI to suggest
+      </span>
+      <button
+        v-if="unreviewedFieldCount"
+        type="button"
+        class="btn btn-sm btn-outline-secondary llm-clear-all"
+        @click="clearAllSuggestions"
+      >
+        Clear all AI suggestions
+      </button>
+    </div>
 
     <form
       class="form-horizontal"
@@ -331,6 +495,15 @@ onBeforeUnmount(() => {
               "
             />
           </button>
+          <button
+            v-if="suggestionsActive && pendingColumnsFor(dbName).length"
+            type="button"
+            class="btn btn-sm btn-outline-secondary llm-section-button"
+            title="Move this database to the front of the AI suggestion queue"
+            @click="requestSectionFirst(dbName)"
+          >
+            <i class="fas fa-robot" /> Suggest this section first
+          </button>
 
           <div
             class="content"
@@ -347,12 +520,48 @@ onBeforeUnmount(() => {
               >
                 <div class="variable-label">
                   {{ item }}
+                  <span
+                    v-if="suggestions.isApplied(`${dbName}_${item}`)"
+                    class="llm-badge"
+                    :class="{ confirmed: suggestions.isTouched(`${dbName}_${item}`) }"
+                    :title="suggestionFor(dbName, item)?.reason || 'AI suggestion'"
+                  >
+                    <template v-if="suggestions.isTouched(`${dbName}_${item}`)">
+                      <i class="fas fa-check" /> reviewed
+                    </template>
+                    <template v-else>
+                      <i class="fas fa-robot" />
+                      {{ Math.round((suggestionFor(dbName, item)?.confidence || 0) * 100) }}%
+                      <button
+                        type="button"
+                        class="llm-dismiss"
+                        title="Dismiss this AI suggestion"
+                        @click="dismissSuggestion(dbName, item)"
+                      >
+                        &times;
+                      </button>
+                    </template>
+                  </span>
+                  <button
+                    v-else-if="suggestionFor(dbName, item)?.status === 'error'"
+                    type="button"
+                    class="llm-retry"
+                    title="The AI suggestion for this variable failed — retry"
+                    @click="retrySuggestion(dbName, item)"
+                  >
+                    <i class="fas fa-rotate-right" /> retry AI
+                  </button>
                 </div>
                 <div class="variable-controls">
                   <select
                     :id="`ncit_comment_${dbName}_${item}`"
                     :name="`ncit_comment_${dbName}_${item}`"
                     class="form-control description-select"
+                    :class="{
+                      'llm-suggested':
+                        suggestions.isApplied(`${dbName}_${item}`) &&
+                        !suggestions.isTouched(`${dbName}_${item}`),
+                    }"
                     :value="getDescriptionValue(dbName, item)"
                     @change="onDescriptionChange(dbName, item, $event)"
                   >
@@ -542,6 +751,75 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.llm-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-left: 4px solid rgba(118, 75, 162, 0.75);
+  background: rgba(118, 75, 162, 0.08);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.llm-clear-all {
+  margin-left: auto;
+}
+
+.llm-section-button {
+  margin-left: 0.75rem;
+  font-size: 0.8em;
+}
+
+.llm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  background: rgba(118, 75, 162, 0.12);
+  color: rgb(90, 60, 130);
+  border: 1px dashed rgba(118, 75, 162, 0.6);
+  cursor: help;
+}
+
+.llm-badge.confirmed {
+  border-style: solid;
+  border-color: rgba(40, 140, 80, 0.6);
+  background: rgba(40, 140, 80, 0.1);
+  color: rgb(30, 110, 60);
+}
+
+.llm-dismiss {
+  border: none;
+  background: none;
+  padding: 0 0.1rem;
+  line-height: 1;
+  font-size: 1.1em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.llm-retry {
+  margin-left: 0.5rem;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.75em;
+  color: rgb(90, 60, 130);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.llm-suggested {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
 .info-purple {
   font-size: 0.85em;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
