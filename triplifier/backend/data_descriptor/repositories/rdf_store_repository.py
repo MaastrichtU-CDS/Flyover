@@ -121,7 +121,9 @@ class RDFStoreRepository:
             logger.error(f"Query execution error: {e}")
             return None
 
-    def execute_ask_query(self, query: str, timeout: int = 30, max_retries: int = 3) -> Optional[bool]:
+    def execute_ask_query(
+        self, query: str, timeout: int = 30, max_retries: int = 3
+    ) -> Optional[bool]:
         """
         Execute a SPARQL ASK query with retry logic for transient errors.
 
@@ -134,7 +136,7 @@ class RDFStoreRepository:
             Boolean result of ASK query, or None on error.
         """
         import time
-        
+
         for attempt in range(max_retries + 1):
             try:
                 response = requests.get(
@@ -145,29 +147,40 @@ class RDFStoreRepository:
                 )
                 if response.status_code == 200:
                     return response.json().get("boolean")
-                
+
                 # Retry on HTTP 400 (Bad Request) which can occur with too many queries
                 # Also retry on 429 (Too Many Requests), 502, 503, 504
-                if response.status_code in [400, 429, 502, 503, 504] and attempt < max_retries:
-                    wait_time = (attempt + 1) * 0.5  # Exponential backoff: 0.5s, 1s, 1.5s
-                    logger.warning(f"ASK query returned status {response.status_code}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                if (
+                    response.status_code in [400, 429, 502, 503, 504]
+                    and attempt < max_retries
+                ):
+                    wait_time = (
+                        attempt + 1
+                    ) * 0.5  # Exponential backoff: 0.5s, 1s, 1.5s
+                    logger.warning(
+                        f"ASK query returned status {response.status_code}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                    )
                     time.sleep(wait_time)
                     continue
-                
+
                 # Non-retryable error
-                logger.error(f"ASK query failed with status {response.status_code}: {response.text}")
+                logger.error(
+                    f"ASK query failed with status {response.status_code}: {response.text}"
+                )
                 return None
-                
+
             except Exception as e:
                 if attempt < max_retries:
                     wait_time = (attempt + 1) * 0.5
-                    logger.warning(f"ASK query execution error (attempt {attempt + 1}/{max_retries}): {e}, retrying in {wait_time}s")
+                    logger.warning(
+                        f"ASK query execution error (attempt {attempt + 1}/{max_retries}): {e}, retrying in {wait_time}s"
+                    )
                     time.sleep(wait_time)
                     continue
                 else:
                     logger.error(f"ASK query execution error: {e}")
                     return None
-        
+
         return None
 
     def check_data_graph_exists(self) -> bool:

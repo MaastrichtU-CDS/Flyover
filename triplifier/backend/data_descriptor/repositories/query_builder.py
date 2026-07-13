@@ -420,25 +420,26 @@ class QueryBuilder:
                 if term_info.get("local_term") and term_info.get("target_class"):
                     target_class = term_info["target_class"]
                     local_term_value = term_info["local_term"]
-                    
+
                     # Check that the target class is a subclass of the variable class
                     # This verifies the basic ontology relationship for value mapping
                     ask_query_parts.append(
                         f"{target_class} rdfs:subClassOf {var_class} ."
                     )
-                    
+
                     # Also check that the target class has an equivalentClass statement
                     # This verifies the value mapping was created by the annotation
                     ask_query_parts.append(
                         f"{target_class} owl:equivalentClass ?equiv_{i} ."
                     )
-                    
+
                     # Check that there exists at least one cell with this value in the data graph
-                    escaped_local_value = local_term_value.replace("\\", "\\\\").replace('"', '\\"')
+                    escaped_local_value = local_term_value.replace(
+                        "\\", "\\\\"
+                    ).replace('"', '\\"')
                     data_parts.append(
                         f'?cell_{i} dbo:has_value "{escaped_local_value}"^^xsd:string .'
                     )
-
 
         # Build data graph query part
         data_graph_query = ""
