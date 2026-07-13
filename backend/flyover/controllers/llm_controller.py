@@ -62,20 +62,30 @@ def _maybe_adopt_mapping(session_cache, mapping_data: dict | None) -> tuple[bool
 
 @llm_bp.route("/api/v1/llm/status", methods=["GET"])
 def llm_status():
-    """Report whether the LLM feature is enabled and Ollama reachable."""
+    """Report the configured provider and whether its backend is reachable."""
     ctx = get_app_context()
     llm_service = ctx.get("llm_service")
 
     config = llm_service.config
     if not config.enabled:
-        return jsonify({"enabled": False, "model": None, "ollama": None})
+        return jsonify(
+            {
+                "enabled": False,
+                "provider": None,
+                "model": None,
+                "remote": False,
+                "backend": None,
+            }
+        )
 
     reachable = llm_service.client.is_reachable()
     return jsonify(
         {
             "enabled": True,
+            "provider": config.provider,
             "model": config.model,
-            "ollama": "ready" if reachable else "unreachable",
+            "remote": config.remote,
+            "backend": "ready" if reachable else "unreachable",
         }
     )
 

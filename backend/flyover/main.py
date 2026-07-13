@@ -32,7 +32,7 @@ from services.ingest_service import (
     IngestService,
 )
 from services.describe_service import DescribeService
-from services.llm import LLMConfig, LLMSuggestionService, OllamaProvider
+from services.llm import LLMConfig, LLMSuggestionService, create_provider
 from services.rdf_store_service import RDFStoreService
 from utils.session_helpers import (
     get_semantic_map_for_annotation,
@@ -143,15 +143,13 @@ class Cache:
 
 session_cache = Cache()
 
-# LLM mapping suggestion services (feature-flagged via FLYOVER_LLM_ENABLED /
-# FLYOVER_OLLAMA_HOST; disabled means zero background work and no LLM UI)
+# LLM mapping suggestion services (feature-flagged via FLYOVER_LLM_* env
+# vars; disabled means zero background work and no LLM UI). The provider —
+# ollama (default), openai-compatible, or anthropic — is selected by
+# FLYOVER_LLM_PROVIDER; remote providers additionally require
+# FLYOVER_LLM_ALLOW_REMOTE=true (see services/llm/config.py).
 llm_config = LLMConfig.from_env()
-llm_provider = OllamaProvider(
-    llm_config.base_url,
-    llm_config.model,
-    fallback_models=llm_config.fallback_models,
-    read_timeout=llm_config.request_timeout,
-)
+llm_provider = create_provider(llm_config)
 llm_service = LLMSuggestionService(llm_config, llm_provider)
 
 def _warm_up_llm_model() -> None:
@@ -185,7 +183,7 @@ def _maybe_start_llm_value_job(sc) -> None:
         logger.warning("LLM value suggestion job failed to start: %s", exc)
 
 
-if llm_config.enabled:
+if llm_config.enabled and llm_provider is not None:
     gevent.spawn(_warm_up_llm_model)
 
 

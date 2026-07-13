@@ -63,7 +63,9 @@ def _make_llm_app(enabled=True, reachable=True):
     mock_session.jsonld_mapping = None
 
     llm_service = MagicMock()
-    llm_service.config = SimpleNamespace(enabled=enabled, model="llama3.2:3b")
+    llm_service.config = SimpleNamespace(
+        enabled=enabled, provider="ollama", model="llama3.2:3b", remote=False
+    )
     llm_service.client.is_reachable.return_value = reachable
     llm_service.get_state.return_value = {
         "status": "running",
@@ -93,19 +95,27 @@ class TestLLMStatus(unittest.TestCase):
         response = app.test_client().get("/api/v1/llm/status")
         self.assertEqual(
             json.loads(response.data),
-            {"enabled": False, "model": None, "ollama": None},
+            {
+                "enabled": False,
+                "provider": None,
+                "model": None,
+                "remote": False,
+                "backend": None,
+            },
         )
 
     def test_enabled_and_reachable(self):
         app, _, _ = _make_llm_app(enabled=True, reachable=True)
         body = json.loads(app.test_client().get("/api/v1/llm/status").data)
-        self.assertEqual(body["ollama"], "ready")
+        self.assertEqual(body["backend"], "ready")
+        self.assertEqual(body["provider"], "ollama")
         self.assertEqual(body["model"], "llama3.2:3b")
+        self.assertFalse(body["remote"])
 
     def test_enabled_and_unreachable(self):
         app, _, _ = _make_llm_app(enabled=True, reachable=False)
         body = json.loads(app.test_client().get("/api/v1/llm/status").data)
-        self.assertEqual(body["ollama"], "unreachable")
+        self.assertEqual(body["backend"], "unreachable")
 
 
 class TestVariableSuggestionRoutes(unittest.TestCase):
