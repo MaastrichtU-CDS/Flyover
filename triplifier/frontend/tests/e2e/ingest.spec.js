@@ -34,7 +34,7 @@ test.describe('Ingest flow', () => {
     await page.locator('#csvFile').setInputFiles(FIXTURE_CSV)
 
     // The visible path field should reflect the chosen filename.
-    await expect(page.locator('#csvPath')).toHaveValue(/synthetic_dutch_150\.csv/)
+    await expect(page.locator('#csvPath')).toHaveValue(path.basename(FIXTURE_CSV))
 
     // The submit button enables once a CSV is selected.
     const submit = page.getByRole('button', { name: /^\s*(?:Processing\.\.\.)?\s*Submit Files\s*$/i })
