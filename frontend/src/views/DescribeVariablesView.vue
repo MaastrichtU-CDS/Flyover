@@ -4,6 +4,7 @@ import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import { useSuggestionsStore } from '@/stores/suggestions'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 const PAGE_SIZE = 10
 const AUTO_FILL_FEEDBACK_MS = 3000
@@ -129,14 +130,16 @@ function autoPopulateDatatype(dbName, item) {
   }
 }
 
-function onDescriptionChange(dbName, item, e) {
+function onDescriptionChange(dbName, item, value) {
   const key = `${dbName}_${item}`
   ensureCacheEntry(key, dbName)
-  formStateCache[key].description = e.target.value
+  formStateCache[key].description = value
   autoPopulateDatatype(dbName, item)
   suggestions.markUserTouched(key)
   syncToIndexedDB()
 }
+
+const descriptionOptions = computed(() => ['Other', ...globalVariableNames.value])
 
 function onDatatypeChange(dbName, item, e) {
   const key = `${dbName}_${item}`
@@ -553,33 +556,23 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
                 <div class="variable-controls">
-                  <select
-                    :id="`ncit_comment_${dbName}_${item}`"
+                  <SearchableSelect
+                    :input-id="`ncit_comment_${dbName}_${item}`"
                     :name="`ncit_comment_${dbName}_${item}`"
-                    class="form-control description-select"
+                    class="description-select"
                     :class="{
                       'llm-suggested':
                         suggestions.isApplied(`${dbName}_${item}`) &&
                         !suggestions.isTouched(`${dbName}_${item}`),
                     }"
-                    :value="getDescriptionValue(dbName, item)"
-                    @change="onDescriptionChange(dbName, item, $event)"
-                  >
-                    <option value="">
-                      Description
-                    </option>
-                    <option value="Other">
-                      Other
-                    </option>
-                    <option
-                      v-for="name in globalVariableNames"
-                      :key="name"
-                      :value="name"
-                      :disabled="isDescriptionDisabled(dbName, item, name)"
-                    >
-                      {{ name }}
-                    </option>
-                  </select>
+                    placeholder="Description"
+                    :model-value="getDescriptionValue(dbName, item)"
+                    :options="descriptionOptions"
+                    :disabled-option="
+                      (name) => isDescriptionDisabled(dbName, item, name)
+                    "
+                    @update:model-value="onDescriptionChange(dbName, item, $event)"
+                  />
 
                   <input
                     :id="`comment_${dbName}_${item}`"
@@ -814,7 +807,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.llm-suggested {
+.llm-suggested :deep(.searchable-select-input) {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);

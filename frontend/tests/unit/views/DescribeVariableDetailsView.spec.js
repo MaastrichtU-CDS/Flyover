@@ -25,6 +25,7 @@ import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import DescribeVariableDetailsView from '@/views/DescribeVariableDetailsView.vue'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 const RouterLinkStub = {
   props: ['to'],
@@ -39,10 +40,18 @@ function mountView() {
   })
 }
 
-// The backend name attribute embeds double quotes (`..._category_"M"`), which
-// CSS attribute selectors can't express — match on the attribute directly.
+// Category dropdowns are SearchableSelect components; locate by form name.
 function findCategorySelect(w, name) {
-  return w.findAll('select.category-select').find((s) => s.attributes('name') === name)
+  return w
+    .findAllComponents(SearchableSelect)
+    .find((c) => c.props('name') === name)
+}
+
+async function setCategory(w, name, value) {
+  const component = findCategorySelect(w, name)
+  component.vm.$emit('update:modelValue', value)
+  component.vm.$emit('change', value)
+  await flushPromises()
 }
 
 const STATE = {
@@ -124,9 +133,8 @@ describe('Frontend unit: DescribeVariableDetailsView', () => {
     const w = mountView()
     await flushPromises()
 
-    const selects = w.findAll('select.category-select')
-    expect(selects.length).toBeGreaterThan(0)
-    await selects[0].setValue('Male')
+    expect(findCategorySelect(w, 'patients_sex_category_"M"')).toBeTruthy()
+    await setCategory(w, 'patients_sex_category_"M"', 'Male')
 
     expect(jsonld.updateCategoryMapping).toHaveBeenCalledTimes(1)
     const args = jsonld.updateCategoryMapping.mock.calls[0]
@@ -198,7 +206,7 @@ describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging'
     await flushPromises()
 
     const select = findCategorySelect(w, 'patients_sex_category_"M"')
-    expect(select.element.value).toBe('Male')
+    expect(select.props('modelValue')).toBe('Male')
     expect(w.find('.llm-badge').exists()).toBe(true)
     expect(w.find('.llm-badge').text()).toContain('95%')
 
@@ -213,7 +221,7 @@ describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging'
     await flushPromises()
 
     const select = findCategorySelect(w, 'patients_sex_category_"M"')
-    expect(select.element.value).toBe('Female')
+    expect(select.props('modelValue')).toBe('Female')
     expect(w.find('.llm-badge').exists()).toBe(false)
   })
 
@@ -224,7 +232,7 @@ describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging'
     await flushPromises()
 
     const select = findCategorySelect(w, 'patients_sex_category_"M"')
-    expect(select.element.value).toBe('')
+    expect(select.props('modelValue')).toBe('')
   })
 
   it('dismissing clears the selection and blocks re-application', async () => {
@@ -235,13 +243,12 @@ describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging'
     await w.find('.llm-dismiss').trigger('click')
     await flushPromises()
 
-    const select = findCategorySelect(w, 'patients_sex_category_"M"')
-    expect(select.element.value).toBe('')
+    expect(findCategorySelect(w, 'patients_sex_category_"M"').props('modelValue')).toBe('')
 
     const { useSuggestionsStore } = await import('@/stores/suggestions.js')
     await useSuggestionsStore().refresh('values')
     await flushPromises()
-    expect(select.element.value).toBe('')
+    expect(findCategorySelect(w, 'patients_sex_category_"M"').props('modelValue')).toBe('')
   })
 
   it('renders zero LLM UI when the feature is disabled', async () => {

@@ -4,6 +4,7 @@ import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import { useSuggestionsStore } from '@/stores/suggestions'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Yes', label: 'Yes' },
@@ -246,6 +247,13 @@ function dismissSuggestion(database, variable, cat) {
 
 function suggestionFor(key) {
   return suggestions.values.byKey[key]
+}
+
+function categoryOptionsFor(variable) {
+  if (variable.categoryOptions.length > 0) {
+    return [...variable.categoryOptions, 'Other']
+  }
+  return DEFAULT_CATEGORY_OPTIONS
 }
 
 function variableSuggestionPending(dbName, variable) {
@@ -591,15 +599,17 @@ onBeforeUnmount(() => {
                         </span>
                       </div>
                       <div class="category-controls">
-                        <select
+                        <SearchableSelect
                           v-model="categorySelections[cat.key]"
-                          class="form-control category-select"
+                          class="category-select"
                           :class="{
                             'llm-suggested':
                               suggestions.isApplied(cat.key) &&
                               !suggestions.isTouched(cat.key),
                           }"
                           :name="cat.backendKey"
+                          placeholder="Description"
+                          :options="categoryOptionsFor(variable)"
                           @change="
                             onCategoryChange(
                               dbEntry.name,
@@ -609,32 +619,7 @@ onBeforeUnmount(() => {
                               cat.key
                             )
                           "
-                        >
-                          <option value="">
-                            Description
-                          </option>
-                          <template v-if="variable.categoryOptions.length > 0">
-                            <option
-                              v-for="opt in variable.categoryOptions"
-                              :key="opt"
-                              :value="opt"
-                            >
-                              {{ opt }}
-                            </option>
-                            <option value="Other">
-                              Other
-                            </option>
-                          </template>
-                          <template v-else>
-                            <option
-                              v-for="opt in DEFAULT_CATEGORY_OPTIONS"
-                              :key="opt.value"
-                              :value="opt.value"
-                            >
-                              {{ opt.label }}
-                            </option>
-                          </template>
-                        </select>
+                        />
                         <input
                           v-model="categoryComments[cat.key]"
                           type="text"
@@ -776,7 +761,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.llm-suggested {
+.llm-suggested :deep(.searchable-select-input) {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);

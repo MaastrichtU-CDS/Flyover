@@ -29,11 +29,28 @@ vi.mock('@/lib/jsonld', () => ({
 import api from '@/services/api'
 import * as jsonld from '@/lib/jsonld'
 import DescribeVariablesView from '@/views/DescribeVariablesView.vue'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 let pinia
 
 function mountView() {
   return mount(DescribeVariablesView, { global: { plugins: [pinia] } })
+}
+
+// The description dropdown is a SearchableSelect; locate it by its form name.
+function descSelect(w, name) {
+  return w
+    .findAllComponents(SearchableSelect)
+    .find((c) => c.props('name') === name)
+}
+
+function descValue(w, name) {
+  return descSelect(w, name)?.props('modelValue')
+}
+
+async function setDescription(w, name, value) {
+  descSelect(w, name).vm.$emit('update:modelValue', value)
+  await flushPromises()
 }
 
 describe('DescribeVariablesView — description uniqueness across rows', () => {
@@ -65,16 +82,12 @@ describe('DescribeVariablesView — description uniqueness across rows', () => {
 
     // The leeftijd select should NOT offer "Biological Sex" — it's already
     // bound to geslacht.
-    const leeftijdSelect = w.find('select[name="ncit_comment_synthetic_dutch_150_leeftijd"]')
-    expect(leeftijdSelect.exists()).toBe(true)
-    const sexOption = leeftijdSelect.find('option[value="Biological Sex"]')
-    expect(sexOption.exists()).toBe(true)
-    expect(sexOption.attributes('disabled')).toBeDefined()
+    const leeftijd = descSelect(w, 'ncit_comment_synthetic_dutch_150_leeftijd')
+    expect(leeftijd).toBeTruthy()
+    expect(leeftijd.props('disabledOption')('Biological Sex')).toBe(true)
 
     // Sanity check: an unrelated description stays enabled.
-    const ageOption = leeftijdSelect.find('option[value="Age"]')
-    expect(ageOption.exists()).toBe(true)
-    expect(ageOption.attributes('disabled')).toBeUndefined()
+    expect(leeftijd.props('disabledOption')('Age')).toBe(false)
   })
 
   it('keeps the preselected description enabled on its own row', async () => {
@@ -90,9 +103,8 @@ describe('DescribeVariablesView — description uniqueness across rows', () => {
     const w = mountView()
     await flushPromises()
 
-    const geslachtSelect = w.find('select[name="ncit_comment_synthetic_dutch_150_geslacht"]')
-    const sexOption = geslachtSelect.find('option[value="Biological Sex"]')
-    expect(sexOption.attributes('disabled')).toBeUndefined()
+    const geslacht = descSelect(w, 'ncit_comment_synthetic_dutch_150_geslacht')
+    expect(geslacht.props('disabledOption')('Biological Sex')).toBe(false)
   })
 })
 
@@ -122,10 +134,8 @@ describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
 
   it('forwards a selection to updateMappingFromForm with a non-empty description', async () => {
     const w = await mountReady()
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    expect(select.exists()).toBe(true)
-    await select.setValue('Age')
-    await flushPromises()
+    expect(descSelect(w, 'ncit_comment_patients_age')).toBeTruthy()
+    await setDescription(w, 'ncit_comment_patients_age', 'Age')
     expect(jsonld.updateMappingFromForm).toHaveBeenCalled()
     const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
     expect(payload.patients_age).toMatchObject({
@@ -141,13 +151,10 @@ describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
     // This test guarantees the view at least sends the empty value through;
     // the lib-level tests guarantee the lib then removes it.
     const w = await mountReady()
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    await select.setValue('Age')
-    await flushPromises()
+    await setDescription(w, 'ncit_comment_patients_age', 'Age')
     jsonld.updateMappingFromForm.mockClear()
 
-    await select.setValue('')
-    await flushPromises()
+    await setDescription(w, 'ncit_comment_patients_age', '')
 
     expect(jsonld.updateMappingFromForm).toHaveBeenCalled()
     const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
@@ -159,13 +166,10 @@ describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
 
   it('forwards a description change ("Other") so the lib can drop the stale column', async () => {
     const w = await mountReady()
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    await select.setValue('Age')
-    await flushPromises()
+    await setDescription(w, 'ncit_comment_patients_age', 'Age')
     jsonld.updateMappingFromForm.mockClear()
 
-    await select.setValue('Other')
-    await flushPromises()
+    await setDescription(w, 'ncit_comment_patients_age', 'Other')
 
     const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
     expect(payload.patients_age).toMatchObject({
@@ -178,9 +182,7 @@ describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
     // Confirms partial-form syncs work: the lib must not blow away unrelated
     // entries in IDB just because they're not in the payload.
     const w = await mountReady()
-    const sexSelect = w.find('select[name="ncit_comment_patients_sex"]')
-    await sexSelect.setValue('Biological Sex')
-    await flushPromises()
+    await setDescription(w, 'ncit_comment_patients_sex', 'Biological Sex')
     const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
     expect(Object.keys(payload)).toEqual(['patients_sex'])
   })
@@ -233,8 +235,7 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
     const w = mountView()
     await flushPromises()
 
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    expect(select.element.value).toBe('Age')
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Age')
     const datatype = w.find('select[name="patients_age"]')
     expect(datatype.element.value).toBe('continuous')
     expect(w.find('.llm-badge').exists()).toBe(true)
@@ -257,8 +258,7 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
     const w = mountView()
     await flushPromises()
 
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    await select.setValue('Biological Sex')
+    await setDescription(w, 'ncit_comment_patients_age', 'Biological Sex')
 
     const { useSuggestionsStore } = await import('@/stores/suggestions.js')
     const store = useSuggestionsStore()
@@ -273,7 +273,7 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
     }
     await flushPromises()
 
-    expect(select.element.value).toBe('Biological Sex')
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Biological Sex')
     expect(store.isApplied('patients_age')).toBe(false)
   })
 
@@ -287,8 +287,7 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
     const w = mountView()
     await flushPromises()
 
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    expect(select.element.value).toBe('Biological Sex')
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Biological Sex')
     expect(w.find('.llm-badge').exists()).toBe(false)
   })
 
@@ -298,13 +297,12 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
     await flushPromises()
 
     await w.find('.llm-dismiss').trigger('click')
-    const select = w.find('select[name="ncit_comment_patients_age"]')
-    expect(select.element.value).toBe('')
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('')
 
     const { useSuggestionsStore } = await import('@/stores/suggestions.js')
     await useSuggestionsStore().refresh('variables')
     await flushPromises()
-    expect(select.element.value).toBe('')
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('')
     expect(w.find('.llm-badge').exists()).toBe(false)
   })
 
