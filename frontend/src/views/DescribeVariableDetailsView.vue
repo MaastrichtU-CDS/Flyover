@@ -433,6 +433,15 @@ onBeforeUnmount(() => {
       <span v-else-if="suggestions.values.status === 'unavailable'">
         Nothing for the AI to suggest
       </span>
+      <span
+        v-if="suggestions.providerLabel"
+        class="llm-provider-note"
+      >by {{ suggestions.providerLabel }}</span>
+      <span
+        v-if="suggestions.remote"
+        class="llm-remote-badge"
+        title="Suggestions are computed by an external service outside this deployment"
+      ><i class="fas fa-cloud" /> external</span>
       <button
         v-if="unreviewedFieldCount"
         type="button"
@@ -710,6 +719,24 @@ onBeforeUnmount(() => {
   background: rgba(118, 75, 162, 0.08);
   border-radius: 4px;
   font-size: 0.9em;
+}
+
+.llm-provider-note {
+  color: #777;
+  font-size: 0.85em;
+}
+
+.llm-remote-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.8em;
+  background: rgba(200, 120, 30, 0.12);
+  color: rgb(150, 90, 20);
+  border: 1px solid rgba(200, 120, 30, 0.5);
+  cursor: help;
 }
 
 .llm-clear-all {

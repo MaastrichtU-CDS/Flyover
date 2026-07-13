@@ -5,7 +5,7 @@
 // stays DOM-free: views own reading and writing actual field values.
 
 import { defineStore } from 'pinia'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { formatToTitleCase } from '@/lib/jsonld'
@@ -17,10 +17,24 @@ export const POLL_HARD_STOP_MS = 15 * 60 * 1000
 const TERMINAL_STATUSES = ['done', 'failed', 'unavailable', 'disabled']
 const MARKS_KEY = 'llm_suggestion_marks'
 
+const PROVIDER_NAMES = {
+  ollama: 'local model',
+  openai: 'OpenAI-compatible',
+  anthropic: 'Anthropic Claude',
+}
+
 export const useSuggestionsStore = defineStore('suggestions', () => {
   // null = not yet checked; false = feature off (render zero LLM UI)
   const enabled = ref(null)
   const model = ref('')
+  const provider = ref('')
+  const remote = ref(false)
+
+  const providerLabel = computed(() => {
+    if (!model.value) return ''
+    const name = PROVIDER_NAMES[provider.value] || provider.value
+    return name ? `${model.value} (${name})` : model.value
+  })
 
   const variables = reactive({
     status: 'idle',
@@ -182,6 +196,8 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
         const { data } = await api.get('/api/v1/llm/status')
         enabled.value = !!data.enabled
         model.value = data.model || ''
+        provider.value = data.provider || ''
+        remote.value = !!data.remote
       } catch {
         enabled.value = false
       }
@@ -276,6 +292,9 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   return {
     enabled,
     model,
+    provider,
+    remote,
+    providerLabel,
     variables,
     values,
     applied,

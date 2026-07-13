@@ -18,8 +18,17 @@ import {
 } from '@/stores/suggestions.js'
 import { useStatusStore } from '@/stores/status.js'
 
-function statusResponse(enabled = true) {
-  return { data: { enabled, model: 'llama3.2:3b', ollama: 'ready' } }
+function statusResponse(enabled = true, extra = {}) {
+  return {
+    data: {
+      enabled,
+      model: 'llama3.2:3b',
+      provider: 'ollama',
+      remote: false,
+      backend: 'ready',
+      ...extra,
+    },
+  }
 }
 
 function snapshot({ status = 'running', suggestions = {}, done = 0, total = 3 } = {}) {
@@ -47,6 +56,21 @@ describe('Frontend unit: useSuggestionsStore', () => {
   afterEach(() => {
     useSuggestionsStore().stopPolling()
     vi.useRealTimers()
+  })
+
+  it('init() records provider identity and remote classification', async () => {
+    api.get
+      .mockResolvedValueOnce(
+        statusResponse(true, { provider: 'anthropic', model: 'claude-opus-4-8', remote: true }),
+      )
+      .mockResolvedValue(snapshot({ status: 'done' }))
+    api.post.mockResolvedValue({ data: { status: 'started' } })
+
+    const s = useSuggestionsStore()
+    await s.init('variables')
+    expect(s.provider).toBe('anthropic')
+    expect(s.remote).toBe(true)
+    expect(s.providerLabel).toBe('claude-opus-4-8 (Anthropic Claude)')
   })
 
   it('init() with the feature disabled renders no LLM activity', async () => {

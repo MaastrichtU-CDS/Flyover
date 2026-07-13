@@ -5,7 +5,6 @@ This module handles HTTP requests related to describing
 data variables, including type specification and categorisation.
 """
 
-import json
 import logging
 from io import StringIO
 
