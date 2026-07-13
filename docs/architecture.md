@@ -91,26 +91,42 @@ If you're hunting a bug, work from the outside in: controller → service → re
 
 ## LLM mapping suggestions
 
-An opt-in feature (compose overlay [`docker-compose.llm.yml`](../docker-compose.llm.yml), plus [`docker-compose.llm-gpu.yml`](../docker-compose.llm-gpu.yml) for NVIDIA acceleration) that prefills the describe forms from a local Ollama model. Everything runs inside the compose network — no data leaves the deployment.
+An opt-in feature (compose overlay [`docker-compose.llm.yml`](../docker-compose.llm.yml), plus [`docker-compose.llm-gpu.yml`](../docker-compose.llm-gpu.yml) for NVIDIA acceleration) that prefills the describe forms with LLM-suggested mappings. With the default Ollama provider everything runs inside the compose network — no data leaves the deployment; cloud providers are supported behind an explicit consent gate (below).
+
+**Providers** — a slim adapter interface ([`services/llm/base.py`](../backend/flyover/services/llm/base.py): `is_reachable()`, `ensure_ready()`, `match_equivalents(list_a, list_b)`) with three implementations selected by `FLYOVER_LLM_PROVIDER`. The matching kernel — prompt, output schema, validate + sanitise pipeline — is shared ([`services/llm/matching.py`](../backend/flyover/services/llm/matching.py)); adapters only do transport and structured-output negotiation:
+
+| Provider | Backend | Structured output | Notes |
+|---|---|---|---|
+| `ollama` (default) | Ollama native `/api/chat` | native `format` grammar | Auto-pulls the model with fallbacks; classified **local** |
+| `openai` | any `…/v1/chat/completions` endpoint (vLLM, LM Studio, llama.cpp, OpenAI, Azure, Mistral, Groq, OpenRouter, …) | `json_schema` strict, sticky fallback to `json_object` + schema-in-prompt | Requires explicit model + base_url; **remote** unless loopback or `FLYOVER_LLM_REMOTE=false` |
+| `anthropic` | official `anthropic` SDK | `output_config.format` json_schema (guaranteed) | Default model `claude-opus-4-8`; always **remote** |
+
+Why not an agent protocol (ACP/MCP/A2A)? Those standardise agent↔client or agent↔agent communication; Flyover's LLM use is a single stateless schema-constrained completion per chunk, so the right interoperability surface is the chat-completions API plus native adapters where they pay off.
+
+**Remote gating** — a remote provider sends CSV column names, distinct categorical cell values, and semantic-map variable/term keys to an external service. That requires the operator's explicit `FLYOVER_LLM_ALLOW_REMOTE=true`; otherwise the feature disables itself with one boot warning. Classification is static per provider with a loopback carve-out and an explicit `FLYOVER_LLM_REMOTE` override (hostname heuristics were rejected: compose service names only resolve at runtime, and private-IP egress proxies would misclassify as local). The UI status bar always names the provider/model and shows an "external" badge for remote ones. See [`docker-compose.llm-cloud.example.yml`](../docker-compose.llm-cloud.example.yml).
 
 **Backend** ([`services/llm/`](../backend/flyover/services/llm/), [`controllers/llm_controller.py`](../backend/flyover/controllers/llm_controller.py)):
 
-- `OllamaClient.match_equivalents(list_a, list_b)` sends one schema-constrained chat request and returns `{item, match, confidence, reason}` per item, with hallucinated or duplicate matches nulled.
+- Each provider's `match_equivalents(list_a, list_b)` sends one schema-constrained chat request and returns `{item, match, confidence, reason}` per item, with hallucinated or duplicate matches nulled by the shared sanitiser.
 - `LLMSuggestionService` runs two job phases as gevent greenlets on `session_cache.llm_jobs`: **variables** (CSV columns → semantic variable keys, chunked ~8 columns per request in form order) and **values** (categorical values → `valueMapping` terms, one chunk per variable). Jobs start automatically at ingest (data upload / semantic-map submission) and at `/units` submission, so the first chunks are usually done before the user reaches the page. Job fingerprints make starts idempotent; a generation counter cancels superseded workers; a failed chunk only errors its own items.
 - The API under `/api/v1/llm/` exposes `status`, per-phase `suggestions` snapshots (polled by the frontend every 2 s), idempotent `.../start` endpoints, and `.../priority` for queue reordering (the "suggest this section first" buttons and page-change hints).
 
 **Frontend** ([`stores/suggestions.js`](../frontend/src/stores/suggestions.js)): polls the snapshots, converts raw snake_case keys to display form, and merges arrivals into **untouched fields only** — never over user input, JSON-LD preselections, or dismissed suggestions. Applied fields carry a badge (confidence + model reasoning) until the user reviews them, and submitting with unreviewed AI fields asks for confirmation once. Suggestions flow through the same code paths as manual edits (`updateMappingFromForm` / `updateCategoryMapping`), so IndexedDB and the JSON-LD mapping stay consistent.
 
-**Configuration** (env vars on the `flyover` service; the overlay sets the first two):
+**Configuration** (env vars on the `flyover` service; resolution details in [`services/llm/config.py`](../backend/flyover/services/llm/config.py)):
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `FLYOVER_LLM_ENABLED` | `true` iff `FLYOVER_OLLAMA_HOST` is set | Feature flag; off = zero LLM UI and zero background work |
-| `FLYOVER_OLLAMA_HOST` | `http://localhost:11434` | Ollama base URL (`http://ollama:11434` in compose) |
-| `FLYOVER_LLM_MODEL` | `llama3.2:3b` | Preferred model, pulled at boot in the background |
-| `FLYOVER_LLM_FALLBACK_MODELS` | `llama3.2:1b` | Comma-separated fallbacks if the pull fails |
+| `FLYOVER_LLM_ENABLED` | `true` iff any LLM env var is set | Feature flag; off = zero LLM UI and zero background work |
+| `FLYOVER_LLM_PROVIDER` | `ollama` | `ollama` \| `openai` \| `anthropic`; unknown values disable the feature |
+| `FLYOVER_LLM_BASE_URL` | provider-dependent | Endpoint for ollama/openai. `FLYOVER_OLLAMA_HOST` remains a working alias |
+| `FLYOVER_LLM_API_KEY` | — | Credential for openai/anthropic (anthropic also honors `ANTHROPIC_API_KEY`) |
+| `FLYOVER_LLM_MODEL` | `llama3.2:3b` / `claude-opus-4-8` | Model per provider; **required** for openai |
+| `FLYOVER_LLM_FALLBACK_MODELS` | `llama3.2:1b` (ollama only) | Comma-separated pull fallbacks |
+| `FLYOVER_LLM_ALLOW_REMOTE` | `false` | Consent gate: required for any remote provider |
+| `FLYOVER_LLM_REMOTE` | per provider | Explicit local/remote override (e.g. `false` for in-network vLLM) |
 | `FLYOVER_LLM_CHUNK_SIZE` | `8` | Columns per matching request (variables phase) |
-| `FLYOVER_LLM_TIMEOUT_S` | `180` | Read timeout per Ollama request |
+| `FLYOVER_LLM_TIMEOUT_S` | `180` | Read timeout per LLM request |
 
 Latency expectations: a chunk is ~4–8 s on a GPU (first form page filled in ≤ 15 s; 100 columns in 1–2 min) and ~25–60 s on CPU — nothing blocks either way, fields simply fill in as chunks land. The suggestion jobs live on the process-local `session_cache`, which is also why gunicorn runs a single gevent worker (see [`backend/entrypoint.sh`](../backend/entrypoint.sh)) and why worker recycling (`GUNICORN_MAX_REQUESTS`) defaults to off.
 

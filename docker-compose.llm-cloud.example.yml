@@ -1,0 +1,31 @@
+# EXAMPLE overlay for cloud (or other non-Ollama) LLM providers. Copy,
+# adjust, and chain it instead of docker-compose.llm.yml — no ollama
+# container is needed:
+#
+#   docker compose -f docker-compose.yml -f my-llm-cloud.yml up -d
+#
+# PRIVACY: a remote provider receives CSV column names, distinct
+# categorical cell values, and semantic-map variable/term keys. Setting
+# FLYOVER_LLM_ALLOW_REMOTE=true is the explicit acknowledgement of that
+# data flow; without it the feature disables itself with a boot warning.
+services:
+  flyover:
+    environment:
+      - FLYOVER_LLM_ENABLED=true
+
+      # --- Anthropic Claude -------------------------------------------
+      - FLYOVER_LLM_PROVIDER=anthropic
+      - FLYOVER_LLM_MODEL=claude-opus-4-8
+      - FLYOVER_LLM_API_KEY=${FLYOVER_LLM_API_KEY}
+      - FLYOVER_LLM_ALLOW_REMOTE=true
+
+      # --- OpenAI-compatible (OpenAI, Azure, Mistral, Groq, OpenRouter,
+      # --- or a self-hosted vLLM / LM Studio / llama.cpp server) -------
+      # - FLYOVER_LLM_PROVIDER=openai
+      # - FLYOVER_LLM_BASE_URL=https://api.openai.com/v1
+      # - FLYOVER_LLM_MODEL=gpt-4o-mini          # required for openai
+      # - FLYOVER_LLM_API_KEY=${FLYOVER_LLM_API_KEY}
+      # - FLYOVER_LLM_ALLOW_REMOTE=true
+      # For an in-network server (e.g. http://vllm:8000) declare it local
+      # instead of acknowledging remote egress:
+      # - FLYOVER_LLM_REMOTE=false

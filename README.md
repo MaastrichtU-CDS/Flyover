@@ -48,8 +48,9 @@ docker-compose up -d --pull always
 ### Optional: AI mapping suggestions
 
 Flyover can prefill the describe forms with AI-suggested mappings (CSV columns → semantic
-variables, categorical values → semantic terms) using a local [Ollama](https://ollama.com/)
-model — no data leaves your deployment. Enable it by chaining the LLM compose overlay:
+variables, categorical values → semantic terms). The default provider is a local
+[Ollama](https://ollama.com/) model — no data leaves your deployment. Enable it by
+chaining the LLM compose overlay:
 
 ```bash
 # CPU inference
@@ -61,9 +62,16 @@ docker compose -f docker-compose.yml -f docker-compose.llm.yml -f docker-compose
 
 The model (default `llama3.2:3b`) is pulled automatically on first boot and cached in a
 Docker volume. Suggestions appear progressively in the describe forms and never overwrite
-values you have entered yourself. Without the overlay, no AI features are shown. See
-[docs/architecture.md](docs/architecture.md#llm-mapping-suggestions) for how it works and
-which `FLYOVER_LLM_*` environment variables tune it.
+values you have entered yourself. Without the overlay, no AI features are shown.
+
+Other backends are supported via `FLYOVER_LLM_PROVIDER`: any OpenAI-compatible server
+(vLLM, LM Studio, llama.cpp, OpenAI, Azure, Mistral, Groq, OpenRouter, …) or Anthropic
+Claude. Cloud providers receive CSV column names and categorical values, so they require
+an explicit `FLYOVER_LLM_ALLOW_REMOTE=true` acknowledgement and are labelled with an
+"external" badge in the UI — see
+[docker-compose.llm-cloud.example.yml](docker-compose.llm-cloud.example.yml) and
+[docs/architecture.md](docs/architecture.md#llm-mapping-suggestions) for the full
+`FLYOVER_LLM_*` reference.
 
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
 on configuration and environment variables.
