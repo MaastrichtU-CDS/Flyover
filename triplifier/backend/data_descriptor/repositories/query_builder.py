@@ -413,27 +413,41 @@ class QueryBuilder:
             f"db:{database}.{local_definition} owl:equivalentClass {var_class} ."
         )
 
-        # Check for value mappings and add target_class subClassOf statements
+        # Check for value mappings - verify the annotation created the specific
+        # target class with proper relationships
         if value_mapping and value_mapping.get("terms"):
-            for _term, term_info in value_mapping["terms"].items():
+            for i, (_term, term_info) in enumerate(value_mapping["terms"].items()):
                 if term_info.get("local_term") and term_info.get("target_class"):
+                    target_class = term_info["target_class"]
+                    local_term_value = term_info["local_term"]
+                    
+                    # Check that the target class is a subclass of the variable class
+                    # This verifies the basic ontology relationship for value mapping
                     ask_query_parts.append(
-                        f"{term_info['target_class']} rdfs:subClassOf {var_class} ."
+                        f"{target_class} rdfs:subClassOf {var_class} ."
                     )
                     
-                    # Also check that there exists at least one cell with this value in the data graph
-                    data_parts.append(
-                        f"?cell_{i} dbo:has_value \"{escaped_local_value}\"^^xsd:string ."
+                    # Also check that the target class has an equivalentClass statement
+                    # This verifies the value mapping was created by the annotation
+                    ask_query_parts.append(
+                        f"{target_class} owl:equivalentClass ?equiv_{i} ."
                     )
+                    
+                    # Check that there exists at least one cell with this value in the data graph
+                    escaped_local_value = local_term_value.replace("\\", "\\\\").replace('"', '\\"')
+                    data_parts.append(
+                        f'?cell_{i} dbo:has_value "{escaped_local_value}"^^xsd:string .'
+                    )
+
 
         # Build data graph query part
         data_graph_query = ""
         if data_parts:
-            data_graph_query = f" GRAPH ?dataGraph {{ {' '.join(data_parts)} }} FILTER(STRSTARTS(STR(?dataGraph), \"http://data.local/\"))"
+            data_graph_query = f' GRAPH ?dataGraph {{ {" ".join(data_parts)} }} FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))'
 
         return f"""
             {prefixes}
-            ASK {{ 
+            ASK {{
             GRAPH <{annotation_graph}>
              {{
               {' '.join(ask_query_parts)}
