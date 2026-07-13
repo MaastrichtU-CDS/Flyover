@@ -817,8 +817,9 @@ body {
     min-width: 0;
 }
 
-.variable-controls select,
-.variable-controls input {
+.variable-controls > select,
+.variable-controls > input,
+.variable-controls > .searchable-select {
     flex: 1 1 0;
     min-width: 0;
 }
@@ -1031,14 +1032,11 @@ body {
     min-width: 0;
 }
 
-.category-controls select,
-.category-controls input {
+.category-controls > select,
+.category-controls > input,
+.category-controls > .searchable-select {
     flex: 1 1 0;
     min-width: 0;
-}
-
-.category-controls .bootstrap-select {
-    width: 300px !important;
 }
 
 /* ==========================================================================
