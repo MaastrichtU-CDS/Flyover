@@ -87,7 +87,7 @@ class SuggestionJob:
 
 
 def _preselected_for_database(
-    mapping: Any, database: str, all_databases: list[str]
+    mapping: Any, database: str, all_databases: list[str], actual_columns: list[str]
 ) -> tuple[set, set]:
     """Return the (columns, variable keys) already mapped for a store database.
 
@@ -97,10 +97,16 @@ def _preselected_for_database(
     when the sourceFile matches no store database at all. Columns and
     variables that will be preselected in the UI are excluded from the LLM
     job — suggesting them again would fight the mapping.
+
+    A column mapping only counts as a preselection when it names a
+    localColumn that actually exists in this store database: template
+    mappings list every variable with empty localColumns, and those must
+    stay suggestible.
     """
     from services.rdf_store_service import RDFStoreService
 
     match = RDFStoreService.graph_database_find_name_match
+    column_set = set(actual_columns)
     columns: set = set()
     variables: set = set()
     for db in getattr(mapping, "databases", {}).values():
@@ -113,8 +119,10 @@ def _preselected_for_database(
             if not applies:
                 continue
             for column in table.columns.values():
-                if column.local_column:
-                    columns.add(column.local_column)
+                local = column.local_column
+                if not local or local not in column_set:
+                    continue
+                columns.add(local)
                 variable_key = column.get_variable_key()
                 if variable_key:
                     variables.add(variable_key)
@@ -196,7 +204,7 @@ class LLMSuggestionService:
         job = SuggestionJob(VARIABLES_PHASE, fingerprint)
         for database, columns in columns_by_db.items():
             preselected_columns, preselected_variables = _preselected_for_database(
-                mapping, database, list(columns_by_db)
+                mapping, database, list(columns_by_db), columns
             )
             candidates = [k for k in variable_keys if k not in preselected_variables]
             remaining = [c for c in columns if c not in preselected_columns]

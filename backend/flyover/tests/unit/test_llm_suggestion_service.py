@@ -204,6 +204,30 @@ class TestStartVariableJob(unittest.TestCase):
         self.assertIn((["geslacht"], ["sex"]), client.calls)
         self.assertIn((["leeftijd"], ["age", "sex"]), client.calls)
 
+    def test_template_mapping_without_localcolumns_suggests_everything(self):
+        # Template mappings (e.g. a schema distributed for centres to fill
+        # in) list variables as columns with empty localColumns — none of
+        # that is a preselection, so everything must stay suggestible.
+        client = FakeClient(_match_by({}))
+        service = _service(client, chunk_size=8)
+        mapping = FakeMapping(["age", "sex"])
+        mapping.databases["mapdb"].tables["t"].columns = {
+            "age": FakeColumn(None, "age"),
+            "sex": FakeColumn(None, "sex"),
+        }
+        cache = _cache(mapping)
+        result = service.start_variable_job(cache, _rdf({"db": ["leeftijd"]}))
+        self.assertEqual(result["status"], "started")
+        self.assertEqual(client.calls, [(["leeftijd"], ["age", "sex"])])
+
+    def test_mapped_column_absent_from_csv_stays_suggestible(self):
+        client = FakeClient(_match_by({}))
+        service = _service(client, chunk_size=8)
+        mapping = FakeMapping(["age"], local_columns={"age": "not_in_csv"})
+        cache = _cache(mapping)
+        service.start_variable_job(cache, _rdf({"db": ["leeftijd"]}))
+        self.assertEqual(client.calls, [(["leeftijd"], ["age"])])
+
     def test_all_preselected_is_nothing_to_suggest(self):
         service = _service(FakeClient())
         mapping = FakeMapping(["age"], local_columns={"age": "leeftijd"})

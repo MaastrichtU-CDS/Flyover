@@ -7,8 +7,7 @@
   "required": [
     "@context",
     "@type",
-    "schema",
-    "databases"
+    "schema"
   ],
   "properties": {
     "@context": {
@@ -74,9 +73,8 @@
       "$ref": "#/definitions/SemanticSchema"
     },
     "databases": {
-      "description": "Database definitions containing tables and column mappings",
+      "description": "Database definitions containing tables and column mappings. Optional and may be empty: a schema-only mapping is the normal starting point when the mappings are created through the describe workflow.",
       "type": "object",
-      "minProperties": 1,
       "additionalProperties": {
         "$ref": "#/definitions/Database"
       }
@@ -164,7 +162,7 @@
           ]
         },
         "dataType": {
-          "description": "Data type of the variable",
+          "description": "Data type of the variable. 'standardised' marks large-scale standardised instruments (ICD, EORTC-QLQ, ...) that need no further description — the same vocabulary the describe UI offers.",
           "type": "string",
           "enum": [
             "identifier",
@@ -172,7 +170,8 @@
             "continuous",
             "ordinal",
             "date",
-            "text"
+            "text",
+            "standardised"
           ]
         },
         "predicate": {

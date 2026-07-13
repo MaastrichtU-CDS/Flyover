@@ -242,6 +242,33 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
     expect(w.find('.llm-badge').text()).toContain('90%')
   })
 
+  it('explains a missing semantic map instead of a generic message', async () => {
+    api.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/llm/status') {
+        return { data: { enabled: true, model: 'llama3.2:3b', provider: 'ollama', remote: false } }
+      }
+      if (url === '/api/v1/llm/suggestions/variables') {
+        return {
+          data: {
+            enabled: true,
+            status: 'unavailable',
+            progress: { chunks_done: 0, chunks_total: 0 },
+            error: { kind: 'no_semantic_map', message: null },
+            suggestions: {},
+          },
+        }
+      }
+      return { data: { column_info: { patients: ['age'] } } }
+    })
+    api.post.mockResolvedValue({ data: { status: 'unavailable', reason: 'no_semantic_map' } })
+
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('.llm-status-bar').text()).toContain(
+      'Upload a semantic map to enable AI suggestions'
+    )
+  })
+
   it('renders zero LLM UI when the feature is disabled', async () => {
     wireApi({ enabled: false })
     const w = mountView()

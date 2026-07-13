@@ -246,6 +246,19 @@ const suggestionsActive = computed(() =>
   ['pulling_model', 'running'].includes(suggestions.variables.status)
 )
 
+const unavailableMessage = computed(() => {
+  switch (suggestions.variables.reason) {
+    case 'no_semantic_map':
+      return 'Upload a semantic map to enable AI suggestions'
+    case 'no_data':
+      return 'No data columns found to describe'
+    case 'nothing_to_suggest':
+      return 'All columns are already mapped — nothing for the AI to suggest'
+    default:
+      return 'AI suggestions are not available'
+  }
+})
+
 const unreviewedFieldCount = computed(
   () =>
     suggestions
@@ -454,7 +467,7 @@ onBeforeUnmount(() => {
         AI suggestions unavailable — fill in descriptions manually
       </span>
       <span v-else-if="suggestions.variables.status === 'unavailable'">
-        Nothing for the AI to suggest
+        {{ unavailableMessage }}
       </span>
       <span
         v-if="suggestions.providerLabel"

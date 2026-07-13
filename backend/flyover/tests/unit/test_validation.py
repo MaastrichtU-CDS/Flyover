@@ -142,13 +142,22 @@ class TestMappingValidator(unittest.TestCase):
         result = self.validator.validate(invalid_mapping)
         self.assertFalse(result.is_valid)
 
-    def test_validate_missing_databases(self):
-        """Test validation fails when databases is missing."""
-        invalid_mapping = {
+    def test_validate_schema_only_mapping(self):
+        """A mapping without databases is valid.
+
+        A schema-only mapping is the normal starting point: the database
+        sections are created through the describe workflow, so requiring
+        them up front would reject Flyover's own primary use case.
+        """
+        schema_only = {
             k: v for k, v in self.valid_mapping.items() if k != "databases"
         }
-        result = self.validator.validate(invalid_mapping)
-        self.assertFalse(result.is_valid)
+        result = self.validator.validate(schema_only)
+        self.assertTrue(result.is_valid)
+
+        schema_only["databases"] = {}
+        result = self.validator.validate(schema_only)
+        self.assertTrue(result.is_valid)
 
     def test_validate_invalid_type_pattern(self):
         """Test validation fails for invalid @type pattern."""

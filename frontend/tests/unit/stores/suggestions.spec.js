@@ -31,13 +31,19 @@ function statusResponse(enabled = true, extra = {}) {
   }
 }
 
-function snapshot({ status = 'running', suggestions = {}, done = 0, total = 3 } = {}) {
+function snapshot({
+  status = 'running',
+  suggestions = {},
+  done = 0,
+  total = 3,
+  error = null,
+} = {}) {
   return {
     data: {
       enabled: true,
       status,
       progress: { chunks_done: done, chunks_total: total },
-      error: null,
+      error,
       suggestions,
     },
   }
@@ -163,6 +169,16 @@ describe('Frontend unit: useSuggestionsStore', () => {
 
     await vi.advanceTimersByTimeAsync(POLL_HARD_STOP_MS + POLL_INTERVAL_MS)
     expect(s.isPolling()).toBe(false)
+  })
+
+  it('exposes the unavailable reason from the snapshot error', async () => {
+    api.get.mockResolvedValue(
+      snapshot({ status: 'unavailable', error: { kind: 'no_semantic_map' } }),
+    )
+    const s = useSuggestionsStore()
+    await s.refresh('variables')
+    expect(s.variables.status).toBe('unavailable')
+    expect(s.variables.reason).toBe('no_semantic_map')
   })
 
   it('ingests values-phase snapshots per category value', async () => {

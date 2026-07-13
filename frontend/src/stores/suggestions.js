@@ -38,11 +38,13 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
 
   const variables = reactive({
     status: 'idle',
+    reason: null,
     progress: { done: 0, total: 0 },
     byKey: {},
   })
   const values = reactive({
     status: 'idle',
+    reason: null,
     progress: { done: 0, total: 0 },
     byKey: {},
   })
@@ -144,6 +146,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
 
     state.status = snapshot.status
+    state.reason = snapshot.error?.kind || null
     state.progress = {
       done: snapshot.progress?.chunks_done ?? 0,
       total: snapshot.progress?.chunks_total ?? 0,
