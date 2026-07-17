@@ -154,15 +154,28 @@ export function getGlobalVariableNames() {
   return getAllVariableKeys().map(formatToTitleCase).concat(['Other'])
 }
 
-export function getCategoryOptionsForVariable(_database, globalVarName) {
+export function getCategoryOptionsForVariable(_database, globalVarName, localVariable = null) {
   if (!mapping?.schema?.variables) return []
   let varInfo = mapping.schema.variables[globalVarName]
+  if (!varInfo && localVariable) {
+    varInfo = mapping.schema.variables[localVariable]
+  }
   if (!varInfo) {
     const normalized = globalVarName.toLowerCase().replace(/\s+/g, '_')
     for (const [k, v] of Object.entries(mapping.schema.variables)) {
       if (k.toLowerCase().replace(/\s+/g, '_') === normalized) {
         varInfo = v
         break
+      }
+    }
+    // Also try localVariable normalized
+    if (!varInfo && localVariable) {
+      const normalizedLocal = localVariable.toLowerCase().replace(/\s+/g, '_')
+      for (const [k, v] of Object.entries(mapping.schema.variables)) {
+        if (k.toLowerCase().replace(/\s+/g, '_') === normalizedLocal) {
+          varInfo = v
+          break
+        }
       }
     }
   }
