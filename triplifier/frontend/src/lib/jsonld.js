@@ -154,9 +154,12 @@ export function getGlobalVariableNames() {
   return getAllVariableKeys().map(formatToTitleCase).concat(['Other'])
 }
 
-export function getCategoryOptionsForVariable(_database, globalVarName) {
+export function getCategoryOptionsForVariable(_database, globalVarName, localVariable = null) {
   if (!mapping?.schema?.variables) return []
   let varInfo = mapping.schema.variables[globalVarName]
+  if (!varInfo && localVariable) {
+    varInfo = mapping.schema.variables[localVariable]
+  }
   if (!varInfo) {
     const normalized = globalVarName.toLowerCase().replace(/\s+/g, '_')
     for (const [k, v] of Object.entries(mapping.schema.variables)) {
@@ -165,6 +168,31 @@ export function getCategoryOptionsForVariable(_database, globalVarName) {
         break
       }
     }
+    // Also try localVariable normalized
+    if (!varInfo && localVariable) {
+      const normalizedLocal = localVariable.toLowerCase().replace(/\s+/g, '_')
+      for (const [k, v] of Object.entries(mapping.schema.variables)) {
+        if (k.toLowerCase().replace(/\s+/g, '_') === normalizedLocal) {
+          varInfo = v
+          break
+        }
+      }
+    }
+  }
+  // Last resort: find the schema variable by looking up which column in the
+  // databases section has localColumn === localVariable (or _database + localVariable).
+  // This handles the "Missing Description" case where globalVarName is wrong but
+  // localVariable is the actual DB column name that links to a schema variable.
+  if (!varInfo && localVariable && mapping.databases) {
+    forEachColumn(mapping.databases, (colData) => {
+      if (colData.localColumn === localVariable) {
+        const varKey = getVariableKeyFromColumn(colData)
+        if (varKey && mapping.schema?.variables?.[varKey]) {
+          varInfo = mapping.schema.variables[varKey]
+          return false
+        }
+      }
+    })
   }
   if (!varInfo?.valueMapping?.terms) return []
   return Object.keys(varInfo.valueMapping.terms).map(formatToTitleCase)
@@ -293,6 +321,13 @@ export async function updateMappingFromForm(formData) {
   // Group form entries by database so we can decide per (db, localColumn)
   // whether the entry is "active" (description selected) or a tombstone.
   const targetsByDb = {}
+  // Snapshot of variables referenced by columns in the databases covered by
+  // this form update, captured BEFORE Pass 1 removes anything. Pass 3 only
+  // GCs variables that appear in this snapshot but are no longer referenced
+  // after the update — this prevents the GC from wiping schema variables that
+  // were defined in an uploaded (non-prefilled) JSON-LD but haven't been
+  // assigned to any column yet.
+  const prevReferencedByFormDbs = new Set()
   for (const [key, data] of Object.entries(formData)) {
     const databaseName = data?.database
     if (!databaseName) continue
@@ -314,6 +349,22 @@ export async function updateMappingFromForm(formData) {
         : null
     )
   }
+
+  // Populate prevReferencedByFormDbs: collect all variables that are
+  // currently referenced by columns in the databases covered by this form
+  // update, BEFORE Pass 1 removes any columns.
+  forEachColumn(mapping.databases || {}, (colData, _colKey, tableData, _tableKey, dbData) => {
+    for (const databaseName of Object.keys(targetsByDb)) {
+      if (
+        graphDatabaseFindNameMatch(dbData.name, databaseName) ||
+        graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
+      ) {
+        const k = getVariableKeyFromColumn(colData)
+        if (k) prevReferencedByFormDbs.add(k)
+        break
+      }
+    }
+  })
 
   // Pass 1 — sweep stale columns. For each (db, localColumn) covered by the
   // form, delete any column whose variable no longer matches the form's
@@ -420,9 +471,12 @@ export async function updateMappingFromForm(formData) {
     }
   }
 
-  // Pass 3 — GC orphaned schema.variables. A variable with no column
-  // referencing it can never produce data, so it should not linger in IDB
-  // and reappear on the next mount.
+  // Pass 3 — GC schema.variables that have become orphaned by this update.
+  // Only variables that were previously referenced by a column in one of the
+  // databases covered by this form update (prevReferencedByFormDbs) and are
+  // no longer referenced anywhere are deleted. Variables that were never
+  // assigned to any column (e.g. from a non-prefilled uploaded JSON-LD) are
+  // preserved so their valueMapping.terms remain available in the details view.
   if (mapping.schema?.variables) {
     const referenced = new Set()
     forEachColumn(mapping.databases || {}, (colData) => {
@@ -430,7 +484,9 @@ export async function updateMappingFromForm(formData) {
       if (k) referenced.add(k)
     })
     for (const varName of Object.keys(mapping.schema.variables)) {
-      if (!referenced.has(varName)) delete mapping.schema.variables[varName]
+      if (!referenced.has(varName) && prevReferencedByFormDbs.has(varName)) {
+        delete mapping.schema.variables[varName]
+      }
     }
   }
 

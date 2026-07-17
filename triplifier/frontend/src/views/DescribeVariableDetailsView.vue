@@ -61,7 +61,7 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
   const isMissing = varName.startsWith('Missing Description')
   const displayLabel = varName.replace(' (or "', '<br>(or "')
 
-  const categoryOptions = jsonld.getCategoryOptionsForVariable(database, globalVarName)
+  const categoryOptions = jsonld.getCategoryOptionsForVariable(database, globalVarName, localVariable)
   const localMappings = jsonld.getLocalMappingsForVariable(
     database,
     localVariable,
