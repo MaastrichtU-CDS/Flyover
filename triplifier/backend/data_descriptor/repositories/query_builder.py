@@ -421,6 +421,15 @@ class QueryBuilder:
                     target_class = term_info["target_class"]
                     local_term_value = term_info["local_term"]
 
+                    # local_term can be a single string or a list of strings
+                    if isinstance(local_term_value, list):
+                        local_terms = [lt for lt in local_term_value if isinstance(lt, str)]
+                    else:
+                        local_terms = [local_term_value] if isinstance(local_term_value, str) else []
+
+                    if not local_terms:
+                        continue
+
                     # Check that the target class is a subclass of the variable class
                     # This verifies the basic ontology relationship for value mapping
                     ask_query_parts.append(
@@ -433,13 +442,13 @@ class QueryBuilder:
                         f"{target_class} owl:equivalentClass ?equiv_{i} ."
                     )
 
-                    # Check that there exists at least one cell with this value in the data graph
-                    escaped_local_value = local_term_value.replace(
-                        "\\", "\\\\"
-                    ).replace('"', '\\"')
-                    data_parts.append(
-                        f'?cell_{i} dbo:has_value "{escaped_local_value}"^^xsd:string .'
-                    )
+                    # Check that there exists at least one cell with this value in the data graph.
+                    # When local_term is a list, any one of the listed values is sufficient.
+                    for j, lt in enumerate(local_terms):
+                        escaped_local_value = lt.replace("\\", "\\\\").replace('"', '\\"')
+                        data_parts.append(
+                            f'?cell_{i}_{j} dbo:has_value "{escaped_local_value}"^^xsd:string .'
+                        )
 
         # Build data graph query part
         data_graph_query = ""
