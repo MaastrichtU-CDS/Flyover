@@ -15,6 +15,7 @@ import {
   findColumnForVariable,
   setMapping,
   getMapping,
+  getCategoryOptionsForVariable,
   updateCategoryMapping,
   updateMappingFromForm,
   initializeEmptyMapping,
@@ -462,5 +463,129 @@ describe('updateMappingFromForm — deselection and tab-switching robustness', (
     const m = getMapping()
     expect(m.databases.patients.tables.data.columns.age).toBeUndefined()
     expect(m.schema.variables.age).toBeUndefined()
+  })
+
+  it('preserves schema variables from a non-prefilled JSON-LD when only one column is mapped', async () => {
+    // Simulate a non-prefilled JSON-LD: schema.variables populated but
+    // databases is empty. When the user first maps ONE column on the Variables
+    // page, the GC must NOT delete the other schema variables (issue-132).
+    setMapping({
+      '@context': {},
+      '@id': 'mapping:root',
+      '@type': 'mapping:SemanticMapping',
+      schema: {
+        variables: {
+          biological_sex: {
+            '@type': 'schema:CategoricalVariable',
+            dataType: 'categorical',
+            predicate: 'roo:P100018',
+            class: 'ncit:C28421',
+            valueMapping: { terms: { male: {}, female: {} } },
+          },
+          tumor_locatie: {
+            '@type': 'schema:CategoricalVariable',
+            dataType: 'categorical',
+            predicate: 'roo:P100018',
+            class: 'ncit:C3263',
+            valueMapping: { terms: { left: {}, right: {} } },
+          },
+        },
+      },
+      databases: {},
+    })
+    // User maps only biological_sex on the first sync.
+    await updateMappingFromForm(formEntry('patients', 'biologic_sex', 'Biological sex', 'categorical'))
+    const m = getMapping()
+    // biological_sex now has a column entry.
+    expect(m.databases.patients.tables.data.columns.biological_sex).toMatchObject({
+      localColumn: 'biologic_sex',
+    })
+    // tumor_locatie was never referenced — it must be PRESERVED (not GC'd).
+    expect(m.schema.variables.tumor_locatie).toBeDefined()
+    expect(m.schema.variables.biological_sex).toBeDefined()
+  })
+})
+
+describe('getCategoryOptionsForVariable', () => {
+  beforeEach(() => {
+    setMapping({
+      '@context': {},
+      '@id': 'mapping:root',
+      '@type': 'mapping:SemanticMapping',
+      schema: {
+        variables: {
+          biological_sex: {
+            '@type': 'schema:CategoricalVariable',
+            dataType: 'categorical',
+            valueMapping: { terms: { male: {}, female: {} } },
+          },
+          tumor_locatie: {
+            '@type': 'schema:CategoricalVariable',
+            dataType: 'categorical',
+            valueMapping: { terms: { left: {}, right: {} } },
+          },
+        },
+      },
+      databases: {
+        patients: {
+          name: 'patients',
+          tables: {
+            data: {
+              sourceFile: 'patients',
+              columns: {
+                biological_sex: {
+                  mapsTo: 'schema:variable/biological_sex',
+                  localColumn: 'biologic_sex',
+                },
+                tumor_locatie: {
+                  mapsTo: 'schema:variable/tumor_locatie',
+                  localColumn: 'tumor_loc',
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('returns valueMapping terms for a variable matched by exact globalVarName', () => {
+    const opts = getCategoryOptionsForVariable('patients', 'biological_sex')
+    expect(opts).toEqual(['Male', 'Female'])
+  })
+
+  it('returns options for a second categorical variable (regression test for issue-132)', () => {
+    const opts = getCategoryOptionsForVariable('patients', 'tumor_locatie')
+    expect(opts).toEqual(['Left', 'Right'])
+  })
+
+  it('falls back to localVariable when globalVarName does not match any schema key', () => {
+    // Simulates the "Missing Description" scenario where globalVarName is wrong
+    // but localVariable is the actual DB column that maps to a schema variable.
+    const opts = getCategoryOptionsForVariable('patients', 'missing_description', 'biologic_sex')
+    expect(opts).toEqual(['Male', 'Female'])
+  })
+
+  it('falls back to database lookup via localColumn when both key lookups fail', () => {
+    // globalVarName = 'missing_description' (wrong), localVariable = 'tumor_loc'
+    // (matches localColumn in databases → tumor_locatie in schema).
+    const opts = getCategoryOptionsForVariable('patients', 'missing_description', 'tumor_loc')
+    expect(opts).toEqual(['Left', 'Right'])
+  })
+
+  it('returns empty array when no mapping is loaded', () => {
+    setMapping(null)
+    expect(getCategoryOptionsForVariable('patients', 'biological_sex')).toEqual([])
+  })
+
+  it('returns empty array when variable has no valueMapping', () => {
+    setMapping({
+      '@context': {},
+      '@id': 'mapping:root',
+      '@type': 'mapping:SemanticMapping',
+      schema: { variables: { age: { dataType: 'continuous' } } },
+      databases: {},
+    })
+    expect(getCategoryOptionsForVariable('patients', 'age')).toEqual([])
   })
 })
