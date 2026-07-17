@@ -423,9 +423,15 @@ class QueryBuilder:
 
                     # local_term can be a single string or a list of strings
                     if isinstance(local_term_value, list):
-                        local_terms = [lt for lt in local_term_value if isinstance(lt, str)]
+                        local_terms = [
+                            lt for lt in local_term_value if isinstance(lt, str)
+                        ]
                     else:
-                        local_terms = [local_term_value] if isinstance(local_term_value, str) else []
+                        local_terms = (
+                            [local_term_value]
+                            if isinstance(local_term_value, str)
+                            else []
+                        )
 
                     if not local_terms:
                         continue
@@ -445,7 +451,9 @@ class QueryBuilder:
                     # Check that there exists at least one cell with this value in the data graph.
                     # When local_term is a list, any one of the listed values is sufficient.
                     for j, lt in enumerate(local_terms):
-                        escaped_local_value = lt.replace("\\", "\\\\").replace('"', '\\"')
+                        escaped_local_value = lt.replace("\\", "\\\\").replace(
+                            '"', '\\"'
+                        )
                         data_parts.append(
                             f'?cell_{i}_{j} dbo:has_value "{escaped_local_value}"^^xsd:string .'
                         )
