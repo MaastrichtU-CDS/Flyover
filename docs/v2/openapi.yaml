@@ -1,0 +1,174 @@
+openapi: 3.1.0
+info:
+  title: Flyover v2 API
+  version: 2.0.0
+  description: Local, resumable semantic mapping and converter API.
+servers:
+  - url: /api/v2
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      responses:
+        '200': {description: Projects, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Project'}}}}}
+    post:
+      operationId: createProject
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, maxLength: 200}}}}}}
+      responses:
+        '201': {description: Created project, content: {application/json: {schema: {$ref: '#/components/schemas/Project'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+  /projects/{projectId}:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    get:
+      operationId: getProject
+      responses: {'200': {description: Project, content: {application/json: {schema: {$ref: '#/components/schemas/Project'}}}}, '404': {$ref: '#/components/responses/Error'}}
+    delete:
+      operationId: deleteProject
+      responses: {'204': {description: Deleted}, '404': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/requirement:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    get:
+      operationId: getRequirement
+      responses: {'200': {description: Current immutable requirement revision, headers: {ETag: {schema: {type: string}}}}}
+    put:
+      operationId: putRequirement
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody: {required: true, content: {application/ld+json: {schema: {type: object}}, application/json: {schema: {type: object}}, multipart/form-data: {schema: {type: object, properties: {file: {type: string, format: binary}}}}}}
+      responses: {'201': {description: Saved revision}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/source:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    post:
+      operationId: uploadSource
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, layout, roles]
+              properties:
+                file: {type: string, format: binary}
+                layout: {type: string, enum: [wide, long]}
+                roles: {type: string, description: JSON object containing subject and long-layout roles}
+      responses: {'201': {description: Source and private profile}, '413': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/profile:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    get:
+      operationId: getProfile
+      responses: {'200': {description: Private CSV profile}, '404': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/mapping:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    get:
+      operationId: getMapping
+      responses: {'200': {description: Current mapping revision, headers: {ETag: {schema: {type: string}}}}}
+    put:
+      operationId: putMapping
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {'201': {description: Saved mapping}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /converters:
+    get:
+      operationId: listConverters
+      responses: {'200': {description: Enabled converter manifests}}
+  /projects/{projectId}/terminology/resolve:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    post:
+      operationId: resolveTerminology
+      requestBody: {$ref: '#/components/requestBodies/PostgresTarget'}
+      responses: {'200': {description: Exact OMOP candidates}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/terminology/overrides:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    put:
+      operationId: saveTerminologyOverrides
+      responses: {'201': {description: Verified identifiers and provenance only}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/omop/preflight:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    post:
+      operationId: preflightOmop
+      requestBody: {$ref: '#/components/requestBodies/PostgresTarget'}
+      responses: {'200': {description: Complete non-mutating preflight}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/omop/connection-test:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    post:
+      operationId: testPostgresConnection
+      requestBody: {$ref: '#/components/requestBodies/PostgresTarget'}
+      responses: {'200': {description: Transient connection result}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/conversions:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    post:
+      operationId: submitConversion
+      responses: {'202': {description: Queued supervised job}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/jobs/{jobId}:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}, {name: jobId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: getJob
+      responses: {'200': {description: Sanitized job status}, '404': {$ref: '#/components/responses/Error'}}
+    delete:
+      operationId: cancelJob
+      responses: {'200': {description: Cancelled or retryable job}, '409': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/artifacts/{artifactId}:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}, {name: artifactId, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      operationId: downloadArtifact
+      responses: {'200': {description: Project-local artifact}, '404': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/publication:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    get:
+      operationId: getPublicationMetadata
+      responses: {'200': {description: HealthDCAT-AP Release 7 metadata revision}, '404': {$ref: '#/components/responses/Error'}}
+    put:
+      operationId: putPublicationMetadata
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {'201': {description: Saved metadata revision}, '409': {$ref: '#/components/responses/Error'}, '422': {$ref: '#/components/responses/Error'}}
+  /projects/{projectId}/publication/export:
+    parameters: [{$ref: '#/components/parameters/ProjectId'}]
+    post:
+      operationId: exportPublicationMetadata
+      responses: {'201': {description: Turtle and structural validation artifacts}, '422': {$ref: '#/components/responses/Error'}}
+components:
+  parameters:
+    ProjectId: {name: projectId, in: path, required: true, schema: {type: string, format: uuid}}
+    IfMatch: {name: If-Match, in: header, required: false, schema: {type: string}, description: Required when updating an existing revision}
+  requestBodies:
+    PostgresTarget:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PostgresTarget'}
+  responses:
+    Error:
+      description: Consistent Flyover API error
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Project:
+      type: object
+      required: [id, name, created_at, updated_at, readiness]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        requirementRevision: {type: integer, minimum: 0}
+        mappingRevision: {type: integer, minimum: 0}
+        hasSource: {type: boolean}
+        readiness: {type: object, additionalProperties: {type: boolean}}
+    PostgresTarget:
+      type: object
+      required: [host, database, user, password]
+      properties:
+        host: {type: string}
+        port: {type: integer, default: 5432}
+        database: {type: string}
+        user: {type: string}
+        password: {type: string, writeOnly: true}
+        schema: {type: string, default: public}
+        sslmode: {type: string, enum: [require, verify-ca, verify-full], default: require}
+    Error:
+      type: object
+      required: [code, message, fieldErrors, details]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        fieldErrors: {type: object, additionalProperties: {type: string}}
+        details: {type: object, additionalProperties: true}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://w3id.org/flyover/schemas/requirement-2.0.json",
+  "title": "Flyover 2.0 semantic requirement",
+  "type": "object",
+  "required": ["@context", "formatVersion", "schema"],
+  "properties": {
+    "@context": {"type": "object"},
+    "formatVersion": {"const": "2.0"},
+    "schema": {
+      "type": "object",
+      "required": ["variables"],
+      "properties": {
+        "variables": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["class"],
+            "properties": {
+              "class": {"type": "string", "minLength": 1},
+              "constraints": {"type": "array", "items": {"type": "object"}},
+              "valueMapping": {
+                "type": "object",
+                "properties": {
+                  "terms": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": ["targetClass"],
+                      "properties": {"targetClass": {"type": "string", "minLength": 1}}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "targets": {
+      "type": "object",
+      "properties": {
+        "omop": {
+          "type": "object",
+          "required": ["cdmVersion", "person", "variables"],
+          "properties": {
+            "cdmVersion": {"const": "5.4"},
+            "person": {"type": "object"},
+            "variables": {"type": "object"}
+          }
+        }
+      }
+    }
+  }
+}

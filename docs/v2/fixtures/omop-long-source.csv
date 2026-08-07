@@ -1,0 +1,5 @@
+person_id,birth_date,gender,event_type,event_value,event_date
+participant-001,1982-04-12,F,body_weight,72.4,2025-01-15
+participant-001,1982-04-12,F,body_weight,73.1,2025-02-15
+participant-002,1975-11-03,M,body_weight,81.2,2025-01-16
+participant-003,1991-07-24,F,body_weight,64.8,2025-01-17

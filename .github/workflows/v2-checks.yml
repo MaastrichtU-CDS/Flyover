@@ -1,0 +1,66 @@
+name: Flyover v2 checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'triplifier/backend/data_descriptor/flyover_v2/**'
+      - 'triplifier/frontend-v2/**'
+      - 'docs/v2/**'
+      - '.github/workflows/v2-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'triplifier/backend/data_descriptor/flyover_v2/**'
+      - 'triplifier/frontend-v2/**'
+      - 'docs/v2/**'
+  workflow_dispatch:
+
+jobs:
+  frontend-contract:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: triplifier/frontend-v2}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: triplifier/frontend-v2/package-lock.json
+      - run: npm ci
+      - run: npm run generate-api
+      - run: git diff --exit-code src/generated-api.ts
+      - run: npm test
+      - run: npm run build
+
+  python-v2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: pip install pytest -r triplifier/backend/requirements.txt
+      - run: python -m pytest triplifier/backend/data_descriptor/tests/unit/test_flyover_v2.py -q
+
+  omop-transaction:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: {POSTGRES_DB: flyover, POSTGRES_USER: flyover, POSTGRES_PASSWORD: flyover}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U flyover -d flyover"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      FLYOVER_TEST_OMOP_HOST: localhost
+      FLYOVER_TEST_OMOP_DATABASE: flyover
+      FLYOVER_TEST_OMOP_USER: flyover
+      FLYOVER_TEST_OMOP_PASSWORD: flyover
+      FLYOVER_ALLOW_INSECURE_POSTGRES: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: pip install pytest -r triplifier/backend/requirements.txt
+      - run: PYTHONPATH=triplifier/backend python -m pytest triplifier/backend/data_descriptor/tests/integration/test_flyover_v2_omop.py -q

@@ -1,0 +1,4 @@
+person_id,birth_date,gender,measurement_date,weight_kg
+participant-001,1982-04-12,F,2025-01-15,72.4
+participant-002,1975-11-03,M,2025-01-16,81.2
+participant-003,1991-07-24,F,2025-01-17,64.8

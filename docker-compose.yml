@@ -32,6 +32,32 @@ x-rdf-store-common: &rdf-store-common
     - proxynet
 
 services:
+  # ─── Disposable OMOP 5.4 development target ───────────────────────
+  # Start with: docker compose --profile omop-demo up --build
+  # This is a deliberately minimal schema for the v2 example workflow,
+  # not a complete production OMOP CDM or vocabulary distribution.
+  omop-minimal:
+    profiles: ["omop-demo"]
+    image: postgres:16
+    environment:
+      - POSTGRES_DB=flyover
+      - POSTGRES_USER=flyover
+      - POSTGRES_PASSWORD=flyover
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ./triplifier/backend/data_descriptor/tests/fixtures/omop54_minimal.sql:/docker-entrypoint-initdb.d/001-omop54-minimal.sql:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flyover -d flyover"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - proxynet
+    container_name: flyover-omop-minimal
+
   # ─── Option A: GraphDB ──────────────────────────────────────────────
   rdf-store-graphdb:
     <<: *rdf-store-common
@@ -97,14 +123,17 @@ services:
 
   triplifier:
     image: ghcr.io/maastrichtu-cds/flyover-triplifier:latest
-    # If preferred, the triplifier image can be built from the Dockerfile in the triplifier directory
-    #build:
-    #   context: ./triplifier
+    # `docker compose up --build` runs the checked-out legacy and v2 code.
+    # Without --build, deployments may continue using the published image.
+    build:
+      context: ./triplifier
     ports:
       - "127.0.0.1:5000:5000"
     environment:
       - FLYOVER_RDF_STORE_URL=${FLYOVER_RDF_STORE_URL:-http://rdf-store:7200}
       - FLYOVER_REPOSITORY_NAME=${FLYOVER_REPOSITORY_NAME:-userRepo}
+      - FLYOVER_DATA_DIR=/app/flyover-data
+      - FLYOVER_ALLOW_INSECURE_POSTGRES=${FLYOVER_ALLOW_INSECURE_POSTGRES:-false}
       - FLASK_ENV=production
       # Enable manual materialization of inferred triples in a separate graph.
       # Set to true when the RDF store does not perform reasoning (RDF4J, QLever),
@@ -116,6 +145,8 @@ services:
     hostname: "data.local"
     networks:
       - proxynet
+    volumes:
+      - flyover-v2-data:/app/flyover-data
     # volumes:
     #   - ./triplifier/data_descriptor/annotation_helper/src/sparql_templates/template_materialize_value_mapping.rq:/app/data_descriptor/annotation_helper/src/sparql_templates/template_materialize_value_mapping.rq
     container_name: triplifier
@@ -123,3 +154,6 @@ services:
 networks:
   proxynet:
     name: flyover_network
+
+volumes:
+  flyover-v2-data:

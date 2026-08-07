@@ -2,11 +2,19 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /frontend
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# --- Stage 2: Python backend ---
+# --- Stage 2: build the independent React/TypeScript v2 frontend ---
+FROM node:20-alpine AS frontend-v2-build
+WORKDIR /frontend-v2
+COPY frontend-v2/package*.json ./
+RUN npm ci
+COPY frontend-v2/ ./
+RUN npm run build
+
+# --- Stage 3: Python backend ---
 FROM python:3.13-slim
 WORKDIR /app
 
@@ -28,6 +36,7 @@ RUN chmod +x /app/entrypoint.sh
 
 # Built SPA gets served by Flask under /app/
 COPY --from=frontend-build /frontend/dist /app/data_descriptor/spa
+COPY --from=frontend-v2-build /frontend-v2/dist /app/data_descriptor/spa-v2
 
 WORKDIR /app
 ENTRYPOINT ["/app/entrypoint.sh"]

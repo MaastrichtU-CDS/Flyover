@@ -30,6 +30,7 @@ build/
 /test-results/
 /playwright-report/
 triplifier/frontend/node_modules/
+triplifier/frontend-v2/node_modules/
 triplifier/frontend/dist/
 triplifier/frontend/.vite/
 triplifier/frontend/playwright-report/

@@ -1,0 +1,45 @@
+{
+  "@context": {
+    "loinc": "http://loinc.org/rdf/",
+    "ucum": "http://unitsofmeasure.org/",
+    "gender": "http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender/"
+  },
+  "formatVersion": "2.0",
+  "name": "Minimal body-weight requirement",
+  "schema": {
+    "variables": {
+      "identifier": {"class": "loinc:100"},
+      "birth_date": {"class": "loinc:21112-8"},
+      "biological_sex": {
+        "class": "gender:AdministrativeGender",
+        "valueMapping": {
+          "terms": {
+            "male": {"targetClass": "gender:M"},
+            "female": {"targetClass": "gender:F"}
+          }
+        }
+      },
+      "measurement_date": {"class": "loinc:80916-7"},
+      "weight": {"class": "loinc:29463-7"}
+    }
+  },
+  "targets": {
+    "omop": {
+      "cdmVersion": "5.4",
+      "person": {
+        "sourceId": "identifier",
+        "birthDate": "birth_date",
+        "sexAtBirth": "biological_sex"
+      },
+      "variables": {
+        "weight": {
+          "domain": "Measurement",
+          "valueMode": "number",
+          "dateVariable": "measurement_date",
+          "unitUri": "ucum:kg",
+          "typeConceptId": 32817
+        }
+      }
+    }
+  }
+}

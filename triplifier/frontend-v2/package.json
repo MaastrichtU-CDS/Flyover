@@ -1,0 +1,26 @@
+{
+  "name": "flyover-v2-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "generate-api": "openapi-typescript ../../docs/v2/openapi.yaml -o src/generated-api.ts"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "vite": "^8.2.1",
+    "typescript": "^5.9.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.6",
+    "@types/react-dom": "^19.0.3",
+    "openapi-typescript": "^7.6.1",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {"js-yaml": "4.3.1"}
+}

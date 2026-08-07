@@ -144,17 +144,49 @@ session_cache = Cache()
 
 # Register controller blueprints
 from controllers import ingest_bp, describe_bp, annotate_bp, share_bp
+from flyover_v2 import create_api_blueprint
 
 app.register_blueprint(ingest_bp)
 app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
 
+# v2 has its own durable state and API. Nothing in this registration mutates
+# the legacy cache or routes, so both applications can be exercised in one
+# release while migration fixtures are compared.
+V2_DATA_DIR = os.path.abspath(
+    os.getenv(
+        "FLYOVER_DATA_DIR",
+        (
+            "/app/flyover-data"
+            if root_dir == "/app/"
+            else os.path.join(child_dir, "flyover-data")
+        ),
+    )
+)
+app.config["FLYOVER_DATA_DIR"] = V2_DATA_DIR
+app.config["MAX_CONTENT_LENGTH"] = int(
+    os.getenv("FLYOVER_MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024))
+)
+app.register_blueprint(create_api_blueprint(V2_DATA_DIR))
+
 
 # Serve the built Vue SPA at the application root. The Vite build output is
 # copied into data_descriptor/spa/ by the Dockerfile; in non-Docker dev the
 # directory may not exist yet, in which case requests return 404.
 SPA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spa")
+V2_SPA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spa-v2")
+
+
+@app.route("/v2")
+@app.route("/v2/")
+@app.route("/v2/<path:subpath>")
+def serve_v2_spa(subpath: str = ""):
+    if not os.path.isdir(V2_SPA_DIR):
+        abort(404)
+    if subpath and os.path.isfile(os.path.join(V2_SPA_DIR, subpath)):
+        return send_from_directory(V2_SPA_DIR, subpath)
+    return send_from_directory(V2_SPA_DIR, "index.html")
 
 
 @app.route("/")
