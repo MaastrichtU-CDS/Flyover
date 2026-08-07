@@ -1,6 +1,6 @@
 # Flyover v2 local test run
 
-This fixture set exercises both supported CSV layouts and writes into a deliberately small OMOP CDM 5.4 PostgreSQL schema. The SQL fixture is for development only: it contains just the columns and vocabulary concepts needed by these examples, not the complete OMOP DDL or vocabulary.
+This fixture set exercises both supported CSV layouts and writes into a deliberately small OMOP CDM 5.4 PostgreSQL schema. It includes body weight, administrative gender, and AJCC v8 clinical TNM staging for a lung-cancer cohort. The clinical T, N, and M observations use the LOINC staging-type codes and SNOMED CT AJCC category values used by HL7 mCODE. The SQL fixture is for development only: it contains just the columns and vocabulary concepts needed by these examples, not the complete OMOP DDL or vocabulary. Its `910xxx` concept IDs are fixture-local stand-ins; Flyover resolves the real concept IDs from the vocabulary loaded in the target OMOP database.
 
 ## Files
 
@@ -34,19 +34,27 @@ Open `http://localhost:5000/v2/`, create a project, and use:
    - `biological_sex` → `gender`
    - `measurement_date` → `measurement_date`
    - `weight` → `weight_kg`
+   - `tnm_date` → `tnm_date`
+   - `clinical_t` → `clinical_t`
+   - `clinical_n` → `clinical_n`
+   - `clinical_m` → `clinical_m`
 6. Under category values for `biological_sex`, map:
    - local `F` → canonical `female`
    - local `M` → canonical `male`
-7. PostgreSQL settings:
+7. Map the local clinical TNM categories:
+   - `T1`, `T2`, and `T3` → `cT1`, `cT2`, and `cT3`
+   - `N0` and `N1` → `cN0` and `cN1`
+   - `M0` and `M1` → `cM0` and `cM1`
+8. PostgreSQL settings:
    - Host: `omop-minimal`
    - Port: `5432`
    - Database: `flyover`
    - User/password: `flyover` / `flyover`
    - CDM schema: `flyover_test`
    - TLS mode: `disable (local test only)`
-8. Resolve terminology, save the reviewed concepts, run preflight, then run the OMOP transaction.
+9. Resolve terminology, save the reviewed concepts, run preflight, then run the OMOP transaction.
 
-Expected result: three `person` rows and three `measurement` rows. The person gender concepts are `8532` (female), `8507` (male), and `8532` (female).
+Expected result: five `person` rows, five `measurement` rows, and fifteen `observation` rows (one clinical T, N, and M observation for each person). The gender mapping uses concept `8532` for female and `8507` for male.
 
 ## 3. Run the long workflow
 
@@ -66,9 +74,16 @@ Upload `omop-long-source.csv` with:
 - Event value: `event_value`
 - Event date: `event_date`
 
-Map `identifier`, `birth_date`, and `biological_sex` to `person_id`, `birth_date`, and `gender`. Map local gender values `F` → `female` and `M` → `male`. Under event discriminator values, map `body_weight` to `weight`. The event-date role supplies the date, so `measurement_date` does not need a source-column mapping in this layout.
+Map `identifier`, `birth_date`, and `biological_sex` to `person_id`, `birth_date`, and `gender`. Map local gender values `F` → `female` and `M` → `male`. Under event discriminator values, map:
 
-Expected result: three `person` rows and four `measurement` rows.
+- `body_weight` → `weight`
+- `clinical_t` → `clinical_t`, with `T1`/`T2`/`T3` mapped to `cT1`/`cT2`/`cT3`
+- `clinical_n` → `clinical_n`, with `N0`/`N1` mapped to `cN0`/`cN1`
+- `clinical_m` → `clinical_m`, with `M0`/`M1` mapped to `cM0`/`cM1`
+
+The event-date role supplies the date, so `measurement_date` and `tnm_date` do not need source-column mappings in this layout.
+
+Expected result: five `person` rows, six `measurement` rows, and fifteen `observation` rows.
 
 ## 4. Inspect and clean up
 
@@ -80,6 +95,10 @@ docker compose --profile omop-demo exec omop-minimal \
 docker compose --profile omop-demo exec omop-minimal \
   psql --username flyover --dbname flyover \
   --command 'SELECT person_id, measurement_date, value_as_number FROM flyover_test.measurement;'
+
+docker compose --profile omop-demo exec omop-minimal \
+  psql --username flyover --dbname flyover \
+  --command 'SELECT person_id, observation_source_value, value_source_value, observation_concept_id, value_as_concept_id FROM flyover_test.observation ORDER BY person_id, observation_source_value;'
 
 docker compose --profile omop-demo down
 ```

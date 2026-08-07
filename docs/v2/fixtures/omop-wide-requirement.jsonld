@@ -2,10 +2,11 @@
   "@context": {
     "loinc": "http://loinc.org/rdf/",
     "ucum": "http://unitsofmeasure.org/",
-    "gender": "http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender/"
+    "gender": "http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender/",
+    "snomed": "http://snomed.info/id/"
   },
   "formatVersion": "2.0",
-  "name": "Minimal body-weight requirement",
+  "name": "Body weight, sex, and lung cancer clinical TNM example",
   "schema": {
     "variables": {
       "identifier": {"class": "loinc:100"},
@@ -20,7 +21,36 @@
         }
       },
       "measurement_date": {"class": "loinc:80916-7"},
-      "weight": {"class": "loinc:29463-7"}
+      "weight": {"class": "loinc:29463-7"},
+      "tnm_date": {"class": "loinc:80916-7"},
+      "clinical_t": {
+        "class": "loinc:21905-5",
+        "valueMapping": {
+          "terms": {
+            "cT1": {"targetClass": "snomed:1228889001"},
+            "cT2": {"targetClass": "snomed:1228929004"},
+            "cT3": {"targetClass": "snomed:1228938002"}
+          }
+        }
+      },
+      "clinical_n": {
+        "class": "loinc:21906-3",
+        "valueMapping": {
+          "terms": {
+            "cN0": {"targetClass": "snomed:1229967007"},
+            "cN1": {"targetClass": "snomed:1229973008"}
+          }
+        }
+      },
+      "clinical_m": {
+        "class": "loinc:21907-1",
+        "valueMapping": {
+          "terms": {
+            "cM0": {"targetClass": "snomed:1229901006"},
+            "cM1": {"targetClass": "snomed:1229903009"}
+          }
+        }
+      }
     }
   },
   "targets": {
@@ -37,6 +67,24 @@
           "valueMode": "number",
           "dateVariable": "measurement_date",
           "unitUri": "ucum:kg",
+          "typeConceptId": 32817
+        },
+        "clinical_t": {
+          "domain": "Observation",
+          "valueMode": "concept",
+          "dateVariable": "tnm_date",
+          "typeConceptId": 32817
+        },
+        "clinical_n": {
+          "domain": "Observation",
+          "valueMode": "concept",
+          "dateVariable": "tnm_date",
+          "typeConceptId": 32817
+        },
+        "clinical_m": {
+          "domain": "Observation",
+          "valueMode": "concept",
+          "dateVariable": "tnm_date",
           "typeConceptId": 32817
         }
       }

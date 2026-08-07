@@ -10,5 +10,9 @@ describe("v2 JSON-LD contract fixture", () => {
     expect(roundTrip.targets.omop.variables.weight.domain).toBe("Measurement");
     expect(roundTrip.targets.omop.person.sexAtBirth).toBe("biological_sex");
     expect(roundTrip.schema.variables.biological_sex.valueMapping.terms.female.targetClass).toBe("gender:F");
+    expect(roundTrip.targets.omop.variables.clinical_t.domain).toBe("Observation");
+    expect(roundTrip.targets.omop.variables.clinical_t.valueMode).toBe("concept");
+    expect(roundTrip.schema.variables.clinical_t.class).toBe("loinc:21905-5");
+    expect(roundTrip.schema.variables.clinical_t.valueMapping.terms.cT1.targetClass).toBe("snomed:1228889001");
   });
 });

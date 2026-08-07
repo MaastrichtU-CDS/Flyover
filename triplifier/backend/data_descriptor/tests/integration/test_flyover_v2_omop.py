@@ -121,3 +121,177 @@ def test_exact_nonstandard_ambiguous_invalid_and_wrong_domain_resolution():
         assert resolver.resolve(
             "http://terminology.hl7.org/CodeSystem/v3-AdministrativeGender/F", "Person"
         )["conceptId"] == 8532
+        assert resolver.resolve("http://loinc.org/rdf/21905-5", "Observation")["conceptId"] == 910001
+        assert resolver.resolve("http://snomed.info/id/1228889001", "Observation")["conceptId"] == 910011
+
+
+def _resolved_example_requirement(fixture_directory: Path) -> dict:
+    requirement = canonical_requirement(json.loads(
+        (fixture_directory / "omop-wide-requirement.jsonld").read_text(encoding="utf-8")
+    ))
+    person = requirement["targets"]["omop"]["person"]
+    person["genderConceptIds"] = {"male": 8507, "female": 8532}
+    bindings = requirement["targets"]["omop"]["variables"]
+    bindings["weight"].update({"conceptId": 3025315, "unitConceptId": 9529})
+    bindings["clinical_t"].update({
+        "conceptId": 910001,
+        "termConceptIds": {"cT1": 910011, "cT2": 910012, "cT3": 910013},
+    })
+    bindings["clinical_n"].update({
+        "conceptId": 910002,
+        "termConceptIds": {"cN0": 910021, "cN1": 910022},
+    })
+    bindings["clinical_m"].update({
+        "conceptId": 910003,
+        "termConceptIds": {"cM0": 910031, "cM1": 910032},
+    })
+    return requirement
+
+
+def _mapped(variable: str, local_column: str, **extra) -> dict:
+    return {
+        "mapsTo": f"schema:variable/{variable}",
+        "localColumn": local_column,
+        **extra,
+    }
+
+
+def test_committed_wide_example_writes_gender_weight_and_clinical_tnm(tmp_path, monkeypatch):
+    """Keep the documented wide example executable against the minimal OMOP target."""
+    monkeypatch.setenv("FLYOVER_ALLOW_INSECURE_POSTGRES", "true")
+    repository = Path(__file__).parents[5]
+    fixture_directory = repository / "docs" / "v2" / "fixtures"
+    requirement = _resolved_example_requirement(fixture_directory)
+
+    mapping = validate_local_mapping(requirement, {"databases": {"source": {"tables": {"source": {
+        "layout": "wide",
+        "roles": {"subject": "person_id"},
+        "columns": {
+            "identifier": _mapped("identifier", "person_id"),
+            "birth_date": _mapped("birth_date", "birth_date"),
+            "gender": _mapped(
+                "biological_sex", "gender", localMappings={"female": "F", "male": "M"}
+            ),
+            "measurement_date": _mapped("measurement_date", "measurement_date"),
+            "weight": _mapped("weight", "weight_kg"),
+            "tnm_date": _mapped("tnm_date", "tnm_date"),
+            "clinical_t": _mapped(
+                "clinical_t", "clinical_t",
+                localMappings={"cT1": "T1", "cT2": "T2", "cT3": "T3"},
+            ),
+            "clinical_n": _mapped(
+                "clinical_n", "clinical_n", localMappings={"cN0": "N0", "cN1": "N1"},
+            ),
+            "clinical_m": _mapped(
+                "clinical_m", "clinical_m", localMappings={"cM0": "M0", "cM1": "M1"},
+            ),
+        },
+    }}}}})
+    source = fixture_directory / "omop-wide-source.csv"
+    profile_path = tmp_path / "example-profile.json"
+    profile_path.write_text(
+        json.dumps(profile_csv(source, "wide", {"subject": "person_id"})), encoding="utf-8"
+    )
+    project_context = ProjectContext(
+        "documented-example", tmp_path,
+        {"path": str(source), "profile_path": str(profile_path)},
+        requirement, mapping,
+    )
+
+    converter = OmopConverter()
+    assert converter.validate(project_context, target())["rowCounts"] == {
+        "person": 5, "observation": 15, "measurement": 5, "condition_occurrence": 0,
+    }
+    assert converter.convert(project_context, target())["inserted"] == {
+        "person": 5, "observation": 15, "measurement": 5, "condition_occurrence": 0,
+    }
+    with connect() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT gender_source_value, gender_concept_id FROM flyover_test.person ORDER BY person_id"
+        )
+        assert cursor.fetchall() == [
+            ("female", 8532), ("male", 8507), ("female", 8532),
+            ("male", 8507), ("female", 8532),
+        ]
+        cursor.execute(
+            "SELECT observation_source_value, value_source_value, observation_concept_id, "
+            "value_as_concept_id FROM flyover_test.observation ORDER BY observation_id"
+        )
+        assert cursor.fetchall() == [
+            ("clinical_t", "cT1", 910001, 910011),
+            ("clinical_n", "cN0", 910002, 910021),
+            ("clinical_m", "cM0", 910003, 910031),
+            ("clinical_t", "cT2", 910001, 910012),
+            ("clinical_n", "cN1", 910002, 910022),
+            ("clinical_m", "cM0", 910003, 910031),
+            ("clinical_t", "cT3", 910001, 910013),
+            ("clinical_n", "cN1", 910002, 910022),
+            ("clinical_m", "cM1", 910003, 910032),
+            ("clinical_t", "cT1", 910001, 910011),
+            ("clinical_n", "cN0", 910002, 910021),
+            ("clinical_m", "cM0", 910003, 910031),
+            ("clinical_t", "cT2", 910001, 910012),
+            ("clinical_n", "cN0", 910002, 910021),
+            ("clinical_m", "cM0", 910003, 910031),
+        ]
+
+
+def test_committed_long_example_writes_conditional_clinical_tnm(tmp_path, monkeypatch):
+    """Prove discriminator filters normalize to the same OMOP TNM representation."""
+    monkeypatch.setenv("FLYOVER_ALLOW_INSECURE_POSTGRES", "true")
+    repository = Path(__file__).parents[5]
+    fixture_directory = repository / "docs" / "v2" / "fixtures"
+    requirement = _resolved_example_requirement(fixture_directory)
+
+    def event_filter(value: str) -> dict:
+        return {"column": "event_type", "equals": value}
+
+    mapping = validate_local_mapping(requirement, {"databases": {"source": {"tables": {"source": {
+        "layout": "long",
+        "roles": {
+            "subject": "person_id", "eventType": "event_type",
+            "eventValue": "event_value", "eventDate": "event_date",
+        },
+        "columns": {
+            "identifier": _mapped("identifier", "person_id"),
+            "birth_date": _mapped("birth_date", "birth_date"),
+            "gender": _mapped(
+                "biological_sex", "gender", localMappings={"female": "F", "male": "M"}
+            ),
+            "weight": _mapped("weight", "event_value", when=event_filter("body_weight")),
+            "clinical_t": _mapped(
+                "clinical_t", "event_value", when=event_filter("clinical_t"),
+                localMappings={"cT1": "T1", "cT2": "T2", "cT3": "T3"},
+            ),
+            "clinical_n": _mapped(
+                "clinical_n", "event_value", when=event_filter("clinical_n"),
+                localMappings={"cN0": "N0", "cN1": "N1"},
+            ),
+            "clinical_m": _mapped(
+                "clinical_m", "event_value", when=event_filter("clinical_m"),
+                localMappings={"cM0": "M0", "cM1": "M1"},
+            ),
+        },
+    }}}}})
+    source = fixture_directory / "omop-long-source.csv"
+    profile_path = tmp_path / "long-example-profile.json"
+    roles = {
+        "subject": "person_id", "eventType": "event_type",
+        "eventValue": "event_value", "eventDate": "event_date",
+    }
+    profile_path.write_text(
+        json.dumps(profile_csv(source, "long", roles)), encoding="utf-8"
+    )
+    project_context = ProjectContext(
+        "documented-long-example", tmp_path,
+        {"path": str(source), "profile_path": str(profile_path)},
+        requirement, mapping,
+    )
+
+    converter = OmopConverter()
+    assert converter.validate(project_context, target())["rowCounts"] == {
+        "person": 5, "observation": 15, "measurement": 6, "condition_occurrence": 0,
+    }
+    assert converter.convert(project_context, target())["inserted"] == {
+        "person": 5, "observation": 15, "measurement": 6, "condition_occurrence": 0,
+    }
