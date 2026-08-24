@@ -87,7 +87,19 @@ describe('IngestView', () => {
     expect(pkfkSection().style.display).not.toBe('none')
   })
 
+  it('enables submit for Excel when file is selected', async () => {
+    const w = mountIngest()
+    await flushPromises()
+    await w.find('#Excel').setValue()
+    const submit = w.find('button[type="submit"]')
+    expect(submit.attributes('disabled')).toBeDefined()
+
+    await pickFiles(w, [csvFile('data.xlsx')])
+    expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
   it('enables submit on Postgres when all four fields are filled', async () => {
+    it('enables submit on Postgres when all four fields are filled', async () => {
     const w = mountIngest()
     await flushPromises()
     await w.find('#Postgres').setValue()
