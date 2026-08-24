@@ -557,6 +557,20 @@ def upload_file():
 
         success, message = run_triplifier("triplifierCSV.properties")
 
+    elif file_type == "Excel":
+        is_valid, error = IngestService.validate_excel_files(csv_files)
+        if not is_valid:
+            return redirect(f"/ingest?error={error}")
+
+        dataframes, table_names, error = IngestService.parse_excel_files(csv_files)
+        if error:
+            return redirect(f"/ingest?error={error}")
+
+        session_cache.csvData = dataframes
+        session_cache.csvTableNames = table_names
+
+        success, message = run_triplifier("triplifierCSV.properties")
+
     elif file_type == "Postgres":
         handle_postgres = ctx.get("handle_postgres")
         if handle_postgres:
