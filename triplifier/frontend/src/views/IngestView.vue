@@ -276,85 +276,145 @@ onMounted(async () => {
       enctype="multipart/form-data"
       @submit="onFormSubmit"
     >
-      <div class="form-group">
-        <label for="CSV"><i class="fas fa-file-csv" /> CSV:</label>
-        <input
-          id="CSV"
-          v-model="fileType"
-          type="radio"
-          name="fileType"
-          value="CSV"
-        >
-      </div>
-
-      <div class="form-group">
-        <label for="Excel"><i class="fas fa-file-excel" /> Excel:</label>
-        <input
-          id="Excel"
-          v-model="fileType"
-          type="radio"
-          name="fileType"
-          value="Excel"
-        >
-      </div>
-
-      <div class="form-group">
-        <label for="Postgres"><i class="fas fa-database" /> PostgreSQL:</label>
-        <input
-          id="Postgres"
-          v-model="fileType"
-          type="radio"
-          name="fileType"
-          value="Postgres"
-        >
+      <div class="card mb-4">
+        <div class="card-header bg-light">
+          <h5 class="mb-0"><i class="fas fa-database me-2" /> Data Source Type</h5>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-4 mb-3 mb-md-0">
+              <div class="form-check card h-100 p-3 border">
+                <input
+                  id="CSV"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="CSV"
+                  class="form-check-input"
+                >
+                <label for="CSV" class="form-check-label d-block">
+                  <i class="fas fa-file-csv fa-2x mb-2 d-block text-primary" />
+                  <strong>CSV Files</strong>
+                  <small class="d-block text-muted">Upload one or more CSV files</small>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-4 mb-3 mb-md-0">
+              <div class="form-check card h-100 p-3 border">
+                <input
+                  id="Excel"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="Excel"
+                  class="form-check-input"
+                >
+                <label for="Excel" class="form-check-label d-block">
+                  <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
+                  <strong>Excel Files</strong>
+                  <small class="d-block text-muted">Upload Excel files with multiple sheets</small>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-check card h-100 p-3 border">
+                <input
+                  id="Postgres"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="Postgres"
+                  class="form-check-input"
+                >
+                <label for="Postgres" class="form-check-label d-block">
+                  <i class="fas fa-database fa-2x mb-2 d-block text-info" />
+                  <strong>PostgreSQL</strong>
+                  <small class="d-block text-muted">Connect to a PostgreSQL database</small>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-show="fileType === 'CSV' || fileType === 'Excel'">
         <hr>
-        <label for="csvPath">
-          Please specify the path of the CSV file(s) you would like to process
-        </label>
-        <br>
-        <input
-          id="csvPath"
-          type="text"
-          name="csvPath"
-          :value="csvPath"
-          placeholder="Enter CSV File Path(s)"
-          readonly
-        >
-        <input
-          type="button"
-          class="btn btn-primary"
-          value="..."
-          @click="triggerFileInput"
-        >
-        <input
-          id="csvFile"
-          ref="csvFileInput"
-          type="file"
-          name="csvFile"
-          style="display: none"
-          multiple
-          accept=".csv,.xlsx,.xls"
-          @change="handleFileChange"
-        >
-        <input
-          id="csv_separator_sign"
-          v-model="csvSeparatorSign"
-          type="text"
-          name="csv_separator_sign"
-          placeholder="Separator sign (defaults to ',')"
-          class="csv-sign-input"
-        >
-        <input
-          id="csv_decimal_sign"
-          v-model="csvDecimalSign"
-          type="text"
-          name="csv_decimal_sign"
-          placeholder="Decimal sign (defaults to '.')"
-          class="csv-sign-input"
-        >
+        <div class="card mb-4">
+          <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-upload me-2" /> File Upload</h5>
+          </div>
+          <div class="card-body">
+            <p class="text-muted mb-3">
+              Please select the {{ fileType === 'CSV' ? 'CSV' : 'Excel' }} file(s) you would like to process
+            </p>
+            <div class="input-group">
+              <input
+                id="csvPath"
+                type="text"
+                name="csvPath"
+                :value="csvPath"
+                placeholder="No files selected"
+                readonly
+                class="form-control"
+              >
+              <button
+                type="button"
+                class="btn btn-primary"
+                @click="triggerFileInput"
+              >
+                <i class="fas fa-folder-open me-1" /> Browse Files
+              </button>
+            </div>
+            <input
+              id="csvFile"
+              ref="csvFileInput"
+              type="file"
+              name="csvFile"
+              style="display: none"
+              multiple
+              accept=".csv,.xlsx,.xls"
+              @change="handleFileChange"
+            >
+            <small class="form-text text-muted mt-2 d-block">
+              <span v-if="fileType === 'CSV'">
+                Supports multiple CSV files. Each file will be treated as a separate table.
+              </span>
+              <span v-else-if="fileType === 'Excel'">
+                Supports Excel files (.xlsx, .xls). Each sheet will be treated as a separate table.
+              </span>
+            </small>
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-md-6">
+            <label for="csv_separator_sign" class="form-label small">Separator Sign:</label>
+            <div class="input-group input-group-sm">
+              <input
+                id="csv_separator_sign"
+                v-model="csvSeparatorSign"
+                type="text"
+                name="csv_separator_sign"
+                placeholder="defaults to ','"
+                class="form-control"
+                maxlength="1"
+              >
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label for="csv_decimal_sign" class="form-label small">Decimal Sign:</label>
+            <div class="input-group input-group-sm">
+              <input
+                id="csv_decimal_sign"
+                v-model="csvDecimalSign"
+                type="text"
+                name="csv_decimal_sign"
+                placeholder="defaults to '.'"
+                class="form-control"
+                maxlength="1"
+              >
+            </div>
+          </div>
+        </div>
 
         <div
           v-show="showPkFkSection"
@@ -641,41 +701,62 @@ onMounted(async () => {
 
       <div v-show="fileType === 'Postgres'">
         <hr>
-        <label for="username">
-          Please specify the following details for your postgres database
-        </label>
-        <br>
-        <label for="username">PostgreSQL Username:</label>
-        <input
-          id="username"
-          v-model="pgUsername"
-          type="text"
-          name="username"
-        >
-        <br>
-        <label for="password">PostgreSQL Password:</label>
-        <input
-          id="password"
-          v-model="pgPassword"
-          type="password"
-          name="password"
-        >
-        <br>
-        <label for="POSTGRES_URL">PostgreSQL URL:</label>
-        <input
-          id="POSTGRES_URL"
-          v-model="pgUrl"
-          type="text"
-          name="POSTGRES_URL"
-        >
-        <br>
-        <label for="POSTGRES_DB">PostgreSQL Database:</label>
-        <input
-          id="POSTGRES_DB"
-          v-model="pgDb"
-          type="text"
-          name="POSTGRES_DB"
-        >
+        <div class="card mb-4">
+          <div class="card-header bg-light">
+            <h5 class="mb-0"><i class="fas fa-database me-2" /> PostgreSQL Connection Details</h5>
+          </div>
+          <div class="card-body">
+            <p class="text-muted mb-4">
+              Please specify the following details for your PostgreSQL database
+            </p>
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="username" class="form-label">PostgreSQL Username:</label>
+                <input
+                  id="username"
+                  v-model="pgUsername"
+                  type="text"
+                  name="username"
+                  class="form-control"
+                  placeholder="Enter username"
+                >
+              </div>
+              <div class="col-md-6 mb-3">
+                <label for="password" class="form-label">PostgreSQL Password:</label>
+                <input
+                  id="password"
+                  v-model="pgPassword"
+                  type="password"
+                  name="password"
+                  class="form-control"
+                  placeholder="Enter password"
+                >
+              </div>
+              <div class="col-md-6 mb-3">
+                <label for="POSTGRES_URL" class="form-label">PostgreSQL URL:</label>
+                <input
+                  id="POSTGRES_URL"
+                  v-model="pgUrl"
+                  type="text"
+                  name="POSTGRES_URL"
+                  class="form-control"
+                  placeholder="e.g., localhost:5432"
+                >
+              </div>
+              <div class="col-md-6 mb-3">
+                <label for="POSTGRES_DB" class="form-label">PostgreSQL Database:</label>
+                <input
+                  id="POSTGRES_DB"
+                  v-model="pgDb"
+                  type="text"
+                  name="POSTGRES_DB"
+                  class="form-control"
+                  placeholder="Enter database name"
+                >
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <input
