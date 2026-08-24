@@ -63,7 +63,7 @@ class IngestService:
     for triplification.
     """
 
-    ALLOWED_EXTENSIONS = {"csv", "jsonld"}
+    ALLOWED_EXTENSIONS = {"csv", "jsonld", "xlsx", "xls"}
 
     @staticmethod
     def allowed_file(filename: str, allowed_extensions: Optional[set] = None) -> bool:
@@ -168,6 +168,84 @@ class IngestService:
 
         except Exception as e:
             return [], [], f"Error parsing CSV files: {e}"
+
+        return dataframes, table_names, None
+
+    @staticmethod
+    def validate_excel_files(files: List[Any]) -> Tuple[bool, Optional[str]]:
+        """
+        Validate uploaded Excel files.
+
+        Args:
+            files: List of uploaded file objects.
+
+        Returns:
+            Tuple of (is_valid, error_message).
+        """
+        if not files:
+            return False, "No files provided"
+
+        if not any(f.filename for f in files):
+            return (
+                False,
+                "If opting to submit an Excel data source, please upload it as a '.xlsx' or '.xls' file.",
+            )
+
+        for excel_file in files:
+            if not IngestService.allowed_file(excel_file.filename, {"xlsx", "xls"}):
+                return (
+                    False,
+                    "If opting to submit an Excel data source, please upload it as a '.xlsx' or '.xls' file.",
+                )
+
+        return True, None
+
+    @staticmethod
+    def parse_excel_files(
+        files: List[Any],
+    ) -> Tuple[List[pl.DataFrame], List[str], Optional[str]]:
+        """
+        Parse uploaded Excel files into DataFrames.
+        Each sheet in an Excel file is treated as a separate table.
+
+        Args:
+            files: List of uploaded file objects.
+
+        Returns:
+            Tuple of (dataframes, table_names, error_message).
+        """
+        dataframes = []
+        table_names = []
+
+        try:
+            for excel_file in files:
+                # Read all sheets from the Excel file
+                all_sheets = pl.read_excel(
+                    excel_file,
+                    sheet_id=None,  # Read all sheets
+                    infer_schema_length=0,
+                )
+
+                # If read_excel returns a dict of sheet_name -> DataFrame
+                if isinstance(all_sheets, dict):
+                    for sheet_name, df in all_sheets.items():
+                        # Preprocess the dataframe
+                        processed_df = preprocess_dataframe(df)
+                        dataframes.append(processed_df)
+
+                        # Create table name: filename_sheetname
+                        base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
+                        table_name = f"{base_name}_{sheet_name}"
+                        table_names.append(table_name)
+                else:
+                    # If it returns a single DataFrame (single sheet)
+                    processed_df = preprocess_dataframe(all_sheets)
+                    dataframes.append(processed_df)
+                    base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
+                    table_names.append(base_name)
+
+        except Exception as e:
+            return [], [], f"Error parsing Excel files: {e}"
 
         return dataframes, table_names, None
 
