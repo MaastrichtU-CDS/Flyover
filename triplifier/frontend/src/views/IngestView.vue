@@ -5,7 +5,7 @@ import { useNavigation } from '@/composables/useNavigation'
 
 const { dataExists: graphExists, refreshDataExists } = useNavigation()
 
-const fileType = ref('')
+const fileType = ref('CSV')
 const csvFiles = ref([])
 const csvColumns = reactive({})
 const csvPath = ref('')
@@ -37,7 +37,7 @@ const submitting = ref(false)
 const newTableColumns = computed(() => {
   if (!newTableName.value) return []
   const file = csvFiles.value.find(
-    (f) => f.name.replace('.csv', '') === newTableName.value
+    (f) => tableNameOf(f.name) === newTableName.value
   )
   return file ? csvColumns[file.name] || [] : []
 })
@@ -52,7 +52,7 @@ const existingTableColumns = computed(() => {
 })
 
 function tableNameOf(fileName) {
-  return fileName.replace('.csv', '')
+  return fileName.replace('.csv', '').replace('.xlsx', '').replace('.xls', '')
 }
 
 function getFileColumns(fileName) {
@@ -288,6 +288,17 @@ onMounted(async () => {
       </div>
 
       <div class="form-group">
+        <label for="Excel"><i class="fas fa-file-excel" /> Excel:</label>
+        <input
+          id="Excel"
+          v-model="fileType"
+          type="radio"
+          name="fileType"
+          value="Excel"
+        >
+      </div>
+
+      <div class="form-group">
         <label for="Postgres"><i class="fas fa-database" /> PostgreSQL:</label>
         <input
           id="Postgres"
@@ -298,7 +309,7 @@ onMounted(async () => {
         >
       </div>
 
-      <div v-show="fileType === 'CSV'">
+      <div v-show="fileType === 'CSV' || fileType === 'Excel'">
         <hr>
         <label for="csvPath">
           Please specify the path of the CSV file(s) you would like to process
@@ -325,7 +336,7 @@ onMounted(async () => {
           name="csvFile"
           style="display: none"
           multiple
-          accept=".csv"
+          accept=".csv,.xlsx,.xls"
           @change="handleFileChange"
         >
         <input
