@@ -234,14 +234,18 @@ class IngestService:
                         dataframes.append(processed_df)
 
                         # Create table name: filename_sheetname
-                        base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
+                        base_name = os.path.splitext(
+                            secure_filename(excel_file.filename)
+                        )[0]
                         table_name = f"{base_name}_{sheet_name}"
                         table_names.append(table_name)
                 else:
                     # If it returns a single DataFrame (single sheet)
                     processed_df = preprocess_dataframe(all_sheets)
                     dataframes.append(processed_df)
-                    base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
+                    base_name = os.path.splitext(secure_filename(excel_file.filename))[
+                        0
+                    ]
                     table_names.append(base_name)
 
         except Exception as e:
