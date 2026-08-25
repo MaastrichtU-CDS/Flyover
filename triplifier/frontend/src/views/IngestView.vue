@@ -84,6 +84,7 @@ function validatePkFkRelationships() {
 const isFormValid = computed(() => {
   const basic =
     (fileType.value === 'CSV' && csvFiles.value.length > 0) ||
+    (fileType.value === 'Excel' && csvFiles.value.length > 0) ||
     (fileType.value === 'Postgres' &&
       pgUsername.value &&
       pgPassword.value &&
@@ -283,8 +284,36 @@ onMounted(async () => {
           </h5>
         </div>
         <div class="card-body">
+          <div v-show="fileType === 'CSV' || fileType === 'Excel'" class="mb-3">
+            <div class="input-group input-group-sm">
+              <input
+                id="csvPath"
+                type="text"
+                name="csvPath"
+                :value="csvPath"
+                placeholder="No files selected"
+                readonly
+                class="form-control form-control-sm"
+              >
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                @click="triggerFileInput"
+              >
+                <i class="fas fa-folder-open me-1" /> Browse
+              </button>
+            </div>
+            <small class="form-text text-muted mt-1 d-block">
+              <span v-if="fileType === 'CSV'">
+                Supports multiple CSV files. Each file will be treated as a separate table.
+              </span>
+              <span v-else-if="fileType === 'Excel'">
+                Supports Excel files (.xlsx, .xls). Each sheet will be treated as a separate table.
+              </span>
+            </small>
+          </div>
           <div class="row">
-            <div class="col-md-4 mb-3 mb-md-0">
+            <div class="col-md-3 mb-3 mb-md-0">
               <div class="form-check card h-100 p-3 border">
                 <input
                   id="CSV"
@@ -306,35 +335,7 @@ onMounted(async () => {
                   v-show="fileType === 'CSV'"
                   class="mt-3"
                 >
-                  <div class="input-group input-group-sm">
-                    <input
-                      id="csvPath"
-                      type="text"
-                      name="csvPath"
-                      :value="csvPath"
-                      placeholder="No files selected"
-                      readonly
-                      class="form-control form-control-sm"
-                    >
-                    <button
-                      type="button"
-                      class="btn btn-primary btn-sm"
-                      @click="triggerFileInput"
-                    >
-                      <i class="fas fa-folder-open me-1" /> Browse
-                    </button>
-                  </div>
-                  <input
-                    id="csvFile"
-                    ref="csvFileInput"
-                    type="file"
-                    name="csvFile"
-                    style="display: none"
-                    multiple
-                    accept=".csv,.xlsx,.xls"
-                    @change="handleFileChange"
-                  >
-                  <div class="row mt-2">
+                  <div class="row">
                     <div class="col-6">
                       <label
                         for="csv_separator_sign"
@@ -380,13 +381,10 @@ onMounted(async () => {
                       </select>
                     </div>
                   </div>
-                  <small class="form-text text-muted mt-2 d-block">
-                    Supports multiple CSV files. Each file will be treated as a separate table.
-                  </small>
                 </div>
               </div>
             </div>
-            <div class="col-md-4 mb-3 mb-md-0">
+            <div class="col-md-3 mb-3 mb-md-0">
               <div class="form-check card h-100 p-3 border">
                 <input
                   id="Excel"
@@ -404,45 +402,9 @@ onMounted(async () => {
                   <strong>Excel Files</strong>
                   <small class="d-block text-muted">Upload Excel files with multiple sheets</small>
                 </label>
-                <div
-                  v-show="fileType === 'Excel'"
-                  class="mt-3"
-                >
-                  <div class="input-group input-group-sm">
-                    <input
-                      id="csvPath"
-                      type="text"
-                      name="csvPath"
-                      :value="csvPath"
-                      placeholder="No files selected"
-                      readonly
-                      class="form-control form-control-sm"
-                    >
-                    <button
-                      type="button"
-                      class="btn btn-primary btn-sm"
-                      @click="triggerFileInput"
-                    >
-                      <i class="fas fa-folder-open me-1" /> Browse
-                    </button>
-                  </div>
-                  <input
-                    id="csvFile"
-                    ref="csvFileInput"
-                    type="file"
-                    name="csvFile"
-                    style="display: none"
-                    multiple
-                    accept=".csv,.xlsx,.xls"
-                    @change="handleFileChange"
-                  >
-                  <small class="form-text text-muted mt-2 d-block">
-                    Each sheet will be treated as a separate table.
-                  </small>
-                </div>
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <div class="form-check card h-100 p-3 border">
                 <input
                   id="Postgres"
@@ -465,7 +427,7 @@ onMounted(async () => {
                   class="mt-3"
                 >
                   <div class="row">
-                    <div class="col-md-6 mb-2">
+                    <div class="col-6 mb-2">
                       <label
                         for="username"
                         class="form-label small"
@@ -479,7 +441,7 @@ onMounted(async () => {
                         placeholder="Enter username"
                       >
                     </div>
-                    <div class="col-md-6 mb-2">
+                    <div class="col-6 mb-2">
                       <label
                         for="password"
                         class="form-label small"
@@ -493,7 +455,7 @@ onMounted(async () => {
                         placeholder="Enter password"
                       >
                     </div>
-                    <div class="col-md-6 mb-2">
+                    <div class="col-6 mb-2">
                       <label
                         for="POSTGRES_URL"
                         class="form-label small"
@@ -507,7 +469,7 @@ onMounted(async () => {
                         placeholder="e.g., localhost:5432"
                       >
                     </div>
-                    <div class="col-md-6 mb-2">
+                    <div class="col-6 mb-2">
                       <label
                         for="POSTGRES_DB"
                         class="form-label small"
@@ -525,7 +487,7 @@ onMounted(async () => {
                 </div>
               </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
               <div class="form-check card h-100 p-3 border">
                 <input
                   id="Other"
@@ -541,12 +503,20 @@ onMounted(async () => {
                 >
                   <i class="fas fa-file-alt fa-2x mb-2 d-block text-secondary" />
                   <strong>Other</strong>
-                  <small class="d-block text-muted">Prefer a different source type? <a
-                    href="https://github.com/MaastrichtU-CDS/Flyover/issues"
-                    target="_blank"
-                    class="text-decoration-none"
-                  >Let us know!</a></small>
+                  <small class="d-block text-muted">Prefer a different source type?</small>
                 </label>
+                <div
+                  v-show="fileType === 'Other'"
+                  class="mt-3"
+                >
+                  <small class="form-text text-muted d-block">
+                    Nothing to see here just yet. <a
+                      href="https://github.com/MaastrichtU-CDS/Flyover/issues"
+                      target="_blank"
+                      class="text-decoration-none"
+                    >Let us know!</a>
+                  </small>
+                </div>
               </div>
             </div>
           </div>
