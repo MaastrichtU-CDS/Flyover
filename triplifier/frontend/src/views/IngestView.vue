@@ -84,6 +84,7 @@ function validatePkFkRelationships() {
 const isFormValid = computed(() => {
   const basic =
     (fileType.value === 'CSV' && csvFiles.value.length > 0) ||
+    (fileType.value === 'Excel' && csvFiles.value.length > 0) ||
     (fileType.value === 'Postgres' &&
       pgUsername.value &&
       pgPassword.value &&
@@ -324,16 +325,6 @@ onMounted(async () => {
                       <i class="fas fa-folder-open me-1" /> Browse
                     </button>
                   </div>
-                  <input
-                    id="csvFile"
-                    ref="csvFileInput"
-                    type="file"
-                    name="csvFile"
-                    style="display: none"
-                    multiple
-                    accept=".csv,.xlsx,.xls"
-                    @change="handleFileChange"
-                  >
                   <div class="row mt-2">
                     <div class="col-6">
                       <label
@@ -426,16 +417,6 @@ onMounted(async () => {
                       <i class="fas fa-folder-open me-1" /> Browse
                     </button>
                   </div>
-                  <input
-                    id="csvFile"
-                    ref="csvFileInput"
-                    type="file"
-                    name="csvFile"
-                    style="display: none"
-                    multiple
-                    accept=".csv,.xlsx,.xls"
-                    @change="handleFileChange"
-                  >
                   <small class="form-text text-muted mt-2 d-block">
                     Each sheet will be treated as a separate table.
                   </small>
