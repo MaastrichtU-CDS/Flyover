@@ -278,7 +278,9 @@ onMounted(async () => {
     >
       <div class="card mb-4">
         <div class="card-header bg-light">
-          <h5 class="mb-0"><i class="fas fa-database me-2" /> Data Source Type</h5>
+          <h5 class="mb-0">
+            <i class="fas fa-database me-2" /> Data Source Type
+          </h5>
         </div>
         <div class="card-body">
           <div class="row">
@@ -292,12 +294,18 @@ onMounted(async () => {
                   value="CSV"
                   class="form-check-input"
                 >
-                <label for="CSV" class="form-check-label d-block">
+                <label
+                  for="CSV"
+                  class="form-check-label d-block"
+                >
                   <i class="fas fa-file-csv fa-2x mb-2 d-block text-primary" />
                   <strong>CSV Files</strong>
                   <small class="d-block text-muted">Upload one or more CSV files</small>
                 </label>
-                <div v-show="fileType === 'CSV'" class="mt-3">
+                <div
+                  v-show="fileType === 'CSV'"
+                  class="mt-3"
+                >
                   <div class="input-group input-group-sm">
                     <input
                       id="csvPath"
@@ -328,29 +336,47 @@ onMounted(async () => {
                   >
                   <div class="row mt-2">
                     <div class="col-6">
-                      <label for="csv_separator_sign" class="form-label small">Separator:</label>
+                      <label
+                        for="csv_separator_sign"
+                        class="form-label small"
+                      >Separator:</label>
                       <select
                         id="csv_separator_sign"
                         v-model="csvSeparatorSign"
                         name="csv_separator_sign"
                         class="form-select form-select-sm"
                       >
-                        <option value=",">Comma (,)</option>
-                        <option value=";">Semicolon (;)</option>
-                        <option value="	">Tab</option>
-                        <option value="|">Pipe (|)</option>
+                        <option value=",">
+                          Comma (,)
+                        </option>
+                        <option value=";">
+                          Semicolon (;)
+                        </option>
+                        <option value="	">
+                          Tab
+                        </option>
+                        <option value="|">
+                          Pipe (|)
+                        </option>
                       </select>
                     </div>
                     <div class="col-6">
-                      <label for="csv_decimal_sign" class="form-label small">Decimal:</label>
+                      <label
+                        for="csv_decimal_sign"
+                        class="form-label small"
+                      >Decimal:</label>
                       <select
                         id="csv_decimal_sign"
                         v-model="csvDecimalSign"
                         name="csv_decimal_sign"
                         class="form-select form-select-sm"
                       >
-                        <option value=".">Period (.)</option>
-                        <option value=",">Comma (,)</option>
+                        <option value=".">
+                          Period (.)
+                        </option>
+                        <option value=",">
+                          Comma (,)
+                        </option>
                       </select>
                     </div>
                   </div>
@@ -370,12 +396,18 @@ onMounted(async () => {
                   value="Excel"
                   class="form-check-input"
                 >
-                <label for="Excel" class="form-check-label d-block">
+                <label
+                  for="Excel"
+                  class="form-check-label d-block"
+                >
                   <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
                   <strong>Excel Files</strong>
                   <small class="d-block text-muted">Upload Excel files with multiple sheets</small>
                 </label>
-                <div v-show="fileType === 'Excel'" class="mt-3">
+                <div
+                  v-show="fileType === 'Excel'"
+                  class="mt-3"
+                >
                   <div class="input-group input-group-sm">
                     <input
                       id="csvPath"
@@ -420,15 +452,24 @@ onMounted(async () => {
                   value="Postgres"
                   class="form-check-input"
                 >
-                <label for="Postgres" class="form-check-label d-block">
+                <label
+                  for="Postgres"
+                  class="form-check-label d-block"
+                >
                   <i class="fas fa-database fa-2x mb-2 d-block text-info" />
                   <strong>PostgreSQL</strong>
                   <small class="d-block text-muted">Connect to a PostgreSQL database</small>
                 </label>
-                <div v-show="fileType === 'Postgres'" class="mt-3">
+                <div
+                  v-show="fileType === 'Postgres'"
+                  class="mt-3"
+                >
                   <div class="row">
                     <div class="col-md-6 mb-2">
-                      <label for="username" class="form-label small">Username:</label>
+                      <label
+                        for="username"
+                        class="form-label small"
+                      >Username:</label>
                       <input
                         id="username"
                         v-model="pgUsername"
@@ -439,7 +480,10 @@ onMounted(async () => {
                       >
                     </div>
                     <div class="col-md-6 mb-2">
-                      <label for="password" class="form-label small">Password:</label>
+                      <label
+                        for="password"
+                        class="form-label small"
+                      >Password:</label>
                       <input
                         id="password"
                         v-model="pgPassword"
@@ -450,7 +494,10 @@ onMounted(async () => {
                       >
                     </div>
                     <div class="col-md-6 mb-2">
-                      <label for="POSTGRES_URL" class="form-label small">URL:</label>
+                      <label
+                        for="POSTGRES_URL"
+                        class="form-label small"
+                      >URL:</label>
                       <input
                         id="POSTGRES_URL"
                         v-model="pgUrl"
@@ -461,7 +508,10 @@ onMounted(async () => {
                       >
                     </div>
                     <div class="col-md-6 mb-2">
-                      <label for="POSTGRES_DB" class="form-label small">Database:</label>
+                      <label
+                        for="POSTGRES_DB"
+                        class="form-label small"
+                      >Database:</label>
                       <input
                         id="POSTGRES_DB"
                         v-model="pgDb"
@@ -485,10 +535,17 @@ onMounted(async () => {
                   value="Other"
                   class="form-check-input"
                 >
-                <label for="Other" class="form-check-label d-block">
+                <label
+                  for="Other"
+                  class="form-check-label d-block"
+                >
                   <i class="fas fa-file-alt fa-2x mb-2 d-block text-secondary" />
                   <strong>Other</strong>
-                  <small class="d-block text-muted">Prefer a different source type? <a href="https://github.com/MaastrichtU-CDS/Flyover/issues" target="_blank" class="text-decoration-none">Let us know!</a></small>
+                  <small class="d-block text-muted">Prefer a different source type? <a
+                    href="https://github.com/MaastrichtU-CDS/Flyover/issues"
+                    target="_blank"
+                    class="text-decoration-none"
+                  >Let us know!</a></small>
                 </label>
               </div>
             </div>
@@ -500,7 +557,9 @@ onMounted(async () => {
         <hr>
         <div class="card mb-4">
           <div class="card-header bg-light">
-            <h5 class="mb-0"><i class="fas fa-upload me-2" /> File Upload</h5>
+            <h5 class="mb-0">
+              <i class="fas fa-upload me-2" /> File Upload
+            </h5>
           </div>
           <div class="card-body">
             <p class="text-muted mb-3">

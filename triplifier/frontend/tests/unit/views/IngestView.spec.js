@@ -99,7 +99,6 @@ describe('IngestView', () => {
   })
 
   it('enables submit on Postgres when all four fields are filled', async () => {
-    it('enables submit on Postgres when all four fields are filled', async () => {
     const w = mountIngest()
     await flushPromises()
     await w.find('#Postgres').setValue()
