@@ -297,6 +297,67 @@ onMounted(async () => {
                   <strong>CSV Files</strong>
                   <small class="d-block text-muted">Upload one or more CSV files</small>
                 </label>
+                <div v-show="fileType === 'CSV'" class="mt-3">
+                  <div class="input-group input-group-sm">
+                    <input
+                      id="csvPath"
+                      type="text"
+                      name="csvPath"
+                      :value="csvPath"
+                      placeholder="No files selected"
+                      readonly
+                      class="form-control form-control-sm"
+                    >
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      @click="triggerFileInput"
+                    >
+                      <i class="fas fa-folder-open me-1" /> Browse
+                    </button>
+                  </div>
+                  <input
+                    id="csvFile"
+                    ref="csvFileInput"
+                    type="file"
+                    name="csvFile"
+                    style="display: none"
+                    multiple
+                    accept=".csv,.xlsx,.xls"
+                    @change="handleFileChange"
+                  >
+                  <div class="row mt-2">
+                    <div class="col-6">
+                      <label for="csv_separator_sign" class="form-label small">Separator:</label>
+                      <select
+                        id="csv_separator_sign"
+                        v-model="csvSeparatorSign"
+                        name="csv_separator_sign"
+                        class="form-select form-select-sm"
+                      >
+                        <option value=",">Comma (,)</option>
+                        <option value=";">Semicolon (;)</option>
+                        <option value="	">Tab</option>
+                        <option value="|">Pipe (|)</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label for="csv_decimal_sign" class="form-label small">Decimal:</label>
+                      <select
+                        id="csv_decimal_sign"
+                        v-model="csvDecimalSign"
+                        name="csv_decimal_sign"
+                        class="form-select form-select-sm"
+                      >
+                        <option value=".">Period (.)</option>
+                        <option value=",">Comma (,)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <small class="form-text text-muted mt-2 d-block">
+                    Supports multiple CSV files. Each file will be treated as a separate table.
+                  </small>
+                </div>
               </div>
             </div>
             <div class="col-md-4 mb-3 mb-md-0">
@@ -314,6 +375,39 @@ onMounted(async () => {
                   <strong>Excel Files</strong>
                   <small class="d-block text-muted">Upload Excel files with multiple sheets</small>
                 </label>
+                <div v-show="fileType === 'Excel'" class="mt-3">
+                  <div class="input-group input-group-sm">
+                    <input
+                      id="csvPath"
+                      type="text"
+                      name="csvPath"
+                      :value="csvPath"
+                      placeholder="No files selected"
+                      readonly
+                      class="form-control form-control-sm"
+                    >
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-sm"
+                      @click="triggerFileInput"
+                    >
+                      <i class="fas fa-folder-open me-1" /> Browse
+                    </button>
+                  </div>
+                  <input
+                    id="csvFile"
+                    ref="csvFileInput"
+                    type="file"
+                    name="csvFile"
+                    style="display: none"
+                    multiple
+                    accept=".csv,.xlsx,.xls"
+                    @change="handleFileChange"
+                  >
+                  <small class="form-text text-muted mt-2 d-block">
+                    Each sheet will be treated as a separate table.
+                  </small>
+                </div>
               </div>
             </div>
             <div class="col-md-4">
@@ -330,6 +424,71 @@ onMounted(async () => {
                   <i class="fas fa-database fa-2x mb-2 d-block text-info" />
                   <strong>PostgreSQL</strong>
                   <small class="d-block text-muted">Connect to a PostgreSQL database</small>
+                </label>
+                <div v-show="fileType === 'Postgres'" class="mt-3">
+                  <div class="row">
+                    <div class="col-md-6 mb-2">
+                      <label for="username" class="form-label small">Username:</label>
+                      <input
+                        id="username"
+                        v-model="pgUsername"
+                        type="text"
+                        name="username"
+                        class="form-control form-control-sm"
+                        placeholder="Enter username"
+                      >
+                    </div>
+                    <div class="col-md-6 mb-2">
+                      <label for="password" class="form-label small">Password:</label>
+                      <input
+                        id="password"
+                        v-model="pgPassword"
+                        type="password"
+                        name="password"
+                        class="form-control form-control-sm"
+                        placeholder="Enter password"
+                      >
+                    </div>
+                    <div class="col-md-6 mb-2">
+                      <label for="POSTGRES_URL" class="form-label small">URL:</label>
+                      <input
+                        id="POSTGRES_URL"
+                        v-model="pgUrl"
+                        type="text"
+                        name="POSTGRES_URL"
+                        class="form-control form-control-sm"
+                        placeholder="e.g., localhost:5432"
+                      >
+                    </div>
+                    <div class="col-md-6 mb-2">
+                      <label for="POSTGRES_DB" class="form-label small">Database:</label>
+                      <input
+                        id="POSTGRES_DB"
+                        v-model="pgDb"
+                        type="text"
+                        name="POSTGRES_DB"
+                        class="form-control form-control-sm"
+                        placeholder="Enter database name"
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-check card h-100 p-3 border">
+                <input
+                  id="Other"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="Other"
+                  class="form-check-input"
+                >
+                <label for="Other" class="form-check-label d-block">
+                  <i class="fas fa-file-alt fa-2x mb-2 d-block text-secondary" />
+                  <strong>Other</strong>
+                  <small class="d-block text-muted">Prefer a different source type? <a href="https://github.com/MaastrichtU-CDS/Flyover/issues" target="_blank" class="text-decoration-none">Let us know!</a></small>
                 </label>
               </div>
             </div>
@@ -385,36 +544,7 @@ onMounted(async () => {
             </small>
           </div>
         </div>
-        <div class="row mt-3">
-          <div class="col-md-6">
-            <label for="csv_separator_sign" class="form-label small">Separator Sign:</label>
-            <div class="input-group input-group-sm">
-              <input
-                id="csv_separator_sign"
-                v-model="csvSeparatorSign"
-                type="text"
-                name="csv_separator_sign"
-                placeholder="defaults to ','"
-                class="form-control"
-                maxlength="1"
-              >
-            </div>
-          </div>
-          <div class="col-md-6">
-            <label for="csv_decimal_sign" class="form-label small">Decimal Sign:</label>
-            <div class="input-group input-group-sm">
-              <input
-                id="csv_decimal_sign"
-                v-model="csvDecimalSign"
-                type="text"
-                name="csv_decimal_sign"
-                placeholder="defaults to '.'"
-                class="form-control"
-                maxlength="1"
-              >
-            </div>
-          </div>
-        </div>
+
 
         <div
           v-show="showPkFkSection"
@@ -699,65 +829,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div v-show="fileType === 'Postgres'">
-        <hr>
-        <div class="card mb-4">
-          <div class="card-header bg-light">
-            <h5 class="mb-0"><i class="fas fa-database me-2" /> PostgreSQL Connection Details</h5>
-          </div>
-          <div class="card-body">
-            <p class="text-muted mb-4">
-              Please specify the following details for your PostgreSQL database
-            </p>
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label for="username" class="form-label">PostgreSQL Username:</label>
-                <input
-                  id="username"
-                  v-model="pgUsername"
-                  type="text"
-                  name="username"
-                  class="form-control"
-                  placeholder="Enter username"
-                >
-              </div>
-              <div class="col-md-6 mb-3">
-                <label for="password" class="form-label">PostgreSQL Password:</label>
-                <input
-                  id="password"
-                  v-model="pgPassword"
-                  type="password"
-                  name="password"
-                  class="form-control"
-                  placeholder="Enter password"
-                >
-              </div>
-              <div class="col-md-6 mb-3">
-                <label for="POSTGRES_URL" class="form-label">PostgreSQL URL:</label>
-                <input
-                  id="POSTGRES_URL"
-                  v-model="pgUrl"
-                  type="text"
-                  name="POSTGRES_URL"
-                  class="form-control"
-                  placeholder="e.g., localhost:5432"
-                >
-              </div>
-              <div class="col-md-6 mb-3">
-                <label for="POSTGRES_DB" class="form-label">PostgreSQL Database:</label>
-                <input
-                  id="POSTGRES_DB"
-                  v-model="pgDb"
-                  type="text"
-                  name="POSTGRES_DB"
-                  class="form-control"
-                  placeholder="Enter database name"
-                >
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       <input
         id="pkFkData"
