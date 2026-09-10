@@ -164,6 +164,24 @@ describe('IngestView', () => {
     expect(w.find('#csv_decimal_sign').element.style.display).toBe('none')
   })
 
+  it('defaults separator to comma and decimal to the locale decimal sign', () => {
+    const w = mountIngest()
+    const sep = w.find('#csv_separator_sign').element
+    const dec = w.find('#csv_decimal_sign').element
+    expect(sep.value).toBe(',')
+    const expectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
+    expect(dec.value).toBe(expectedDecimal)
+  })
+
+  it('allows changing the separator and decimal sign', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await w.find('#csv_separator_sign').setValue(';')
+    await w.find('#csv_decimal_sign').setValue(',')
+    expect(w.find('#csv_separator_sign').element.value).toBe(';')
+    expect(w.find('#csv_decimal_sign').element.value).toBe(',')
+  })
+
   it('shows Postgres fields only when PostgreSQL is selected', async () => {
     const w = mountIngest()
     await flushPromises()

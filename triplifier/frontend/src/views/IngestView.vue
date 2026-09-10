@@ -9,8 +9,10 @@ const fileType = ref('CSV')
 const csvFiles = ref([])
 const csvColumns = reactive({})
 const csvPath = ref('')
-const csvSeparatorSign = ref('')
-const csvDecimalSign = ref('')
+const csvSeparatorSign = ref(',')
+const csvDecimalSign = ref(
+  (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
+)
 
 const existingGraphStructure = ref(null)
 const enableDataLinking = ref(false)
