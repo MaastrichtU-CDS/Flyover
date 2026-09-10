@@ -131,4 +131,74 @@ describe('IngestView', () => {
     await flushPromises()
     expect(w.find('form').exists()).toBe(true)
   })
+
+  it('renders the Specify Source Information card header', () => {
+    const w = mountIngest()
+    expect(w.text()).toContain('Specify Source Information')
+  })
+
+  it('shows file upload section only for CSV and Excel', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    expect(w.find('#csvPath').exists()).toBe(true)
+
+    await w.find('#Postgres').setValue()
+    expect(w.find('#csvPath').element.style.display).toBe('none')
+
+    await w.find('#CSV').setValue()
+    expect(w.find('#csvPath').element.style.display).not.toBe('none')
+  })
+
+  it('shows separator and decimal dropdowns only when CSV is selected', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    expect(w.find('#csv_separator_sign').element.style.display).not.toBe('none')
+    expect(w.find('#csv_decimal_sign').element.style.display).not.toBe('none')
+
+    await w.find('#Excel').setValue()
+    expect(w.find('#csv_separator_sign').element.style.display).toBe('none')
+    expect(w.find('#csv_decimal_sign').element.style.display).toBe('none')
+  })
+
+  it('shows Postgres fields only when PostgreSQL is selected', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    expect(w.find('#username').element.style.display).toBe('none')
+
+    await w.find('#Postgres').setValue()
+    expect(w.find('#username').element.style.display).not.toBe('none')
+    expect(w.find('#password').element.style.display).not.toBe('none')
+    expect(w.find('#POSTGRES_URL').element.style.display).not.toBe('none')
+    expect(w.find('#POSTGRES_DB').element.style.display).not.toBe('none')
+  })
+
+  it('shows Other message with link when Other is selected', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#Other').setValue()
+    expect(w.text()).toContain('Nothing to see here just yet')
+    const link = w.find('a[href="https://github.com/MaastrichtU-CDS/Flyover/issues"]')
+    expect(link.exists()).toBe(true)
+  })
+
+  it('highlights the selected source tile', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    const csvTile = w.find('#CSV').element.closest('.source-tile')
+    expect(csvTile.classList.contains('selected-source')).toBe(true)
+
+    await w.find('#Excel').setValue()
+    expect(csvTile.classList.contains('selected-source')).toBe(false)
+
+    const excelTile = w.find('#Excel').element.closest('.source-tile')
+    expect(excelTile.classList.contains('selected-source')).toBe(true)
+  })
 })
