@@ -178,14 +178,35 @@ describe('IngestView', () => {
     expect(w.find('#POSTGRES_DB').element.style.display).not.toBe('none')
   })
 
-  it('shows Other message with link when Other is selected', async () => {
+  it('hides Specify Source Information card when Other is selected', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    expect(w.text()).toContain('Specify Source Information')
+
+    await w.find('#Other').setValue()
+    expect(w.text()).not.toContain('Specify Source Information')
+  })
+
+  it('shows tooltip with repo link when hovering the Other tile', async () => {
     const w = mountIngest()
     await flushPromises()
 
     await w.find('#Other').setValue()
-    expect(w.text()).toContain('Nothing to see here just yet')
+    const otherTile = w.find('#Other').element.closest('.source-tile')
+
+    otherTile.dispatchEvent(new Event('mouseenter'))
+    await flushPromises()
+
+    expect(w.text()).toContain('Missing a source type')
     const link = w.find('a[href="https://github.com/MaastrichtU-CDS/Flyover/issues"]')
     expect(link.exists()).toBe(true)
+
+    otherTile.dispatchEvent(new Event('mouseleave'))
+    await flushPromises()
+
+    expect(w.text()).not.toContain('Missing a source type')
   })
 
   it('highlights the selected source tile', async () => {

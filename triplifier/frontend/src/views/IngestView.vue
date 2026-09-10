@@ -33,6 +33,7 @@ const showPkFkSection = ref(false)
 const showDataLinkingSection = ref(false)
 const csvFileInput = ref(null)
 const submitting = ref(false)
+const showOtherTooltip = ref(false)
 
 const newTableColumns = computed(() => {
   if (!newTableName.value) return []
@@ -357,6 +358,10 @@ onMounted(async () => {
               <div
                 class="form-check card h-100 p-3 border source-tile"
                 :class="{ 'selected-source': fileType === 'Other' }"
+                @mouseenter="showOtherTooltip = true"
+                @mouseleave="showOtherTooltip = false"
+                @focus="showOtherTooltip = true"
+                @blur="showOtherTooltip = false"
               >
                 <input
                   id="Other"
@@ -374,13 +379,28 @@ onMounted(async () => {
                   <strong>Other</strong>
                   <small class="d-block text-muted">Prefer a different source type?</small>
                 </label>
+                <div
+                  v-if="showOtherTooltip"
+                  class="bootstrap-tooltip"
+                  role="tooltip"
+                >
+                  Missing a source type? Please open an issue on the
+                  <a
+                    href="https://github.com/MaastrichtU-CDS/Flyover/issues"
+                    target="_blank"
+                    class="text-decoration-none text-white fw-bold"
+                  >Flyover repo</a>.
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card mb-4">
+      <div
+        v-show="fileType !== 'Other'"
+        class="card mb-4"
+      >
         <div class="card-header bg-light">
           <h5 class="mb-0">
             <i class="fas fa-sliders me-2" /> Specify Source Information
@@ -535,15 +555,6 @@ onMounted(async () => {
                 >
               </div>
             </div>
-          </div>
-          <div v-show="fileType === 'Other'">
-            <small class="form-text text-muted d-block">
-              Nothing to see here just yet. <a
-                href="https://github.com/MaastrichtU-CDS/Flyover/issues"
-                target="_blank"
-                class="text-decoration-none"
-              >Let us know!</a>
-            </small>
           </div>
         </div>
       </div>
@@ -911,5 +922,34 @@ onMounted(async () => {
   background-color: var(--bs-primary-bg-subtle, #cfe2ff);
   border-color: var(--bs-primary, #0d6efd);
   box-shadow: 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+
+.bootstrap-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  white-space: normal;
+  text-align: center;
+  z-index: 1080;
+  line-height: 1.4;
+  max-width: 280px;
+}
+
+.bootstrap-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0.4rem 0.4rem 0;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.9) transparent transparent;
 }
 </style>
