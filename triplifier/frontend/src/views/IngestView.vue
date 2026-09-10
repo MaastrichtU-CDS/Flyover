@@ -383,10 +383,11 @@ onMounted(async () => {
       <div class="card mb-4">
         <div class="card-header bg-light">
           <h5 class="mb-0">
-            <i class="fas fa-sliders me-2" /> Source Options
+            <i class="fas fa-sliders me-2" /> Specify Source Information
           </h5>
         </div>
         <div class="card-body">
+          <hr class="mt-0 mb-3">
           <div v-show="fileType === 'CSV' || fileType === 'Excel'">
             <div class="input-group input-group-sm">
               <input
