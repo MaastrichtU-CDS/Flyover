@@ -440,7 +440,8 @@ onMounted(async () => {
             >
             <div
               v-show="fileType === 'CSV'"
-              class="d-flex gap-3 mt-2"
+              style="display: flex; gap: 1rem;"
+              class="mt-2"
             >
               <div class="flex-fill">
                 <label
@@ -537,7 +538,7 @@ onMounted(async () => {
                   type="text"
                   name="POSTGRES_URL"
                   class="form-control form-control-sm"
-                  placeholder="e.g., localhost:5432"
+                  placeholder="e.g. localhost:5432"
                 >
               </div>
               <div class="col-md-6 mb-2">
