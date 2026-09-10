@@ -286,7 +286,7 @@ onMounted(async () => {
           <div class="row">
             <div class="col-md-3 mb-3 mb-md-0">
               <div
-                class="form-check card h-100 p-3 border"
+                class="form-check card h-100 p-3 border source-tile"
                 :class="{ 'selected-source': fileType === 'CSV' }"
               >
                 <input
@@ -295,7 +295,7 @@ onMounted(async () => {
                   type="radio"
                   name="fileType"
                   value="CSV"
-                  class="form-check-input"
+                  class="form-check-input source-tile-radio"
                 >
                 <label
                   for="CSV"
@@ -309,7 +309,7 @@ onMounted(async () => {
             </div>
             <div class="col-md-3 mb-3 mb-md-0">
               <div
-                class="form-check card h-100 p-3 border"
+                class="form-check card h-100 p-3 border source-tile"
                 :class="{ 'selected-source': fileType === 'Excel' }"
               >
                 <input
@@ -318,7 +318,7 @@ onMounted(async () => {
                   type="radio"
                   name="fileType"
                   value="Excel"
-                  class="form-check-input"
+                  class="form-check-input source-tile-radio"
                 >
                 <label
                   for="Excel"
@@ -332,7 +332,7 @@ onMounted(async () => {
             </div>
             <div class="col-md-3 mb-3 mb-md-0">
               <div
-                class="form-check card h-100 p-3 border"
+                class="form-check card h-100 p-3 border source-tile"
                 :class="{ 'selected-source': fileType === 'Postgres' }"
               >
                 <input
@@ -341,7 +341,7 @@ onMounted(async () => {
                   type="radio"
                   name="fileType"
                   value="Postgres"
-                  class="form-check-input"
+                  class="form-check-input source-tile-radio"
                 >
                 <label
                   for="Postgres"
@@ -355,7 +355,7 @@ onMounted(async () => {
             </div>
             <div class="col-md-3">
               <div
-                class="form-check card h-100 p-3 border"
+                class="form-check card h-100 p-3 border source-tile"
                 :class="{ 'selected-source': fileType === 'Other' }"
               >
                 <input
@@ -364,7 +364,7 @@ onMounted(async () => {
                   type="radio"
                   name="fileType"
                   value="Other"
-                  class="form-check-input"
+                  class="form-check-input source-tile-radio"
                 >
                 <label
                   for="Other"
@@ -893,6 +893,18 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.source-tile {
+  position: relative;
+}
+
+.source-tile-radio {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  margin: 0;
+  z-index: 1;
+}
+
 .selected-source {
   background-color: var(--bs-primary-bg-subtle, #cfe2ff);
   border-color: var(--bs-primary, #0d6efd);
