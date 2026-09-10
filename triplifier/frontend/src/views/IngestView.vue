@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import JSZip from 'jszip'
 import api from '@/services/api'
 import { useNavigation } from '@/composables/useNavigation'
@@ -554,6 +554,67 @@ async function onPageDrop(e) {
 function onFkTableChange(index) {
   fkColumnSelections[index] = ''
 }
+
+// When a PK is set on table at index pkIndex, check every other table for
+// a column whose name matches the PK (case-insensitive). If found and the
+// other table's FK fields are not already manually set, auto-fill them.
+function autoSuggestFk(pkIndex) {
+  const pkColumn = pkSelections[pkIndex]
+  if (!pkColumn) return
+  const pkTableName = pkFkTables.value[pkIndex]
+  if (!pkTableName) return
+
+  const pkLower = pkColumn.toLowerCase()
+
+  pkFkTables.value.forEach((tableName, index) => {
+    if (index === pkIndex) return
+    // Don't override a manually-set FK
+    if (fkSelections[index]) return
+
+    const cols = csvColumns[tableName]
+    if (!cols || !cols.length) return
+
+    // Look for a case-insensitive exact match first, then a loose match
+    // (contains the PK name or vice-versa).
+    let match = cols.find((c) => c.toLowerCase() === pkLower)
+    if (!match) {
+      match = cols.find(
+        (c) => c.toLowerCase().includes(pkLower) || pkLower.includes(c.toLowerCase())
+      )
+    }
+    if (match) {
+      fkSelections[index] = match
+      fkTableSelections[index] = pkTableName
+      fkColumnSelections[index] = pkColumn
+    }
+  })
+}
+
+// Clear auto-suggested FK fields when a PK is removed, so stale suggestions
+// don't persist after the user changes their mind.
+function clearAutoSuggestedFk(pkIndex) {
+  const pkTableName = pkFkTables.value[pkIndex]
+  if (!pkTableName) return
+
+  pkFkTables.value.forEach((_, index) => {
+    if (index === pkIndex) return
+    if (fkTableSelections[index] === pkTableName) {
+      fkSelections[index] = ''
+      fkTableSelections[index] = ''
+      fkColumnSelections[index] = ''
+    }
+  })
+}
+
+watch(pkSelections, () => {
+  for (const index of Object.keys(pkSelections)) {
+    if (pkSelections[index]) {
+      autoSuggestFk(Number(index))
+    } else {
+      clearAutoSuggestedFk(Number(index))
+    }
+  }
+}, { deep: true })
 
 async function loadExistingGraphData() {
   try {

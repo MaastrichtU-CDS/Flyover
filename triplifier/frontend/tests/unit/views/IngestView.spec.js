@@ -978,10 +978,9 @@ describe('IngestView — PK/FK', () => {
     await w.find('#CSV').setValue()
     await pickFiles(w, [
       csvFile('patients.csv', 'patient_id,name'),
-      csvFile('visits.csv', 'visit_id,patient_id'),
+      csvFile('doctors.csv', 'doctor_id,name'),
     ])
     await flushPromises()
-    // Verify the PK/FK cards exist
     expect(w.find('#pk_0').exists()).toBe(true)
     expect(w.find('#pk_1').exists()).toBe(true)
     await w.find('#pk_0').setValue('patient_id')
@@ -1023,13 +1022,16 @@ describe('IngestView — PK/FK', () => {
     await w.find('#Excel').setValue()
     await pickFiles(w, [f])
     await flushPromises()
-    // Set a PK on the first sheet
+    // Set a PK on the first sheet (auto-suggest will also fill FK on Visits
+    // since both sheets share the same column names)
     await w.find('#pk_0').setValue('col1')
     await flushPromises()
     const parsed = JSON.parse(w.find('#pkFkData').element.value)
-    expect(parsed).toHaveLength(1)
-    // The table name should be the sheet name, not the filename
-    expect(parsed[0].fileName).toContain('Patients')
+    // Find the Patients entry
+    const patientsEntry = parsed.find((p) => p.fileName.includes('Patients'))
+    expect(patientsEntry).toBeDefined()
+    expect(patientsEntry.fileName).toContain('Patients')
+    expect(patientsEntry.primaryKey).toBe('col1')
   })
 
   // -- Section title -------------------------------------------------------
@@ -1042,5 +1044,122 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     const section = findPkFkSection(w)
     expect(section.textContent).not.toContain('Multiple CSV Files Detected')
+  })
+
+  // -- FK auto-suggest ----------------------------------------------------
+
+  it('auto-suggests FK when a matching column is found in another table', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name,age'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    // Set PK on patients.csv
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    // visits.csv should have FK auto-filled with patient_id
+    expect(w.find('#fk_1').element.value).toBe('patient_id')
+    expect(w.find('#fkTable_1').element.value).toBe('patients.csv')
+    expect(w.find('#fkColumn_1').element.value).toBe('patient_id')
+  })
+
+  it('does not auto-suggest FK when no matching column exists', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name,age'),
+      csvFile('doctors.csv', 'doctor_id,name,specialty'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    // doctors.csv has no patient_id column — no auto-suggest
+    expect(w.find('#fk_1').element.value).toBe('')
+    expect(w.find('#fkTable_1').element.value).toBe('')
+  })
+
+  it('auto-suggests for case-insensitive matches', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'Patient_ID,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('Patient_ID')
+    await flushPromises()
+    // Should match patient_id (lowercase) in visits.csv
+    expect(w.find('#fk_1').element.value).toBe('patient_id')
+  })
+
+  it('does not override a manually-set FK', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,other_id'),
+    ])
+    await flushPromises()
+    // Manually set FK on visits.csv to a different column
+    await w.find('#fk_1').setValue('other_id')
+    await flushPromises()
+    // Now set PK on patients.csv — should NOT override the manual FK
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('other_id')
+  })
+
+  it('clears auto-suggested FK when the PK is removed', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('patient_id')
+
+    // Remove the PK — auto-suggested FK should be cleared
+    await w.find('#pk_0').setValue('')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('')
+    expect(w.find('#fkTable_1').element.value).toBe('')
+  })
+
+  it('auto-suggests FK across three tables', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('doctors.csv', 'doctor_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,doctor_id'),
+    ])
+    await flushPromises()
+    // Set PK on patients — visits should get FK auto-suggest for patient_id
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_2').element.value).toBe('patient_id')
+
+    // Set PK on doctors — visits should get FK for doctor_id too
+    // but fk_2 is already set to patient_id, so it should NOT be overridden
+    expect(w.find('#fk_2').element.value).toBe('patient_id')
+  })
+
+  it('auto-suggests FK for Excel sheets with matching columns', async () => {
+    const f = await xlsxFile('data.xlsx', ['Patients', 'Visits'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    // The xlsxFile helper creates col1, col2, col3 for every sheet
+    // Set PK on first sheet
+    await w.find('#pk_0').setValue('col1')
+    await flushPromises()
+    // Second sheet should auto-suggest FK = col1
+    expect(w.find('#fk_1').element.value).toBe('col1')
   })
 })
