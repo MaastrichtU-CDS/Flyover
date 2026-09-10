@@ -5,7 +5,7 @@ import { useNavigation } from '@/composables/useNavigation'
 
 const { dataExists: graphExists, refreshDataExists } = useNavigation()
 
-const fileType = ref('CSV')
+const fileType = ref('')
 const csvFiles = ref([])
 const csvColumns = reactive({})
 const csvPath = ref('')
@@ -24,6 +24,104 @@ const pgUsername = ref('')
 const pgPassword = ref('')
 const pgUrl = ref('')
 const pgDb = ref('')
+const pgUrlTouched = ref(false)
+const pgFieldsTouched = reactive({
+  username: false,
+  password: false,
+  db: false,
+})
+
+function isValidPgUrl(url) {
+  if (!url) return false
+  // Accept host:port (e.g. localhost:5432) or a full URL with a scheme.
+  if (/^https?:\/\//.test(url)) {
+    try {
+      new URL(url)
+      return true
+    } catch {
+      return false
+    }
+  }
+  // host:port — validate host (hostname or IP) and numeric port
+  return /^[a-zA-Z0-9._-]+:\d+$/.test(url)
+}
+
+// Characters that must be blocked per Postgres field.
+// @ — hijacks connection-string parsing (postgresql://user:pass@host)
+// \n \r — inject new lines into the backend .properties file via raw f-string
+// = — injects key-value pairs in .properties file format
+// / — changes the path in jdbc:postgresql://{url}/{db}
+// Password only blocks newlines — psycopg2.connect() handles everything else.
+const PG_BLOCKED_CHARS = {
+  username: ['@', '\n', '\r', '='],
+  password: ['\n', '\r'],
+  url: ['@', '\n', '\r'],
+  db: ['@', '\n', '\r', '=', '/'],
+}
+
+function pgBlockedCharsFor(field) {
+  return PG_BLOCKED_CHARS[field] || []
+}
+
+function pgBlockedCharsLabel(field) {
+  const chars = pgBlockedCharsFor(field)
+  const printable = chars
+    .filter((c) => c !== '\n' && c !== '\r')
+    .map((c) => `"${c}"`)
+  const parts = []
+  if (printable.length) parts.push(printable.join(', '))
+  if (chars.includes('\n')) parts.push('line breaks')
+  return parts.join(' and ')
+}
+
+function preventBlockedKey(field) {
+  return (e) => {
+    if (pgBlockedCharsFor(field).includes(e.key)) e.preventDefault()
+  }
+}
+
+function stripBlockedOnPaste(field) {
+  return (e) => {
+    const text = (e.clipboardData || window.clipboardData).getData('text')
+    const blocked = pgBlockedCharsFor(field)
+    if (blocked.some((c) => text.includes(c))) {
+      e.preventDefault()
+      const stripped = [...blocked].reduce(
+        (s, c) => s.replaceAll(c, ''),
+        text
+      )
+      document.execCommand('insertText', false, stripped)
+    }
+  }
+}
+
+function pgFieldError(field) {
+  if (!pgFieldsTouched[field]) return ''
+  const value = { username: pgUsername, password: pgPassword, db: pgDb }[field]?.value
+  if (!value) return ''
+  const blocked = pgBlockedCharsFor(field)
+  const found = blocked.filter((c) => value.includes(c))
+  if (found.length) {
+    return `The following are not allowed: ${pgBlockedCharsLabel(field)}.`
+  }
+  return ''
+}
+
+function pgHasBlockedChar(field) {
+  const value = { username: pgUsername, password: pgPassword, db: pgDb }[field]?.value
+  if (!value) return false
+  return pgBlockedCharsFor(field).some((c) => value.includes(c))
+}
+
+const pgUrlError = computed(() => {
+  if (!pgUrlTouched.value) return ''
+  if (pgUrl.value.includes('@') || /[\n\r]/.test(pgUrl.value)) {
+    return `The following are not allowed: ${pgBlockedCharsLabel('url')}.`
+  }
+  if (!pgUrl.value) return 'URL is required.'
+  if (!isValidPgUrl(pgUrl.value)) return 'Enter a valid host:port (e.g. localhost:5432) or a full URL.'
+  return ''
+})
 
 const pkSelections = reactive({})
 const fkSelections = reactive({})
@@ -35,6 +133,17 @@ const showDataLinkingSection = ref(false)
 const csvFileInput = ref(null)
 const submitting = ref(false)
 const showOtherTooltip = ref(false)
+const dropError = ref('')
+
+const dragCounters = reactive({ CSV: 0, Excel: 0 })
+const dragActiveTile = computed(() => {
+  if (dragCounters.CSV > 0) return 'CSV'
+  if (dragCounters.Excel > 0) return 'Excel'
+  return null
+})
+
+const pageDragActive = ref(false)
+let pageDragLeaveTimer = null
 
 const newTableColumns = computed(() => {
   if (!newTableName.value) return []
@@ -91,7 +200,12 @@ const isFormValid = computed(() => {
       pgUsername.value &&
       pgPassword.value &&
       pgUrl.value &&
-      pgDb.value)
+      pgDb.value &&
+      isValidPgUrl(pgUrl.value) &&
+      !pgHasBlockedChar('username') &&
+      !pgHasBlockedChar('password') &&
+      !pgHasBlockedChar('url') &&
+      !pgHasBlockedChar('db'))
   return basic && validatePkFkRelationships()
 })
 
@@ -101,6 +215,18 @@ const submitButtonTitle = computed(() => {
     return 'Please select primary keys for all tables that are referenced by foreign keys'
   }
   return ''
+})
+
+const submitButtonLabel = computed(() => {
+  if (submitting.value) return ' Processing...'
+  if (fileType.value === 'Postgres') return ' Enter Credentials'
+  return ' Submit Files'
+})
+
+const submitButtonIcon = computed(() => {
+  if (submitting.value) return 'fa-cookie'
+  if (fileType.value === 'Postgres') return 'fa-sign-in-alt'
+  return 'fa-play'
 })
 
 const pkFkDataJson = computed(() => {
@@ -202,31 +328,120 @@ function triggerFileInput() {
   csvFileInput.value?.click()
 }
 
-async function handleFileChange(e) {
-  const input = e.target
+async function processFiles(files) {
+  dropError.value = ''
   csvFiles.value = []
   for (const k of Object.keys(csvColumns)) delete csvColumns[k]
   resetPkFk()
 
   const paths = []
-  for (let i = 0; i < input.files.length; i++) {
-    paths.push(input.files[i].name)
-    csvFiles.value.push(input.files[i])
+  for (let i = 0; i < files.length; i++) {
+    paths.push(files[i].name)
+    csvFiles.value.push(files[i])
   }
   csvPath.value = paths.join(', ')
 
   // Visibility depends only on file counts, not on the column reads. Set it
   // before awaiting so the multi-file UI appears immediately and tests don't
   // race the FileReader.onload macrotask.
-  showPkFkSection.value = input.files.length > 1
-  showDataLinkingSection.value = graphExists.value && input.files.length > 0
+  showPkFkSection.value = files.length > 1
+  showDataLinkingSection.value = graphExists.value && files.length > 0
 
   const cols = await Promise.all(
-    Array.from(input.files).map((f) => readCSVColumns(f))
+    Array.from(files).map((f) => readCSVColumns(f))
   )
-  cols.forEach((c, i) => {
-    csvColumns[input.files[i].name] = c
+  Array.from(files).forEach((f, i) => {
+    csvColumns[f.name] = cols[i]
   })
+}
+
+async function handleFileChange(e) {
+  await processFiles(e.target.files)
+}
+
+function setFileInputFiles(files) {
+  if (typeof DataTransfer === 'undefined' || !csvFileInput.value) return
+  const dt = new DataTransfer()
+  for (const file of files) dt.items.add(file)
+  csvFileInput.value.files = dt.files
+}
+
+function filterDroppedFiles(fileList, type) {
+  const exts = type === 'Excel' ? ['.xlsx', '.xls'] : ['.csv']
+  return Array.from(fileList).filter((f) =>
+    exts.some((ext) => f.name.toLowerCase().endsWith(ext))
+  )
+}
+
+function detectFileType(files) {
+  const all = Array.from(files)
+  const csvCount = all.filter((f) => f.name.toLowerCase().endsWith('.csv')).length
+  const excelCount = all.filter(
+    (f) => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
+  ).length
+  if (csvCount === all.length) return 'CSV'
+  if (excelCount === all.length) return 'Excel'
+  return null
+}
+
+function onTileDragEnter(type) {
+  dragCounters[type]++
+}
+
+function onTileDragLeave(type) {
+  if (dragCounters[type] > 0) dragCounters[type]--
+}
+
+async function onTileDrop(type, e) {
+  e.preventDefault()
+  e.stopPropagation()
+  clearTimeout(pageDragLeaveTimer)
+  dragCounters[type] = 0
+  pageDragActive.value = false
+  const dropped = filterDroppedFiles(e.dataTransfer.files, type)
+  if (!dropped.length) {
+    const exts = type === 'Excel' ? '.xlsx or .xls' : '.csv'
+    dropError.value = `Please drop only ${exts} files on the ${type} tile.`
+    return
+  }
+  fileType.value = type
+  setFileInputFiles(dropped)
+  await processFiles(dropped)
+}
+
+function onPageDragEnter() {
+  clearTimeout(pageDragLeaveTimer)
+  pageDragLeaveTimer = null
+  pageDragActive.value = true
+}
+
+function onPageDragOver() {
+  clearTimeout(pageDragLeaveTimer)
+  pageDragLeaveTimer = null
+}
+
+function onPageDragLeave() {
+  pageDragLeaveTimer = setTimeout(() => {
+    pageDragActive.value = false
+    pageDragLeaveTimer = null
+  }, 100)
+}
+
+async function onPageDrop(e) {
+  e.preventDefault()
+  clearTimeout(pageDragLeaveTimer)
+  pageDragActive.value = false
+  const allFiles = Array.from(e.dataTransfer.files)
+  if (!allFiles.length) return
+  const detected = detectFileType(allFiles)
+  if (!detected) {
+    const names = allFiles.map((f) => f.name).join(', ')
+    dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, or .xls files.`
+    return
+  }
+  fileType.value = detected
+  setFileInputFiles(allFiles)
+  await processFiles(allFiles)
 }
 
 function onFkTableChange(index) {
@@ -263,7 +478,28 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
+  <div
+    @dragenter.prevent="onPageDragEnter"
+    @dragover.prevent="onPageDragOver"
+    @dragleave.prevent="onPageDragLeave"
+    @drop.prevent="onPageDrop"
+  >
+    <div
+      v-if="pageDragActive"
+      class="drop-overlay"
+    >
+      <div class="drop-overlay-content card shadow">
+        <div class="card-body text-center py-4 px-5">
+          <i class="fas fa-cloud-upload-alt fa-2x mb-3 d-block text-primary" />
+          <h5 class="card-title mb-1">
+            Drop files anywhere to upload
+          </h5>
+          <p class="text-muted small mb-0">
+            CSV and Excel files will be auto-detected
+          </p>
+        </div>
+      </div>
+    </div>
     <h1><i class="fas fa-cookie-bite" /> Ingest your data</h1>
     <hr>
     <p>
@@ -271,6 +507,22 @@ onMounted(async () => {
       You can achieve this by submitting your data for conversion using Flyover.
     </p>
     <hr>
+    <div
+      v-if="dropError"
+      class="alert alert-danger d-flex align-items-center"
+      role="alert"
+    >
+      <i class="fas fa-exclamation-circle me-2" />
+      <span class="flex-grow-1">{{ dropError }}</span>
+      <button
+        type="button"
+        class="btn btn-sm btn-link text-danger p-0 ms-2 lh-1"
+        aria-label="Close"
+        @click="dropError = ''"
+      >
+        <i class="fas fa-times" />
+      </button>
+    </div>
     <form
       method="POST"
       action="/upload"
@@ -284,12 +536,16 @@ onMounted(async () => {
           </h5>
         </div>
         <div class="card-body">
-          <p class="text-muted mb-3">Start by selecting your data source:</p>
+          <p class="text-muted mb-3">Start by selecting your data source, or drag &amp; drop files anywhere on this page:</p>
           <div class="row">
             <div class="col-md-3 mb-3 mb-md-0">
               <div
                 class="form-check card h-100 p-3 border source-tile"
-                :class="{ 'selected-source': fileType === 'CSV' }"
+                :class="{ 'selected-source': fileType === 'CSV', 'drag-over': dragActiveTile === 'CSV' }"
+                @dragover.prevent
+                @dragenter.prevent="onTileDragEnter('CSV')"
+                @dragleave.prevent="onTileDragLeave('CSV')"
+                @drop.stop.prevent="onTileDrop('CSV', $event)"
               >
                 <input
                   id="CSV"
@@ -305,14 +561,18 @@ onMounted(async () => {
                 >
                   <i class="fas fa-file-csv fa-2x mb-2 d-block text-primary" />
                   <strong>CSV Files</strong>
-                  <small class="d-block text-muted">Upload one or more CSV files</small>
+                  <small class="d-block text-muted">Upload one or more CSV files, or drag &amp; drop here</small>
                 </label>
               </div>
             </div>
             <div class="col-md-3 mb-3 mb-md-0">
               <div
                 class="form-check card h-100 p-3 border source-tile"
-                :class="{ 'selected-source': fileType === 'Excel' }"
+                :class="{ 'selected-source': fileType === 'Excel', 'drag-over': dragActiveTile === 'Excel' }"
+                @dragover.prevent
+                @dragenter.prevent="onTileDragEnter('Excel')"
+                @dragleave.prevent="onTileDragLeave('Excel')"
+                @drop.stop.prevent="onTileDrop('Excel', $event)"
               >
                 <input
                   id="Excel"
@@ -328,7 +588,7 @@ onMounted(async () => {
                 >
                   <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
                   <strong>Excel Files</strong>
-                  <small class="d-block text-muted">Upload Excel files with multiple sheets</small>
+                  <small class="d-block text-muted">Upload Excel files, or drag &amp; drop here</small>
                 </label>
               </div>
             </div>
@@ -399,7 +659,7 @@ onMounted(async () => {
       </div>
 
       <div
-        v-show="fileType !== 'Other'"
+        v-show="fileType && fileType !== 'Other'"
         class="card mb-4"
       >
         <div class="card-header bg-light">
@@ -412,7 +672,7 @@ onMounted(async () => {
           <hr class="mt-0 mb-3">
           <div v-show="fileType === 'CSV' || fileType === 'Excel'">
             <div class="d-flex align-items-center flex-wrap" style="gap: 0;">
-              <div class="input-group input-group-sm" style="min-width: 200px; max-width: 300px; flex: 1 1 auto; margin-right: 0.5rem;">
+              <div class="input-group" style="min-width: 200px; max-width: 300px; flex: 1 1 auto; margin-right: 0.5rem;">
                 <input
                   id="csvPath"
                   type="text"
@@ -420,15 +680,17 @@ onMounted(async () => {
                   :value="csvPath"
                   placeholder="No files selected"
                   readonly
-                  class="form-control form-control-sm"
+                  class="form-control"
                 >
-                <button
-                  type="button"
-                  class="btn btn-primary btn-sm"
-                  @click="triggerFileInput"
-                >
-                  <i class="fas fa-folder-open me-1" /> Browse
-                </button>
+                <div class="input-group-append">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    @click="triggerFileInput"
+                  >
+                    <i class="fas fa-folder-open" /> Browse
+                  </button>
+                </div>
               </div>
               <div
                 v-show="fileType === 'CSV'"
@@ -510,8 +772,18 @@ onMounted(async () => {
                   type="text"
                   name="username"
                   class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgFieldError('username') }"
                   placeholder="Enter username"
+                  @keydown="preventBlockedKey('username')"
+                  @paste="stripBlockedOnPaste('username')"
+                  @blur="pgFieldsTouched.username = true"
                 >
+                <div
+                  v-if="pgFieldError('username')"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgFieldError('username') }}
+                </div>
               </div>
               <div class="col-md-6 mb-2">
                 <label
@@ -524,8 +796,18 @@ onMounted(async () => {
                   type="password"
                   name="password"
                   class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgFieldError('password') }"
                   placeholder="Enter password"
+                  @keydown="preventBlockedKey('password')"
+                  @paste="stripBlockedOnPaste('password')"
+                  @blur="pgFieldsTouched.password = true"
                 >
+                <div
+                  v-if="pgFieldError('password')"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgFieldError('password') }}
+                </div>
               </div>
               <div class="col-md-6 mb-2">
                 <label
@@ -538,8 +820,18 @@ onMounted(async () => {
                   type="text"
                   name="POSTGRES_URL"
                   class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgUrlError }"
                   placeholder="e.g. localhost:5432"
+                  @keydown="preventBlockedKey('url')"
+                  @paste="stripBlockedOnPaste('url')"
+                  @blur="pgUrlTouched = true"
                 >
+                <div
+                  v-if="pgUrlError"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgUrlError }}
+                </div>
               </div>
               <div class="col-md-6 mb-2">
                 <label
@@ -552,8 +844,18 @@ onMounted(async () => {
                   type="text"
                   name="POSTGRES_DB"
                   class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgFieldError('db') }"
                   placeholder="Enter database name"
+                  @keydown="preventBlockedKey('db')"
+                  @paste="stripBlockedOnPaste('db')"
+                  @blur="pgFieldsTouched.db = true"
                 >
+                <div
+                  v-if="pgFieldError('db')"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgFieldError('db') }}
+                </div>
               </div>
             </div>
           </div>
@@ -861,9 +1163,8 @@ onMounted(async () => {
       >
         <i
           class="fas"
-          :class="submitting ? 'fa-cookie' : 'fa-play'"
-        />
-        {{ submitting ? ' Processing...' : ' Submit Files' }}
+          :class="submitButtonIcon"
+        />{{ submitButtonLabel }}
       </button>
 
       <div class="mt-4">
@@ -909,6 +1210,11 @@ onMounted(async () => {
 <style scoped>
 .source-tile {
   position: relative;
+  cursor: pointer;
+}
+
+.source-tile label {
+  cursor: pointer;
 }
 
 .source-tile-radio {
@@ -923,6 +1229,31 @@ onMounted(async () => {
   background-color: var(--bs-primary-bg-subtle, #cfe2ff);
   border-color: var(--bs-primary, #0d6efd);
   box-shadow: 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+
+.drag-over {
+  border-color: var(--bs-success, #198754);
+  box-shadow: 0 0 0 2px var(--bs-success, #198754);
+  background-color: var(--bs-success-bg-subtle, #d1e7dd);
+}
+
+.drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(13, 110, 253, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.drop-overlay-content {
+  border: 2px dashed var(--bs-primary, #0d6efd);
+  pointer-events: none;
 }
 
 .bootstrap-tooltip {
