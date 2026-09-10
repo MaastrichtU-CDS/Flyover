@@ -419,13 +419,13 @@ onMounted(async () => {
             >
             <div
               v-show="fileType === 'CSV'"
-              class="row mt-2"
+              class="row g-2 mt-1"
             >
               <div class="col-6">
                 <label
                   for="csv_separator_sign"
-                  class="form-label small"
-                >Separator:</label>
+                  class="form-label small mb-1"
+                >Separator sign</label>
                 <select
                   id="csv_separator_sign"
                   v-model="csvSeparatorSign"
@@ -449,8 +449,8 @@ onMounted(async () => {
               <div class="col-6">
                 <label
                   for="csv_decimal_sign"
-                  class="form-label small"
-                >Decimal:</label>
+                  class="form-label small mb-1"
+                >Decimal sign</label>
                 <select
                   id="csv_decimal_sign"
                   v-model="csvDecimalSign"
