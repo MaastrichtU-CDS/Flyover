@@ -1162,4 +1162,84 @@ describe('IngestView — PK/FK', () => {
     // Second sheet should auto-suggest FK = col1
     expect(w.find('#fk_1').element.value).toBe('col1')
   })
+
+  // -- Inference marking ---------------------------------------------------
+
+  it('shows an "Inferred" badge on the table card when FK is auto-suggested', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.text()).toContain('Inferred')
+    expect(w.text()).toContain('please verify')
+  })
+
+  it('does not show an "Inferred" badge when no FK is auto-suggested', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('doctors.csv', 'doctor_id,name,specialty'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.text()).not.toContain('Inferred')
+  })
+
+  it('removes the "Inferred" badge when the user manually changes the FK', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,other_id'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.text()).toContain('Inferred')
+    // Manually change the FK to a different column
+    await w.find('#fk_1').setValue('other_id')
+    await flushPromises()
+    expect(w.text()).not.toContain('Inferred')
+  })
+
+  it('removes the "Inferred" badge when the user changes the referenced table', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('doctors.csv', 'doctor_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,doctor_id'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.text()).toContain('Inferred')
+    // Manually change the referenced table
+    await w.find('#fkTable_2').setValue('doctors.csv')
+    await flushPromises()
+    expect(w.text()).not.toContain('Inferred')
+  })
+
+  it('removes the "Inferred" badge when the PK is removed', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.text()).toContain('Inferred')
+    await w.find('#pk_0').setValue('')
+    await flushPromises()
+    expect(w.text()).not.toContain('Inferred')
+  })
 })

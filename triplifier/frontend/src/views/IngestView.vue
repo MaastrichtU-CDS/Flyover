@@ -132,6 +132,7 @@ const pkSelections = reactive({})
 const fkSelections = reactive({})
 const fkTableSelections = reactive({})
 const fkColumnSelections = reactive({})
+const inferredFk = reactive({})
 
 const showPkFkSection = ref(false)
 const showDataLinkingSection = ref(false)
@@ -398,6 +399,7 @@ function resetPkFk() {
   for (const k of Object.keys(fkSelections)) delete fkSelections[k]
   for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
   for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
+  for (const k of Object.keys(inferredFk)) delete inferredFk[k]
 }
 
 function triggerFileInput() {
@@ -442,6 +444,9 @@ async function processFiles(files) {
     })
     pkFkTables.value = tables
     showPkFkSection.value = tables.length > 1
+    tables.forEach((_, i) => {
+      pkSelections[i] = pkSelections[i] || ''
+    })
   } else {
     // For CSV, each file is a table.
     pkFkTables.value = Array.from(files).map((f) => f.name)
@@ -450,6 +455,9 @@ async function processFiles(files) {
     // before awaiting so the multi-file UI appears immediately and tests don't
     // race the FileReader.onload macrotask.
     showPkFkSection.value = files.length > 1
+    pkFkTables.value.forEach((_, i) => {
+      pkSelections[i] = pkSelections[i] || ''
+    })
 
     const cols = await Promise.all(
       Array.from(files).map((f) => readCSVColumns(f))
@@ -553,6 +561,11 @@ async function onPageDrop(e) {
 
 function onFkTableChange(index) {
   fkColumnSelections[index] = ''
+  delete inferredFk[index]
+}
+
+function onFkManualChange(index) {
+  delete inferredFk[index]
 }
 
 // When a PK is set on table at index pkIndex, check every other table for
@@ -586,6 +599,7 @@ function autoSuggestFk(pkIndex) {
       fkSelections[index] = match
       fkTableSelections[index] = pkTableName
       fkColumnSelections[index] = pkColumn
+      inferredFk[index] = true
     }
   })
 }
@@ -602,6 +616,7 @@ function clearAutoSuggestedFk(pkIndex) {
       fkSelections[index] = ''
       fkTableSelections[index] = ''
       fkColumnSelections[index] = ''
+      delete inferredFk[index]
     }
   })
 }
@@ -1052,6 +1067,12 @@ onMounted(async () => {
                 <small class="text-muted">
                   ({{ getFileColumns(tableName).length }} columns detected)
                 </small>
+                <span
+                  v-if="inferredFk[index]"
+                  class="badge bg-warning text-dark ms-2 align-middle"
+                >
+                  <i class="fas fa-lightbulb" /> Inferred — please verify
+                </span>
               </h6>
             </div>
             <div class="card-body">
@@ -1096,6 +1117,8 @@ onMounted(async () => {
                       v-model="fkSelections[index]"
                       :name="`fk_${index}`"
                       class="form-control"
+                      :class="{ 'inferred-select': inferredFk[index] }"
+                      @change="onFkManualChange(index)"
                     >
                       <option value="">
                         -- No Foreign Key --
@@ -1156,6 +1179,8 @@ onMounted(async () => {
                       v-model="fkColumnSelections[index]"
                       :name="`fkColumn_${index}`"
                       class="form-control"
+                      :class="{ 'inferred-select': inferredFk[index] }"
+                      @change="onFkManualChange(index)"
                     >
                       <option value="">
                         -- Select Referenced Column --
@@ -1450,5 +1475,10 @@ onMounted(async () => {
   border-width: 0.4rem 0.4rem 0;
   border-style: solid;
   border-color: rgba(0, 0, 0, 0.9) transparent transparent;
+}
+
+.inferred-select {
+  border-color: var(--bs-warning, #ffc107);
+  background-color: var(--bs-warning-bg-subtle, #fff3cd);
 }
 </style>
