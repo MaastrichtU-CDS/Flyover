@@ -9,12 +9,23 @@ import json
 import logging
 
 from flask import Blueprint, jsonify, redirect, request
+from urllib.parse import quote_plus
 
 from services import IngestService, RDFStoreService
 from validation import MappingValidator
 from loaders import JSONLDMapping
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_redirect_error(error: str) -> str:
+    """Build a redirect to /ingest with a sanitized error message.
+
+    Strips newlines (which would crash Werkzeug's redirect) and
+    URL-encodes the result so it survives in a Location header.
+    """
+    sanitized = error.replace("\n", " ").replace("\r", " ").strip()
+    return redirect(f"/ingest?error={quote_plus(sanitized)}")
 
 ingest_bp = Blueprint("ingest", __name__)
 
@@ -540,7 +551,7 @@ def upload_file():
     if file_type == "CSV" and csv_files:
         is_valid, error = IngestService.validate_csv_files(csv_files)
         if not is_valid:
-            return redirect(f"/ingest?error={error}")
+            return _safe_redirect_error(error)
 
         separator = request.form.get("csv_separator_sign", ",")
         decimal = request.form.get("csv_decimal_sign", ".")
@@ -550,7 +561,7 @@ def upload_file():
         )
 
         if error:
-            return redirect(f"/ingest?error={error}")
+            return _safe_redirect_error(error)
 
         session_cache.csvData = dataframes
         session_cache.csvTableNames = table_names
@@ -560,11 +571,11 @@ def upload_file():
     elif file_type == "Excel":
         is_valid, error = IngestService.validate_excel_files(csv_files)
         if not is_valid:
-            return redirect(f"/ingest?error={error}")
+            return _safe_redirect_error(error)
 
         dataframes, table_names, error = IngestService.parse_excel_files(csv_files)
         if error:
-            return redirect(f"/ingest?error={error}")
+            return _safe_redirect_error(error)
 
         session_cache.csvData = dataframes
         session_cache.csvTableNames = table_names
@@ -611,7 +622,7 @@ def upload_file():
 
         return redirect("/describe")
     else:
-        return redirect(f"/ingest?error=Error: {message}")
+        return _safe_redirect_error(f"Error: {message}")
 
 
 @ingest_bp.route("/data-submission")
