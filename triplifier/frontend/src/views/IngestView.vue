@@ -387,6 +387,7 @@ onMounted(async () => {
           </h5>
         </div>
         <div class="card-body">
+          <p class="text-muted small mb-2">Provide the details for your selected source type:</p>
           <hr class="mt-0 mb-3">
           <div v-show="fileType === 'CSV' || fileType === 'Excel'">
             <div class="input-group input-group-sm">
