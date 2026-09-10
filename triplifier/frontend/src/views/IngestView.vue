@@ -420,9 +420,9 @@ onMounted(async () => {
             >
             <div
               v-show="fileType === 'CSV'"
-              class="row g-2 mt-1"
+              class="d-flex gap-2 mt-2"
             >
-              <div class="col-6">
+              <div class="flex-fill">
                 <label
                   for="csv_separator_sign"
                   class="form-label small mb-1"
@@ -431,7 +431,7 @@ onMounted(async () => {
                   id="csv_separator_sign"
                   v-model="csvSeparatorSign"
                   name="csv_separator_sign"
-                  class="form-select form-select-sm"
+                  class="form-control form-control-sm"
                 >
                   <option value=",">
                     Comma (,)
@@ -447,7 +447,7 @@ onMounted(async () => {
                   </option>
                 </select>
               </div>
-              <div class="col-6">
+              <div class="flex-fill">
                 <label
                   for="csv_decimal_sign"
                   class="form-label small mb-1"
@@ -456,7 +456,7 @@ onMounted(async () => {
                   id="csv_decimal_sign"
                   v-model="csvDecimalSign"
                   name="csv_decimal_sign"
-                  class="form-select form-select-sm"
+                  class="form-control form-control-sm"
                 >
                   <option value=".">
                     Period (.)
