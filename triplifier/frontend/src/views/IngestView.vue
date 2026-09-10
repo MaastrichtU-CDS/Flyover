@@ -411,49 +411,39 @@ onMounted(async () => {
           <p class="text-muted small mb-2">Provide the details for your selected source type:</p>
           <hr class="mt-0 mb-3">
           <div v-show="fileType === 'CSV' || fileType === 'Excel'">
-            <div class="input-group input-group-sm">
-              <input
-                id="csvPath"
-                type="text"
-                name="csvPath"
-                :value="csvPath"
-                placeholder="No files selected"
-                readonly
-                class="form-control form-control-sm"
+            <div class="d-flex align-items-center flex-wrap" style="gap: 0;">
+              <div class="input-group input-group-sm" style="min-width: 200px; max-width: 300px; flex: 1 1 auto; margin-right: 0.5rem;">
+                <input
+                  id="csvPath"
+                  type="text"
+                  name="csvPath"
+                  :value="csvPath"
+                  placeholder="No files selected"
+                  readonly
+                  class="form-control form-control-sm"
+                >
+                <button
+                  type="button"
+                  class="btn btn-primary btn-sm"
+                  @click="triggerFileInput"
+                >
+                  <i class="fas fa-folder-open me-1" /> Browse
+                </button>
+              </div>
+              <div
+                v-show="fileType === 'CSV'"
+                style="display: flex; align-items: center; gap: 0.5rem;"
               >
-              <button
-                type="button"
-                class="btn btn-primary btn-sm"
-                @click="triggerFileInput"
-              >
-                <i class="fas fa-folder-open me-1" /> Browse
-              </button>
-            </div>
-            <input
-              id="csvFile"
-              ref="csvFileInput"
-              type="file"
-              name="csvFile"
-              style="display: none"
-              multiple
-              accept=".csv,.xlsx,.xls"
-              @change="handleFileChange"
-            >
-            <div
-              v-show="fileType === 'CSV'"
-              style="display: flex; gap: 1rem;"
-              class="mt-2"
-            >
-              <div class="flex-fill">
                 <label
                   for="csv_separator_sign"
-                  class="form-label small mb-1"
+                  class="form-label small mb-0 text-nowrap"
                 >Separator sign</label>
                 <select
                   id="csv_separator_sign"
                   v-model="csvSeparatorSign"
                   name="csv_separator_sign"
                   class="form-control form-control-sm"
+                  style="width: auto;"
                 >
                   <option value=",">
                     Comma (,)
@@ -468,17 +458,16 @@ onMounted(async () => {
                     Pipe (|)
                   </option>
                 </select>
-              </div>
-              <div class="flex-fill">
                 <label
                   for="csv_decimal_sign"
-                  class="form-label small mb-1"
+                  class="form-label small mb-0 text-nowrap"
                 >Decimal sign</label>
                 <select
                   id="csv_decimal_sign"
                   v-model="csvDecimalSign"
                   name="csv_decimal_sign"
                   class="form-control form-control-sm"
+                  style="width: auto;"
                 >
                   <option value=".">
                     Period (.)
@@ -489,6 +478,16 @@ onMounted(async () => {
                 </select>
               </div>
             </div>
+            <input
+              id="csvFile"
+              ref="csvFileInput"
+              type="file"
+              name="csvFile"
+              style="display: none"
+              multiple
+              accept=".csv,.xlsx,.xls"
+              @change="handleFileChange"
+            >
             <small class="form-text text-muted mt-2 d-block">
               <span v-if="fileType === 'CSV'">
                 Supports multiple CSV files. Each file will be treated as a separate table.
