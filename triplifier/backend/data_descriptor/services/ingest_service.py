@@ -220,8 +220,12 @@ class IngestService:
         try:
             for excel_file in files:
                 # Read all sheets from the Excel file
+                # pl.read_excel (via fastexcel) requires bytes, not a
+                # file-like object, so read the FileStorage content first.
+                excel_bytes = excel_file.read()
+                excel_file.seek(0)
                 all_sheets = pl.read_excel(
-                    excel_file,
+                    excel_bytes,
                     sheet_id=None,  # Read all sheets
                     infer_schema_length=0,
                 )

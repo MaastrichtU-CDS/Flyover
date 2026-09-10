@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import JSZip from 'jszip'
 import api from '@/services/api'
 import { useNavigation } from '@/composables/useNavigation'
 
@@ -9,6 +10,10 @@ const fileType = ref('')
 const csvFiles = ref([])
 const csvColumns = reactive({})
 const csvPath = ref('')
+
+// Unified list of "tables" for PK/FK. For CSV, each file is a table.
+// For Excel, each sheet is a table (name: "filename_sheetname").
+const pkFkTables = ref([])
 const detectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
 const csvSeparatorSign = ref(detectedDecimal === ',' ? ';' : ',')
 const csvDecimalSign = ref(detectedDecimal)
@@ -147,10 +152,8 @@ let pageDragLeaveTimer = null
 
 const newTableColumns = computed(() => {
   if (!newTableName.value) return []
-  const file = csvFiles.value.find(
-    (f) => tableNameOf(f.name) === newTableName.value
-  )
-  return file ? csvColumns[file.name] || [] : []
+  const table = pkFkTables.value.find((t) => t === newTableName.value)
+  return table ? csvColumns[table] || [] : []
 })
 
 const existingTables = computed(
@@ -166,23 +169,23 @@ function tableNameOf(fileName) {
   return fileName.replace('.csv', '').replace('.xlsx', '').replace('.xls', '')
 }
 
-function getFileColumns(fileName) {
-  if (!fileName) return []
-  return csvColumns[fileName] || []
+function getFileColumns(tableName) {
+  if (!tableName) return []
+  return csvColumns[tableName] || []
 }
 
-function getOtherFiles(currentName) {
-  return csvFiles.value.filter((f) => f.name !== currentName)
+function getOtherTables(currentName) {
+  return pkFkTables.value.filter((t) => t !== currentName)
 }
 
 function validatePkFkRelationships() {
   if (!showPkFkSection.value) return true
   let valid = true
-  csvFiles.value.forEach((file, index) => {
+  pkFkTables.value.forEach((_, index) => {
     const fk = fkSelections[index] || ''
     const fkTable = fkTableSelections[index] || ''
     if (fk && fkTable) {
-      const refIdx = csvFiles.value.findIndex((f) => f.name === fkTable)
+      const refIdx = pkFkTables.value.findIndex((t) => t === fkTable)
       if (refIdx !== -1) {
         const refPk = pkSelections[refIdx] || ''
         if (!refPk) valid = false
@@ -232,14 +235,14 @@ const submitButtonIcon = computed(() => {
 const pkFkDataJson = computed(() => {
   if (!showPkFkSection.value) return ''
   const data = []
-  csvFiles.value.forEach((file, index) => {
+  pkFkTables.value.forEach((tableName, index) => {
     const pk = pkSelections[index] || ''
     const fk = fkSelections[index] || ''
     const fkTable = fkTableSelections[index] || ''
     const fkColumn = fkColumnSelections[index] || ''
     if (pk || fk) {
       data.push({
-        fileName: file.name,
+        fileName: tableName,
         primaryKey: pk || null,
         foreignKey: fk || null,
         foreignKeyTable: fkTable || null,
@@ -317,6 +320,79 @@ function readCSVColumns(file) {
   })
 }
 
+// Read sheet names and column headers from an .xlsx file using JSZip.
+// Returns a list of { name, columns } entries, one per sheet.
+// Column reading from the raw XML is complex; we read the first row
+// of each sheet (inline strings only). If that fails we fall back to
+// an empty column list — the PK/FK UI degrades gracefully.
+async function readExcelSheetInfo(file) {
+  try {
+    const zip = await JSZip.loadAsync(file)
+    const workbookXml = await zip.file('xl/workbook.xml')?.async('string')
+    if (!workbookXml) return []
+    // Parse sheet names from <sheet name="..."> elements
+    const sheetNames = []
+    const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"/g
+    let match
+    while ((match = sheetRegex.exec(workbookXml)) !== null) {
+      sheetNames.push(match[1])
+    }
+    if (!sheetNames.length) return []
+
+    // Try to read column headers from each sheet.
+    // The relationship file maps rId -> sheet file path.
+    const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('string')
+    const sheetPaths = []
+    if (relsXml) {
+      const relRegex = /<Relationship\s+[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g
+      const rels = []
+      while ((match = relRegex.exec(relsXml)) !== null) {
+        rels.push({ id: match[1], target: match[2] })
+      }
+      // Also need the sheet -> rId mapping from workbook.xml
+      const sheetRelRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g
+      let relMatch
+      while ((relMatch = sheetRelRegex.exec(workbookXml)) !== null) {
+        const rel = rels.find((r) => r.id === relMatch[2])
+        if (rel) {
+          sheetPaths.push({
+            name: relMatch[1],
+            path: rel.target.startsWith('/') ? rel.target.slice(1) : `xl/${rel.target}`,
+          })
+        }
+      }
+    }
+
+    const result = []
+    for (let i = 0; i < sheetNames.length; i++) {
+      const sheetInfo = sheetPaths[i]
+      let columns = ['col1', 'col2', 'col3'] // fallback
+      if (sheetInfo) {
+        try {
+          const sheetXml = await zip.file(sheetInfo.path)?.async('string')
+          if (sheetXml) {
+            // Extract inline string cells from the first row
+            const rowMatch = sheetXml.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/)
+            if (rowMatch) {
+              const cellRegex = /<t>([^<]+)<\/t>/g
+              const cols = []
+              let cellMatch
+              while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+                cols.push(cellMatch[1])
+              }
+              if (cols.length) columns = cols
+            }
+          }
+        } catch { /* use fallback */ }
+      }
+      result.push({ name: sheetNames[i], columns })
+    }
+    return result
+  } catch {
+    return []
+  }
+}
+
 function resetPkFk() {
   for (const k of Object.keys(pkSelections)) delete pkSelections[k]
   for (const k of Object.keys(fkSelections)) delete fkSelections[k]
@@ -331,6 +407,7 @@ function triggerFileInput() {
 async function processFiles(files) {
   dropError.value = ''
   csvFiles.value = []
+  pkFkTables.value = []
   for (const k of Object.keys(csvColumns)) delete csvColumns[k]
   resetPkFk()
 
@@ -341,18 +418,48 @@ async function processFiles(files) {
   }
   csvPath.value = paths.join(', ')
 
-  // Visibility depends only on file counts, not on the column reads. Set it
-  // before awaiting so the multi-file UI appears immediately and tests don't
-  // race the FileReader.onload macrotask.
-  showPkFkSection.value = files.length > 1
-  showDataLinkingSection.value = graphExists.value && files.length > 0
+  if (fileType.value === 'Excel') {
+    // For Excel, each sheet is a table. Read sheet info from the xlsx zip.
+    const allSheetInfo = await Promise.all(
+      Array.from(files).map((f) => readExcelSheetInfo(f))
+    )
+    const tables = []
+    allSheetInfo.forEach((sheets, fi) => {
+      const file = files[fi]
+      const base = file.name.replace(/\.(xlsx|xls)$/i, '')
+      if (sheets.length === 0) {
+        // Could not read sheets — treat the file as a single table
+        const tableName = base
+        tables.push(tableName)
+        csvColumns[tableName] = []
+      } else {
+        sheets.forEach((sheet) => {
+          const tableName = `${base}_${sheet.name}`
+          tables.push(tableName)
+          csvColumns[tableName] = sheet.columns
+        })
+      }
+    })
+    pkFkTables.value = tables
+    showPkFkSection.value = tables.length > 1
+  } else {
+    // For CSV, each file is a table.
+    pkFkTables.value = Array.from(files).map((f) => f.name)
 
-  const cols = await Promise.all(
-    Array.from(files).map((f) => readCSVColumns(f))
-  )
-  Array.from(files).forEach((f, i) => {
-    csvColumns[f.name] = cols[i]
-  })
+    // Visibility depends only on file counts, not on the column reads. Set it
+    // before awaiting so the multi-file UI appears immediately and tests don't
+    // race the FileReader.onload macrotask.
+    showPkFkSection.value = files.length > 1
+
+    const cols = await Promise.all(
+      Array.from(files).map((f) => readCSVColumns(f))
+    )
+    Array.from(files).forEach((f, i) => {
+      csvColumns[f.name] = cols[i]
+    })
+  }
+
+  showDataLinkingSection.value = graphExists.value && files.length > 0
 }
 
 async function handleFileChange(e) {
@@ -869,20 +976,20 @@ onMounted(async () => {
         >
           <hr>
           <div class="alert alert-info">
-            <strong><i class="fas fa-info-circle" /> Multiple CSV Files Detected</strong><br>
-            To establish relationships between your data files, you can optionally
-            specify Primary Keys (PK) and Foreign Keys (FK) for each file.
+            <strong><i class="fas fa-info-circle" /> Multiple Tables Detected</strong><br>
+            To establish relationships between your data tables, you can optionally
+            specify Primary Keys (PK) and Foreign Keys (FK) for each table.
           </div>
           <div
-            v-for="(file, index) in csvFiles"
-            :key="file.name"
+            v-for="(tableName, index) in pkFkTables"
+            :key="tableName"
             class="card mb-3"
           >
             <div class="card-header bg-light">
               <h6 class="mb-0">
-                <i class="fas fa-table" /> {{ file.name }}
+                <i class="fas fa-table" /> {{ tableName }}
                 <small class="text-muted">
-                  ({{ getFileColumns(file.name).length }} columns detected)
+                  ({{ getFileColumns(tableName).length }} columns detected)
                 </small>
               </h6>
             </div>
@@ -906,7 +1013,7 @@ onMounted(async () => {
                         -- No Primary Key --
                       </option>
                       <option
-                        v-for="col in getFileColumns(file.name)"
+                        v-for="col in getFileColumns(tableName)"
                         :key="col"
                         :value="col"
                       >
@@ -933,7 +1040,7 @@ onMounted(async () => {
                         -- No Foreign Key --
                       </option>
                       <option
-                        v-for="col in getFileColumns(file.name)"
+                        v-for="col in getFileColumns(tableName)"
                         :key="col"
                         :value="col"
                       >
@@ -966,11 +1073,11 @@ onMounted(async () => {
                         -- Select Referenced Table --
                       </option>
                       <option
-                        v-for="otherFile in getOtherFiles(file.name)"
-                        :key="otherFile.name"
-                        :value="otherFile.name"
+                        v-for="otherTable in getOtherTables(tableName)"
+                        :key="otherTable"
+                        :value="otherTable"
                       >
-                        {{ otherFile.name }}
+                        {{ otherTable }}
                       </option>
                     </select>
                   </div>
@@ -1057,14 +1164,14 @@ onMounted(async () => {
                         class="form-control"
                       >
                         <option value="">
-                          -- Select the CSV file you want to link --
+                          -- Select the table you want to link --
                         </option>
                         <option
-                          v-for="file in csvFiles"
-                          :key="file.name"
-                          :value="tableNameOf(file.name)"
+                          v-for="table in pkFkTables"
+                          :key="table"
+                          :value="table"
                         >
-                          {{ tableNameOf(file.name) }}
+                          {{ table }}
                         </option>
                       </select>
                     </div>

@@ -30,6 +30,10 @@ async function pickFiles(wrapper, files) {
   Object.defineProperty(input, 'files', { value: files, configurable: true })
   await input.dispatchEvent(new Event('change'))
   await flushPromises()
+  // FileReader.onload fires as a macrotask — give it time to resolve
+  // so csvColumns is populated before tests interact with PK/FK selects.
+  await new Promise((r) => setTimeout(r, 50))
+  await flushPromises()
 }
 
 function csvFile(name, header = 'col1,col2,col3') {
@@ -61,6 +65,13 @@ async function dropOnTile(wrapper, id, files) {
 async function dropOnPage(wrapper, files) {
   wrapper.find('h1').element.dispatchEvent(makeDropEvent(files))
   await flushPromises()
+}
+
+function findPkFkSection(wrapper) {
+  const alert = wrapper.findAll('.alert-info').find((a) =>
+    a.text().includes('Multiple Tables Detected') || a.text().includes('Multiple')
+  )
+  return alert?.element.closest('div.mt-4')
 }
 
 describe('IngestView', () => {
@@ -102,7 +113,7 @@ describe('IngestView', () => {
 
     const pkfkSection = () => {
       const alert = w.findAll('.alert-info').find((a) =>
-        a.text().includes('Multiple CSV Files Detected')
+        a.text().includes('Multiple Tables Detected')
       )
       return alert?.element.closest('div.mt-4')
     }
@@ -652,5 +663,384 @@ describe('IngestView', () => {
     await new Promise((r) => setTimeout(r, 110))
     await flushPromises()
     expect(w.find('.drop-overlay').exists()).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PK/FK scenarios — CSV multi-file and Excel multi-sheet
+// ---------------------------------------------------------------------------
+
+// Build a minimal .xlsx-like blob that JSZip can parse to extract sheet names.
+// The xlsx format stores sheet names in xl/workbook.xml as <sheet name="..."/>.
+// We create a zip with just that file so the frontend's sheet detection works.
+async function xlsxFile(name, sheetNames, header = 'col1,col2,col3') {
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheets>
+${sheetNames.map((s) => `  <sheet name="${s}" sheetId="1" r:id="rId1"/>`).join('\n')}
+</sheets>
+</workbook>`
+  // Also add a shared strings stub and a sheet stub so column reading
+  // doesn't crash. Each sheet has the same header row for simplicity.
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>
+<row r="1"><c r="A1" t="inlineStr"><is><t>col1</t></is></c><c r="B1" t="inlineStr"><is><t>col2</t></is></c><c r="C1" t="inlineStr"><is><t>col3</t></is></c></row>
+</sheetData>
+</worksheet>`
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheetNames.map((s, i) => `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('\n')}
+</Relationships>`
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${sheetNames.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('\n')}
+</Types>`
+  const relsBase = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`
+
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  zip.file('[Content_Types].xml', contentTypes)
+  zip.file('_rels/.rels', relsBase)
+  zip.file('xl/workbook.xml', workbookXml)
+  zip.file('xl/_rels/workbook.xml.rels', relsXml)
+  sheetNames.forEach((_, i) => {
+    zip.file(`xl/worksheets/sheet${i + 1}.xml`, sheetXml)
+  })
+  const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  return new File([blob], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+}
+
+describe('IngestView — PK/FK', () => {
+  beforeEach(() => {
+    dataExists.value = false
+    refreshDataExists.mockClear()
+    api.get.mockReset()
+    api.get.mockResolvedValue({ data: { tables: [], tableColumns: {} } })
+  })
+
+  // -- CSV: section visibility --------------------------------------------
+
+  it('hides PK/FK section for a single CSV file', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [csvFile('only.csv')])
+    expect(findPkFkSection(w)?.style.display).toBe('none')
+  })
+
+  it('shows PK/FK section for two CSV files', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [csvFile('a.csv'), csvFile('b.csv')])
+    const section = findPkFkSection(w)
+    expect(section.style.display).not.toBe('none')
+  })
+
+  it('hides PK/FK section for a single Excel file with one sheet', async () => {
+    const f = await xlsxFile('data.xlsx', ['Sheet1'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    // The section should be hidden (only one table)
+    const section = findPkFkSection(w)
+    expect(section.style.display).toBe('none')
+  })
+
+  it('shows PK/FK section for a single Excel file with multiple sheets', async () => {
+    const f = await xlsxFile('data.xlsx', ['Sheet1', 'Sheet2'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    const section = findPkFkSection(w)
+    expect(section.style.display).not.toBe('none')
+  })
+
+  // -- Card rendering -------------------------------------------------------
+
+  it('renders one PK/FK card per CSV file', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [csvFile('patients.csv'), csvFile('visits.csv')])
+    const cards = w.findAll('.card.mb-3')
+    expect(cards.length).toBe(2)
+    expect(w.text()).toContain('patients.csv')
+    expect(w.text()).toContain('visits.csv')
+  })
+
+  it('renders one PK/FK card per Excel sheet', async () => {
+    const f = await xlsxFile('data.xlsx', ['Patients', 'Visits'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    const cards = w.findAll('.card.mb-3')
+    expect(cards.length).toBe(2)
+    expect(w.text()).toContain('Patients')
+    expect(w.text()).toContain('Visits')
+  })
+
+  it('renders three PK/FK cards for three CSV files', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('a.csv', 'id,name'),
+      csvFile('b.csv', 'id,date'),
+      csvFile('c.csv', 'id,value'),
+    ])
+    const cards = w.findAll('.card.mb-3')
+    expect(cards.length).toBe(3)
+  })
+
+  // -- Column dropdown population ------------------------------------------
+
+  it('populates PK dropdown with detected columns for each CSV file', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name,age'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    const pk0 = w.find('#pk_0')
+    expect(pk0.element.innerHTML).toContain('patient_id')
+    expect(pk0.element.innerHTML).toContain('name')
+    const pk1 = w.find('#pk_1')
+    expect(pk1.element.innerHTML).toContain('visit_id')
+    expect(pk1.element.innerHTML).toContain('date')
+  })
+
+  it('populates PK dropdown with detected columns for each Excel sheet', async () => {
+    const f = await xlsxFile('data.xlsx', ['Patients', 'Visits'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    const pk0 = w.find('#pk_0')
+    expect(pk0.element.innerHTML).toContain('col1')
+    expect(pk0.element.innerHTML).toContain('col2')
+  })
+
+  // -- FK dropdown cascade -------------------------------------------------
+
+  it('shows referenced table and column dropdowns when an FK is selected', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    // Select an FK for the second file
+    await w.find('#fk_1').setValue('patient_id')
+    await flushPromises()
+    // The referenced table dropdown should be visible
+    expect(w.find('#fkTable_1').exists()).toBe(true)
+    expect(w.find('#fkColumn_1').exists()).toBe(true)
+  })
+
+  it('only shows other tables in the referenced table dropdown', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#fk_1').setValue('patient_id')
+    await flushPromises()
+    const fkTableSelect = w.find('#fkTable_1')
+    const options = fkTableSelect.element.innerHTML
+    // Should contain patients.csv (the other file) but not visits.csv (self)
+    expect(options).toContain('patients.csv')
+    expect(options).not.toContain('visits.csv')
+  })
+
+  it('clears the FK column selection when the referenced table changes', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('doctors.csv', 'doctor_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,doctor_id'),
+    ])
+    await flushPromises()
+    // Select FK for visits.csv
+    await w.find('#fk_2').setValue('patient_id')
+    await flushPromises()
+    // Select referenced table
+    await w.find('#fkTable_2').setValue('patients.csv')
+    await flushPromises()
+    // Select a column
+    await w.find('#fkColumn_2').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fkColumn_2').element.value).toBe('patient_id')
+    // Change referenced table — column should clear
+    await w.find('#fkTable_2').setValue('doctors.csv')
+    await flushPromises()
+    expect(w.find('#fkColumn_2').element.value).toBe('')
+  })
+
+  it('populates FK column dropdown with columns from the referenced table', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name,age'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#fk_1').setValue('patient_id')
+    await flushPromises()
+    await w.find('#fkTable_1').setValue('patients.csv')
+    await flushPromises()
+    const fkColSelect = w.find('#fkColumn_1')
+    const options = fkColSelect.element.innerHTML
+    expect(options).toContain('patient_id')
+    expect(options).toContain('name')
+    expect(options).toContain('age')
+  })
+
+  // -- Submit validation ---------------------------------------------------
+
+  it('allows submit when no PK/FK selections are made', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    const submit = w.find('button[type="submit"]')
+    await pickFiles(w, [csvFile('a.csv'), csvFile('b.csv')])
+    expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  it('allows submit when PK is selected without FK', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables submit when FK is selected but referenced table has no PK', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    const submit = w.find('button[type="submit"]')
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id'),
+    ])
+    await flushPromises()
+    // Select FK for visits.csv but don't set PK on patients.csv
+    await w.find('#fk_1').setValue('patient_id')
+    await flushPromises()
+    await w.find('#fkTable_1').setValue('patients.csv')
+    await flushPromises()
+    await w.find('#fkColumn_1').setValue('patient_id')
+    await flushPromises()
+    expect(submit.attributes('disabled')).toBeDefined()
+  })
+
+  it('enables submit when FK references a table that has a PK', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    const submit = w.find('button[type="submit"]')
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id'),
+    ])
+    await flushPromises()
+    // Set PK on patients.csv
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    // Set FK on visits.csv
+    await w.find('#fk_1').setValue('patient_id')
+    await flushPromises()
+    await w.find('#fkTable_1').setValue('patients.csv')
+    await flushPromises()
+    await w.find('#fkColumn_1').setValue('patient_id')
+    await flushPromises()
+    expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  // -- PK/FK JSON output ---------------------------------------------------
+
+  it('includes PK/FK data in the hidden input as JSON', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id'),
+    ])
+    await flushPromises()
+    // Verify the PK/FK cards exist
+    expect(w.find('#pk_0').exists()).toBe(true)
+    expect(w.find('#pk_1').exists()).toBe(true)
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    const json = w.find('#pkFkData').element.value
+    expect(json).toBeTruthy()
+    const parsed = JSON.parse(json)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].fileName).toBe('patients.csv')
+    expect(parsed[0].primaryKey).toBe('patient_id')
+  })
+
+  it('includes full FK relationship in the JSON when all fields are set', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await w.find('#fk_1').setValue('patient_id')
+    await flushPromises()
+    await w.find('#fkTable_1').setValue('patients.csv')
+    await flushPromises()
+    await w.find('#fkColumn_1').setValue('patient_id')
+    await flushPromises()
+    const parsed = JSON.parse(w.find('#pkFkData').element.value)
+    expect(parsed).toHaveLength(2)
+    const visits = parsed.find((p) => p.fileName === 'visits.csv')
+    expect(visits.foreignKey).toBe('patient_id')
+    expect(visits.foreignKeyTable).toBe('patients.csv')
+    expect(visits.foreignKeyColumn).toBe('patient_id')
+  })
+
+  it('uses sheet-based table names in the PK/FK JSON for Excel', async () => {
+    const f = await xlsxFile('data.xlsx', ['Patients', 'Visits'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    // Set a PK on the first sheet
+    await w.find('#pk_0').setValue('col1')
+    await flushPromises()
+    const parsed = JSON.parse(w.find('#pkFkData').element.value)
+    expect(parsed).toHaveLength(1)
+    // The table name should be the sheet name, not the filename
+    expect(parsed[0].fileName).toContain('Patients')
+  })
+
+  // -- Section title -------------------------------------------------------
+
+  it('shows "tables" in the PK/FK section title for Excel, not "CSV Files"', async () => {
+    const f = await xlsxFile('data.xlsx', ['Sheet1', 'Sheet2'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    const section = findPkFkSection(w)
+    expect(section.textContent).not.toContain('Multiple CSV Files Detected')
   })
 })
