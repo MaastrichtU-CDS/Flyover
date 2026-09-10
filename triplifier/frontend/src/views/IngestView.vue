@@ -323,14 +323,14 @@ function readCSVColumns(file) {
 
 // Read sheet names and column headers from an .xlsx file using JSZip.
 // Returns a list of { name, columns } entries, one per sheet.
-// Column reading from the raw XML is complex; we read the first row
-// of each sheet (inline strings only). If that fails we fall back to
-// an empty column list — the PK/FK UI degrades gracefully.
+// Handles both shared strings (t="s" + <v>index</v>) and inline strings
+// (t="inlineStr" + <is><t>text</t></is>).
 async function readExcelSheetInfo(file) {
   try {
     const zip = await JSZip.loadAsync(file)
     const workbookXml = await zip.file('xl/workbook.xml')?.async('string')
     if (!workbookXml) return []
+
     // Parse sheet names from <sheet name="..."> elements
     const sheetNames = []
     const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"/g
@@ -340,8 +340,25 @@ async function readExcelSheetInfo(file) {
     }
     if (!sheetNames.length) return []
 
-    // Try to read column headers from each sheet.
-    // The relationship file maps rId -> sheet file path.
+    // Parse shared strings table (xl/sharedStrings.xml)
+    const sharedStrings = []
+    const sharedStringsXml = await zip.file('xl/sharedStrings.xml')?.async('string')
+    if (sharedStringsXml) {
+      const siRegex = /<si>([\s\S]*?)<\/si>/g
+      let siMatch
+      while ((siMatch = siRegex.exec(sharedStringsXml)) !== null) {
+        // Extract text from <t>...</t> within the <si> (may have rich text runs)
+        const tMatches = siMatch[1].match(/<t[^>]*>([^<]*)<\/t>/g)
+        if (tMatches) {
+          const text = tMatches.map((t) => t.replace(/<[^>]*>/g, '')).join('')
+          sharedStrings.push(text)
+        } else {
+          sharedStrings.push('')
+        }
+      }
+    }
+
+    // Map sheet names to their XML file paths via the relationships file
     const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('string')
     const sheetPaths = []
     if (relsXml) {
@@ -350,7 +367,6 @@ async function readExcelSheetInfo(file) {
       while ((match = relRegex.exec(relsXml)) !== null) {
         rels.push({ id: match[1], target: match[2] })
       }
-      // Also need the sheet -> rId mapping from workbook.xml
       const sheetRelRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g
       let relMatch
       while ((relMatch = sheetRelRegex.exec(workbookXml)) !== null) {
@@ -367,24 +383,14 @@ async function readExcelSheetInfo(file) {
     const result = []
     for (let i = 0; i < sheetNames.length; i++) {
       const sheetInfo = sheetPaths[i]
-      let columns = ['col1', 'col2', 'col3'] // fallback
+      let columns = []
       if (sheetInfo) {
         try {
           const sheetXml = await zip.file(sheetInfo.path)?.async('string')
           if (sheetXml) {
-            // Extract inline string cells from the first row
-            const rowMatch = sheetXml.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/)
-            if (rowMatch) {
-              const cellRegex = /<t>([^<]+)<\/t>/g
-              const cols = []
-              let cellMatch
-              while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-                cols.push(cellMatch[1])
-              }
-              if (cols.length) columns = cols
-            }
+            columns = parseSheetHeaderColumns(sheetXml, sharedStrings)
           }
-        } catch { /* use fallback */ }
+        } catch { /* empty columns */ }
       }
       result.push({ name: sheetNames[i], columns })
     }
@@ -392,6 +398,58 @@ async function readExcelSheetInfo(file) {
   } catch {
     return []
   }
+}
+
+// Extract column headers from the first row of a sheet's XML.
+// Cells can be:
+//   t="s"        → shared string: <v>index</v> into sharedStrings
+//   t="inlineStr"→ inline string: <is><t>text</t></is>
+//   t="str"      → formula string: <v>text</v>
+//   no t         → numeric: <v>42</v> (use the value as-is for header)
+//   t="b"        → boolean: skip
+function parseSheetHeaderColumns(sheetXml, sharedStrings) {
+  const rowMatch = sheetXml.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/)
+  if (!rowMatch) return []
+
+  const cellRegex = /<c\b[^>]*>([\s\S]*?)<\/c>|<c\b[^>]*\/>/g
+  const cols = []
+  let cellMatch
+  while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+    const cellContent = cellMatch[1] || ''
+    const cellTag = cellMatch[0]
+
+    // Determine cell type
+    const typeMatch = cellTag.match(/\bt="([^"]+)"/)
+    const type = typeMatch ? typeMatch[1] : ''
+
+    let value = null
+
+    if (type === 's') {
+      // Shared string: <v>index</v>
+      const vMatch = cellContent.match(/<v>([^<]*)<\/v>/)
+      if (vMatch) {
+        const idx = parseInt(vMatch[1], 10)
+        value = sharedStrings[idx] ?? null
+      }
+    } else if (type === 'inlineStr') {
+      // Inline string: <is><t>text</t></is>
+      const tMatch = cellContent.match(/<t[^>]*>([^<]*)<\/t>/)
+      if (tMatch) value = tMatch[1]
+    } else if (type === 'str') {
+      // Formula string: <v>text</v>
+      const vMatch = cellContent.match(/<v>([^<]*)<\/v>/)
+      if (vMatch) value = vMatch[1]
+    } else if (!type) {
+      // Numeric: <v>42</v>
+      const vMatch = cellContent.match(/<v>([^<]*)<\/v>/)
+      if (vMatch) value = vMatch[1]
+    }
+
+    if (value !== null && value !== '') {
+      cols.push(String(value).trim())
+    }
+  }
+  return cols
 }
 
 function resetPkFk() {

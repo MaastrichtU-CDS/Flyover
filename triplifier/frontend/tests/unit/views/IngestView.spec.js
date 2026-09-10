@@ -674,31 +674,44 @@ describe('IngestView', () => {
 // The xlsx format stores sheet names in xl/workbook.xml as <sheet name="..."/>.
 // We create a zip with just that file so the frontend's sheet detection works.
 async function xlsxFile(name, sheetNames, header = 'col1,col2,col3') {
+  const headers = header.split(',')
+
+  // Build a shared strings table with the header values
+  const sharedStringsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${headers.length}" uniqueCount="${headers.length}">
+${headers.map((h) => `<si><t>${h}</t></si>`).join('')}
+</sst>`
+
   const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheets>
-${sheetNames.map((s) => `  <sheet name="${s}" sheetId="1" r:id="rId1"/>`).join('\n')}
+${sheetNames.map((s, i) => `  <sheet name="${s}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('\n')}
 </sheets>
 </workbook>`
-  // Also add a shared strings stub and a sheet stub so column reading
-  // doesn't crash. Each sheet has the same header row for simplicity.
+
+  // Each sheet references shared strings by index (t="s"), like real Excel
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <sheetData>
-<row r="1"><c r="A1" t="inlineStr"><is><t>col1</t></is></c><c r="B1" t="inlineStr"><is><t>col2</t></is></c><c r="C1" t="inlineStr"><is><t>col3</t></is></c></row>
+<row r="1" spans="1:${headers.length}">${headers.map((h, i) => `<c r="${String.fromCharCode(65 + i)}1" t="s"><v>${i}</v></c>`).join('')}</row>
 </sheetData>
 </worksheet>`
+
   const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 ${sheetNames.map((s, i) => `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('\n')}
+  <Relationship Id="rId${sheetNames.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
 </Relationships>`
+
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="xml" ContentType="application/xml"/>
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
 ${sheetNames.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('\n')}
+<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
 </Types>`
+
   const relsBase = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
@@ -710,6 +723,7 @@ ${sheetNames.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml
   zip.file('_rels/.rels', relsBase)
   zip.file('xl/workbook.xml', workbookXml)
   zip.file('xl/_rels/workbook.xml.rels', relsXml)
+  zip.file('xl/sharedStrings.xml', sharedStringsXml)
   sheetNames.forEach((_, i) => {
     zip.file(`xl/worksheets/sheet${i + 1}.xml`, sheetXml)
   })
