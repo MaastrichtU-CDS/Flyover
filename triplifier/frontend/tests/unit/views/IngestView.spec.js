@@ -164,13 +164,13 @@ describe('IngestView', () => {
     expect(w.find('#csv_decimal_sign').element.style.display).toBe('none')
   })
 
-  it('defaults separator to comma and decimal to the locale decimal sign', () => {
+  it('defaults separator and decimal based on the browser locale', () => {
     const w = mountIngest()
     const sep = w.find('#csv_separator_sign').element
     const dec = w.find('#csv_decimal_sign').element
-    expect(sep.value).toBe(',')
-    const expectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
-    expect(dec.value).toBe(expectedDecimal)
+    const detectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
+    expect(dec.value).toBe(detectedDecimal)
+    expect(sep.value).toBe(detectedDecimal === ',' ? ';' : ',')
   })
 
   it('allows changing the separator and decimal sign', async () => {
