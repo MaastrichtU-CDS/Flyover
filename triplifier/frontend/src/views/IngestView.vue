@@ -485,7 +485,7 @@ onMounted(async () => {
               name="csvFile"
               style="display: none"
               multiple
-              accept=".csv,.xlsx,.xls"
+              :accept="fileType === 'Excel' ? '.xlsx,.xls' : '.csv'"
               @change="handleFileChange"
             >
             <small class="form-text text-muted mt-2 d-block">
