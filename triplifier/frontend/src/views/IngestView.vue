@@ -1064,12 +1064,12 @@ onMounted(async () => {
             <div class="card-header bg-light">
               <h6 class="mb-0">
                 <i class="fas fa-table" /> {{ tableName }}
-                <small class="text-muted">
+                <small class="text-white-50">
                   ({{ getFileColumns(tableName).length }} columns detected)
                 </small>
                 <span
                   v-if="inferredFk[index]"
-                  class="badge bg-warning text-dark ms-2 align-middle"
+                  class="badge bg-secondary text-white ms-2 align-middle"
                 >
                   <i class="fas fa-lightbulb" /> Inferred — please verify
                 </span>
