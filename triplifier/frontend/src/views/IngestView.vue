@@ -269,8 +269,6 @@ onMounted(async () => {
       You can achieve this by submitting your data for conversion using Flyover.
     </p>
     <hr>
-    <header>Start by selecting your data source:</header>
-
     <form
       method="POST"
       action="/upload"
@@ -284,9 +282,13 @@ onMounted(async () => {
           </h5>
         </div>
         <div class="card-body">
+          <p class="text-muted mb-3">Start by selecting your data source:</p>
           <div class="row">
-            <div class="col-md-4 mb-3 mb-md-0">
-              <div class="form-check card h-100 p-3 border">
+            <div class="col-md-3 mb-3 mb-md-0">
+              <div
+                class="form-check card h-100 p-3 border"
+                :class="{ 'selected-source': fileType === 'CSV' }"
+              >
                 <input
                   id="CSV"
                   v-model="fileType"
@@ -303,82 +305,13 @@ onMounted(async () => {
                   <strong>CSV Files</strong>
                   <small class="d-block text-muted">Upload one or more CSV files</small>
                 </label>
-                <div
-                  v-show="fileType === 'CSV'"
-                  class="mt-3"
-                >
-                  <div class="input-group input-group-sm">
-                    <input
-                      id="csvPath"
-                      type="text"
-                      name="csvPath"
-                      :value="csvPath"
-                      placeholder="No files selected"
-                      readonly
-                      class="form-control form-control-sm"
-                    >
-                    <button
-                      type="button"
-                      class="btn btn-primary btn-sm"
-                      @click="triggerFileInput"
-                    >
-                      <i class="fas fa-folder-open me-1" /> Browse
-                    </button>
-                  </div>
-                  <div class="row mt-2">
-                    <div class="col-6">
-                      <label
-                        for="csv_separator_sign"
-                        class="form-label small"
-                      >Separator:</label>
-                      <select
-                        id="csv_separator_sign"
-                        v-model="csvSeparatorSign"
-                        name="csv_separator_sign"
-                        class="form-select form-select-sm"
-                      >
-                        <option value=",">
-                          Comma (,)
-                        </option>
-                        <option value=";">
-                          Semicolon (;)
-                        </option>
-                        <option value="	">
-                          Tab
-                        </option>
-                        <option value="|">
-                          Pipe (|)
-                        </option>
-                      </select>
-                    </div>
-                    <div class="col-6">
-                      <label
-                        for="csv_decimal_sign"
-                        class="form-label small"
-                      >Decimal:</label>
-                      <select
-                        id="csv_decimal_sign"
-                        v-model="csvDecimalSign"
-                        name="csv_decimal_sign"
-                        class="form-select form-select-sm"
-                      >
-                        <option value=".">
-                          Period (.)
-                        </option>
-                        <option value=",">
-                          Comma (,)
-                        </option>
-                      </select>
-                    </div>
-                  </div>
-                  <small class="form-text text-muted mt-2 d-block">
-                    Supports multiple CSV files. Each file will be treated as a separate table.
-                  </small>
-                </div>
               </div>
             </div>
-            <div class="col-md-4 mb-3 mb-md-0">
-              <div class="form-check card h-100 p-3 border">
+            <div class="col-md-3 mb-3 mb-md-0">
+              <div
+                class="form-check card h-100 p-3 border"
+                :class="{ 'selected-source': fileType === 'Excel' }"
+              >
                 <input
                   id="Excel"
                   v-model="fileType"
@@ -395,36 +328,13 @@ onMounted(async () => {
                   <strong>Excel Files</strong>
                   <small class="d-block text-muted">Upload Excel files with multiple sheets</small>
                 </label>
-                <div
-                  v-show="fileType === 'Excel'"
-                  class="mt-3"
-                >
-                  <div class="input-group input-group-sm">
-                    <input
-                      id="csvPath"
-                      type="text"
-                      name="csvPath"
-                      :value="csvPath"
-                      placeholder="No files selected"
-                      readonly
-                      class="form-control form-control-sm"
-                    >
-                    <button
-                      type="button"
-                      class="btn btn-primary btn-sm"
-                      @click="triggerFileInput"
-                    >
-                      <i class="fas fa-folder-open me-1" /> Browse
-                    </button>
-                  </div>
-                  <small class="form-text text-muted mt-2 d-block">
-                    Each sheet will be treated as a separate table.
-                  </small>
-                </div>
               </div>
             </div>
-            <div class="col-md-4">
-              <div class="form-check card h-100 p-3 border">
+            <div class="col-md-3 mb-3 mb-md-0">
+              <div
+                class="form-check card h-100 p-3 border"
+                :class="{ 'selected-source': fileType === 'Postgres' }"
+              >
                 <input
                   id="Postgres"
                   v-model="fileType"
@@ -441,73 +351,13 @@ onMounted(async () => {
                   <strong>PostgreSQL</strong>
                   <small class="d-block text-muted">Connect to a PostgreSQL database</small>
                 </label>
-                <div
-                  v-show="fileType === 'Postgres'"
-                  class="mt-3"
-                >
-                  <div class="row">
-                    <div class="col-md-6 mb-2">
-                      <label
-                        for="username"
-                        class="form-label small"
-                      >Username:</label>
-                      <input
-                        id="username"
-                        v-model="pgUsername"
-                        type="text"
-                        name="username"
-                        class="form-control form-control-sm"
-                        placeholder="Enter username"
-                      >
-                    </div>
-                    <div class="col-md-6 mb-2">
-                      <label
-                        for="password"
-                        class="form-label small"
-                      >Password:</label>
-                      <input
-                        id="password"
-                        v-model="pgPassword"
-                        type="password"
-                        name="password"
-                        class="form-control form-control-sm"
-                        placeholder="Enter password"
-                      >
-                    </div>
-                    <div class="col-md-6 mb-2">
-                      <label
-                        for="POSTGRES_URL"
-                        class="form-label small"
-                      >URL:</label>
-                      <input
-                        id="POSTGRES_URL"
-                        v-model="pgUrl"
-                        type="text"
-                        name="POSTGRES_URL"
-                        class="form-control form-control-sm"
-                        placeholder="e.g., localhost:5432"
-                      >
-                    </div>
-                    <div class="col-md-6 mb-2">
-                      <label
-                        for="POSTGRES_DB"
-                        class="form-label small"
-                      >Database:</label>
-                      <input
-                        id="POSTGRES_DB"
-                        v-model="pgDb"
-                        type="text"
-                        name="POSTGRES_DB"
-                        class="form-control form-control-sm"
-                        placeholder="Enter database name"
-                      >
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
-            <div class="col-md-4">
-              <div class="form-check card h-100 p-3 border">
+            <div class="col-md-3">
+              <div
+                class="form-check card h-100 p-3 border"
+                :class="{ 'selected-source': fileType === 'Other' }"
+              >
                 <input
                   id="Other"
                   v-model="fileType"
@@ -522,11 +372,7 @@ onMounted(async () => {
                 >
                   <i class="fas fa-file-alt fa-2x mb-2 d-block text-secondary" />
                   <strong>Other</strong>
-                  <small class="d-block text-muted">Prefer a different source type? <a
-                    href="https://github.com/MaastrichtU-CDS/Flyover/issues"
-                    target="_blank"
-                    class="text-decoration-none"
-                  >Let us know!</a></small>
+                  <small class="d-block text-muted">Prefer a different source type?</small>
                 </label>
               </div>
             </div>
@@ -534,19 +380,15 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div v-show="fileType === 'CSV' || fileType === 'Excel'">
-        <hr>
-        <div class="card mb-4">
-          <div class="card-header bg-light">
-            <h5 class="mb-0">
-              <i class="fas fa-upload me-2" /> File Upload
-            </h5>
-          </div>
-          <div class="card-body">
-            <p class="text-muted mb-3">
-              Please select the {{ fileType === 'CSV' ? 'CSV' : 'Excel' }} file(s) you would like to process
-            </p>
-            <div class="input-group">
+      <div class="card mb-4">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">
+            <i class="fas fa-sliders me-2" /> Source Options
+          </h5>
+        </div>
+        <div class="card-body">
+          <div v-show="fileType === 'CSV' || fileType === 'Excel'">
+            <div class="input-group input-group-sm">
               <input
                 id="csvPath"
                 type="text"
@@ -554,14 +396,14 @@ onMounted(async () => {
                 :value="csvPath"
                 placeholder="No files selected"
                 readonly
-                class="form-control"
+                class="form-control form-control-sm"
               >
               <button
                 type="button"
-                class="btn btn-primary"
+                class="btn btn-primary btn-sm"
                 @click="triggerFileInput"
               >
-                <i class="fas fa-folder-open me-1" /> Browse Files
+                <i class="fas fa-folder-open me-1" /> Browse
               </button>
             </div>
             <input
@@ -574,6 +416,55 @@ onMounted(async () => {
               accept=".csv,.xlsx,.xls"
               @change="handleFileChange"
             >
+            <div
+              v-show="fileType === 'CSV'"
+              class="row mt-2"
+            >
+              <div class="col-6">
+                <label
+                  for="csv_separator_sign"
+                  class="form-label small"
+                >Separator:</label>
+                <select
+                  id="csv_separator_sign"
+                  v-model="csvSeparatorSign"
+                  name="csv_separator_sign"
+                  class="form-select form-select-sm"
+                >
+                  <option value=",">
+                    Comma (,)
+                  </option>
+                  <option value=";">
+                    Semicolon (;)
+                  </option>
+                  <option value="	">
+                    Tab
+                  </option>
+                  <option value="|">
+                    Pipe (|)
+                  </option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label
+                  for="csv_decimal_sign"
+                  class="form-label small"
+                >Decimal:</label>
+                <select
+                  id="csv_decimal_sign"
+                  v-model="csvDecimalSign"
+                  name="csv_decimal_sign"
+                  class="form-select form-select-sm"
+                >
+                  <option value=".">
+                    Period (.)
+                  </option>
+                  <option value=",">
+                    Comma (,)
+                  </option>
+                </select>
+              </div>
+            </div>
             <small class="form-text text-muted mt-2 d-block">
               <span v-if="fileType === 'CSV'">
                 Supports multiple CSV files. Each file will be treated as a separate table.
@@ -583,9 +474,79 @@ onMounted(async () => {
               </span>
             </small>
           </div>
+          <div v-show="fileType === 'Postgres'">
+            <div class="row">
+              <div class="col-md-6 mb-2">
+                <label
+                  for="username"
+                  class="form-label small"
+                >Username:</label>
+                <input
+                  id="username"
+                  v-model="pgUsername"
+                  type="text"
+                  name="username"
+                  class="form-control form-control-sm"
+                  placeholder="Enter username"
+                >
+              </div>
+              <div class="col-md-6 mb-2">
+                <label
+                  for="password"
+                  class="form-label small"
+                >Password:</label>
+                <input
+                  id="password"
+                  v-model="pgPassword"
+                  type="password"
+                  name="password"
+                  class="form-control form-control-sm"
+                  placeholder="Enter password"
+                >
+              </div>
+              <div class="col-md-6 mb-2">
+                <label
+                  for="POSTGRES_URL"
+                  class="form-label small"
+                >URL:</label>
+                <input
+                  id="POSTGRES_URL"
+                  v-model="pgUrl"
+                  type="text"
+                  name="POSTGRES_URL"
+                  class="form-control form-control-sm"
+                  placeholder="e.g., localhost:5432"
+                >
+              </div>
+              <div class="col-md-6 mb-2">
+                <label
+                  for="POSTGRES_DB"
+                  class="form-label small"
+                >Database:</label>
+                <input
+                  id="POSTGRES_DB"
+                  v-model="pgDb"
+                  type="text"
+                  name="POSTGRES_DB"
+                  class="form-control form-control-sm"
+                  placeholder="Enter database name"
+                >
+              </div>
+            </div>
+          </div>
+          <div v-show="fileType === 'Other'">
+            <small class="form-text text-muted d-block">
+              Nothing to see here just yet. <a
+                href="https://github.com/MaastrichtU-CDS/Flyover/issues"
+                target="_blank"
+                class="text-decoration-none"
+              >Let us know!</a>
+            </small>
+          </div>
         </div>
+      </div>
 
-
+      <div v-show="fileType === 'CSV' || fileType === 'Excel'">
         <div
           v-show="showPkFkSection"
           class="mt-4"
@@ -930,3 +891,11 @@ onMounted(async () => {
     </form>
   </div>
 </template>
+
+<style scoped>
+.selected-source {
+  background-color: var(--bs-primary-bg-subtle, #cfe2ff);
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+</style>
