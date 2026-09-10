@@ -440,7 +440,7 @@ onMounted(async () => {
             >
             <div
               v-show="fileType === 'CSV'"
-              class="d-flex gap-2 mt-2"
+              class="d-flex gap-3 mt-2"
             >
               <div class="flex-fill">
                 <label
