@@ -1069,7 +1069,7 @@ onMounted(async () => {
                 </small>
                 <span
                   v-if="inferredFk[index]"
-                  class="badge bg-secondary text-white ms-2 align-middle"
+                  class="badge bg-warning text-white ms-2 align-middle"
                 >
                   <i class="fas fa-lightbulb" /> Inferred — please verify
                 </span>
