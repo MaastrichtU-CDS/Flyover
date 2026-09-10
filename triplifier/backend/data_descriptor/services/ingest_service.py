@@ -218,35 +218,34 @@ class IngestService:
         table_names = []
 
         try:
+            import fastexcel
+            import polars as pl
+
             for excel_file in files:
-                # Read all sheets from the Excel file
-                # pl.read_excel (via fastexcel) requires bytes, not a
-                # file-like object, so read the FileStorage content first.
+                # Read the file bytes (fastexcel needs bytes or a path)
                 excel_bytes = excel_file.read()
                 excel_file.seek(0)
-                all_sheets = pl.read_excel(
-                    excel_bytes,
-                    sheet_id=None,  # Read all sheets
-                    infer_schema_length=0,
-                )
 
-                # If read_excel returns a dict of sheet_name -> DataFrame
-                if isinstance(all_sheets, dict):
-                    for sheet_name, df in all_sheets.items():
-                        # Preprocess the dataframe
-                        processed_df = preprocess_dataframe(df)
-                        dataframes.append(processed_df)
+                # Use fastexcel directly to list all sheets and read each one.
+                # polars' read_excel(sheet_id=None) only returns the first
+                # sheet as a single DataFrame in 1.39, so we can't rely on
+                # it for multi-sheet workbooks.
+                excel_reader = fastexcel.read_excel(excel_bytes)
+                for sheet_name in excel_reader.sheet_names:
+                    sheet_df = excel_reader.load_sheet_by_name(sheet_name)
+                    df = sheet_df.to_polars()
+                    # Cast all columns to string (equivalent to
+                    # infer_schema_length=0 in read_excel) so the
+                    # triplifier treats everything as text, matching
+                    # the CSV path's behaviour.
+                    df = df.with_columns(pl.all().cast(pl.Utf8))
 
-                        # Create table name: filename_sheetname
-                        base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
-                        table_name = f"{base_name}_{sheet_name}"
-                        table_names.append(table_name)
-                else:
-                    # If it returns a single DataFrame (single sheet)
-                    processed_df = preprocess_dataframe(all_sheets)
+                    processed_df = preprocess_dataframe(df)
                     dataframes.append(processed_df)
+
                     base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
-                    table_names.append(base_name)
+                    table_name = f"{base_name}_{sheet_name}"
+                    table_names.append(table_name)
 
         except Exception as e:
             return [], [], f"Error parsing Excel files: {e}"

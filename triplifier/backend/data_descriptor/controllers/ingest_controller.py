@@ -617,7 +617,7 @@ def upload_file():
             for msg in upload_messages:
                 logger.info(f"Upload: {msg}")
 
-            if file_type == "CSV" and start_background:
+            if file_type in ("CSV", "Excel") and start_background:
                 start_background(session_cache)
 
         return redirect("/describe")
