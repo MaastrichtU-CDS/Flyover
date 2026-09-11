@@ -3,7 +3,7 @@
 Flyover can run against three interchangeable RDF stores. The application
 behaves identically regardless of the chosen backend, because every backend is
 published as the container **`rdf-store`** on port **7200** and speaks the same
-RDF4J/GraphDB-compatible REST API used by the triplifier.
+RDF4J/GraphDB-compatible REST API used by the Flyover app.
 
 | Backend  | Reasoning | Compose profile | Notes                                            |
 |----------|-----------|-----------------|--------------------------------------------------|
@@ -23,11 +23,11 @@ docker compose up -d --build
 
 Each preset also sets:
 
-- `FLYOVER_RDF_STORE_URL` — the base URL the triplifier uses to reach the store.
+- `FLYOVER_RDF_STORE_URL` — the base URL the Flyover app uses to reach the store.
   This is now the **same** bare URL (`http://rdf-store:7200`) for every backend:
   GraphDB and the QLever adapter expose the REST API at the server root, and the
   Flyover RDF4J image rewrites root-level `/repositories/*` requests to its
-  internal `/rdf4j-server` context (see `rdf4j/rewrite.config`). The triplifier
+  internal `/rdf4j-server` context (see `rdf4j/rewrite.config`). The Flyover app
   therefore needs no store-specific suffix.
 - `FLYOVER_MATERIALIZE_INFERENCES` — `true` for stores without a reasoner
   (RDF4J, QLever), `false` for GraphDB.
@@ -50,14 +50,14 @@ Regardless of the backend, the store's browser UI is reachable at
   RDF4J image replaces Tomcat's default ROOT app with a redirect, so opening the
   bare `http://localhost:7200` lands directly on the Workbench.
 - **QLever** is fronted by the adapter; the root path returns a simple health
-  message while the triplifier talks to the REST endpoints under it.
+  message while the Flyover app talks to the REST endpoints under it.
 
 ## How QLever is integrated
 
 QLever only exposes a single plain SPARQL HTTP endpoint, so it cannot directly
 serve the RDF4J/GraphDB REST API (`/repositories/<repo>`,
 `/repositories/<repo>/statements`, the Graph Store Protocol, etc.) that the
-triplifier expects. The `qlever` profile therefore starts two containers:
+Flyover app expects. The `qlever` profile therefore starts two containers:
 
 - **`qlever-engine`** — the QLever server. On first start it builds an index
   from a minimal seed (`engine/seed.nt`); the real data is then loaded at
@@ -71,11 +71,11 @@ triplifier expects. The `qlever` profile therefore starts two containers:
     `INSERT DATA { GRAPH <g> { … } }` / `CONSTRUCT … GRAPH <g>` / `DROP GRAPH <g>`
   - `/protocol` and `/size` probes used during start-up
 
-This keeps the triplifier completely unaware of which store is running.
+This keeps the Flyover app completely unaware of which store is running.
 
 > **Note on persistence:** QLever applies runtime SPARQL UPDATEs as in-memory
 > delta triples. Depending on your QLever version these may not be persisted
 > into the on-disk index across `qlever-engine` restarts. The index directory
-> is bind-mounted at `rdf-store/qlever/data` so the base index survives
+> is bind-mounted at `stores/rdf/qlever/data` so the base index survives
 > restarts; verify update persistence against your QLever version before
 > relying on it in production.

@@ -3,7 +3,7 @@ services:
   # Activate it with: COMPOSE_PROFILES=graphdb docker compose -f docker-compose.yml -f docker-compose.test.yml ...
   rdf-store-graphdb:
     build:
-      context: ./rdf-store/graphdb
+      context: ./stores/rdf/graphdb
     image: flyover-graphdb-test:local
     volumes: !reset []
     tmpfs:
@@ -13,9 +13,9 @@ services:
       - GDB_MIN_MEM=1g
       - GDB_MAX_MEM=2g
 
-  triplifier:
+  flyover:
     build:
-      context: ./triplifier
+      context: ./flyover
     environment:
       - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
       - FLYOVER_MATERIALIZE_INFERENCES=false

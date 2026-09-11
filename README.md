@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 Clone the repository and start the services:
 
 ```bash
-docker-compose up -d --pull always
+docker compose up -d --pull always
 ```
 
 | Service        | URL                                            | Description                             |
@@ -49,7 +49,7 @@ docker-compose up -d --pull always
 
 Flyover can run on **GraphDB**, **RDF4J**, or **QLever** — the application
 behaves identically with any of them. The backend is selected with a single
-`COMPOSE_PROFILES` setting in the [`.env`](.env) file (default: `rdf4j`):
+`COMPOSE_PROFILES` setting in the [`.env`](.env) file (default: `graphdb`):
 
 ```bash
 # .env
@@ -57,11 +57,29 @@ COMPOSE_PROFILES=qlever   # or: graphdb | rdf4j
 ```
 
 After changing the preset, recreate the stack with `docker compose up -d --build`.
-See [`rdf-store/README.md`](rdf-store/README.md) for the differences between the
+See [`stores/rdf/README.md`](stores/rdf/README.md) for the differences between the
 backends and details of the QLever integration.
 
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
 on configuration and environment variables.
+
+### Repository layout
+
+Top-level directories are named after the *role* a container plays in the stack, not after the technology behind it:
+
+```
+docker-compose.yml     # orchestration: the flyover app + `include:` of every module
+flyover/               # the Flyover application (Flask backend + Vue frontend, one image)
+stores/rdf/            # RDF store backends (graphdb/, rdf4j/, qlever/) + their compose.yml
+docs/                  # developer documentation
+example_data/          # synthetic datasets and JSON-LD mappings
+scripts/               # helper scripts (test stack, clearing GraphDB, ...)
+```
+
+Every module the app talks to (currently only the RDF store) lives in its own directory with its own `compose.yml`
+and is reached through one stable hostname (`rdf-store`) configured by one `FLYOVER_<MODULE>_URL` environment
+variable. New kinds of backends (e.g. `stores/omop/`) or side-car services (e.g. `services/llm/`) follow the same
+pattern: a directory, a `compose.yml` pulled in via `include:`, and a Compose profile to switch them on.
 
 ## Workflow
 

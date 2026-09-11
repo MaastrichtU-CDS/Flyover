@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.description="Reference to GraphDB for Flyover pro
 LABEL org.opencontainers.image.licenses="https://graphdb.ontotext.com/documentation/10.8/licensing.html"
 
 # Seed copied into /opt/graphdb-seed/ and applied by seed-entrypoint.sh.
-# Production bind-mounts ./graphdb/data over /opt/graphdb/home, masking the seed
+# Production bind-mounts ./stores/rdf/graphdb/data over /opt/graphdb/home, masking the seed
 # and persisting real user state on the host. The seed only takes effect on
 # fresh tmpfs mounts (the CI test stack). Seed files MUST stay stock GraphDB
 # defaults; live user/settings state must never be copied into graphdb/seed/.

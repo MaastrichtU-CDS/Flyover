@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 // This test posts a real CSV through /upload, which runs the triplifier
 // and then redirects to /describe on success. It mutates the running
 // GraphDB — after running, the graph holds an extra dataset until you
-// recreate the rdf-store container or wipe ./graphdb/data/.
+// recreate the rdf-store container or wipe ./stores/rdf/graphdb/data/.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_CSV = path.resolve(
