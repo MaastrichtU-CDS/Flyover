@@ -1,0 +1,93 @@
+# ══════════════════════════════════════════════════════════════════════
+# RDF STORE — pick ONE backend through the active Compose profile.
+#
+# This file is pulled into the root docker-compose.yml via `include:`, so
+# all paths below are relative to stores/rdf/.
+#
+# GraphDB is the default: `docker compose up` (no flags) starts GraphDB.
+# The default is set by COMPOSE_PROFILES=graphdb in the committed .env
+# file at the repository root.  To use a different backend:
+#     COMPOSE_PROFILES=rdf4j   docker compose up   → Eclipse RDF4J (no reasoning)
+#     COMPOSE_PROFILES=qlever  docker compose up   → QLever        (no reasoning)
+#
+# Always run `docker compose down` with the same COMPOSE_PROFILES value
+# that was used for `up`, so Compose can locate the right container.
+#
+# Every backend is published as the container "rdf-store" on port 7200 and
+# speaks the same RDF4J/GraphDB-compatible REST API, so the Flyover app
+# connects to it in exactly the same way regardless of the chosen store.
+# ══════════════════════════════════════════════════════════════════════
+
+# Settings shared by whichever store ends up published as "rdf-store".
+x-rdf-store-common: &rdf-store-common
+  container_name: rdf-store
+  ports:
+    - "127.0.0.1:7200:7200"
+  networks:
+    - proxynet
+
+services:
+  # ─── Option A: GraphDB ──────────────────────────────────────────────
+  rdf-store-graphdb:
+    <<: *rdf-store-common
+    profiles: ["graphdb"]
+    image: ghcr.io/maastrichtu-cds/flyover-graphdb:latest
+    # If preferred, the graphdb image can be built from the Dockerfile:
+    # build:
+    #   context: ./graphdb
+    volumes:
+      - ./graphdb/data:/opt/graphdb/home
+    environment:
+      - GDB_HEAP_SIZE=8g
+      - GDB_MIN_MEM=4g
+      - GDB_MAX_MEM=12g
+
+  # ─── Option B: RDF4J ────────────────────────────────────────────────
+  # The Dockerfile auto-creates the "userRepo" repository on first start.
+  rdf-store-rdf4j:
+    <<: *rdf-store-common
+    profiles: ["rdf4j"]
+    build:
+      context: ./rdf4j
+    volumes:
+      - ./rdf4j/data:/var/rdf4j
+      - ./rdf4j/logs:/usr/local/tomcat/logs
+    environment:
+      # Use all available CPU cores and up to 75 % of host RAM for the JVM heap.
+      # -XX:+UseContainerSupport (default in JDK 11+) makes the JVM honour
+      # Docker's CPU/memory limits instead of reading raw host values.
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+
+  # ─── Option C: QLever ───────────────────────────────────────────────
+  # The QLever engine only speaks a plain SPARQL HTTP endpoint, so a thin
+  # adapter (published as "rdf-store") translates the RDF4J/GraphDB REST API
+  # used by Flyover onto QLever. The engine is an internal service; its
+  # on-disk index is persisted under ./qlever/data, mirroring the data
+  # volumes used by GraphDB and RDF4J.
+  qlever-engine:
+    profiles: ["qlever"]
+    container_name: qlever-engine
+    build:
+      context: ./qlever/engine
+    volumes:
+      - ./qlever/data:/data
+    environment:
+      # Access token required by QLever to accept SPARQL UPDATE requests.
+      - QLEVER_ACCESS_TOKEN=${QLEVER_ACCESS_TOKEN:-flyover}
+    networks:
+      - proxynet
+
+  rdf-store-qlever:
+    <<: *rdf-store-common
+    profiles: ["qlever"]
+    build:
+      context: ./qlever/adapter
+    environment:
+      - QLEVER_ENDPOINT=http://qlever-engine:7019
+      - QLEVER_ACCESS_TOKEN=${QLEVER_ACCESS_TOKEN:-flyover}
+    depends_on:
+      - qlever-engine
+
+networks:
+  proxynet:
+    name: flyover_network

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/MaastrichtU-CDS/Flyover/main/triplifier/data_descriptor/schemas/mapping_schema.json",
+  "$schema": "https://raw.githubusercontent.com/MaastrichtU-CDS/Flyover/main/flyover/backend/data_descriptor/schemas/mapping_schema.json",
   "@context": {
     "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/",
     "sio": "http://semanticscience.org/resource/",

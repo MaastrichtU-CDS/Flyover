@@ -18,7 +18,7 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 GDB_URL="${FLYOVER_RDF_STORE_URL:-http://localhost:7200}"
 REPO="${FLYOVER_REPOSITORY_NAME:-userRepo}"
-DATA_DIR="${REPO_ROOT}/graphdb/data"
+DATA_DIR="${REPO_ROOT}/stores/rdf/graphdb/data"
 
 usage() {
   cat <<EOF
@@ -32,10 +32,10 @@ Env:
   FLYOVER_REPOSITORY_NAME default userRepo
 
 The following are NEVER touched:
-  graphdb/data/data/settings.js
-  graphdb/data/data/users.js
-  graphdb/data/data/repositories/<repo>/config.ttl
-  graphdb/data/conf/
+  stores/rdf/graphdb/data/data/settings.js
+  stores/rdf/graphdb/data/data/users.js
+  stores/rdf/graphdb/data/data/repositories/<repo>/config.ttl
+  stores/rdf/graphdb/data/conf/
 EOF
 }
 

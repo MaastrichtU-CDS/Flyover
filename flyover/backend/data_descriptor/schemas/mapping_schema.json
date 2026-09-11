@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/MaastrichtU-CDS/Flyover/triplifier/data_descriptor/schema_handling/validation_schema.json",
+  "$id": "https://raw.githubusercontent.com/MaastrichtU-CDS/Flyover/main/flyover/backend/data_descriptor/schemas/mapping_schema.json",
   "title": "Flyover Semantic Mapping Schema",
   "description": "JSON Schema for validating Flyover JSON-LD semantic mapping files with variable schema definitions",
   "type": "object",
