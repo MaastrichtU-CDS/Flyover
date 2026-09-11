@@ -523,7 +523,9 @@ onMounted(async () => {
           </h5>
         </div>
         <div class="card-body">
-          <p class="text-muted mb-3">Start by selecting your data source, or drag &amp; drop files anywhere on this page:</p>
+          <p class="text-muted mb-3">
+            Start by selecting your data source, or drag &amp; drop files anywhere on this page:
+          </p>
           <div class="row">
             <div class="col-md-3 mb-3 mb-md-0">
               <div
@@ -655,11 +657,19 @@ onMounted(async () => {
           </h5>
         </div>
         <div class="card-body">
-          <p class="text-muted small mb-2">Provide the details for your selected source type:</p>
+          <p class="text-muted small mb-2">
+            Provide the details for your selected source type:
+          </p>
           <hr class="mt-0 mb-3">
           <div v-show="fileType === 'CSV' || fileType === 'Excel'">
-            <div class="d-flex align-items-center flex-wrap" style="gap: 0;">
-              <div class="input-group" style="min-width: 200px; max-width: 300px; flex: 1 1 auto; margin-right: 0.5rem;">
+            <div
+              class="d-flex align-items-center flex-wrap"
+              style="gap: 0;"
+            >
+              <div
+                class="input-group"
+                style="min-width: 200px; max-width: 300px; flex: 1 1 auto; margin-right: 0.5rem;"
+              >
                 <input
                   id="csvPath"
                   type="text"

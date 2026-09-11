@@ -7,9 +7,9 @@ including file uploads, semantic map uploads, and data processing.
 
 import json
 import logging
+from urllib.parse import quote_plus
 
 from flask import Blueprint, jsonify, redirect, request
-from urllib.parse import quote_plus
 
 from services import IngestService, RDFStoreService
 from validation import MappingValidator
