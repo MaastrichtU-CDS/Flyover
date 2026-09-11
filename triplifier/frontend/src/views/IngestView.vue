@@ -1,10 +1,39 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import JSZip from 'jszip'
 import api from '@/services/api'
 import { useNavigation } from '@/composables/useNavigation'
+import { readCSVColumns } from '@/lib/csvParser'
+import { readExcelSheetInfo } from '@/lib/excelParser'
+import {
+  isValidPgUrl,
+  preventBlockedKey,
+  stripBlockedOnPaste,
+  pgHasBlockedChar,
+  pgFieldError as pgFieldErrorValue,
+  pgUrlErrorValue,
+} from '@/lib/postgresValidation'
+import {
+  filterByExtension,
+  detectFileType,
+  setFileInputFiles,
+} from '@/lib/fileDropUtils'
+import {
+  computeAutoSuggestions,
+  computeClearIndices,
+  validatePkFkRelationships as validatePkFk,
+  buildPkFkDataJson,
+} from '@/lib/pkfkUtils'
 
 const { dataExists: graphExists, refreshDataExists } = useNavigation()
+
+// --- File type configuration ---
+
+const FILE_TYPE_EXTENSIONS = {
+  CSV: ['.csv'],
+  Excel: ['.xlsx', '.xls'],
+}
+
+// --- Reactive state ---
 
 const fileType = ref('')
 const csvFiles = ref([])
@@ -36,98 +65,6 @@ const pgFieldsTouched = reactive({
   db: false,
 })
 
-function isValidPgUrl(url) {
-  if (!url) return false
-  // Accept host:port (e.g. localhost:5432) or a full URL with a scheme.
-  if (/^https?:\/\//.test(url)) {
-    try {
-      new URL(url)
-      return true
-    } catch {
-      return false
-    }
-  }
-  // host:port — validate host (hostname or IP) and numeric port
-  return /^[a-zA-Z0-9._-]+:\d+$/.test(url)
-}
-
-// Characters that must be blocked per Postgres field.
-// @ — hijacks connection-string parsing (postgresql://user:pass@host)
-// \n \r — inject new lines into the backend .properties file via raw f-string
-// = — injects key-value pairs in .properties file format
-// / — changes the path in jdbc:postgresql://{url}/{db}
-// Password only blocks newlines — psycopg2.connect() handles everything else.
-const PG_BLOCKED_CHARS = {
-  username: ['@', '\n', '\r', '='],
-  password: ['\n', '\r'],
-  url: ['@', '\n', '\r'],
-  db: ['@', '\n', '\r', '=', '/'],
-}
-
-function pgBlockedCharsFor(field) {
-  return PG_BLOCKED_CHARS[field] || []
-}
-
-function pgBlockedCharsLabel(field) {
-  const chars = pgBlockedCharsFor(field)
-  const printable = chars
-    .filter((c) => c !== '\n' && c !== '\r')
-    .map((c) => `"${c}"`)
-  const parts = []
-  if (printable.length) parts.push(printable.join(', '))
-  if (chars.includes('\n')) parts.push('line breaks')
-  return parts.join(' and ')
-}
-
-function preventBlockedKey(field) {
-  return (e) => {
-    if (pgBlockedCharsFor(field).includes(e.key)) e.preventDefault()
-  }
-}
-
-function stripBlockedOnPaste(field) {
-  return (e) => {
-    const text = (e.clipboardData || window.clipboardData).getData('text')
-    const blocked = pgBlockedCharsFor(field)
-    if (blocked.some((c) => text.includes(c))) {
-      e.preventDefault()
-      const stripped = [...blocked].reduce(
-        (s, c) => s.replaceAll(c, ''),
-        text
-      )
-      document.execCommand('insertText', false, stripped)
-    }
-  }
-}
-
-function pgFieldError(field) {
-  if (!pgFieldsTouched[field]) return ''
-  const value = { username: pgUsername, password: pgPassword, db: pgDb }[field]?.value
-  if (!value) return ''
-  const blocked = pgBlockedCharsFor(field)
-  const found = blocked.filter((c) => value.includes(c))
-  if (found.length) {
-    return `The following are not allowed: ${pgBlockedCharsLabel(field)}.`
-  }
-  return ''
-}
-
-function pgHasBlockedChar(field) {
-  const value = { username: pgUsername, password: pgPassword, db: pgDb }[field]?.value
-  if (!value) return false
-  return pgBlockedCharsFor(field).some((c) => value.includes(c))
-}
-
-const pgUrlError = computed(() => {
-  if (!pgUrlTouched.value) return ''
-  if (pgUrl.value.includes('@') || /[\n\r]/.test(pgUrl.value)) {
-    return `The following are not allowed: ${pgBlockedCharsLabel('url')}.`
-  }
-  if (!pgUrl.value) return 'URL is required.'
-  if (!isValidPgUrl(pgUrl.value)) return 'Enter a valid host:port (e.g. localhost:5432) or a full URL.'
-  return ''
-})
-
 const pkSelections = reactive({})
 const fkSelections = reactive({})
 const fkTableSelections = reactive({})
@@ -150,6 +87,26 @@ const dragActiveTile = computed(() => {
 
 const pageDragActive = ref(false)
 let pageDragLeaveTimer = null
+
+// --- Computed: PG field helpers ---
+
+function pgFieldValue(field) {
+  return { username: pgUsername, password: pgPassword, db: pgDb }[field]?.value
+}
+
+function pgFieldError(field) {
+  return pgFieldErrorValue(field, pgFieldValue(field), pgFieldsTouched[field])
+}
+
+function pgHasBlockedCharInView(field) {
+  return pgHasBlockedChar(field, pgFieldValue(field))
+}
+
+const pgUrlError = computed(() =>
+  pgUrlErrorValue(pgUrl.value, pgUrlTouched.value)
+)
+
+// --- Computed: table/column lookups ---
 
 const newTableColumns = computed(() => {
   if (!newTableName.value) return []
@@ -179,6 +136,7 @@ const crossGraphLinkError = computed(() => {
   return ''
 })
 
+// --- PK/FK helpers ---
 
 function getFileColumns(tableName) {
   if (!tableName) return []
@@ -189,22 +147,15 @@ function getOtherTables(currentName) {
   return pkFkTables.value.filter((t) => t !== currentName)
 }
 
-function validatePkFkRelationships() {
-  if (!showPkFkSection.value) return true
-  let valid = true
-  pkFkTables.value.forEach((_, index) => {
-    const fk = fkSelections[index] || ''
-    const fkTable = fkTableSelections[index] || ''
-    if (fk && fkTable) {
-      const refIdx = pkFkTables.value.findIndex((t) => t === fkTable)
-      if (refIdx !== -1) {
-        const refPk = pkSelections[refIdx] || ''
-        if (!refPk) valid = false
-      }
-    }
-  })
-  return valid
+function resetPkFk() {
+  for (const k of Object.keys(pkSelections)) delete pkSelections[k]
+  for (const k of Object.keys(fkSelections)) delete fkSelections[k]
+  for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
+  for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
+  for (const k of Object.keys(inferredFk)) delete inferredFk[k]
 }
+
+// --- Computed: form validation & submit ---
 
 const isFormValid = computed(() => {
   const basic =
@@ -216,12 +167,22 @@ const isFormValid = computed(() => {
       pgUrl.value &&
       pgDb.value &&
       isValidPgUrl(pgUrl.value) &&
-      !pgHasBlockedChar('username') &&
-      !pgHasBlockedChar('password') &&
-      !pgHasBlockedChar('url') &&
-      !pgHasBlockedChar('db'))
+      !pgHasBlockedCharInView('username') &&
+      !pgHasBlockedCharInView('password') &&
+      !pgHasBlockedCharInView('url') &&
+      !pgHasBlockedCharInView('db'))
   return basic && validatePkFkRelationships()
 })
+
+function validatePkFkRelationships() {
+  return validatePkFk(
+    showPkFkSection.value,
+    pkFkTables.value,
+    pkSelections,
+    fkSelections,
+    fkTableSelections
+  )
+}
 
 const submitButtonTitle = computed(() => {
   if (isFormValid.value) return ''
@@ -243,26 +204,18 @@ const submitButtonIcon = computed(() => {
   return 'fa-play'
 })
 
-const pkFkDataJson = computed(() => {
-  if (!showPkFkSection.value) return ''
-  const data = []
-  pkFkTables.value.forEach((tableName, index) => {
-    const pk = pkSelections[index] || ''
-    const fk = fkSelections[index] || ''
-    const fkTable = fkTableSelections[index] || ''
-    const fkColumn = fkColumnSelections[index] || ''
-    if (pk || fk) {
-      data.push({
-        fileName: tableName,
-        primaryKey: pk || null,
-        foreignKey: fk || null,
-        foreignKeyTable: fkTable || null,
-        foreignKeyColumn: fkColumn || null,
-      })
-    }
-  })
-  return JSON.stringify(data)
-})
+// --- Computed: serialised form payloads ---
+
+const pkFkDataJson = computed(() =>
+  buildPkFkDataJson(
+    showPkFkSection.value,
+    pkFkTables.value,
+    pkSelections,
+    fkSelections,
+    fkTableSelections,
+    fkColumnSelections
+  )
+)
 
 const crossGraphLinkDataJson = computed(() => {
   if (!enableDataLinking.value) return ''
@@ -284,192 +237,7 @@ const crossGraphLinkDataJson = computed(() => {
   return ''
 })
 
-function detectSeparator(line) {
-  const seps = [',', ';', '\t', '|']
-  let best = ','
-  let max = 0
-  for (const s of seps) {
-    const c = line.split(s).length - 1
-    if (c > max) {
-      max = c
-      best = s
-    }
-  }
-  return best
-}
-
-function parseCSVLine(line, sep) {
-  const out = []
-  let cur = ''
-  let q = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') q = !q
-    else if (ch === sep && !q) {
-      out.push(cur.trim())
-      cur = ''
-    } else cur += ch
-  }
-  out.push(cur.trim())
-  return out.map((h) => h.replace(/"/g, '').trim()).filter(Boolean)
-}
-
-function readCSVColumns(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const lines = e.target.result.split('\n')
-        if (!lines.length) return resolve([])
-        const sep = detectSeparator(lines[0])
-        resolve(parseCSVLine(lines[0], sep))
-      } catch {
-        resolve([])
-      }
-    }
-    reader.onerror = () => resolve([])
-    reader.readAsText(file.slice(0, 1024))
-  })
-}
-
-// Read sheet names and column headers from an .xlsx file using JSZip.
-// Returns a list of { name, columns } entries, one per sheet.
-// Handles both shared strings (t="s" + <v>index</v>) and inline strings
-// (t="inlineStr" + <is><t>text</t></is>).
-async function readExcelSheetInfo(file) {
-  try {
-    const zip = await JSZip.loadAsync(file)
-    const workbookXml = await zip.file('xl/workbook.xml')?.async('string')
-    if (!workbookXml) return []
-
-    // Parse sheet names from <sheet name="..."> elements
-    const sheetNames = []
-    const sheetRegex = /<sheet\s+[^>]*name="([^"]+)"/g
-    let match
-    while ((match = sheetRegex.exec(workbookXml)) !== null) {
-      sheetNames.push(match[1])
-    }
-    if (!sheetNames.length) return []
-
-    // Parse shared strings table (xl/sharedStrings.xml)
-    const sharedStrings = []
-    const sharedStringsXml = await zip.file('xl/sharedStrings.xml')?.async('string')
-    if (sharedStringsXml) {
-      const siRegex = /<si>([\s\S]*?)<\/si>/g
-      let siMatch
-      while ((siMatch = siRegex.exec(sharedStringsXml)) !== null) {
-        // Extract text from <t>...</t> within the <si> (may have rich text runs)
-        const tMatches = siMatch[1].match(/<t[^>]*>([^<]*)<\/t>/g)
-        if (tMatches) {
-          const text = tMatches.map((t) => t.replace(/<[^>]*>/g, '')).join('')
-          sharedStrings.push(text)
-        } else {
-          sharedStrings.push('')
-        }
-      }
-    }
-
-    // Map sheet names to their XML file paths via the relationships file
-    const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('string')
-    const sheetPaths = []
-    if (relsXml) {
-      const relRegex = /<Relationship\s+[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g
-      const rels = []
-      while ((match = relRegex.exec(relsXml)) !== null) {
-        rels.push({ id: match[1], target: match[2] })
-      }
-      const sheetRelRegex = /<sheet\s+[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g
-      let relMatch
-      while ((relMatch = sheetRelRegex.exec(workbookXml)) !== null) {
-        const rel = rels.find((r) => r.id === relMatch[2])
-        if (rel) {
-          sheetPaths.push({
-            name: relMatch[1],
-            path: rel.target.startsWith('/') ? rel.target.slice(1) : `xl/${rel.target}`,
-          })
-        }
-      }
-    }
-
-    const result = []
-    for (let i = 0; i < sheetNames.length; i++) {
-      const sheetInfo = sheetPaths[i]
-      let columns = []
-      if (sheetInfo) {
-        try {
-          const sheetXml = await zip.file(sheetInfo.path)?.async('string')
-          if (sheetXml) {
-            columns = parseSheetHeaderColumns(sheetXml, sharedStrings)
-          }
-        } catch { /* empty columns */ }
-      }
-      result.push({ name: sheetNames[i], columns })
-    }
-    return result
-  } catch {
-    return []
-  }
-}
-
-// Extract column headers from the first row of a sheet's XML.
-// Cells can be:
-//   t="s"        → shared string: <v>index</v> into sharedStrings
-//   t="inlineStr"→ inline string: <is><t>text</t></is>
-//   t="str"      → formula string: <v>text</v>
-//   no t         → numeric: <v>42</v> (use the value as-is for header)
-//   t="b"        → boolean: skip
-function parseSheetHeaderColumns(sheetXml, sharedStrings) {
-  const rowMatch = sheetXml.match(/<row\s+r="1"[^>]*>([\s\S]*?)<\/row>/)
-  if (!rowMatch) return []
-
-  const cellRegex = /<c\b[^>]*>([\s\S]*?)<\/c>|<c\b[^>]*\/>/g
-  const cols = []
-  let cellMatch
-  while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-    const cellContent = cellMatch[1] || ''
-    const cellTag = cellMatch[0]
-
-    // Determine cell type
-    const typeMatch = cellTag.match(/\bt="([^"]+)"/)
-    const type = typeMatch ? typeMatch[1] : ''
-
-    let value = null
-
-    if (type === 's') {
-      // Shared string: <v>index</v>
-      const vMatch = cellContent.match(/<v>([^<]*)<\/v>/)
-      if (vMatch) {
-        const idx = parseInt(vMatch[1], 10)
-        value = sharedStrings[idx] ?? null
-      }
-    } else if (type === 'inlineStr') {
-      // Inline string: <is><t>text</t></is>
-      const tMatch = cellContent.match(/<t[^>]*>([^<]*)<\/t>/)
-      if (tMatch) value = tMatch[1]
-    } else if (type === 'str') {
-      // Formula string: <v>text</v>
-      const vMatch = cellContent.match(/<v>([^<]*)<\/v>/)
-      if (vMatch) value = vMatch[1]
-    } else if (!type) {
-      // Numeric: <v>42</v>
-      const vMatch = cellContent.match(/<v>([^<]*)<\/v>/)
-      if (vMatch) value = vMatch[1]
-    }
-
-    if (value !== null && value !== '') {
-      cols.push(String(value).trim())
-    }
-  }
-  return cols
-}
-
-function resetPkFk() {
-  for (const k of Object.keys(pkSelections)) delete pkSelections[k]
-  for (const k of Object.keys(fkSelections)) delete fkSelections[k]
-  for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
-  for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
-  for (const k of Object.keys(inferredFk)) delete inferredFk[k]
-}
+// --- File processing ---
 
 function triggerFileInput() {
   csvFileInput.value?.click()
@@ -490,83 +258,67 @@ async function processFiles(files) {
   csvPath.value = paths.join(', ')
 
   if (fileType.value === 'Excel') {
-    // For Excel, each sheet is a table. Read sheet info from the xlsx zip.
-    const allSheetInfo = await Promise.all(
-      Array.from(files).map((f) => readExcelSheetInfo(f))
-    )
-    const tables = []
-    allSheetInfo.forEach((sheets, fi) => {
-      const file = files[fi]
-      const base = file.name.replace(/\.(xlsx|xls)$/i, '')
-      if (sheets.length === 0) {
-        // Could not read sheets — treat the file as a single table
-        const tableName = base
-        tables.push(tableName)
-        csvColumns[tableName] = []
-      } else {
-        sheets.forEach((sheet) => {
-          const tableName = `${base}_${sheet.name}`
-          tables.push(tableName)
-          csvColumns[tableName] = sheet.columns
-        })
-      }
-    })
-    pkFkTables.value = tables
-    showPkFkSection.value = tables.length > 1
-    tables.forEach((_, i) => {
-      pkSelections[i] = pkSelections[i] || ''
-    })
+    await processExcelFiles(files)
   } else {
-    // For CSV, each file is a table.
-    pkFkTables.value = Array.from(files).map((f) => f.name)
-
-    // Visibility depends only on file counts, not on the column reads. Set it
-    // before awaiting so the multi-file UI appears immediately and tests don't
-    // race the FileReader.onload macrotask.
-    showPkFkSection.value = files.length > 1
-    pkFkTables.value.forEach((_, i) => {
-      pkSelections[i] = pkSelections[i] || ''
-    })
-
-    const cols = await Promise.all(
-      Array.from(files).map((f) => readCSVColumns(f))
-    )
-    Array.from(files).forEach((f, i) => {
-      csvColumns[f.name] = cols[i]
-    })
+    await processCSVFiles(files)
   }
 
   showDataLinkingSection.value = graphExists.value && files.length > 0
+}
+
+async function processExcelFiles(files) {
+  // For Excel, each sheet is a table. Read sheet info from the xlsx zip.
+  const allSheetInfo = await Promise.all(
+    Array.from(files).map((f) => readExcelSheetInfo(f))
+  )
+  const tables = []
+  allSheetInfo.forEach((sheets, fi) => {
+    const file = files[fi]
+    const base = file.name.replace(/\.(xlsx|xls)$/i, '')
+    if (sheets.length === 0) {
+      // Could not read sheets — treat the file as a single table
+      tables.push(base)
+      csvColumns[base] = []
+    } else {
+      sheets.forEach((sheet) => {
+        const tableName = `${base}_${sheet.name}`
+        tables.push(tableName)
+        csvColumns[tableName] = sheet.columns
+      })
+    }
+  })
+  pkFkTables.value = tables
+  showPkFkSection.value = tables.length > 1
+  tables.forEach((_, i) => {
+    pkSelections[i] = pkSelections[i] || ''
+  })
+}
+
+async function processCSVFiles(files) {
+  // For CSV, each file is a table.
+  pkFkTables.value = Array.from(files).map((f) => f.name)
+
+  // Visibility depends only on file counts, not on the column reads. Set it
+  // before awaiting so the multi-file UI appears immediately and tests don't
+  // race the FileReader.onload macrotask.
+  showPkFkSection.value = files.length > 1
+  pkFkTables.value.forEach((_, i) => {
+    pkSelections[i] = pkSelections[i] || ''
+  })
+
+  const cols = await Promise.all(
+    Array.from(files).map((f) => readCSVColumns(f))
+  )
+  Array.from(files).forEach((f, i) => {
+    csvColumns[f.name] = cols[i]
+  })
 }
 
 async function handleFileChange(e) {
   await processFiles(e.target.files)
 }
 
-function setFileInputFiles(files) {
-  if (typeof DataTransfer === 'undefined' || !csvFileInput.value) return
-  const dt = new DataTransfer()
-  for (const file of files) dt.items.add(file)
-  csvFileInput.value.files = dt.files
-}
-
-function filterDroppedFiles(fileList, type) {
-  const exts = type === 'Excel' ? ['.xlsx', '.xls'] : ['.csv']
-  return Array.from(fileList).filter((f) =>
-    exts.some((ext) => f.name.toLowerCase().endsWith(ext))
-  )
-}
-
-function detectFileType(files) {
-  const all = Array.from(files)
-  const csvCount = all.filter((f) => f.name.toLowerCase().endsWith('.csv')).length
-  const excelCount = all.filter(
-    (f) => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
-  ).length
-  if (csvCount === all.length) return 'CSV'
-  if (excelCount === all.length) return 'Excel'
-  return null
-}
+// --- Drag and drop ---
 
 function onTileDragEnter(type) {
   dragCounters[type]++
@@ -582,14 +334,14 @@ async function onTileDrop(type, e) {
   clearTimeout(pageDragLeaveTimer)
   dragCounters[type] = 0
   pageDragActive.value = false
-  const dropped = filterDroppedFiles(e.dataTransfer.files, type)
+  const dropped = filterByExtension(e.dataTransfer.files, FILE_TYPE_EXTENSIONS[type])
   if (!dropped.length) {
     const exts = type === 'Excel' ? '.xlsx or .xls' : '.csv'
     dropError.value = `Please drop only ${exts} files on the ${type} tile.`
     return
   }
   fileType.value = type
-  setFileInputFiles(dropped)
+  setFileInputFiles(csvFileInput.value, dropped)
   await processFiles(dropped)
 }
 
@@ -617,16 +369,18 @@ async function onPageDrop(e) {
   pageDragActive.value = false
   const allFiles = Array.from(e.dataTransfer.files)
   if (!allFiles.length) return
-  const detected = detectFileType(allFiles)
+  const detected = detectFileType(allFiles, FILE_TYPE_EXTENSIONS)
   if (!detected) {
     const names = allFiles.map((f) => f.name).join(', ')
     dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, or .xls files.`
     return
   }
   fileType.value = detected
-  setFileInputFiles(allFiles)
+  setFileInputFiles(csvFileInput.value, allFiles)
   await processFiles(allFiles)
 }
+
+// --- PK/FK auto-suggest ---
 
 function onFkTableChange(index) {
   fkColumnSelections[index] = ''
@@ -641,36 +395,18 @@ function onFkManualChange(index) {
 // a column whose name matches the PK (case-insensitive). If found and the
 // other table's FK fields are not already manually set, auto-fill them.
 function autoSuggestFk(pkIndex) {
-  const pkColumn = pkSelections[pkIndex]
-  if (!pkColumn) return
-  const pkTableName = pkFkTables.value[pkIndex]
-  if (!pkTableName) return
-
-  const pkLower = pkColumn.toLowerCase()
-
-  pkFkTables.value.forEach((tableName, index) => {
-    if (index === pkIndex) return
+  const suggestions = computeAutoSuggestions(
+    pkFkTables.value, csvColumns, pkSelections, pkIndex
+  )
+  for (const [index, s] of Object.entries(suggestions)) {
+    const i = Number(index)
     // Don't override a manually-set FK
-    if (fkSelections[index]) return
-
-    const cols = csvColumns[tableName]
-    if (!cols || !cols.length) return
-
-    // Look for a case-insensitive exact match first, then a loose match
-    // (contains the PK name or vice-versa).
-    let match = cols.find((c) => c.toLowerCase() === pkLower)
-    if (!match) {
-      match = cols.find(
-        (c) => c.toLowerCase().includes(pkLower) || pkLower.includes(c.toLowerCase())
-      )
-    }
-    if (match) {
-      fkSelections[index] = match
-      fkTableSelections[index] = pkTableName
-      fkColumnSelections[index] = pkColumn
-      inferredFk[index] = true
-    }
-  })
+    if (fkSelections[i]) continue
+    fkSelections[i] = s.fk
+    fkTableSelections[i] = s.fkTable
+    fkColumnSelections[i] = s.fkColumn
+    inferredFk[i] = true
+  }
 }
 
 // Clear auto-suggested FK fields when a PK is removed, so stale suggestions
@@ -678,16 +414,13 @@ function autoSuggestFk(pkIndex) {
 function clearAutoSuggestedFk(pkIndex) {
   const pkTableName = pkFkTables.value[pkIndex]
   if (!pkTableName) return
-
-  pkFkTables.value.forEach((_, index) => {
-    if (index === pkIndex) return
-    if (fkTableSelections[index] === pkTableName) {
-      fkSelections[index] = ''
-      fkTableSelections[index] = ''
-      fkColumnSelections[index] = ''
-      delete inferredFk[index]
-    }
-  })
+  const indices = computeClearIndices(fkTableSelections, pkTableName)
+  for (const index of indices) {
+    fkSelections[index] = ''
+    fkTableSelections[index] = ''
+    fkColumnSelections[index] = ''
+    delete inferredFk[index]
+  }
 }
 
 watch(pkSelections, () => {
@@ -699,6 +432,8 @@ watch(pkSelections, () => {
     }
   }
 }, { deep: true })
+
+// --- Lifecycle ---
 
 async function loadExistingGraphData() {
   try {
