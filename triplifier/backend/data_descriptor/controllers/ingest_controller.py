@@ -27,6 +27,7 @@ def _safe_redirect_error(error: str) -> str:
     sanitized = error.replace("\n", " ").replace("\r", " ").strip()
     return redirect(f"/ingest?error={quote_plus(sanitized)}")
 
+
 ingest_bp = Blueprint("ingest", __name__)
 
 

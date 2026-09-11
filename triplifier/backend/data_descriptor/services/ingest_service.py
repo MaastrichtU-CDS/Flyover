@@ -243,7 +243,9 @@ class IngestService:
                     processed_df = preprocess_dataframe(df)
                     dataframes.append(processed_df)
 
-                    base_name = os.path.splitext(secure_filename(excel_file.filename))[0]
+                    base_name = os.path.splitext(secure_filename(excel_file.filename))[
+                        0
+                    ]
                     table_name = f"{base_name}_{sheet_name}"
                     table_names.append(table_name)
 
