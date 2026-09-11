@@ -371,10 +371,13 @@ describe('IngestView', () => {
     expect(w.find('#csvPath').exists()).toBe(true)
 
     await w.find('#Postgres').setValue()
-    expect(w.find('#csvPath').element.style.display).toBe('none')
+    // The CSV/Excel section (v-show) is 3 parents above #csvPath
+    // (input-group > d-flex div > v-show div)
+    const csvSection = w.find('#csvPath').element.parentElement.parentElement.parentElement
+    expect(csvSection.style.cssText).toContain('display: none')
 
     await w.find('#CSV').setValue()
-    expect(w.find('#csvPath').element.style.display).not.toBe('none')
+    expect(csvSection.style.cssText).not.toContain('display: none')
   })
 
   it('shows separator and decimal dropdowns only when CSV is selected', async () => {
@@ -382,12 +385,15 @@ describe('IngestView', () => {
     await flushPromises()
 
     await w.find('#CSV').setValue()
-    expect(w.find('#csv_separator_sign').element.style.display).not.toBe('none')
-    expect(w.find('#csv_decimal_sign').element.style.display).not.toBe('none')
+    // The v-show div wrapping the separator/decimal dropdowns has inline style
+    const sepDiv = w.find('#csv_separator_sign').element.parentElement
+    expect(sepDiv.style.cssText).not.toContain('display: none')
+    const decDiv = w.find('#csv_decimal_sign').element.parentElement
+    expect(decDiv.style.cssText).not.toContain('display: none')
 
     await w.find('#Excel').setValue()
-    expect(w.find('#csv_separator_sign').element.style.display).toBe('none')
-    expect(w.find('#csv_decimal_sign').element.style.display).toBe('none')
+    expect(sepDiv.style.cssText).toContain('display: none')
+    expect(decDiv.style.cssText).toContain('display: none')
   })
 
   it('defaults separator and decimal based on the browser locale', () => {
@@ -413,13 +419,19 @@ describe('IngestView', () => {
     await flushPromises()
 
     await w.find('#CSV').setValue()
-    expect(w.find('#username').element.style.display).toBe('none')
+    await flushPromises()
+    // The Postgres section (v-show) is 3 parents above #username
+    // (col-md-6 > row > v-show div)
+    const pgSection = w.find('#username').element.parentElement.parentElement.parentElement
+    expect(pgSection.style.cssText).toContain('display: none')
 
     await w.find('#Postgres').setValue()
-    expect(w.find('#username').element.style.display).not.toBe('none')
-    expect(w.find('#password').element.style.display).not.toBe('none')
-    expect(w.find('#POSTGRES_URL').element.style.display).not.toBe('none')
-    expect(w.find('#POSTGRES_DB').element.style.display).not.toBe('none')
+    await flushPromises()
+    expect(pgSection.style.cssText).not.toContain('display: none')
+    const pgUrlSection = w.find('#POSTGRES_URL').element.parentElement
+    expect(pgUrlSection.style.cssText).not.toContain('display: none')
+    const pgDbSection = w.find('#POSTGRES_DB').element.parentElement
+    expect(pgDbSection.style.cssText).not.toContain('display: none')
   })
 
   it('hides Specify Source Information card when Other is selected', async () => {
@@ -427,10 +439,13 @@ describe('IngestView', () => {
     await flushPromises()
 
     await w.find('#CSV').setValue()
-    expect(w.text()).toContain('Specify Source Information')
+    const sourceCard = w.findAll('.card.mb-4').find((c) =>
+      c.text().includes('Specify Source Information')
+    )
+    expect(sourceCard.element.style.cssText).not.toContain('display: none')
 
     await w.find('#Other').setValue()
-    expect(w.text()).not.toContain('Specify Source Information')
+    expect(sourceCard.element.style.cssText).toContain('display: none')
   })
 
   it('shows tooltip with repo link when hovering the Other tile', async () => {
@@ -477,6 +492,79 @@ describe('IngestView', () => {
 
     const excelTile = w.find('#Excel').element.closest('.source-tile')
     expect(excelTile.classList.contains('selected-source')).toBe(true)
+  })
+
+  // -- Circular reference prevention (issue #86) --------------------------
+
+  it('shows a warning when linking a table to itself (same name)', async () => {
+    dataExists.value = true
+    api.get.mockResolvedValue({
+      data: { tables: ['patients'], tableColumns: { patients: ['id', 'name'] } },
+    })
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [csvFile('patients.csv', 'id,name')])
+    await flushPromises()
+
+    // Enable data linking and select the same table name for both
+    await w.find('#enableDataLinking').setValue()
+    await flushPromises()
+    await w.find('#newTableName').setValue('patients.csv')
+    await w.find('#newColumnName').setValue('id')
+    await w.find('#existingTableName').setValue('patients')
+    await w.find('#existingColumnName').setValue('id')
+    await flushPromises()
+
+    expect(w.text()).toContain('circular reference')
+  })
+
+  it('does not show a warning when linking different tables', async () => {
+    dataExists.value = true
+    api.get.mockResolvedValue({
+      data: { tables: ['doctors'], tableColumns: { doctors: ['id', 'name'] } },
+    })
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [csvFile('patients.csv', 'id,name')])
+    await flushPromises()
+
+    await w.find('#enableDataLinking').setValue()
+    await flushPromises()
+    await w.find('#newTableName').setValue('patients.csv')
+    await w.find('#newColumnName').setValue('id')
+    await w.find('#existingTableName').setValue('doctors')
+    await w.find('#existingColumnName').setValue('id')
+    await flushPromises()
+
+    expect(w.text()).not.toContain('circular reference')
+  })
+
+  it('blocks cross-graph link data when tables match (issue #86)', async () => {
+    dataExists.value = true
+    api.get.mockResolvedValue({
+      data: { tables: ['patients'], tableColumns: { patients: ['id', 'name'] } },
+    })
+    const w = mountIngest()
+    await flushPromises()
+
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [csvFile('patients.csv', 'id,name')])
+    await flushPromises()
+
+    await w.find('#enableDataLinking').setValue()
+    await flushPromises()
+    await w.find('#newTableName').setValue('patients.csv')
+    await w.find('#newColumnName').setValue('id')
+    await w.find('#existingTableName').setValue('patients')
+    await w.find('#existingColumnName').setValue('id')
+    await flushPromises()
+
+    // The hidden crossGraphLinkData should be empty (no link sent)
+    expect(w.find('#crossGraphLinkData').element.value).toBe('')
   })
 
   it('accepts CSV files dropped on the CSV tile', async () => {

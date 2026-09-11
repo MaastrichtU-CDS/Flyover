@@ -166,9 +166,19 @@ const existingTableColumns = computed(() => {
   return existingGraphStructure.value.tableColumns[existingTableName.value] || []
 })
 
-function tableNameOf(fileName) {
-  return fileName.replace('.csv', '').replace('.xlsx', '').replace('.xls', '')
-}
+const crossGraphLinkError = computed(() => {
+  if (!enableDataLinking.value) return ''
+  if (!newTableName.value || !existingTableName.value) return ''
+  // Prevent linking a table to itself (same sanitised name) — this is
+  // the most common cause of circular references in the RDF store.
+  const newSanitised = newTableName.value.replace(/\.(csv|xls[x]?)$/i, '').toLowerCase()
+  const existingSanitised = existingTableName.value.replace(/\.(csv|xls[x]?)$/i, '').toLowerCase()
+  if (newSanitised === existingSanitised) {
+    return 'Cannot link a table to itself — this would create a circular reference.'
+  }
+  return ''
+})
+
 
 function getFileColumns(tableName) {
   if (!tableName) return []
@@ -256,6 +266,7 @@ const pkFkDataJson = computed(() => {
 
 const crossGraphLinkDataJson = computed(() => {
   if (!enableDataLinking.value) return ''
+  if (crossGraphLinkError.value) return ''
   const link = {
     newTableName: newTableName.value,
     newColumnName: newColumnName.value,
@@ -1387,6 +1398,12 @@ onMounted(async () => {
               </div>
             </div>
             <br>
+          </div>
+          <div
+            v-if="crossGraphLinkError"
+            class="alert alert-warning mt-2"
+          >
+            <i class="fas fa-exclamation-triangle me-1" />{{ crossGraphLinkError }}
           </div>
           <input
             id="crossGraphLinkData"
