@@ -98,6 +98,206 @@ class TestIngestServiceDataParsing(unittest.TestCase):
         self.assertEqual(result["newTableName"], "new")
 
 
+class TestProcessPkFkRelationships(unittest.TestCase):
+    """Test IngestService.process_pk_fk_relationships orchestration."""
+
+    def _mock_rdf_store(self):
+        store = MagicMock()
+        store.process_pk_fk_relationship.return_value = True
+        return store
+
+    def test_empty_data_returns_success(self):
+        """Empty PK/FK data should return (True, [])."""
+        success, messages = IngestService.process_pk_fk_relationships(
+            [], self._mock_rdf_store()
+        )
+        self.assertTrue(success)
+        self.assertEqual(messages, [])
+
+    def test_none_data_returns_success(self):
+        """None PK/FK data should return (True, [])."""
+        success, messages = IngestService.process_pk_fk_relationships(
+            None, self._mock_rdf_store()
+        )
+        self.assertTrue(success)
+        self.assertEqual(messages, [])
+
+    def test_incomplete_fk_is_skipped(self):
+        """FK with missing foreignKeyColumn should be skipped, not crash."""
+        data = [
+            {
+                "fileName": "visits.csv",
+                "primaryKey": None,
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "patients.csv",
+                "foreignKeyColumn": None,
+            },
+        ]
+        store = self._mock_rdf_store()
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertTrue(success)
+        self.assertEqual(messages, [])
+        store.process_pk_fk_relationship.assert_not_called()
+
+    def test_fk_without_target_pk_is_skipped(self):
+        """FK referencing a table with no PK should be skipped gracefully."""
+        data = [
+            {
+                "fileName": "patients.csv",
+                "primaryKey": None,
+                "foreignKey": None,
+                "foreignKeyTable": None,
+                "foreignKeyColumn": None,
+            },
+            {
+                "fileName": "visits.csv",
+                "primaryKey": None,
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "patients.csv",
+                "foreignKeyColumn": "patient_id",
+            },
+        ]
+        store = self._mock_rdf_store()
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertTrue(success)
+        self.assertEqual(messages, [])
+        store.process_pk_fk_relationship.assert_not_called()
+
+    def test_complete_relationship_is_processed(self):
+        """A complete FK→PK relationship should call the RDF store."""
+        data = [
+            {
+                "fileName": "patients.csv",
+                "primaryKey": "patient_id",
+                "foreignKey": None,
+                "foreignKeyTable": None,
+                "foreignKeyColumn": None,
+            },
+            {
+                "fileName": "visits.csv",
+                "primaryKey": None,
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "patients.csv",
+                "foreignKeyColumn": "patient_id",
+            },
+        ]
+        store = self._mock_rdf_store()
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertTrue(success)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("visits", messages[0])
+        self.assertIn("patients", messages[0])
+        store.process_pk_fk_relationship.assert_called_once()
+
+    def test_failed_relationship_lowers_success(self):
+        """A failed RDF store insert should set overall success to False."""
+        data = [
+            {
+                "fileName": "patients.csv",
+                "primaryKey": "patient_id",
+                "foreignKey": None,
+                "foreignKeyTable": None,
+                "foreignKeyColumn": None,
+            },
+            {
+                "fileName": "visits.csv",
+                "primaryKey": None,
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "patients.csv",
+                "foreignKeyColumn": "patient_id",
+            },
+        ]
+        store = self._mock_rdf_store()
+        store.process_pk_fk_relationship.return_value = False
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertFalse(success)
+        self.assertIn("Failed", messages[0])
+
+    def test_multiple_relationships_all_processed(self):
+        """Multiple FK relationships should each be processed."""
+        data = [
+            {
+                "fileName": "patients.csv",
+                "primaryKey": "patient_id",
+                "foreignKey": None,
+                "foreignKeyTable": None,
+                "foreignKeyColumn": None,
+            },
+            {
+                "fileName": "doctors.csv",
+                "primaryKey": "doctor_id",
+                "foreignKey": None,
+                "foreignKeyTable": None,
+                "foreignKeyColumn": None,
+            },
+            {
+                "fileName": "visits.csv",
+                "primaryKey": "visit_id",
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "patients.csv",
+                "foreignKeyColumn": "patient_id",
+            },
+            {
+                "fileName": "prescriptions.csv",
+                "primaryKey": None,
+                "foreignKey": "visit_id",
+                "foreignKeyTable": "visits.csv",
+                "foreignKeyColumn": "visit_id",
+            },
+        ]
+        store = self._mock_rdf_store()
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertTrue(success)
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(store.process_pk_fk_relationship.call_count, 2)
+
+    def test_excel_sheet_table_names_are_passed_through(self):
+        """Excel sheet-based table names (filename_sheetname) should be
+        passed to the RDF store after sanitisation."""
+        data = [
+            {
+                "fileName": "data_Patients",
+                "primaryKey": "id",
+                "foreignKey": None,
+                "foreignKeyTable": None,
+                "foreignKeyColumn": None,
+            },
+            {
+                "fileName": "data_Visits",
+                "primaryKey": None,
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "data_Patients",
+                "foreignKeyColumn": "id",
+            },
+        ]
+        store = self._mock_rdf_store()
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertTrue(success)
+        # The store should receive the table names (sanitised)
+        call_args = store.process_pk_fk_relationship.call_args
+        fk_table = call_args[0][0]  # first positional arg
+        pk_table = call_args[0][2]
+        self.assertIn("data_Visits", fk_table)
+        self.assertIn("data_Patients", pk_table)
+
+    def test_fk_referencing_unknown_table_is_skipped(self):
+        """FK referencing a table not in the PK/FK data should be skipped."""
+        data = [
+            {
+                "fileName": "visits.csv",
+                "primaryKey": None,
+                "foreignKey": "patient_id",
+                "foreignKeyTable": "unknown.csv",
+                "foreignKeyColumn": "patient_id",
+            },
+        ]
+        store = self._mock_rdf_store()
+        success, messages = IngestService.process_pk_fk_relationships(data, store)
+        self.assertTrue(success)
+        self.assertEqual(messages, [])
+        store.process_pk_fk_relationship.assert_not_called()
+
+
 class TestDescribeServiceFormParsing(unittest.TestCase):
     """Test DescribeService form parsing methods."""
 

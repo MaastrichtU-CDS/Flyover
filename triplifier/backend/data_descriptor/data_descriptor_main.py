@@ -204,7 +204,7 @@ app.config["APP_CONTEXT"] = {
         IngestService().upload_multiple_graphs(
             root_dir, rdf_store_url, repo, output_files, data_background=False
         )
-        if file_type == "CSV"
+        if file_type in ("CSV", "Excel")
         else IngestService().upload_ontology_then_data(
             root_dir, rdf_store_url, repo, data_background=False
         )

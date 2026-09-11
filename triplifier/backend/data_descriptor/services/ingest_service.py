@@ -63,7 +63,7 @@ class IngestService:
     for triplification.
     """
 
-    ALLOWED_EXTENSIONS = {"csv", "jsonld"}
+    ALLOWED_EXTENSIONS = {"csv", "jsonld", "xlsx", "xls"}
 
     @staticmethod
     def allowed_file(filename: str, allowed_extensions: Optional[set] = None) -> bool:
@@ -168,6 +168,89 @@ class IngestService:
 
         except Exception as e:
             return [], [], f"Error parsing CSV files: {e}"
+
+        return dataframes, table_names, None
+
+    @staticmethod
+    def validate_excel_files(files: List[Any]) -> Tuple[bool, Optional[str]]:
+        """
+        Validate uploaded Excel files.
+
+        Args:
+            files: List of uploaded file objects.
+
+        Returns:
+            Tuple of (is_valid, error_message).
+        """
+        if not files:
+            return False, "No files provided"
+
+        if not any(f.filename for f in files):
+            return (
+                False,
+                "If opting to submit an Excel data source, please upload it as a '.xlsx' or '.xls' file.",
+            )
+
+        for excel_file in files:
+            if not IngestService.allowed_file(excel_file.filename, {"xlsx", "xls"}):
+                return (
+                    False,
+                    "If opting to submit an Excel data source, please upload it as a '.xlsx' or '.xls' file.",
+                )
+
+        return True, None
+
+    @staticmethod
+    def parse_excel_files(
+        files: List[Any],
+    ) -> Tuple[List[pl.DataFrame], List[str], Optional[str]]:
+        """
+        Parse uploaded Excel files into DataFrames.
+        Each sheet in an Excel file is treated as a separate table.
+
+        Args:
+            files: List of uploaded file objects.
+
+        Returns:
+            Tuple of (dataframes, table_names, error_message).
+        """
+        dataframes = []
+        table_names = []
+
+        try:
+            import fastexcel
+            import polars as pl
+
+            for excel_file in files:
+                # Read the file bytes (fastexcel needs bytes or a path)
+                excel_bytes = excel_file.read()
+                excel_file.seek(0)
+
+                # Use fastexcel directly to list all sheets and read each one.
+                # polars' read_excel(sheet_id=None) only returns the first
+                # sheet as a single DataFrame in 1.39, so we can't rely on
+                # it for multi-sheet workbooks.
+                excel_reader = fastexcel.read_excel(excel_bytes)
+                for sheet_name in excel_reader.sheet_names:
+                    sheet_df = excel_reader.load_sheet_by_name(sheet_name)
+                    df = sheet_df.to_polars()
+                    # Cast all columns to string (equivalent to
+                    # infer_schema_length=0 in read_excel) so the
+                    # triplifier treats everything as text, matching
+                    # the CSV path's behaviour.
+                    df = df.with_columns(pl.all().cast(pl.Utf8))
+
+                    processed_df = preprocess_dataframe(df)
+                    dataframes.append(processed_df)
+
+                    base_name = os.path.splitext(secure_filename(excel_file.filename))[
+                        0
+                    ]
+                    table_name = f"{base_name}_{sheet_name}"
+                    table_names.append(table_name)
+
+        except Exception as e:
+            return [], [], f"Error parsing Excel files: {e}"
 
         return dataframes, table_names, None
 

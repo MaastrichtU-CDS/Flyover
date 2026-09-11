@@ -1,16 +1,51 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useNavigation } from '@/composables/useNavigation'
+import { readCSVColumns } from '@/lib/csvParser'
+import { readExcelSheetInfo } from '@/lib/excelParser'
+import {
+  isValidPgUrl,
+  preventBlockedKey,
+  stripBlockedOnPaste,
+  pgHasBlockedChar,
+  pgFieldError as pgFieldErrorValue,
+  pgUrlErrorValue,
+} from '@/lib/postgresValidation'
+import {
+  filterByExtension,
+  detectFileType,
+  setFileInputFiles,
+} from '@/lib/fileDropUtils'
+import {
+  computeAutoSuggestions,
+  computeClearIndices,
+  validatePkFkRelationships as validatePkFk,
+  buildPkFkDataJson,
+} from '@/lib/pkfkUtils'
 
 const { dataExists: graphExists, refreshDataExists } = useNavigation()
+
+// --- File type configuration ---
+
+const FILE_TYPE_EXTENSIONS = {
+  CSV: ['.csv'],
+  Excel: ['.xlsx', '.xls'],
+}
+
+// --- Reactive state ---
 
 const fileType = ref('')
 const csvFiles = ref([])
 const csvColumns = reactive({})
 const csvPath = ref('')
-const csvSeparatorSign = ref('')
-const csvDecimalSign = ref('')
+
+// Unified list of "tables" for PK/FK. For CSV, each file is a table.
+// For Excel, each sheet is a table (name: "filename_sheetname").
+const pkFkTables = ref([])
+const detectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
+const csvSeparatorSign = ref(detectedDecimal === ',' ? ';' : ',')
+const csvDecimalSign = ref(detectedDecimal)
 
 const existingGraphStructure = ref(null)
 const enableDataLinking = ref(false)
@@ -23,23 +58,60 @@ const pgUsername = ref('')
 const pgPassword = ref('')
 const pgUrl = ref('')
 const pgDb = ref('')
+const pgUrlTouched = ref(false)
+const pgFieldsTouched = reactive({
+  username: false,
+  password: false,
+  db: false,
+})
 
 const pkSelections = reactive({})
 const fkSelections = reactive({})
 const fkTableSelections = reactive({})
 const fkColumnSelections = reactive({})
+const inferredFk = reactive({})
 
 const showPkFkSection = ref(false)
 const showDataLinkingSection = ref(false)
 const csvFileInput = ref(null)
 const submitting = ref(false)
+const showOtherTooltip = ref(false)
+const dropError = ref('')
+
+const dragCounters = reactive({ CSV: 0, Excel: 0 })
+const dragActiveTile = computed(() => {
+  if (dragCounters.CSV > 0) return 'CSV'
+  if (dragCounters.Excel > 0) return 'Excel'
+  return null
+})
+
+const pageDragActive = ref(false)
+let pageDragLeaveTimer = null
+
+// --- Computed: PG field helpers ---
+
+function pgFieldValue(field) {
+  return { username: pgUsername, password: pgPassword, db: pgDb }[field]?.value
+}
+
+function pgFieldError(field) {
+  return pgFieldErrorValue(field, pgFieldValue(field), pgFieldsTouched[field])
+}
+
+function pgHasBlockedCharInView(field) {
+  return pgHasBlockedChar(field, pgFieldValue(field))
+}
+
+const pgUrlError = computed(() =>
+  pgUrlErrorValue(pgUrl.value, pgUrlTouched.value)
+)
+
+// --- Computed: table/column lookups ---
 
 const newTableColumns = computed(() => {
   if (!newTableName.value) return []
-  const file = csvFiles.value.find(
-    (f) => f.name.replace('.csv', '') === newTableName.value
-  )
-  return file ? csvColumns[file.name] || [] : []
+  const table = pkFkTables.value.find((t) => t === newTableName.value)
+  return table ? csvColumns[table] || [] : []
 })
 
 const existingTables = computed(
@@ -51,46 +123,66 @@ const existingTableColumns = computed(() => {
   return existingGraphStructure.value.tableColumns[existingTableName.value] || []
 })
 
-function tableNameOf(fileName) {
-  return fileName.replace('.csv', '')
+const crossGraphLinkError = computed(() => {
+  if (!enableDataLinking.value) return ''
+  if (!newTableName.value || !existingTableName.value) return ''
+  // Prevent linking a table to itself (same sanitised name) — this is
+  // the most common cause of circular references in the RDF store.
+  const newSanitised = newTableName.value.replace(/\.(csv|xls[x]?)$/i, '').toLowerCase()
+  const existingSanitised = existingTableName.value.replace(/\.(csv|xls[x]?)$/i, '').toLowerCase()
+  if (newSanitised === existingSanitised) {
+    return 'Cannot link a table to itself — this would create a circular reference.'
+  }
+  return ''
+})
+
+// --- PK/FK helpers ---
+
+function getFileColumns(tableName) {
+  if (!tableName) return []
+  return csvColumns[tableName] || []
 }
 
-function getFileColumns(fileName) {
-  if (!fileName) return []
-  return csvColumns[fileName] || []
+function getOtherTables(currentName) {
+  return pkFkTables.value.filter((t) => t !== currentName)
 }
 
-function getOtherFiles(currentName) {
-  return csvFiles.value.filter((f) => f.name !== currentName)
+function resetPkFk() {
+  for (const k of Object.keys(pkSelections)) delete pkSelections[k]
+  for (const k of Object.keys(fkSelections)) delete fkSelections[k]
+  for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
+  for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
+  for (const k of Object.keys(inferredFk)) delete inferredFk[k]
 }
 
-function validatePkFkRelationships() {
-  if (!showPkFkSection.value) return true
-  let valid = true
-  csvFiles.value.forEach((file, index) => {
-    const fk = fkSelections[index] || ''
-    const fkTable = fkTableSelections[index] || ''
-    if (fk && fkTable) {
-      const refIdx = csvFiles.value.findIndex((f) => f.name === fkTable)
-      if (refIdx !== -1) {
-        const refPk = pkSelections[refIdx] || ''
-        if (!refPk) valid = false
-      }
-    }
-  })
-  return valid
-}
+// --- Computed: form validation & submit ---
 
 const isFormValid = computed(() => {
   const basic =
     (fileType.value === 'CSV' && csvFiles.value.length > 0) ||
+    (fileType.value === 'Excel' && csvFiles.value.length > 0) ||
     (fileType.value === 'Postgres' &&
       pgUsername.value &&
       pgPassword.value &&
       pgUrl.value &&
-      pgDb.value)
+      pgDb.value &&
+      isValidPgUrl(pgUrl.value) &&
+      !pgHasBlockedCharInView('username') &&
+      !pgHasBlockedCharInView('password') &&
+      !pgHasBlockedCharInView('url') &&
+      !pgHasBlockedCharInView('db'))
   return basic && validatePkFkRelationships()
 })
+
+function validatePkFkRelationships() {
+  return validatePkFk(
+    showPkFkSection.value,
+    pkFkTables.value,
+    pkSelections,
+    fkSelections,
+    fkTableSelections
+  )
+}
 
 const submitButtonTitle = computed(() => {
   if (isFormValid.value) return ''
@@ -100,29 +192,34 @@ const submitButtonTitle = computed(() => {
   return ''
 })
 
-const pkFkDataJson = computed(() => {
-  if (!showPkFkSection.value) return ''
-  const data = []
-  csvFiles.value.forEach((file, index) => {
-    const pk = pkSelections[index] || ''
-    const fk = fkSelections[index] || ''
-    const fkTable = fkTableSelections[index] || ''
-    const fkColumn = fkColumnSelections[index] || ''
-    if (pk || fk) {
-      data.push({
-        fileName: file.name,
-        primaryKey: pk || null,
-        foreignKey: fk || null,
-        foreignKeyTable: fkTable || null,
-        foreignKeyColumn: fkColumn || null,
-      })
-    }
-  })
-  return JSON.stringify(data)
+const submitButtonLabel = computed(() => {
+  if (submitting.value) return ' Processing...'
+  if (fileType.value === 'Postgres') return ' Enter Credentials'
+  return ' Submit Files'
 })
+
+const submitButtonIcon = computed(() => {
+  if (submitting.value) return 'fa-cookie'
+  if (fileType.value === 'Postgres') return 'fa-sign-in-alt'
+  return 'fa-play'
+})
+
+// --- Computed: serialised form payloads ---
+
+const pkFkDataJson = computed(() =>
+  buildPkFkDataJson(
+    showPkFkSection.value,
+    pkFkTables.value,
+    pkSelections,
+    fkSelections,
+    fkTableSelections,
+    fkColumnSelections
+  )
+)
 
 const crossGraphLinkDataJson = computed(() => {
   if (!enableDataLinking.value) return ''
+  if (crossGraphLinkError.value) return ''
   const link = {
     newTableName: newTableName.value,
     newColumnName: newColumnName.value,
@@ -140,95 +237,203 @@ const crossGraphLinkDataJson = computed(() => {
   return ''
 })
 
-function detectSeparator(line) {
-  const seps = [',', ';', '\t', '|']
-  let best = ','
-  let max = 0
-  for (const s of seps) {
-    const c = line.split(s).length - 1
-    if (c > max) {
-      max = c
-      best = s
-    }
-  }
-  return best
-}
-
-function parseCSVLine(line, sep) {
-  const out = []
-  let cur = ''
-  let q = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') q = !q
-    else if (ch === sep && !q) {
-      out.push(cur.trim())
-      cur = ''
-    } else cur += ch
-  }
-  out.push(cur.trim())
-  return out.map((h) => h.replace(/"/g, '').trim()).filter(Boolean)
-}
-
-function readCSVColumns(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const lines = e.target.result.split('\n')
-        if (!lines.length) return resolve([])
-        const sep = detectSeparator(lines[0])
-        resolve(parseCSVLine(lines[0], sep))
-      } catch {
-        resolve([])
-      }
-    }
-    reader.onerror = () => resolve([])
-    reader.readAsText(file.slice(0, 1024))
-  })
-}
-
-function resetPkFk() {
-  for (const k of Object.keys(pkSelections)) delete pkSelections[k]
-  for (const k of Object.keys(fkSelections)) delete fkSelections[k]
-  for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
-  for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
-}
+// --- File processing ---
 
 function triggerFileInput() {
   csvFileInput.value?.click()
 }
 
-async function handleFileChange(e) {
-  const input = e.target
+async function processFiles(files) {
+  dropError.value = ''
   csvFiles.value = []
+  pkFkTables.value = []
   for (const k of Object.keys(csvColumns)) delete csvColumns[k]
   resetPkFk()
 
   const paths = []
-  for (let i = 0; i < input.files.length; i++) {
-    paths.push(input.files[i].name)
-    csvFiles.value.push(input.files[i])
+  for (let i = 0; i < files.length; i++) {
+    paths.push(files[i].name)
+    csvFiles.value.push(files[i])
   }
   csvPath.value = paths.join(', ')
+
+  if (fileType.value === 'Excel') {
+    await processExcelFiles(files)
+  } else {
+    await processCSVFiles(files)
+  }
+
+  showDataLinkingSection.value = graphExists.value && files.length > 0
+}
+
+async function processExcelFiles(files) {
+  // For Excel, each sheet is a table. Read sheet info from the xlsx zip.
+  const allSheetInfo = await Promise.all(
+    Array.from(files).map((f) => readExcelSheetInfo(f))
+  )
+  const tables = []
+  allSheetInfo.forEach((sheets, fi) => {
+    const file = files[fi]
+    const base = file.name.replace(/\.(xlsx|xls)$/i, '')
+    if (sheets.length === 0) {
+      // Could not read sheets — treat the file as a single table
+      tables.push(base)
+      csvColumns[base] = []
+    } else {
+      sheets.forEach((sheet) => {
+        const tableName = `${base}_${sheet.name}`
+        tables.push(tableName)
+        csvColumns[tableName] = sheet.columns
+      })
+    }
+  })
+  pkFkTables.value = tables
+  showPkFkSection.value = tables.length > 1
+  tables.forEach((_, i) => {
+    pkSelections[i] = pkSelections[i] || ''
+  })
+}
+
+async function processCSVFiles(files) {
+  // For CSV, each file is a table.
+  pkFkTables.value = Array.from(files).map((f) => f.name)
 
   // Visibility depends only on file counts, not on the column reads. Set it
   // before awaiting so the multi-file UI appears immediately and tests don't
   // race the FileReader.onload macrotask.
-  showPkFkSection.value = input.files.length > 1
-  showDataLinkingSection.value = graphExists.value && input.files.length > 0
+  showPkFkSection.value = files.length > 1
+  pkFkTables.value.forEach((_, i) => {
+    pkSelections[i] = pkSelections[i] || ''
+  })
 
   const cols = await Promise.all(
-    Array.from(input.files).map((f) => readCSVColumns(f))
+    Array.from(files).map((f) => readCSVColumns(f))
   )
-  cols.forEach((c, i) => {
-    csvColumns[input.files[i].name] = c
+  Array.from(files).forEach((f, i) => {
+    csvColumns[f.name] = cols[i]
   })
 }
 
+async function handleFileChange(e) {
+  await processFiles(e.target.files)
+}
+
+// --- Drag and drop ---
+
+function onTileDragEnter(type) {
+  dragCounters[type]++
+}
+
+function onTileDragLeave(type) {
+  if (dragCounters[type] > 0) dragCounters[type]--
+}
+
+async function onTileDrop(type, e) {
+  e.preventDefault()
+  e.stopPropagation()
+  clearTimeout(pageDragLeaveTimer)
+  dragCounters[type] = 0
+  pageDragActive.value = false
+  const dropped = filterByExtension(e.dataTransfer.files, FILE_TYPE_EXTENSIONS[type])
+  if (!dropped.length) {
+    const exts = type === 'Excel' ? '.xlsx or .xls' : '.csv'
+    dropError.value = `Please drop only ${exts} files on the ${type} tile.`
+    return
+  }
+  fileType.value = type
+  setFileInputFiles(csvFileInput.value, dropped)
+  await processFiles(dropped)
+}
+
+function onPageDragEnter() {
+  clearTimeout(pageDragLeaveTimer)
+  pageDragLeaveTimer = null
+  pageDragActive.value = true
+}
+
+function onPageDragOver() {
+  clearTimeout(pageDragLeaveTimer)
+  pageDragLeaveTimer = null
+}
+
+function onPageDragLeave() {
+  pageDragLeaveTimer = setTimeout(() => {
+    pageDragActive.value = false
+    pageDragLeaveTimer = null
+  }, 100)
+}
+
+async function onPageDrop(e) {
+  e.preventDefault()
+  clearTimeout(pageDragLeaveTimer)
+  pageDragActive.value = false
+  const allFiles = Array.from(e.dataTransfer.files)
+  if (!allFiles.length) return
+  const detected = detectFileType(allFiles, FILE_TYPE_EXTENSIONS)
+  if (!detected) {
+    const names = allFiles.map((f) => f.name).join(', ')
+    dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, or .xls files.`
+    return
+  }
+  fileType.value = detected
+  setFileInputFiles(csvFileInput.value, allFiles)
+  await processFiles(allFiles)
+}
+
+// --- PK/FK auto-suggest ---
+
 function onFkTableChange(index) {
   fkColumnSelections[index] = ''
+  delete inferredFk[index]
 }
+
+function onFkManualChange(index) {
+  delete inferredFk[index]
+}
+
+// When a PK is set on table at index pkIndex, check every other table for
+// a column whose name matches the PK (case-insensitive). If found and the
+// other table's FK fields are not already manually set, auto-fill them.
+function autoSuggestFk(pkIndex) {
+  const suggestions = computeAutoSuggestions(
+    pkFkTables.value, csvColumns, pkSelections, pkIndex
+  )
+  for (const [index, s] of Object.entries(suggestions)) {
+    const i = Number(index)
+    // Don't override a manually-set FK
+    if (fkSelections[i]) continue
+    fkSelections[i] = s.fk
+    fkTableSelections[i] = s.fkTable
+    fkColumnSelections[i] = s.fkColumn
+    inferredFk[i] = true
+  }
+}
+
+// Clear auto-suggested FK fields when a PK is removed, so stale suggestions
+// don't persist after the user changes their mind.
+function clearAutoSuggestedFk(pkIndex) {
+  const pkTableName = pkFkTables.value[pkIndex]
+  if (!pkTableName) return
+  const indices = computeClearIndices(fkTableSelections, pkTableName)
+  for (const index of indices) {
+    fkSelections[index] = ''
+    fkTableSelections[index] = ''
+    fkColumnSelections[index] = ''
+    delete inferredFk[index]
+  }
+}
+
+watch(pkSelections, () => {
+  for (const index of Object.keys(pkSelections)) {
+    if (pkSelections[index]) {
+      autoSuggestFk(Number(index))
+    } else {
+      clearAutoSuggestedFk(Number(index))
+    }
+  }
+}, { deep: true })
+
+// --- Lifecycle ---
 
 async function loadExistingGraphData() {
   try {
@@ -260,7 +465,28 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
+  <div
+    @dragenter.prevent="onPageDragEnter"
+    @dragover.prevent="onPageDragOver"
+    @dragleave.prevent="onPageDragLeave"
+    @drop.prevent="onPageDrop"
+  >
+    <div
+      v-if="pageDragActive"
+      class="drop-overlay"
+    >
+      <div class="drop-overlay-content card shadow">
+        <div class="card-body text-center py-4 px-5">
+          <i class="fas fa-cloud-upload-alt fa-2x mb-3 d-block text-primary" />
+          <h5 class="card-title mb-1">
+            Drop files anywhere to upload
+          </h5>
+          <p class="text-muted small mb-0">
+            CSV and Excel files will be auto-detected
+          </p>
+        </div>
+      </div>
+    </div>
     <h1><i class="fas fa-cookie-bite" /> Ingest your data</h1>
     <hr>
     <p>
@@ -268,104 +494,399 @@ onMounted(async () => {
       You can achieve this by submitting your data for conversion using Flyover.
     </p>
     <hr>
-    <header>Start by selecting your data source:</header>
-
+    <div
+      v-if="dropError"
+      class="alert alert-danger d-flex align-items-center"
+      role="alert"
+    >
+      <i class="fas fa-exclamation-circle me-2" />
+      <span class="flex-grow-1">{{ dropError }}</span>
+      <button
+        type="button"
+        class="btn btn-sm btn-link text-danger p-0 ms-2 lh-1"
+        aria-label="Close"
+        @click="dropError = ''"
+      >
+        <i class="fas fa-times" />
+      </button>
+    </div>
     <form
       method="POST"
       action="/upload"
       enctype="multipart/form-data"
       @submit="onFormSubmit"
     >
-      <div class="form-group">
-        <label for="CSV"><i class="fas fa-file-csv" /> CSV:</label>
-        <input
-          id="CSV"
-          v-model="fileType"
-          type="radio"
-          name="fileType"
-          value="CSV"
-        >
+      <div class="card mb-4">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">
+            <i class="fas fa-database me-2" /> Data Source Type
+          </h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">
+            Start by selecting your data source, or drag &amp; drop files anywhere on this page:
+          </p>
+          <div class="row">
+            <div class="col-md-3 mb-3 mb-md-0">
+              <div
+                class="form-check card h-100 p-3 border source-tile"
+                :class="{ 'selected-source': fileType === 'CSV', 'drag-over': dragActiveTile === 'CSV' }"
+                @dragover.prevent
+                @dragenter.prevent="onTileDragEnter('CSV')"
+                @dragleave.prevent="onTileDragLeave('CSV')"
+                @drop.stop.prevent="onTileDrop('CSV', $event)"
+              >
+                <input
+                  id="CSV"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="CSV"
+                  class="form-check-input source-tile-radio"
+                >
+                <label
+                  for="CSV"
+                  class="form-check-label d-block"
+                >
+                  <i class="fas fa-file-csv fa-2x mb-2 d-block text-primary" />
+                  <strong>CSV Files</strong>
+                  <small class="d-block text-muted">Upload one or more CSV files, or drag &amp; drop here</small>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-3 mb-3 mb-md-0">
+              <div
+                class="form-check card h-100 p-3 border source-tile"
+                :class="{ 'selected-source': fileType === 'Excel', 'drag-over': dragActiveTile === 'Excel' }"
+                @dragover.prevent
+                @dragenter.prevent="onTileDragEnter('Excel')"
+                @dragleave.prevent="onTileDragLeave('Excel')"
+                @drop.stop.prevent="onTileDrop('Excel', $event)"
+              >
+                <input
+                  id="Excel"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="Excel"
+                  class="form-check-input source-tile-radio"
+                >
+                <label
+                  for="Excel"
+                  class="form-check-label d-block"
+                >
+                  <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
+                  <strong>Excel Files</strong>
+                  <small class="d-block text-muted">Upload Excel files, or drag &amp; drop here</small>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-3 mb-3 mb-md-0">
+              <div
+                class="form-check card h-100 p-3 border source-tile"
+                :class="{ 'selected-source': fileType === 'Postgres' }"
+              >
+                <input
+                  id="Postgres"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="Postgres"
+                  class="form-check-input source-tile-radio"
+                >
+                <label
+                  for="Postgres"
+                  class="form-check-label d-block"
+                >
+                  <i class="fas fa-database fa-2x mb-2 d-block text-info" />
+                  <strong>PostgreSQL</strong>
+                  <small class="d-block text-muted">Connect to a PostgreSQL database</small>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div
+                class="form-check card h-100 p-3 border source-tile"
+                :class="{ 'selected-source': fileType === 'Other' }"
+                @mouseenter="showOtherTooltip = true"
+                @mouseleave="showOtherTooltip = false"
+                @focus="showOtherTooltip = true"
+                @blur="showOtherTooltip = false"
+              >
+                <input
+                  id="Other"
+                  v-model="fileType"
+                  type="radio"
+                  name="fileType"
+                  value="Other"
+                  class="form-check-input source-tile-radio"
+                >
+                <label
+                  for="Other"
+                  class="form-check-label d-block"
+                >
+                  <i class="fas fa-file-alt fa-2x mb-2 d-block text-secondary" />
+                  <strong>Other</strong>
+                  <small class="d-block text-muted">Prefer a different source type?</small>
+                </label>
+                <div
+                  v-if="showOtherTooltip"
+                  class="bootstrap-tooltip"
+                  role="tooltip"
+                >
+                  Missing a source type? Please open an issue on the
+                  <a
+                    href="https://github.com/MaastrichtU-CDS/Flyover/issues"
+                    target="_blank"
+                    class="text-decoration-none text-white fw-bold"
+                  >Flyover repo</a>.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="Postgres"><i class="fas fa-database" /> PostgreSQL:</label>
-        <input
-          id="Postgres"
-          v-model="fileType"
-          type="radio"
-          name="fileType"
-          value="Postgres"
-        >
+      <div
+        v-show="fileType && fileType !== 'Other'"
+        class="card mb-4"
+      >
+        <div class="card-header bg-light">
+          <h5 class="mb-0">
+            <i class="fas fa-sliders me-2" /> Specify Source Information
+          </h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">
+            Provide the details for your selected source type:
+          </p>
+          <hr class="mt-0 mb-3">
+          <div v-show="fileType === 'CSV' || fileType === 'Excel'">
+            <div
+              class="d-flex align-items-center flex-wrap"
+              style="gap: 0;"
+            >
+              <div
+                class="input-group"
+                style="min-width: 200px; max-width: 300px; flex: 1 1 auto; margin-right: 0.5rem;"
+              >
+                <input
+                  id="csvPath"
+                  type="text"
+                  name="csvPath"
+                  :value="csvPath"
+                  placeholder="No files selected"
+                  readonly
+                  class="form-control"
+                >
+                <div class="input-group-append">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    @click="triggerFileInput"
+                  >
+                    <i class="fas fa-folder-open" /> Browse
+                  </button>
+                </div>
+              </div>
+              <div
+                v-show="fileType === 'CSV'"
+                style="display: flex; align-items: center; gap: 0.5rem;"
+              >
+                <label
+                  for="csv_separator_sign"
+                  class="form-label small mb-0 text-nowrap"
+                >Separator sign</label>
+                <select
+                  id="csv_separator_sign"
+                  v-model="csvSeparatorSign"
+                  name="csv_separator_sign"
+                  class="form-control form-control-sm"
+                  style="width: auto;"
+                >
+                  <option value=",">
+                    Comma (,)
+                  </option>
+                  <option value=";">
+                    Semicolon (;)
+                  </option>
+                  <option value="	">
+                    Tab
+                  </option>
+                  <option value="|">
+                    Pipe (|)
+                  </option>
+                </select>
+                <label
+                  for="csv_decimal_sign"
+                  class="form-label small mb-0 text-nowrap"
+                >Decimal sign</label>
+                <select
+                  id="csv_decimal_sign"
+                  v-model="csvDecimalSign"
+                  name="csv_decimal_sign"
+                  class="form-control form-control-sm"
+                  style="width: auto;"
+                >
+                  <option value=".">
+                    Period (.)
+                  </option>
+                  <option value=",">
+                    Comma (,)
+                  </option>
+                </select>
+              </div>
+            </div>
+            <input
+              id="csvFile"
+              ref="csvFileInput"
+              type="file"
+              name="csvFile"
+              style="display: none"
+              multiple
+              :accept="fileType === 'Excel' ? '.xlsx,.xls' : '.csv'"
+              @change="handleFileChange"
+            >
+            <small class="form-text text-muted mt-2 d-block">
+              <span v-if="fileType === 'CSV'">
+                Supports multiple CSV files. Each file will be treated as a separate table.
+              </span>
+              <span v-else-if="fileType === 'Excel'">
+                Supports Excel files (.xlsx, .xls). Each sheet will be treated as a separate table.
+              </span>
+            </small>
+          </div>
+          <div v-show="fileType === 'Postgres'">
+            <div class="row">
+              <div class="col-md-6 mb-2">
+                <label
+                  for="username"
+                  class="form-label small"
+                >Username:</label>
+                <input
+                  id="username"
+                  v-model="pgUsername"
+                  type="text"
+                  name="username"
+                  class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgFieldError('username') }"
+                  placeholder="Enter username"
+                  @keydown="preventBlockedKey('username')"
+                  @paste="stripBlockedOnPaste('username')"
+                  @blur="pgFieldsTouched.username = true"
+                >
+                <div
+                  v-if="pgFieldError('username')"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgFieldError('username') }}
+                </div>
+              </div>
+              <div class="col-md-6 mb-2">
+                <label
+                  for="password"
+                  class="form-label small"
+                >Password:</label>
+                <input
+                  id="password"
+                  v-model="pgPassword"
+                  type="password"
+                  name="password"
+                  class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgFieldError('password') }"
+                  placeholder="Enter password"
+                  @keydown="preventBlockedKey('password')"
+                  @paste="stripBlockedOnPaste('password')"
+                  @blur="pgFieldsTouched.password = true"
+                >
+                <div
+                  v-if="pgFieldError('password')"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgFieldError('password') }}
+                </div>
+              </div>
+              <div class="col-md-6 mb-2">
+                <label
+                  for="POSTGRES_URL"
+                  class="form-label small"
+                >URL:</label>
+                <input
+                  id="POSTGRES_URL"
+                  v-model="pgUrl"
+                  type="text"
+                  name="POSTGRES_URL"
+                  class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgUrlError }"
+                  placeholder="e.g. localhost:5432"
+                  @keydown="preventBlockedKey('url')"
+                  @paste="stripBlockedOnPaste('url')"
+                  @blur="pgUrlTouched = true"
+                >
+                <div
+                  v-if="pgUrlError"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgUrlError }}
+                </div>
+              </div>
+              <div class="col-md-6 mb-2">
+                <label
+                  for="POSTGRES_DB"
+                  class="form-label small"
+                >Database:</label>
+                <input
+                  id="POSTGRES_DB"
+                  v-model="pgDb"
+                  type="text"
+                  name="POSTGRES_DB"
+                  class="form-control form-control-sm"
+                  :class="{ 'is-invalid': pgFieldError('db') }"
+                  placeholder="Enter database name"
+                  @keydown="preventBlockedKey('db')"
+                  @paste="stripBlockedOnPaste('db')"
+                  @blur="pgFieldsTouched.db = true"
+                >
+                <div
+                  v-if="pgFieldError('db')"
+                  class="invalid-feedback d-block"
+                >
+                  {{ pgFieldError('db') }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div v-show="fileType === 'CSV'">
-        <hr>
-        <label for="csvPath">
-          Please specify the path of the CSV file(s) you would like to process
-        </label>
-        <br>
-        <input
-          id="csvPath"
-          type="text"
-          name="csvPath"
-          :value="csvPath"
-          placeholder="Enter CSV File Path(s)"
-          readonly
-        >
-        <input
-          type="button"
-          class="btn btn-primary"
-          value="..."
-          @click="triggerFileInput"
-        >
-        <input
-          id="csvFile"
-          ref="csvFileInput"
-          type="file"
-          name="csvFile"
-          style="display: none"
-          multiple
-          accept=".csv"
-          @change="handleFileChange"
-        >
-        <input
-          id="csv_separator_sign"
-          v-model="csvSeparatorSign"
-          type="text"
-          name="csv_separator_sign"
-          placeholder="Separator sign (defaults to ',')"
-          class="csv-sign-input"
-        >
-        <input
-          id="csv_decimal_sign"
-          v-model="csvDecimalSign"
-          type="text"
-          name="csv_decimal_sign"
-          placeholder="Decimal sign (defaults to '.')"
-          class="csv-sign-input"
-        >
-
+      <div v-show="fileType === 'CSV' || fileType === 'Excel'">
         <div
           v-show="showPkFkSection"
           class="mt-4"
         >
           <hr>
           <div class="alert alert-info">
-            <strong><i class="fas fa-info-circle" /> Multiple CSV Files Detected</strong><br>
-            To establish relationships between your data files, you can optionally
-            specify Primary Keys (PK) and Foreign Keys (FK) for each file.
+            <strong><i class="fas fa-info-circle" /> Multiple Tables Detected</strong><br>
+            To establish relationships between your data tables, you can optionally
+            specify Primary Keys (PK) and Foreign Keys (FK) for each table.
           </div>
           <div
-            v-for="(file, index) in csvFiles"
-            :key="file.name"
+            v-for="(tableName, index) in pkFkTables"
+            :key="tableName"
             class="card mb-3"
           >
             <div class="card-header bg-light">
               <h6 class="mb-0">
-                <i class="fas fa-table" /> {{ file.name }}
-                <small class="text-muted">
-                  ({{ getFileColumns(file.name).length }} columns detected)
+                <i class="fas fa-table" /> {{ tableName }}
+                <small class="text-white-50">
+                  ({{ getFileColumns(tableName).length }} columns detected)
                 </small>
+                <span
+                  v-if="inferredFk[index]"
+                  class="badge bg-warning text-white ms-2 align-middle"
+                >
+                  <i class="fas fa-lightbulb" /> Inferred — please verify
+                </span>
               </h6>
             </div>
             <div class="card-body">
@@ -388,7 +909,7 @@ onMounted(async () => {
                         -- No Primary Key --
                       </option>
                       <option
-                        v-for="col in getFileColumns(file.name)"
+                        v-for="col in getFileColumns(tableName)"
                         :key="col"
                         :value="col"
                       >
@@ -410,12 +931,14 @@ onMounted(async () => {
                       v-model="fkSelections[index]"
                       :name="`fk_${index}`"
                       class="form-control"
+                      :class="{ 'inferred-select': inferredFk[index] }"
+                      @change="onFkManualChange(index)"
                     >
                       <option value="">
                         -- No Foreign Key --
                       </option>
                       <option
-                        v-for="col in getFileColumns(file.name)"
+                        v-for="col in getFileColumns(tableName)"
                         :key="col"
                         :value="col"
                       >
@@ -448,11 +971,11 @@ onMounted(async () => {
                         -- Select Referenced Table --
                       </option>
                       <option
-                        v-for="otherFile in getOtherFiles(file.name)"
-                        :key="otherFile.name"
-                        :value="otherFile.name"
+                        v-for="otherTable in getOtherTables(tableName)"
+                        :key="otherTable"
+                        :value="otherTable"
                       >
-                        {{ otherFile.name }}
+                        {{ otherTable }}
                       </option>
                     </select>
                   </div>
@@ -470,6 +993,8 @@ onMounted(async () => {
                       v-model="fkColumnSelections[index]"
                       :name="`fkColumn_${index}`"
                       class="form-control"
+                      :class="{ 'inferred-select': inferredFk[index] }"
+                      @change="onFkManualChange(index)"
                     >
                       <option value="">
                         -- Select Referenced Column --
@@ -539,14 +1064,14 @@ onMounted(async () => {
                         class="form-control"
                       >
                         <option value="">
-                          -- Select the CSV file you want to link --
+                          -- Select the table you want to link --
                         </option>
                         <option
-                          v-for="file in csvFiles"
-                          :key="file.name"
-                          :value="tableNameOf(file.name)"
+                          v-for="table in pkFkTables"
+                          :key="table"
+                          :value="table"
                         >
-                          {{ tableNameOf(file.name) }}
+                          {{ table }}
                         </option>
                       </select>
                     </div>
@@ -619,6 +1144,12 @@ onMounted(async () => {
             </div>
             <br>
           </div>
+          <div
+            v-if="crossGraphLinkError"
+            class="alert alert-warning mt-2"
+          >
+            <i class="fas fa-exclamation-triangle me-1" />{{ crossGraphLinkError }}
+          </div>
           <input
             id="crossGraphLinkData"
             type="hidden"
@@ -628,44 +1159,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div v-show="fileType === 'Postgres'">
-        <hr>
-        <label for="username">
-          Please specify the following details for your postgres database
-        </label>
-        <br>
-        <label for="username">PostgreSQL Username:</label>
-        <input
-          id="username"
-          v-model="pgUsername"
-          type="text"
-          name="username"
-        >
-        <br>
-        <label for="password">PostgreSQL Password:</label>
-        <input
-          id="password"
-          v-model="pgPassword"
-          type="password"
-          name="password"
-        >
-        <br>
-        <label for="POSTGRES_URL">PostgreSQL URL:</label>
-        <input
-          id="POSTGRES_URL"
-          v-model="pgUrl"
-          type="text"
-          name="POSTGRES_URL"
-        >
-        <br>
-        <label for="POSTGRES_DB">PostgreSQL Database:</label>
-        <input
-          id="POSTGRES_DB"
-          v-model="pgDb"
-          type="text"
-          name="POSTGRES_DB"
-        >
-      </div>
+
 
       <input
         id="pkFkData"
@@ -682,9 +1176,8 @@ onMounted(async () => {
       >
         <i
           class="fas"
-          :class="submitting ? 'fa-cookie' : 'fa-play'"
-        />
-        {{ submitting ? ' Processing...' : ' Submit Files' }}
+          :class="submitButtonIcon"
+        />{{ submitButtonLabel }}
       </button>
 
       <div class="mt-4">
@@ -726,3 +1219,86 @@ onMounted(async () => {
     </form>
   </div>
 </template>
+
+<style scoped>
+.source-tile {
+  position: relative;
+  cursor: pointer;
+}
+
+.source-tile label {
+  cursor: pointer;
+}
+
+.source-tile-radio {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  margin: 0;
+  z-index: 1;
+}
+
+.selected-source {
+  background-color: var(--bs-primary-bg-subtle, #cfe2ff);
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+
+.drag-over {
+  border-color: var(--bs-success, #198754);
+  box-shadow: 0 0 0 2px var(--bs-success, #198754);
+  background-color: var(--bs-success-bg-subtle, #d1e7dd);
+}
+
+.drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(13, 110, 253, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.drop-overlay-content {
+  border: 2px dashed var(--bs-primary, #0d6efd);
+  pointer-events: none;
+}
+
+.bootstrap-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.5rem 0.75rem 0.6rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  white-space: normal;
+  text-align: center;
+  z-index: 1080;
+  line-height: 1.4;
+  max-width: 280px;
+}
+
+.bootstrap-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0.4rem 0.4rem 0;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.9) transparent transparent;
+}
+
+.inferred-select {
+  border-color: var(--bs-warning, #ffc107);
+  background-color: var(--bs-warning-bg-subtle, #fff3cd);
+}
+</style>
