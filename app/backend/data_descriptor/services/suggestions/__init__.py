@@ -102,7 +102,7 @@ class SuggestionConfig:
 
 
 def _fingerprint(payload: dict) -> str:
-    return hashlib.sha1(
+    return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode()
     ).hexdigest()
 
