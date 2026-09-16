@@ -1,8 +1,11 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { useSuggestionsStore } from '@/stores/suggestions'
+import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Yes', label: 'Yes' },
@@ -15,6 +18,8 @@ const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Missing', label: 'Missing value' },
   { value: 'Other', label: 'Other' },
 ]
+
+const suggestions = useSuggestionsStore()
 
 const descriptiveInfo = ref(null)
 const descriptiveInfoDetails = ref(null)
@@ -194,6 +199,7 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   const selectedOption = categorySelections[key]
   const previousOption = previousSelections[key]
   previousSelections[key] = selectedOption
+  suggestions.markUserTouched(key)
   try {
     await jsonld.updateCategoryMapping(
       database,
@@ -207,6 +213,78 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
     console.error('Failed to update category mapping:', e)
   }
 }
+
+// ---------------------------------------------------------------------------
+// Mapping suggestions: pre-highlight (do NOT pre-fill) per the plan. The user
+// explicitly accepts via the badge click, which goes through the same
+// onCategoryChange path a manual selection takes so JSON-LD persistence keeps
+// working unchanged.
+// ---------------------------------------------------------------------------
+
+function suggestionFor(key) {
+  return suggestions.values.byKey[key]
+}
+
+function hasSuggestion(key) {
+  const entry = suggestionFor(key)
+  return entry && entry.status === 'done' && entry.display
+}
+
+async function acceptSuggestion(database, variable, cat) {
+  const entry = suggestionFor(cat.key)
+  if (!entry || !entry.display) return
+  const options = categoryOptionsFor(variable)
+  if (!options.includes(entry.display)) return
+  categorySelections[cat.key] = entry.display
+  suggestions.markApplied(cat.key)
+  await onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+}
+
+function dismissSuggestion(database, variable, cat) {
+  suggestions.dismiss(cat.key)
+  if (categorySelections[cat.key]) {
+    categorySelections[cat.key] = ''
+    onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+  }
+}
+
+function clearAllSuggestions() {
+  const cleared = new Set(suggestions.clearAllApplied())
+  for (const dbEntry of parsedDatabases.value) {
+    for (const variable of dbEntry.variables) {
+      if (variable.type !== 'categorical') continue
+      for (const cat of variable.categories) {
+        if (cleared.has(cat.key) && categorySelections[cat.key]) {
+          categorySelections[cat.key] = ''
+          onCategoryChange(dbEntry.name, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+        }
+      }
+    }
+  }
+}
+
+function variableSuggestionPending(variable) {
+  return variable.categories.some((cat) => {
+    const entry = suggestionFor(cat.key)
+    return !entry || entry.status === 'pending'
+  })
+}
+
+function requestVariableFirst(dbName, variable) {
+  const keys = variable.categories.map((c) => c.key)
+  if (keys.length) suggestions.bumpPriority('values', keys)
+}
+
+function categoryOptionsFor(variable) {
+  if (variable.categoryOptions.length > 0) {
+    return [...variable.categoryOptions, 'Other']
+  }
+  return DEFAULT_CATEGORY_OPTIONS.map((o) => o.value)
+}
+
+const unreviewedFieldCount = computed(
+  () => suggestions.unreviewedKeys().filter((key) => categorySelections[key]).length
+)
 
 const loadingIconClass = computed(() =>
   loadingIconIsPen.value ? 'fa-pen' : 'fa-edit'
@@ -276,6 +354,15 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load variable details state:', e)
   }
+
+  // Idempotent start: the backend kicked this job off when /units was
+  // submitted; this covers reloads and backend restarts.
+  suggestions.setPhase('values')
+  await suggestions.init('values')
+})
+
+onBeforeUnmount(() => {
+  suggestions.stopPolling()
 })
 </script>
 
@@ -287,6 +374,15 @@ onMounted(async () => {
       Please provide more information for the categorical and continuous variables that
       were defined in the variable description page.
     </p>
+
+    <SuggestionStatusBar
+      v-if="suggestions.enabled"
+      :phase-state="suggestions.values"
+      :tiers="suggestions.tiers"
+      :compute="suggestions.compute"
+      :unreviewed-count="unreviewedFieldCount"
+      @clear-all="clearAllSuggestions"
+    />
 
     <form
       class="form-horizontal"
@@ -377,6 +473,15 @@ onMounted(async () => {
                   />
                   <div class="variable-controls">
                     <button
+                      v-if="suggestions.enabled && suggestions.values.status === 'running' && variableSuggestionPending(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Move this variable to the front of the suggestion queue"
+                      @click="requestVariableFirst(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-lightbulb" /> Suggest now
+                    </button>
+                    <button
                       type="button"
                       class="item-toggle-button"
                       :class="{ open: isVariableExpanded(dbEntry.name, varIdx) }"
@@ -399,11 +504,26 @@ onMounted(async () => {
                     <div class="category-item">
                       <div class="category-label">
                         {{ cat.displayValue }} (counted: {{ cat.count }})
+                        <SuggestionBadge
+                          v-if="suggestions.isApplied(cat.key) || hasSuggestion(cat.key)"
+                          :suggestion="suggestionFor(cat.key) || {}"
+                          :applied="suggestions.isApplied(cat.key)"
+                          :touched="suggestions.isTouched(cat.key)"
+                          @dismiss="dismissSuggestion(dbEntry.name, variable, cat)"
+                          @accept="acceptSuggestion(dbEntry.name, variable, cat)"
+                        />
                       </div>
                       <div class="category-controls">
                         <select
                           v-model="categorySelections[cat.key]"
                           class="form-control category-select"
+                          :class="{
+                            'suggestion-highlight':
+                              hasSuggestion(cat.key) &&
+                              !suggestions.isApplied(cat.key) &&
+                              !suggestions.isDismissed(cat.key) &&
+                              !categorySelections[cat.key],
+                          }"
                           :name="cat.backendKey"
                           @change="
                             onCategoryChange(
@@ -520,6 +640,16 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.suggestion-highlight {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
+.suggestion-section-button {
+  font-size: 0.8em;
+}
+
 .info-purple {
   font-size: 0.85em;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
