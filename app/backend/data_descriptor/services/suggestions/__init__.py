@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 from .contract import sanitise_pairs
 from .tiers import SuggestionContext
-from .tiers.rules import load_rules, tier1_producers
+from .tiers.rules import _iter_columns, load_rules, tier1_producers
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +208,9 @@ class SuggestionService:
         if phase == VARIABLES_PHASE:
             payload = self._build_variables_payload(mapping, rdf_store_service)
         else:
-            payload = self._build_values_payload(mapping, session_cache)
+            payload = self._build_values_payload(
+                mapping, session_cache, rdf_store_service
+            )
 
         if not payload["items"]:
             job = SuggestionJob(phase, "")
@@ -470,11 +472,17 @@ class SuggestionService:
                 out[db][col] = values
         return out
 
-    def _build_values_payload(self, mapping: Any, session_cache: Any) -> dict:
-        """Build the values-phase payload from DescriptiveInfoDetails.
+    def _build_values_payload(
+        self, mapping: Any, session_cache: Any, rdf_store_service: Any = None
+    ) -> dict:
+        """Build the values-phase payload.
 
-        One group is produced per (database, local_column) so the same value
-        string can map to different terms in different columns.
+        Primary source: ``DescriptiveInfoDetails`` on the session cache
+        (populated by the describe controller when the user submits the
+        variables form).  Fallback when that is empty (e.g. when the
+        database-name match fails and ``_populate_details_from_jsonld``
+        bails out): build groups directly from the mapping + RDF store
+        by querying ``get_categories`` for each categorical column.
         """
         details = getattr(session_cache, "DescriptiveInfoDetails", None) or {}
         variable_lookup = {}
@@ -535,6 +543,16 @@ class SuggestionService:
                     })
 
         described_db = next(iter(details), None)
+
+        # Fallback: when DescriptiveInfoDetails is empty (e.g. when
+        # _populate_details_from_jsonld bailed out on a database-name
+        # mismatch), build value groups directly from the mapping + RDF
+        # store by querying get_categories for each categorical column.
+        if not groups and mapping is not None and rdf_store_service is not None:
+            groups, all_items, value_targets, described_db = self._build_values_fallback(
+                mapping, rdf_store_service
+            )
+
         schema_slice: dict[str, list[str]] = {}
         for group in groups:
             schema_slice.update(group["schema_slice"])
@@ -547,6 +565,86 @@ class SuggestionService:
             "groups": groups,
             "key_for": lambda item: f"{described_db}_{item}" if described_db else item,
         }
+
+    @staticmethod
+    def _build_values_fallback(
+        mapping: Any, rdf_store_service: Any
+    ) -> tuple[list[dict], list[str], dict, Optional[str]]:
+        """Build value groups when DescriptiveInfoDetails is empty.
+
+        Walks the mapping's columns, finds categorical variables with
+        value mappings, and queries the RDF store for distinct values.
+        """
+        import io as _io
+
+        columns_by_db: dict[str, list[str]] = {}
+        try:
+            columns_by_db = rdf_store_service.get_column_info_by_database() or {}
+        except Exception:
+            pass
+
+        described_db = next(iter(columns_by_db), None)
+        groups: list[dict] = []
+        all_items: list[str] = []
+        value_targets: dict = {}
+
+        for db, cols in columns_by_db.items():
+            for col in cols or []:
+                # Find the variable key for this column from the mapping.
+                var_key = None
+                for _db_obj, column in _iter_columns(mapping):
+                    if column.local_column == col:
+                        var_key = column.get_variable_key()
+                        break
+                if not var_key:
+                    continue
+                variable = mapping.get_variable(var_key)
+                if not variable or not variable.value_mappings:
+                    continue
+                terms = list(variable.value_mappings.keys())
+                if not terms:
+                    continue
+                # Query the RDF store for distinct values.
+                try:
+                    cat_result = rdf_store_service.get_categories(col, db)
+                    if not cat_result:
+                        continue
+                    import polars as pl
+                    df = pl.read_csv(
+                        _io.StringIO(cat_result),
+                        separator=",",
+                        infer_schema_length=0,
+                        null_values=[],
+                        try_parse_dates=False,
+                    )
+                    rows = df.to_dicts()
+                except Exception:
+                    continue
+                seen: set[str] = set()
+                group_items: list[str] = []
+                for row in rows:
+                    value = str((row or {}).get("value", "")).strip()
+                    if not value or value in seen:
+                        continue
+                    seen.add(value)
+                    group_items.append(value)
+                    all_items.append(value)
+                    value_targets.setdefault(db, {}).setdefault(var_key, []).append(value)
+                if not group_items:
+                    continue
+
+                def make_key_for(database=db, column=col):
+                    def key_for(value: str) -> str:
+                        return f"{database}_{column}_{value}"
+                    return key_for
+
+                groups.append({
+                    "items": group_items,
+                    "schema_slice": {v: terms for v in group_items},
+                    "key_for": make_key_for(),
+                })
+
+        return groups, all_items, value_targets, described_db
 
     # ------------------------------------------------------------------
     # Polling / priority
