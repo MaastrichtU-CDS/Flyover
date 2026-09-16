@@ -4,7 +4,7 @@ Documentation for people who hack on Flyover — not for end users running it. E
 
 Read these in order if you're new:
 
-1. **[architecture.md](architecture.md)** — How the three services (`rdf-store`, `triplifier`, browser) fit together, what the data flow looks like, and short primers on JSON-LD, RDF, and the GraphDB `userRepo` concept. Start here.
+1. **[architecture.md](architecture.md)** — How the three services (`rdf-store`, `flyover`, browser) fit together, what the data flow looks like, and short primers on JSON-LD, RDF, and the GraphDB `userRepo` concept. Start here.
 2. **[frontend.md](frontend.md)** — Vue 3 SPA: the code map, what each composable/store/service does, how the dev server talks to Flask, and how to add a new route. Assumes you know JavaScript and HTTP, but not necessarily Vue.
 3. **[testing.md](testing.md)** — Three test layers (pytest, Vitest, Playwright), how to run them locally, the Docker test stack, the CI workflow map, and when to write which kind of test.
 
