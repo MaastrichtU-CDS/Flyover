@@ -16,6 +16,7 @@ vi.mock('@/lib/jsonld', () => ({
   getCategoryOptionsForVariable: vi.fn(() => []),
   getLocalMappingsForVariable: vi.fn(() => ({})),
   updateCategoryMapping: vi.fn(async () => {}),
+  getMapping: vi.fn(() => ({})),
 }))
 
 vi.mock('@/stores/suggestions', () => ({
