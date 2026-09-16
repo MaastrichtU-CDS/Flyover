@@ -69,7 +69,7 @@ Top-level directories are named after the *role* a container plays in the stack,
 
 ```
 docker-compose.yml     # orchestration: the flyover app + `include:` of every module
-flyover/               # the Flyover application (Flask backend + Vue frontend, one image)
+app/                   # the Flyover application (Flask backend + Vue frontend, one image)
 stores/rdf/            # RDF store backends (graphdb/, rdf4j/, qlever/) + their compose.yml
 docs/                  # developer documentation
 example_data/          # synthetic datasets and JSON-LD mappings

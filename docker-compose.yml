@@ -22,9 +22,9 @@ include:
 services:
   flyover:
     image: ghcr.io/maastrichtu-cds/flyover-app:latest
-    # If preferred, the image can be built from the Dockerfile in ./flyover
+    # If preferred, the image can be built from the Dockerfile in ./app
     # build:
-    #   context: ./flyover
+    #   context: ./app
     container_name: flyover
     # NOTE: the hostname is used by the triplifier module as the base of the
     # generated RDF IRIs (http://data.local/rdf/...) and is hard-coded in the

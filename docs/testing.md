@@ -6,10 +6,10 @@ Three test layers, each with a different speed/realism trade-off. This doc tells
 
 | Layer        | Tool                | Lives at                                                              | What it tests                                                              | Speed       | CI workflow                                                                 |
 |--------------|---------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------|-------------|-----------------------------------------------------------------------------|
-| Backend unit | pytest              | [`flyover/backend/data_descriptor/tests/unit/`](../flyover/backend/data_descriptor/tests/unit/) | Services, repositories, controllers — mocked GraphDB                       | <2 s        | [`unit-tests.yml`](../.github/workflows/unit-tests.yml)                     |
-| Backend integration | pytest       | [`tests/integration/`](../flyover/backend/data_descriptor/tests/integration/) | Loaders, validators — real files, no network                               | ~seconds    | (runs as part of unit-tests, if added to selection)                         |
-| Frontend unit | Vitest             | [`flyover/frontend/tests/unit/`](../flyover/frontend/tests/unit/) | Stores, composables, view components — happy-dom, no backend               | <2 s        | [`frontend-checks.yml`](../.github/workflows/frontend-checks.yml)           |
-| Frontend E2E | Playwright          | [`flyover/frontend/tests/e2e/`](../flyover/frontend/tests/e2e/) | Multi-page workflow against a real stack (Flask + GraphDB)                 | ~minutes    | [`frontend-smoke.yml`](../.github/workflows/frontend-smoke.yml) (1 spec); [`frontend-e2e-full.yml`](../.github/workflows/frontend-e2e-full.yml) (all specs) |
+| Backend unit | pytest              | [`app/backend/data_descriptor/tests/unit/`](../app/backend/data_descriptor/tests/unit/) | Services, repositories, controllers — mocked GraphDB                       | <2 s        | [`unit-tests.yml`](../.github/workflows/unit-tests.yml)                     |
+| Backend integration | pytest       | [`tests/integration/`](../app/backend/data_descriptor/tests/integration/) | Loaders, validators — real files, no network                               | ~seconds    | (runs as part of unit-tests, if added to selection)                         |
+| Frontend unit | Vitest             | [`app/frontend/tests/unit/`](../app/frontend/tests/unit/) | Stores, composables, view components — happy-dom, no backend               | <2 s        | [`frontend-checks.yml`](../.github/workflows/frontend-checks.yml)           |
+| Frontend E2E | Playwright          | [`app/frontend/tests/e2e/`](../app/frontend/tests/e2e/) | Multi-page workflow against a real stack (Flask + GraphDB)                 | ~minutes    | [`frontend-smoke.yml`](../.github/workflows/frontend-smoke.yml) (1 spec); [`frontend-e2e-full.yml`](../.github/workflows/frontend-e2e-full.yml) (all specs) |
 
 Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code-quality.yml) runs Black, flake8, mypy, Bandit, and Safety. See the **CI workflow map** below.
 
@@ -19,7 +19,7 @@ Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code
 
 ```bash
 # from the repo root; uses uv to spin up an ephemeral env
-cd flyover/backend/data_descriptor
+cd app/backend/data_descriptor
 uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock \
   python -m pytest tests/unit/ -q
 ```
@@ -27,14 +27,14 @@ uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock 
 Add `--cov=. --cov-report=term-missing` if you want a coverage rollup. Drop `tests/unit/` and target a single file or class for faster iteration.
 
 A few practical notes about the layout:
-- [`tests/conftest.py`](../flyover/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
-- [`tests/unit/conftest.py`](../flyover/backend/data_descriptor/tests/unit/conftest.py) adds unit-only stubs so unit tests stay isolated from real deps. Integration tests deliberately don't inherit those stubs.
+- [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
+- [`tests/unit/conftest.py`](../app/backend/data_descriptor/tests/unit/conftest.py) adds unit-only stubs so unit tests stay isolated from real deps. Integration tests deliberately don't inherit those stubs.
 - Many test modules do `sys.path.insert(0, str(Path(__file__).parent.parent.parent))` to make `data_descriptor` importable as a top-level package. If you add a new test under a new sub-folder, mirror that pattern.
 
 ### Frontend unit (Vitest)
 
 ```bash
-cd flyover/frontend
+cd app/frontend
 npm install                  # first time only
 npm run test:unit            # one-shot
 npm run test:unit:watch      # watch mode while you edit
@@ -48,7 +48,7 @@ Playwright assumes the stack is **already running** on `http://localhost:5000`. 
 
 ```bash
 # 1. install browsers once
-cd flyover/frontend
+cd app/frontend
 npm run test:e2e:install     # downloads chromium ~150 MB
 
 # 2. bring up the test stack (tmpfs GraphDB + Flask)

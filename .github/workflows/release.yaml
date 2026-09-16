@@ -50,7 +50,7 @@ jobs:
       - name: Build and push Flyover Docker image
         uses: docker/build-push-action@v4
         with:
-          context: ./flyover
+          context: ./app
           push: true
           tags: ${{ steps.meta-flyover.outputs.tags }}
           labels: ${{ steps.meta-flyover.outputs.labels }}

@@ -29,17 +29,17 @@ build/
 # Playwright / Vitest output (when test runners are invoked from repo root)
 /test-results/
 /playwright-report/
-flyover/frontend/node_modules/
-flyover/frontend/dist/
-flyover/frontend/.vite/
-flyover/frontend/playwright-report/
-flyover/frontend/test-results/
+app/frontend/node_modules/
+app/frontend/dist/
+app/frontend/.vite/
+app/frontend/playwright-report/
+app/frontend/test-results/
 
 # Test coverage artifacts
 .coverage
 coverage.xml
 htmlcov/
-flyover/.coverage
+app/.coverage
 
 # RDF store data and logs (generated at runtime, not tracked).
 # Settings/config files under these directories are kept (only data and logs
@@ -58,8 +58,8 @@ stores/rdf/qlever/data/
 test_annotation_ui.py
 setup_test_data.py
 annotation_ui_demo.html
-# test_*.py in root directory - keep test suites in flyover/backend/data_descriptor/tests/
-!/flyover/backend/data_descriptor/tests/test_*.py
+# test_*.py in root directory - keep test suites in app/backend/data_descriptor/tests/
+!/app/backend/data_descriptor/tests/test_*.py
 
 # Temporary files
 /tmp/

@@ -15,7 +15,7 @@ services:
 
   flyover:
     build:
-      context: ./flyover
+      context: ./app
     environment:
       - FLYOVER_RDF_STORE_URL=http://rdf-store:7200
       - FLYOVER_MATERIALIZE_INFERENCES=false
