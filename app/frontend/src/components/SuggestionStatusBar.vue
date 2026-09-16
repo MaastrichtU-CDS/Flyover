@@ -45,7 +45,8 @@ const inactiveTiers = computed(() => {
     .filter(([_, info]) => info?.state === 'inactive')
     .map(([_, info]) => info?.reason)
     .filter(Boolean)
-  return reasons[0] || `tiers ${inactive} inactive`
+  const reason = reasons[0] || `tiers ${inactive} inactive`
+  return `${inactive} ${reason}`
 })
 
 const tierNote = computed(() => {
