@@ -259,6 +259,7 @@ watch(
   () => suggestions.variables.byKey,
   (byKey) => {
     if (!suggestions.enabled) return
+    let filled = false
     for (const [key, entry] of Object.entries(byKey)) {
       if (entry.status !== 'done' || !entry.display) continue
       if (suggestions.isDismissed(key)) continue
@@ -276,7 +277,9 @@ watch(
       formStateCache[key].description = entry.display
       autoPopulateDatatype(dbName, item)
       suggestions.markApplied(key)
+      filled = true
     }
+    if (filled) syncToIndexedDB()
   },
   { deep: true },
 )
@@ -316,12 +319,20 @@ const hasAnyDescription = computed(() => {
 
 const canSubmit = computed(() => {
   if (!hasAnyDescription.value || isSubmitting.value) return false
+  // Block submission while suggestions are still loading and we have
+  // unreviewed pre-filled fields. Also block while the suggestion job
+  // is still running (status is 'idle' or 'running') and suggestions
+  // are enabled, to prevent submitting before pre-fill arrives.
   if (unreviewedFieldCount.value > 0) return false
+  if (suggestions.enabled && suggestions.variables.status === 'running') return false
+  if (suggestions.enabled && suggestions.variables.status === 'idle') return false
   return true
 })
 
 const submitTooltip = computed(() => {
   if (!hasAnyDescription.value) return 'Fill in at least one description first'
+  if (suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running'))
+    return 'Waiting for mapping suggestions to arrive...'
   if (unreviewedFieldCount.value > 0)
     return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
   return ''
@@ -740,7 +751,14 @@ onBeforeUnmount(() => {
           </template>
         </button>
         <span
-          v-if="unreviewedFieldCount > 0"
+          v-if="suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running')"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-hourglass-half" />
+          Waiting for suggestions...
+        </span>
+        <span
+          v-else-if="unreviewedFieldCount > 0"
           class="submit-review-hint"
         >
           <i class="fas fa-exclamation-circle" />
