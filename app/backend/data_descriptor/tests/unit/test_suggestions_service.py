@@ -405,5 +405,34 @@ class TestRecordsConformToContract(unittest.TestCase):
             self.assertIsInstance(rec["tier"], int)
 
 
+class TestSchemaByteIdentical(unittest.TestCase):
+    """Running a suggestion job must not mutate the mapping's schema section."""
+
+    @patch("services.suggestions.tier1_producers")
+    def test_schema_unchanged_after_job(self, mock_producers):
+        import copy
+        import json
+
+        mock_producers.return_value = [FakeProducer(1, "alias", {
+            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
+                      "reason": "Alias hit."},
+            "sex": {"match": "biological_sex", "confidence": 0.9,
+                    "reason": "Alias hit."},
+        })]
+        mapping = _make_mapping()
+        cache = _make_session_cache(mapping)
+        rdf = _make_rdf_store(columns_by_db={"christie": ["morph", "sex"]})
+
+        schema_before = copy.deepcopy(mapping.to_dict()["schema"])
+        schema_before_json = json.dumps(schema_before, sort_keys=True)
+
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, cache, rdf)
+
+        schema_after_json = json.dumps(mapping.to_dict()["schema"],
+                                       sort_keys=True)
+        self.assertEqual(schema_before_json, schema_after_json)
+
+
 if __name__ == "__main__":
     unittest.main()
