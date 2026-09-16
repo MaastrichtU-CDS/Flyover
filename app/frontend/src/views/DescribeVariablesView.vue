@@ -383,7 +383,11 @@ function onPageShow(e) {
   if (e.persisted) resetSubmitState()
 }
 
-function onFormSubmit() {
+function onFormSubmit(e) {
+  if (!canSubmit.value) {
+    e.preventDefault()
+    return
+  }
   startLoadingAnimation()
   // native form POSTs to /units → redirects to /describe/variable-details
 }
