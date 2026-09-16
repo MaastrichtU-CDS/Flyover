@@ -286,6 +286,82 @@ const unreviewedFieldCount = computed(
   () => suggestions.unreviewedKeys().filter((key) => categorySelections[key]).length
 )
 
+// Pre-fill: when a suggestion arrives for a value that the user hasn't
+// touched yet, auto-set the category dropdown to the suggested term and
+// mark it as "applied" (unreviewed). The user must click the badge or
+// change the dropdown to mark it as "reviewed" before they can submit.
+watch(
+  () => suggestions.values.byKey,
+  (byKey) => {
+    if (!suggestions.enabled) return
+    for (const dbEntry of parsedDatabases.value) {
+      for (const variable of dbEntry.variables) {
+        if (variable.type !== 'categorical') continue
+        for (const cat of variable.categories) {
+          const entry = byKey[cat.key]
+          if (!entry || entry.status !== 'done' || !entry.display) continue
+          if (suggestions.isDismissed(cat.key)) continue
+          if (suggestions.isTouched(cat.key)) continue
+          if (suggestions.isApplied(cat.key)) continue
+          if (categorySelections[cat.key]) continue
+          const options = categoryOptionsFor(variable)
+          if (!options.includes(entry.display)) continue
+          categorySelections[cat.key] = entry.display
+          suggestions.markApplied(cat.key)
+          onCategoryChange(
+            dbEntry.name, variable.localVariable, variable.globalVarName,
+            cat.value, cat.key,
+          )
+        }
+      }
+    }
+  },
+  { deep: true },
+)
+
+function hasUnreviewedForVariable(variable) {
+  if (variable.type !== 'categorical') return false
+  return variable.categories.some((cat) => {
+    const entry = suggestionFor(cat.key)
+    return entry && entry.status === 'done' && entry.display
+      && !suggestions.isApplied(cat.key)
+      && !suggestions.isDismissed(cat.key)
+      && !categorySelections[cat.key]
+  })
+}
+
+async function acceptAllForVariable(database, variable) {
+  for (const cat of variable.categories) {
+    if (suggestions.isApplied(cat.key) || suggestions.isDismissed(cat.key)) continue
+    const entry = suggestionFor(cat.key)
+    if (!entry || !entry.display) continue
+    const options = categoryOptionsFor(variable)
+    if (!options.includes(entry.display)) continue
+    categorySelections[cat.key] = entry.display
+    suggestions.markApplied(cat.key)
+    await onCategoryChange(
+      database, variable.localVariable, variable.globalVarName,
+      cat.value, cat.key,
+    )
+  }
+}
+
+const canSubmit = computed(() => {
+  if (isProcessing.value) return false
+  if (unreviewedFieldCount.value > 0) return false
+  if (suggestions.enabled && suggestions.values.status === 'running') return false
+  if (suggestions.enabled && suggestions.values.status === 'idle') return false
+  return true
+})
+
+const submitTooltip = computed(() => {
+  if (suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running'))
+    return 'Waiting for mapping suggestions to arrive...'
+  if (unreviewedFieldCount.value > 0)
+    return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+  return ''
+})
+
 const loadingIconClass = computed(() =>
   loadingIconIsPen.value ? 'fa-pen' : 'fa-edit'
 )
@@ -485,6 +561,15 @@ onBeforeUnmount(() => {
                       <i class="fas fa-lightbulb" /> Suggest now
                     </button>
                     <button
+                      v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Accept all suggestions for this variable"
+                      @click="acceptAllForVariable(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-check-double" /> Accept all
+                    </button>
+                    <button
                       type="button"
                       class="item-toggle-button"
                       :class="{ open: isVariableExpanded(dbEntry.name, varIdx) }"
@@ -591,7 +676,8 @@ onBeforeUnmount(() => {
         <button
           type="submit"
           class="btn btn-primary"
-          :disabled="isProcessing"
+          :disabled="!canSubmit"
+          :title="submitTooltip"
           :class="{ processing: isProcessing }"
         >
           <template v-if="!isProcessing">
@@ -605,6 +691,20 @@ onBeforeUnmount(() => {
             Processing descriptions...
           </template>
         </button>
+        <span
+          v-if="suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running')"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-hourglass-half" />
+          Waiting for suggestions...
+        </span>
+        <span
+          v-else-if="unreviewedFieldCount > 0"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-exclamation-circle" />
+          {{ unreviewedFieldCount }} suggestion(s) need review
+        </span>
         <RouterLink
           to="/describe/variables"
           class="btn btn-light"
@@ -651,6 +751,12 @@ onBeforeUnmount(() => {
 
 .suggestion-section-button {
   font-size: 0.8em;
+}
+
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
 }
 
 .info-purple {

@@ -571,7 +571,17 @@ class StringMatcher:
     ) -> list[dict]:
         rules = ctx.rules or load_rules()
         margin = self.margin if self.margin is not None else ctx.margin
+        # In the variables phase the schema_slice has a single "*" key whose
+        # value is the list of all variable keys. In the values phase each
+        # value maps to its own list of terms — there is no "*" key, so we
+        # collect all terms across the slice.
         targets = schema_slice.get("*", [])
+        if not targets:
+            targets = set()
+            for terms in schema_slice.values():
+                if isinstance(terms, list):
+                    targets.update(terms)
+            targets = list(targets)
 
         # Pre-compute candidate labels (key + label surface).
         mapping = ctx.mapping

@@ -327,6 +327,38 @@ class TestStringMatcher(unittest.TestCase):
         out = StringMatcher().run([""], {"*": VARIABLE_KEYS}, ctx)
         self.assertIsNone(out[0]["match"])
 
+    def test_values_phase_matches_value_to_term(self):
+        """In the values phase the schema_slice maps each value to its list
+        of terms (no '*' key). The StringMatcher must collect targets from
+        all value entries, not from a missing '*' key — otherwise it has
+        no candidates and every value abstains."""
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="values", mapping=mapping, described_database=None,
+            rules=_RULES, threshold=0.8, margin=0.05,
+        )
+        terms = ["male", "female", "missing_or_unspecified"]
+        schema_slice = {
+            "Male": terms,
+            "Female": terms,
+        }
+        out = StringMatcher().run(["Male", "Female"], schema_slice, ctx)
+        self.assertEqual(out[0]["match"], "male")
+        self.assertGreaterEqual(out[0]["confidence"], 0.95)
+        self.assertEqual(out[1]["match"], "female")
+        self.assertGreaterEqual(out[1]["confidence"], 0.95)
+
+    def test_values_phase_no_candidates_when_slice_empty(self):
+        """When the schema_slice is empty (no terms at all), the matcher
+        must abstain with no candidates rather than crash."""
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="values", mapping=mapping, described_database=None,
+            rules=_RULES, threshold=0.8, margin=0.05,
+        )
+        out = StringMatcher().run(["unknown"], {}, ctx)
+        self.assertIsNone(out[0]["match"])
+
 
 if __name__ == "__main__":
     unittest.main()
