@@ -236,39 +236,6 @@ function requestSectionFirst(dbName) {
   }
 }
 
-function hasUnreviewedForDatabase(dbName) {
-  const cols = columnInfoData.value?.[dbName] || []
-  return cols.some((item) => {
-    const key = `${dbName}_${item}`
-    const entry = suggestionFor(dbName, item)
-    if (!entry || entry.status !== 'done' || !entry.display) return false
-    if (suggestions.isDismissed(key)) return false
-    if (!suggestions.isApplied(key) && !formStateCache[key]?.description) return true
-    if (suggestions.isApplied(key) && !suggestions.isTouched(key)) return true
-    return false
-  })
-}
-
-async function acceptAllForDatabase(dbName) {
-  const cols = columnInfoData.value?.[dbName] || []
-  for (const item of cols) {
-    const key = `${dbName}_${item}`
-    const entry = suggestionFor(dbName, item)
-    if (!entry || !entry.display) continue
-    if (suggestions.isDismissed(key)) continue
-    if (suggestions.isApplied(key) && suggestions.isTouched(key)) continue
-    if (isDescriptionDisabled(dbName, item, entry.display)) continue
-    if (!formStateCache[key]?.description) {
-      ensureCacheEntry(key, dbName)
-      formStateCache[key].description = entry.display
-      autoPopulateDatatype(dbName, item)
-      suggestions.markApplied(key)
-    }
-    suggestions.markUserTouched(key)
-  }
-  syncToIndexedDB()
-}
-
 const suggestionProgress = computed(() => {
   const entries = Object.values(suggestions.variables.byKey)
   return {
@@ -590,15 +557,6 @@ onBeforeUnmount(() => {
             @click="requestSectionFirst(dbName)"
           >
             <i class="fas fa-lightbulb" /> Suggest this section first
-          </button>
-          <button
-            v-if="suggestions.enabled && hasUnreviewedForDatabase(dbName)"
-            type="button"
-            class="btn btn-sm btn-outline-secondary suggestion-section-button"
-            title="Accept all suggestions for this database"
-            @click="acceptAllForDatabase(dbName)"
-          >
-            <i class="fas fa-check-double" /> Accept all
           </button>
 
           <div
