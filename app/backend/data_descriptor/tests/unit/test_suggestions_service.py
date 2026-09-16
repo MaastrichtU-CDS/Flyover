@@ -434,5 +434,53 @@ class TestSchemaByteIdentical(unittest.TestCase):
         self.assertEqual(schema_before_json, schema_after_json)
 
 
+class TestMultiDatabaseVariables(unittest.TestCase):
+    """The variables phase must produce per-database groups so each
+    database's columns get keys prefixed with the correct database name.
+    """
+
+    def setUp(self):
+        self.mapping = _make_mapping()
+        self.cache = _make_session_cache(self.mapping)
+        self.rdf = _make_rdf_store(columns_by_db={
+            "christie": ["morph", "sex", "year_col"],
+            "nki": ["morfo", "geslacht", "jaar"],
+        })
+
+    @patch("services.suggestions.tier1_producers")
+    def test_records_have_correct_database_prefix(self, mock_producers):
+        mock_producers.return_value = [FakeProducer(1, "alias", {
+            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
+                      "reason": "Alias hit."},
+            "morfo": {"match": "tumour_morphology_icd_o", "confidence": 0.9,
+                      "reason": "Alias hit."},
+        })]
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, self.cache, self.rdf)
+        state = svc.get_state(self.cache, VARIABLES_PHASE)
+        records = state["records"]
+        # Each database's columns should be keyed with its own prefix.
+        self.assertIn("christie_morph", records)
+        self.assertIn("christie_sex", records)
+        self.assertIn("christie_year_col", records)
+        self.assertIn("nki_morfo", records)
+        self.assertIn("nki_geslacht", records)
+        self.assertIn("nki_jaar", records)
+        # No ghost keys with the wrong database prefix.
+        for key in records:
+            self.assertTrue(
+                key.startswith("christie_") or key.startswith("nki_"),
+                f"Unexpected key: {key}",
+            )
+
+    @patch("services.suggestions.tier1_producers")
+    def test_total_progress_covers_all_databases(self, mock_producers):
+        mock_producers.return_value = [FakeProducer(1, "alias", {})]
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, self.cache, self.rdf)
+        state = svc.get_state(self.cache, VARIABLES_PHASE)
+        self.assertEqual(state["progress"]["total"], 6)
+
+
 if __name__ == "__main__":
     unittest.main()

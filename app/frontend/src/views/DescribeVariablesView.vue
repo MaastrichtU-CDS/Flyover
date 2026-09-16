@@ -292,12 +292,15 @@ watch(
       if (suggestions.isDismissed(key)) continue
       if (suggestions.isTouched(key)) continue
       if (suggestions.isApplied(key)) continue
-      const parts = key.split('_')
-      const dbName = parts[0]
-      const item = parts.slice(1).join('_')
       // Don't overwrite a field the user already filled manually.
       const existing = formStateCache[key]?.description
       if (existing) continue
+      // Keys are "${dbName}_${localColumn}" and dbName can itself contain
+      // underscores (e.g. "synthetic_dutch_150"), so naive splitting
+      // truncates the name. Look up the actual dbName by prefix-matching.
+      const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+      if (!dbName) continue
+      const item = key.slice(dbName.length + 1)
       // Check the one-variable-per-database constraint.
       if (isDescriptionDisabled(dbName, item, entry.display)) continue
       ensureCacheEntry(key, dbName)

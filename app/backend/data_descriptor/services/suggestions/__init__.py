@@ -332,7 +332,7 @@ class SuggestionService:
             ctx = SuggestionContext(
                 phase=phase,
                 mapping=payload["mapping"],
-                described_database=payload.get("described_database"),
+                described_database=group.get("described_database") or payload.get("described_database"),
                 threshold=self.config.threshold,
                 margin=self.config.margin,
                 rules=self._rules,
@@ -409,31 +409,56 @@ class SuggestionService:
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning("get_column_info_by_database failed: %s", exc)
         variable_keys = list(mapping.get_all_variable_keys()) if mapping else []
-        items: list[str] = []
+        all_items: list[str] = []
         for cols in columns_by_db.values():
             for col in cols or []:
-                if col not in items:
-                    items.append(col)
+                if col not in all_items:
+                    all_items.append(col)
 
         described_db = next(iter(columns_by_db), None)
 
-        def key_for(item: str) -> str:
-            return f"{described_db}_{item}" if described_db else item
+        # One group per database so each group's keys are prefixed with the
+        # correct database name and the alias matcher's leave-one-site-out
+        # excludes the right database per group.
+        groups: list[dict] = []
+        for db_name, cols in columns_by_db.items():
+            db_items = [c for c in cols or [] if c in all_items]
+            if not db_items:
+                continue
+
+            def make_key_for(db=db_name):
+                def key_for(item: str) -> str:
+                    return f"{db}_{item}"
+                return key_for
+
+            groups.append({
+                "items": db_items,
+                "schema_slice": {"*": variable_keys},
+                "key_for": make_key_for(),
+                "described_database": db_name,
+            })
+
+        # Fallback: if no groups were built (no databases), use a single
+        # group with all items and no database prefix.
+        if not groups:
+            def key_for_fallback(item: str) -> str:
+                return item
+            groups = [{
+                "items": all_items,
+                "schema_slice": {"*": variable_keys},
+                "key_for": key_for_fallback,
+            }]
 
         return {
-            "items": items,
+            "items": all_items,
             "schema_slice": {"*": variable_keys},
             "mapping": mapping,
             "described_database": described_db,
             "column_values": self._collect_column_values(
                 mapping, rdf_store_service, columns_by_db
             ),
-            "groups": [{
-                "items": items,
-                "schema_slice": {"*": variable_keys},
-                "key_for": key_for,
-            }],
-            "key_for": key_for,
+            "groups": groups,
+            "key_for": groups[0]["key_for"] if groups else (lambda item: item),
         }
 
     def _collect_column_values(
