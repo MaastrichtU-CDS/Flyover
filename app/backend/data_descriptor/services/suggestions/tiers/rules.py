@@ -339,6 +339,15 @@ def _value_set_matches(values: list[str], candidate_sets: list[list[str]]) -> Op
     return None
 
 
+def _value_in_any_set(value: str, candidate_sets: list[list[str]]) -> Optional[list[str]]:
+    """Return the matched canonical set when ``value`` is a member of one of the sets."""
+    norm = str(value).strip().lower()
+    for cand in candidate_sets:
+        if norm in {str(c).strip().lower() for c in cand}:
+            return cand
+    return None
+
+
 def _all_match_patterns(values: list[str], patterns: list[str]) -> bool:
     compiled = [re.compile(p) for p in patterns]
     return all(any(p.match(str(v)) for p in compiled) for v in values)
@@ -471,15 +480,44 @@ class ValueRegexMatcher:
         return out
 
     def _match_value_term(self, item: str, terms: list[str], rules: dict) -> dict:
+        """Map a single value to its term using positional correspondence.
+
+        Value-sets within a rule are ordered equivalence classes across
+        languages/codings (e.g. ``["ja","nee"]`` and ``["yes","no"]``). The
+        value's position in its matched set determines which term it maps to:
+        the element at the same position in any set that is also an exact
+        schema term is the suggestion.
+        """
         value = item
+        norm_value = str(value).strip().lower()
         for rule in rules.get("value_regexes", []):
             if "value_sets" not in rule:
                 continue
-            matched_set = _value_set_matches([value], rule["value_sets"])
-            if matched_set is None:
+            # Find the position of value in any value-set.
+            position: Optional[int] = None
+            for vs in rule["value_sets"]:
+                norm_vs = [str(c).strip().lower() for c in vs]
+                try:
+                    position = norm_vs.index(norm_value)
+                    break
+                except ValueError:
+                    continue
+            if position is None:
                 continue
+            # At the same position in every set, look for a schema term.
             term_preds = rule.get("term_predicates", [])
-            candidates = [t for t in terms if any(p in t for p in term_preds)]
+            terms_lower = {t.lower(): t for t in terms}
+            candidates: list[str] = []
+            seen: set[str] = set()
+            for vs in rule["value_sets"]:
+                if position >= len(vs):
+                    continue
+                elem = str(vs[position]).strip().lower()
+                term = terms_lower.get(elem)
+                if term and term not in seen:
+                    if not term_preds or any(p in term.lower() for p in term_preds):
+                        candidates.append(term)
+                        seen.add(term)
             if not candidates:
                 continue
             if len(candidates) == 1:

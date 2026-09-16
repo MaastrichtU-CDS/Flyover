@@ -46,7 +46,7 @@ class SuggestionContext:
     mapping: Any = None
     described_database: Optional[str] = None
     threshold: float = 0.8
-    margin: float = 0.1
+    margin: float = 0.05
     rules: Optional[dict] = None
     column_values: dict = field(default_factory=dict)
     value_targets: dict = field(default_factory=dict)
