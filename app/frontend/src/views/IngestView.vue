@@ -1402,28 +1402,19 @@ onMounted(async () => {
 }
 
 /* SuggestionBadge sits on the bg-light card header where the default
-   faint-purple/green text is hard to read. Give it solid backgrounds
-   with white text so the badge and "reviewed" state are clearly visible. */
-.card-header :deep(.suggestion-badge) {
-  background: rgba(118, 75, 162, 0.85);
+   faint-purple/green text is hard to read. Use a transparent background
+   with white font and a white outline so the badge reads clearly on
+   any card-header colour. */
+.card-header :deep(.suggestion-badge),
+.card-header :deep(.suggestion-badge.applied),
+.card-header :deep(.suggestion-badge.confirmed) {
+  background: transparent;
   color: #fff;
-  border-color: rgba(118, 75, 162, 0.9);
+  border: 1px solid #fff;
 }
 
 .card-header :deep(.suggestion-badge:hover) {
-  background: rgba(118, 75, 162, 1);
-}
-
-.card-header :deep(.suggestion-badge.applied) {
-  background: rgba(40, 140, 80, 0.85);
-  color: #fff;
-  border-color: rgba(40, 140, 80, 0.9);
-}
-
-.card-header :deep(.suggestion-badge.confirmed) {
-  background: rgba(40, 140, 80, 0.85);
-  color: #fff;
-  border-color: rgba(40, 140, 80, 0.9);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .suggestion-section-button {
