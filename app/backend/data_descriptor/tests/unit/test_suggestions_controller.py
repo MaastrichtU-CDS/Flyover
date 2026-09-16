@@ -18,7 +18,6 @@ from flask import Flask
 
 from controllers import suggestions_bp
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -165,9 +164,7 @@ class TestStart(unittest.TestCase):
     def test_start_no_service_returns_disabled(self):
         app = _make_app(suggestion_service=None)
         with app.test_client() as client:
-            resp = client.post(
-                "/api/v1/suggestions/variables/start", json={}
-            )
+            resp = client.post("/api/v1/suggestions/variables/start", json={})
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json()["status"], "disabled")
 

@@ -35,20 +35,33 @@ def suggestions_status():
     ctx = get_app_context()
     service = ctx.get("suggestion_service")
     if service is None or not service.config.enabled:
-        return jsonify({
-            "enabled": False,
-            "compute": service.config.compute if service else "host",
-            "tiers": {
-                1: {"state": "inactive", "reason": "disabled by FLYOVER_SUGGESTION_TIERS"},
-                2: {"state": "inactive", "reason": "disabled by FLYOVER_SUGGESTION_TIERS"},
-                3: {"state": "inactive", "reason": "disabled by FLYOVER_SUGGESTION_TIERS"},
-            },
-            "threshold": service.config.threshold if service else 0.8,
-        })
-    return jsonify({
-        "enabled": True,
-        **service.status(),
-    })
+        return jsonify(
+            {
+                "enabled": False,
+                "compute": service.config.compute if service else "host",
+                "tiers": {
+                    1: {
+                        "state": "inactive",
+                        "reason": "disabled by FLYOVER_SUGGESTION_TIERS",
+                    },
+                    2: {
+                        "state": "inactive",
+                        "reason": "disabled by FLYOVER_SUGGESTION_TIERS",
+                    },
+                    3: {
+                        "state": "inactive",
+                        "reason": "disabled by FLYOVER_SUGGESTION_TIERS",
+                    },
+                },
+                "threshold": service.config.threshold if service else 0.8,
+            }
+        )
+    return jsonify(
+        {
+            "enabled": True,
+            **service.status(),
+        }
+    )
 
 
 @suggestions_bp.route("/api/v1/suggestions/<phase>/start", methods=["POST"])
@@ -75,6 +88,7 @@ def start_suggestions(phase: str):
     mapping_data = body.get("mapping")
     if mapping_data:
         from loaders import JSONLDMapping
+
         try:
             session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
         except Exception:
@@ -98,13 +112,15 @@ def get_suggestions(phase: str):
     service = ctx.get("suggestion_service")
     session_cache = ctx.get("session_cache")
     if service is None:
-        return jsonify({
-            "enabled": False,
-            "status": "idle",
-            "progress": {"done": 0, "total": 0},
-            "error": None,
-            "records": {},
-        })
+        return jsonify(
+            {
+                "enabled": False,
+                "status": "idle",
+                "progress": {"done": 0, "total": 0},
+                "error": None,
+                "records": {},
+            }
+        )
     state = service.get_state(session_cache, phase)
     state["enabled"] = service.config.enabled
     return jsonify(state)

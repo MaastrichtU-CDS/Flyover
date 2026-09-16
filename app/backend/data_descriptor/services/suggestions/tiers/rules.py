@@ -162,9 +162,7 @@ def jaro_winkler(a: str, b: str, prefix_weight: float = 0.1) -> float:
     transpositions //= 2
 
     jaro = (
-        matches / len(a)
-        + matches / len(b)
-        + (matches - transpositions) / matches
+        matches / len(a) + matches / len(b) + (matches - transpositions) / matches
     ) / 3.0
 
     prefix = 0
@@ -281,8 +279,14 @@ class AliasMatcher:
         for item in items:
             norm = normalise_label(item)
             if not norm:
-                records.append({"item": item, "match": None, "confidence": 0.0,
-                                "reason": "Empty label."})
+                records.append(
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "Empty label.",
+                    }
+                )
                 continue
 
             exact = memory.get(norm)
@@ -308,11 +312,23 @@ class AliasMatcher:
                     f"Alias: '{item}' matches column/value from database "
                     f"'{source_db}' mapped to this {('variable' if phase == 'variables' else 'term')}."
                 )
-                records.append({"item": item, "match": target,
-                                "confidence": confidence, "reason": reason})
+                records.append(
+                    {
+                        "item": item,
+                        "match": target,
+                        "confidence": confidence,
+                        "reason": reason,
+                    }
+                )
             else:
-                records.append({"item": item, "match": None, "confidence": 0.0,
-                                "reason": "No alias memory hit."})
+                records.append(
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "No alias memory hit.",
+                    }
+                )
         return records
 
 
@@ -330,7 +346,9 @@ def _strip_missing(values: list[str], rules: dict) -> list[str]:
     return [v for v in values if str(v).strip().lower() not in missing]
 
 
-def _value_set_matches(values: list[str], candidate_sets: list[list[str]]) -> Optional[list[str]]:
+def _value_set_matches(
+    values: list[str], candidate_sets: list[list[str]]
+) -> Optional[list[str]]:
     """Return the matched canonical set when ``values`` equals one of the sets."""
     norm = {str(v).strip().lower() for v in values}
     for cand in candidate_sets:
@@ -339,7 +357,9 @@ def _value_set_matches(values: list[str], candidate_sets: list[list[str]]) -> Op
     return None
 
 
-def _value_in_any_set(value: str, candidate_sets: list[list[str]]) -> Optional[list[str]]:
+def _value_in_any_set(
+    value: str, candidate_sets: list[list[str]]
+) -> Optional[list[str]]:
     """Return the matched canonical set when ``value`` is a member of one of the sets."""
     norm = str(value).strip().lower()
     for cand in candidate_sets:
@@ -413,8 +433,14 @@ class ValueRegexMatcher:
             values = _strip_missing(distinct, rules)
             match = self._match_variable_rule(values, rules, variable_keys)
             if match is None:
-                out.append({"item": item, "match": None, "confidence": 0.0,
-                            "reason": "No value-type pattern matched."})
+                out.append(
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "No value-type pattern matched.",
+                    }
+                )
             else:
                 match["item"] = item
                 out.append(match)
@@ -444,7 +470,8 @@ class ValueRegexMatcher:
             preds = rule.get("variable_predicates", [])
             contains = rule.get("variable_predicates_contains", [])
             candidates = [
-                k for k in variable_keys
+                k
+                for k in variable_keys
                 if any(p in k for p in preds) or any(c in k for c in contains)
             ]
             if not candidates:
@@ -533,8 +560,12 @@ class ValueRegexMatcher:
                 "confidence": 0.0,
                 "reason": f"value pattern matches {len(candidates)} terms",
             }
-        return {"item": item, "match": None, "confidence": 0.0,
-                "reason": "No value-type pattern matched."}
+        return {
+            "item": item,
+            "match": None,
+            "confidence": 0.0,
+            "reason": "No value-type pattern matched.",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -599,8 +630,14 @@ class StringMatcher:
         for item in items:
             item_tokens = tokenise(item, rules)
             if not item_tokens:
-                out.append({"item": item, "match": None, "confidence": 0.0,
-                            "reason": "Empty label after normalisation."})
+                out.append(
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "Empty label after normalisation.",
+                    }
+                )
                 continue
 
             scored: list[tuple[str, float]] = []
@@ -612,25 +649,29 @@ class StringMatcher:
             top1 = scored[0][1] if scored else 0.0
             top2 = scored[1][1] if len(scored) > 1 else 0.0
             if top1 - top2 < margin:
-                out.append({
-                    "item": item,
-                    "match": None,
-                    "confidence": round(top1, 4),
-                    "reason": (
-                        f"Top candidates too close (top1={top1:.3f}, "
-                        f"top2={top2:.3f}, margin={margin}); abstaining."
-                    ),
-                })
+                out.append(
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": round(top1, 4),
+                        "reason": (
+                            f"Top candidates too close (top1={top1:.3f}, "
+                            f"top2={top2:.3f}, margin={margin}); abstaining."
+                        ),
+                    }
+                )
                 continue
 
             best_key, best_score = scored[0]
             confidence = round(best_score, 4)
-            out.append({
-                "item": item,
-                "match": best_key,
-                "confidence": confidence,
-                "reason": f"String similarity to '{best_key.replace('_', ' ')}' ({confidence:.2f}).",
-            })
+            out.append(
+                {
+                    "item": item,
+                    "match": best_key,
+                    "confidence": confidence,
+                    "reason": f"String similarity to '{best_key.replace('_', ' ')}' ({confidence:.2f}).",
+                }
+            )
         return out
 
 

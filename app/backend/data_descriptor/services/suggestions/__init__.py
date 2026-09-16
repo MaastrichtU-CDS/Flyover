@@ -84,11 +84,20 @@ class SuggestionConfig:
         if tier in self.tiers:
             return {"state": "active"}
         if not self.tiers:
-            return {"state": "inactive", "reason": "disabled by FLYOVER_SUGGESTION_TIERS"}
+            return {
+                "state": "inactive",
+                "reason": "disabled by FLYOVER_SUGGESTION_TIERS",
+            }
         if tier == 2:
-            return {"state": "inactive", "reason": "not enabled in FLYOVER_SUGGESTION_TIERS"}
+            return {
+                "state": "inactive",
+                "reason": "not enabled in FLYOVER_SUGGESTION_TIERS",
+            }
         if tier == 3:
-            return {"state": "inactive", "reason": "not enabled in FLYOVER_SUGGESTION_TIERS"}
+            return {
+                "state": "inactive",
+                "reason": "not enabled in FLYOVER_SUGGESTION_TIERS",
+            }
         return {"state": "inactive", "reason": "unknown tier"}
 
 
@@ -171,7 +180,9 @@ class SuggestionService:
             "compute": self.config.compute,
             "tiers": tiers,
             "threshold": self.config.threshold,
-            "rules_version": (self._rules or {}).get("version") if self._rules else None,
+            "rules_version": (
+                (self._rules or {}).get("version") if self._rules else None
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -253,9 +264,7 @@ class SuggestionService:
             return {
                 "phase": phase,
                 "items": sorted(payload["items"]),
-                "variables": sorted(
-                    mapping.get_all_variable_keys() if mapping else []
-                ),
+                "variables": sorted(mapping.get_all_variable_keys() if mapping else []),
             }
         groups = payload.get("groups", [])
         return {
@@ -290,17 +299,20 @@ class SuggestionService:
         phase = job.phase
         groups = payload.get("groups")
         if groups is None:
-            groups = [{
-                "items": payload["items"],
-                "schema_slice": payload["schema_slice"],
-                "key_for": payload["key_for"],
-            }]
+            groups = [
+                {
+                    "items": payload["items"],
+                    "schema_slice": payload["schema_slice"],
+                    "key_for": payload["key_for"],
+                }
+            ]
 
         for group in groups:
             self._run_group(job, producers, payload, group)
-        job.progress = {"done": len(job.records), "total": sum(
-            len(g["items"]) for g in groups
-        )}
+        job.progress = {
+            "done": len(job.records),
+            "total": sum(len(g["items"]) for g in groups),
+        }
 
     def _run_group(
         self,
@@ -323,7 +335,8 @@ class SuggestionService:
             tier = getattr(producer, "tier", 1)
             source = getattr(producer, "source", "manual")
             to_run = [
-                item for item in items
+                item
+                for item in items
                 if best.get(item) is None
                 or (best[item].get("confidence", 0.0) < self.config.threshold)
             ]
@@ -332,7 +345,8 @@ class SuggestionService:
             ctx = SuggestionContext(
                 phase=phase,
                 mapping=payload["mapping"],
-                described_database=group.get("described_database") or payload.get("described_database"),
+                described_database=group.get("described_database")
+                or payload.get("described_database"),
                 threshold=self.config.threshold,
                 margin=self.config.margin,
                 rules=self._rules,
@@ -399,9 +413,7 @@ class SuggestionService:
     # Payload builders
     # ------------------------------------------------------------------
 
-    def _build_variables_payload(
-        self, mapping: Any, rdf_store_service: Any
-    ) -> dict:
+    def _build_variables_payload(self, mapping: Any, rdf_store_service: Any) -> dict:
         columns_by_db = {}
         if rdf_store_service is not None:
             try:
@@ -429,25 +441,32 @@ class SuggestionService:
             def make_key_for(db=db_name):
                 def key_for(item: str) -> str:
                     return f"{db}_{item}"
+
                 return key_for
 
-            groups.append({
-                "items": db_items,
-                "schema_slice": {"*": variable_keys},
-                "key_for": make_key_for(),
-                "described_database": db_name,
-            })
+            groups.append(
+                {
+                    "items": db_items,
+                    "schema_slice": {"*": variable_keys},
+                    "key_for": make_key_for(),
+                    "described_database": db_name,
+                }
+            )
 
         # Fallback: if no groups were built (no databases), use a single
         # group with all items and no database prefix.
         if not groups:
+
             def key_for_fallback(item: str) -> str:
                 return item
-            groups = [{
-                "items": all_items,
-                "schema_slice": {"*": variable_keys},
-                "key_for": key_for_fallback,
-            }]
+
+            groups = [
+                {
+                    "items": all_items,
+                    "schema_slice": {"*": variable_keys},
+                    "key_for": key_for_fallback,
+                }
+            ]
 
         return {
             "items": all_items,
@@ -559,13 +578,16 @@ class SuggestionService:
                     def make_key_for(db=database, col=local_column):
                         def key_for(value: str) -> str:
                             return f"{db}_{col}_{value}"
+
                         return key_for
 
-                    groups.append({
-                        "items": group_items,
-                        "schema_slice": {value: terms for value in group_items},
-                        "key_for": make_key_for(),
-                    })
+                    groups.append(
+                        {
+                            "items": group_items,
+                            "schema_slice": {value: terms for value in group_items},
+                            "key_for": make_key_for(),
+                        }
+                    )
 
         described_db = next(iter(details), None)
 
@@ -574,8 +596,8 @@ class SuggestionService:
         # mismatch), build value groups directly from the mapping + RDF
         # store by querying get_categories for each categorical column.
         if not groups and mapping is not None and rdf_store_service is not None:
-            groups, all_items, value_targets, described_db = self._build_values_fallback(
-                mapping, rdf_store_service
+            groups, all_items, value_targets, described_db = (
+                self._build_values_fallback(mapping, rdf_store_service)
             )
 
         schema_slice: dict[str, list[str]] = {}
@@ -635,6 +657,7 @@ class SuggestionService:
                     if not cat_result:
                         continue
                     import polars as pl
+
                     df = pl.read_csv(
                         _io.StringIO(cat_result),
                         separator=",",
@@ -654,20 +677,25 @@ class SuggestionService:
                     seen.add(value)
                     group_items.append(value)
                     all_items.append(value)
-                    value_targets.setdefault(db, {}).setdefault(var_key, []).append(value)
+                    value_targets.setdefault(db, {}).setdefault(var_key, []).append(
+                        value
+                    )
                 if not group_items:
                     continue
 
                 def make_key_for(database=db, column=col):
                     def key_for(value: str) -> str:
                         return f"{database}_{column}_{value}"
+
                     return key_for
 
-                groups.append({
-                    "items": group_items,
-                    "schema_slice": {v: terms for v in group_items},
-                    "key_for": make_key_for(),
-                })
+                groups.append(
+                    {
+                        "items": group_items,
+                        "schema_slice": {v: terms for v in group_items},
+                        "key_for": make_key_for(),
+                    }
+                )
 
         return groups, all_items, value_targets, described_db
 

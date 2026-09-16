@@ -68,13 +68,17 @@ def _raw_url(branch: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/{AYA_REPO}/{branch}/{path}"
 
 
-def _load_branch_mapping(branch: str, path: str, local_dir: Optional[Path] = None) -> Optional[JSONLDMapping]:
+def _load_branch_mapping(
+    branch: str, path: str, local_dir: Optional[Path] = None
+) -> Optional[JSONLDMapping]:
     """Load a branch's JSON-LD mapping from GitHub or a local cache."""
     if local_dir:
         local_file = local_dir / f"{branch}.jsonld"
         if local_file.exists():
             try:
-                return JSONLDMapping.from_dict(json.loads(local_file.read_text(encoding="utf-8")))
+                return JSONLDMapping.from_dict(
+                    json.loads(local_file.read_text(encoding="utf-8"))
+                )
             except Exception as exc:
                 logger.warning("Failed to load cached %s: %s", local_file, exc)
 
@@ -136,7 +140,8 @@ def _run_tier1(mapping: JSONLDMapping, described_db: str, rules: dict) -> dict:
     best: dict[str, dict] = {item: None for item in items}
     for producer in producers:
         to_run = [
-            item for item in items
+            item
+            for item in items
             if best.get(item) is None
             or best[item].get("confidence", 0.0) < ctx.threshold
         ]
@@ -199,29 +204,33 @@ def main():
         description="Benchmark tier-1 rule-based mapping suggestions."
     )
     parser.add_argument(
-        "--tiers", type=str, default="1",
-        help="Comma-separated tier numbers to run (default: 1)."
+        "--tiers",
+        type=str,
+        default="1",
+        help="Comma-separated tier numbers to run (default: 1).",
     )
     parser.add_argument(
-        "--sites", type=str, default="all",
-        help="Comma-separated branch names, or 'all'."
+        "--sites",
+        type=str,
+        default="all",
+        help="Comma-separated branch names, or 'all'.",
     )
     parser.add_argument(
-        "--mapping-path", type=str, default=DEFAULT_MAPPING_PATH,
-        help="Path to the mapping JSON-LD file within each branch."
+        "--mapping-path",
+        type=str,
+        default=DEFAULT_MAPPING_PATH,
+        help="Path to the mapping JSON-LD file within each branch.",
     )
     parser.add_argument(
-        "--out", type=str, default=None,
-        help="Output Markdown file path."
+        "--out", type=str, default=None, help="Output Markdown file path."
     )
     parser.add_argument(
-        "--cache-dir", type=str, default=None,
-        help="Directory to cache fetched JSON-LD files."
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="Directory to cache fetched JSON-LD files.",
     )
-    parser.add_argument(
-        "--verbose", action="store_true",
-        help="Enable debug logging."
-    )
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
     args = parser.parse_args()
 
     logging.basicConfig(

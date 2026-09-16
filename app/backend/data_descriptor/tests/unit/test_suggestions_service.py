@@ -23,7 +23,6 @@ from services.suggestions import (
     VALUES_PHASE,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake tier producer
 # ---------------------------------------------------------------------------
@@ -45,10 +44,14 @@ class FakeProducer:
                 rec.setdefault("item", item)
                 out.append(rec)
             else:
-                out.append({
-                    "item": item, "match": None, "confidence": 0.0,
-                    "reason": "No match.",
-                })
+                out.append(
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "No match.",
+                    }
+                )
         return out
 
 
@@ -58,65 +61,70 @@ class FakeProducer:
 
 
 def _make_mapping() -> JSONLDMapping:
-    return JSONLDMapping.from_dict({
-        "@context": {"schema": "mapping:schema/", "mapping": "http://example.org/mapping#"},
-        "@id": "mapping:root",
-        "@type": "mapping:SemanticMapping",
-        "schema": {
-            "@id": "schema:root",
-            "@type": "mapping:Schema",
-            "variables": {
-                "biological_sex": {
-                    "@type": "schema:CategoricalVariable",
-                    "dataType": "categorical",
-                    "predicate": "sio:has_sex",
-                    "class": "ncit:C28421",
-                    "valueMapping": {
-                        "terms": {
-                            "male": {"targetClass": "ncit:C20197"},
-                            "female": {"targetClass": "ncit:C16576"},
+    return JSONLDMapping.from_dict(
+        {
+            "@context": {
+                "schema": "mapping:schema/",
+                "mapping": "http://example.org/mapping#",
+            },
+            "@id": "mapping:root",
+            "@type": "mapping:SemanticMapping",
+            "schema": {
+                "@id": "schema:root",
+                "@type": "mapping:Schema",
+                "variables": {
+                    "biological_sex": {
+                        "@type": "schema:CategoricalVariable",
+                        "dataType": "categorical",
+                        "predicate": "sio:has_sex",
+                        "class": "ncit:C28421",
+                        "valueMapping": {
+                            "terms": {
+                                "male": {"targetClass": "ncit:C20197"},
+                                "female": {"targetClass": "ncit:C16576"},
+                            }
+                        },
+                    },
+                    "tumour_morphology_icd_o": {
+                        "@type": "schema:StandardisedVariable",
+                        "dataType": "standardised",
+                        "predicate": "sio:has_morphology",
+                        "class": "ncit:C94812",
+                    },
+                    "year_of_initial_diagnosis": {
+                        "@type": "schema:ContinuousVariable",
+                        "dataType": "continuous",
+                        "predicate": "sio:has_year",
+                        "class": "ncit:C81206",
+                    },
+                },
+            },
+            "databases": {
+                "christie": {
+                    "@id": "mapping:database/christie",
+                    "@type": "mapping:Database",
+                    "name": "christie",
+                    "tables": {
+                        "data": {
+                            "@id": "mapping:table/christie/data",
+                            "@type": "mapping:Table",
+                            "sourceFile": "christie",
+                            "columns": {
+                                "morph": {
+                                    "mapsTo": "schema:variable/tumour_morphology_icd_o",
+                                    "localColumn": "morph",
+                                },
+                                "sex": {
+                                    "mapsTo": "schema:variable/biological_sex",
+                                    "localColumn": "sex",
+                                },
+                            },
                         }
                     },
                 },
-                "tumour_morphology_icd_o": {
-                    "@type": "schema:StandardisedVariable",
-                    "dataType": "standardised",
-                    "predicate": "sio:has_morphology",
-                    "class": "ncit:C94812",
-                },
-                "year_of_initial_diagnosis": {
-                    "@type": "schema:ContinuousVariable",
-                    "dataType": "continuous",
-                    "predicate": "sio:has_year",
-                    "class": "ncit:C81206",
-                },
             },
-        },
-        "databases": {
-            "christie": {
-                "@id": "mapping:database/christie",
-                "@type": "mapping:Database",
-                "name": "christie",
-                "tables": {
-                    "data": {
-                        "@id": "mapping:table/christie/data",
-                        "@type": "mapping:Table",
-                        "sourceFile": "christie",
-                        "columns": {
-                            "morph": {
-                                "mapsTo": "schema:variable/tumour_morphology_icd_o",
-                                "localColumn": "morph",
-                            },
-                            "sex": {
-                                "mapsTo": "schema:variable/biological_sex",
-                                "localColumn": "sex",
-                            },
-                        },
-                    }
-                },
-            },
-        },
-    })
+        }
+    )
 
 
 def _make_session_cache(mapping=None, columns_by_db=None):
@@ -190,14 +198,29 @@ class TestStartLifecycle(unittest.TestCase):
 
     @patch("services.suggestions.tier1_producers")
     def test_start_runs_job_and_records_present(self, mock_producers):
-        mock_producers.return_value = [FakeProducer(1, "alias", {
-            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
-                      "reason": "Alias hit."},
-            "sex": {"match": "biological_sex", "confidence": 0.9,
-                    "reason": "Alias hit."},
-            "year_col": {"match": None, "confidence": 0.0,
-                         "reason": "No match."},
-        })]
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "morph": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                    "sex": {
+                        "match": "biological_sex",
+                        "confidence": 0.9,
+                        "reason": "Alias hit.",
+                    },
+                    "year_col": {
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "No match.",
+                    },
+                },
+            )
+        ]
         svc = SuggestionService(_config())
         result = svc.start(VARIABLES_PHASE, self.cache, self.rdf)
         self.assertEqual(result["status"], "started")
@@ -217,10 +240,19 @@ class TestStartLifecycle(unittest.TestCase):
 
     @patch("services.suggestions.tier1_producers")
     def test_fingerprint_reuse_returns_already_done(self, mock_producers):
-        mock_producers.return_value = [FakeProducer(1, "alias", {
-            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
-                      "reason": "Alias hit."},
-        })]
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "morph": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
         svc = SuggestionService(_config())
         svc.start(VARIABLES_PHASE, self.cache, self.rdf)
         result = svc.start(VARIABLES_PHASE, self.cache, self.rdf)
@@ -232,10 +264,19 @@ class TestStartLifecycle(unittest.TestCase):
 
         def producer_factory():
             call_count[0] += 1
-            return [FakeProducer(1, "alias", {
-                "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
-                          "reason": "Alias hit."},
-            })]
+            return [
+                FakeProducer(
+                    1,
+                    "alias",
+                    {
+                        "morph": {
+                            "match": "tumour_morphology_icd_o",
+                            "confidence": 1.0,
+                            "reason": "Alias hit.",
+                        },
+                    },
+                )
+            ]
 
         mock_producers.side_effect = producer_factory
         svc = SuggestionService(_config())
@@ -282,14 +323,28 @@ class TestCascadeMerge(unittest.TestCase):
     def test_highest_confidence_wins(self, mock_producers):
         """When two producers disagree, highest confidence wins."""
         mock_producers.return_value = [
-            FakeProducer(1, "alias", {
-                "col_a": {"match": "biological_sex", "confidence": 0.7,
-                          "reason": "Weak alias hit."},
-            }),
-            FakeProducer(1, "string", {
-                "col_a": {"match": "tumour_morphology_icd_o", "confidence": 0.9,
-                          "reason": "Strong string hit."},
-            }),
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "col_a": {
+                        "match": "biological_sex",
+                        "confidence": 0.7,
+                        "reason": "Weak alias hit.",
+                    },
+                },
+            ),
+            FakeProducer(
+                1,
+                "string",
+                {
+                    "col_a": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 0.9,
+                        "reason": "Strong string hit.",
+                    },
+                },
+            ),
         ]
         svc = SuggestionService(_config())
         svc.start(VARIABLES_PHASE, self.cache, self.rdf)
@@ -307,14 +362,28 @@ class TestCascadeMerge(unittest.TestCase):
     def test_tie_goes_to_lower_tier(self, mock_producers):
         """When confidence ties, the lower (cheaper) tier wins."""
         mock_producers.return_value = [
-            FakeProducer(1, "alias", {
-                "col_a": {"match": "biological_sex", "confidence": 0.85,
-                          "reason": "Alias hit."},
-            }),
-            FakeProducer(2, "embedding", {
-                "col_a": {"match": "tumour_morphology_icd_o", "confidence": 0.85,
-                          "reason": "Embedding hit."},
-            }),
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "col_a": {
+                        "match": "biological_sex",
+                        "confidence": 0.85,
+                        "reason": "Alias hit.",
+                    },
+                },
+            ),
+            FakeProducer(
+                2,
+                "embedding",
+                {
+                    "col_a": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 0.85,
+                        "reason": "Embedding hit.",
+                    },
+                },
+            ),
         ]
         svc = SuggestionService(_config(tiers=(1, 2)))
         svc.start(VARIABLES_PHASE, self.cache, self.rdf)
@@ -333,12 +402,24 @@ class TestConflictDowngrade(unittest.TestCase):
         rdf = _make_rdf_store(
             columns_by_db={"christie": ["col_a", "col_b"]},
         )
-        mock_producers.return_value = [FakeProducer(1, "alias", {
-            "col_a": {"match": "biological_sex", "confidence": 0.95,
-                      "reason": "Alias hit."},
-            "col_b": {"match": "biological_sex", "confidence": 0.90,
-                      "reason": "Alias hit."},
-        })]
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "col_a": {
+                        "match": "biological_sex",
+                        "confidence": 0.95,
+                        "reason": "Alias hit.",
+                    },
+                    "col_b": {
+                        "match": "biological_sex",
+                        "confidence": 0.90,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
         svc = SuggestionService(_config())
         svc.start(VARIABLES_PHASE, cache, rdf)
         state = svc.get_state(cache, VARIABLES_PHASE)
@@ -384,11 +465,20 @@ class TestBumpPriority(unittest.TestCase):
 class TestRecordsConformToContract(unittest.TestCase):
     @patch("services.suggestions.tier1_producers")
     def test_all_records_have_required_fields(self, mock_producers):
-        mock_producers.return_value = [FakeProducer(1, "alias", {
-            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
-                      "reason": "Alias hit."},
-            "sex": {"match": None, "confidence": 0.0, "reason": "No match."},
-        })]
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "morph": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                    "sex": {"match": None, "confidence": 0.0, "reason": "No match."},
+                },
+            )
+        ]
         mapping = _make_mapping()
         cache = _make_session_cache(mapping)
         rdf = _make_rdf_store(columns_by_db={"christie": ["morph", "sex"]})
@@ -396,8 +486,15 @@ class TestRecordsConformToContract(unittest.TestCase):
         svc.start(VARIABLES_PHASE, cache, rdf)
         state = svc.get_state(cache, VARIABLES_PHASE)
         for key, rec in state["records"].items():
-            for field in ("item", "match", "confidence", "reason", "source",
-                          "tier", "status"):
+            for field in (
+                "item",
+                "match",
+                "confidence",
+                "reason",
+                "source",
+                "tier",
+                "status",
+            ):
                 self.assertIn(field, rec, f"record {key} missing {field}")
             self.assertIn(rec["source"], ("alias", "value_regex", "string", "manual"))
             self.assertIn(rec["status"], ("done",))
@@ -413,12 +510,24 @@ class TestSchemaByteIdentical(unittest.TestCase):
         import copy
         import json
 
-        mock_producers.return_value = [FakeProducer(1, "alias", {
-            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
-                      "reason": "Alias hit."},
-            "sex": {"match": "biological_sex", "confidence": 0.9,
-                    "reason": "Alias hit."},
-        })]
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "morph": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                    "sex": {
+                        "match": "biological_sex",
+                        "confidence": 0.9,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
         mapping = _make_mapping()
         cache = _make_session_cache(mapping)
         rdf = _make_rdf_store(columns_by_db={"christie": ["morph", "sex"]})
@@ -429,8 +538,7 @@ class TestSchemaByteIdentical(unittest.TestCase):
         svc = SuggestionService(_config())
         svc.start(VARIABLES_PHASE, cache, rdf)
 
-        schema_after_json = json.dumps(mapping.to_dict()["schema"],
-                                       sort_keys=True)
+        schema_after_json = json.dumps(mapping.to_dict()["schema"], sort_keys=True)
         self.assertEqual(schema_before_json, schema_after_json)
 
 
@@ -442,19 +550,33 @@ class TestMultiDatabaseVariables(unittest.TestCase):
     def setUp(self):
         self.mapping = _make_mapping()
         self.cache = _make_session_cache(self.mapping)
-        self.rdf = _make_rdf_store(columns_by_db={
-            "christie": ["morph", "sex", "year_col"],
-            "nki": ["morfo", "geslacht", "jaar"],
-        })
+        self.rdf = _make_rdf_store(
+            columns_by_db={
+                "christie": ["morph", "sex", "year_col"],
+                "nki": ["morfo", "geslacht", "jaar"],
+            }
+        )
 
     @patch("services.suggestions.tier1_producers")
     def test_records_have_correct_database_prefix(self, mock_producers):
-        mock_producers.return_value = [FakeProducer(1, "alias", {
-            "morph": {"match": "tumour_morphology_icd_o", "confidence": 1.0,
-                      "reason": "Alias hit."},
-            "morfo": {"match": "tumour_morphology_icd_o", "confidence": 0.9,
-                      "reason": "Alias hit."},
-        })]
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "morph": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                    "morfo": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 0.9,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
         svc = SuggestionService(_config())
         svc.start(VARIABLES_PHASE, self.cache, self.rdf)
         state = svc.get_state(self.cache, VARIABLES_PHASE)

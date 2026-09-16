@@ -190,8 +190,9 @@ class TestSanitisePairs(unittest.TestCase):
 
 class TestSuggestionRecordDataclass(unittest.TestCase):
     def test_roundtrip(self):
-        r = SuggestionRecord(item="x", match="v1", confidence=0.5, reason="r",
-                             source="alias", tier=1)
+        r = SuggestionRecord(
+            item="x", match="v1", confidence=0.5, reason="r", source="alias", tier=1
+        )
         d = r.to_dict()
         r2 = SuggestionRecord.from_dict(d)
         self.assertEqual(r2.item, "x")
