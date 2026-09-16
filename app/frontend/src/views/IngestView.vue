@@ -963,7 +963,7 @@ onMounted(async () => {
                 <button
                   v-if="hasUnreviewedFk(index)"
                   type="button"
-                  class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                  class="btn btn-sm btn-light suggestion-section-button"
                   title="Accept this inferred foreign key"
                   @click.stop="acceptAllFkForTable(index)"
                 >
