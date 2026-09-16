@@ -65,6 +65,11 @@ const progressText = computed(() => {
   return `${done} of ${total}`
 })
 
+const hasMatches = computed(() => {
+  const entries = Object.values(props.phaseState.byKey || {})
+  return entries.some((e) => e?.match)
+})
+
 const unavailableMessage = computed(() => {
   switch (props.phaseState.reason) {
     case 'no_semantic_map':
@@ -88,7 +93,8 @@ const unavailableMessage = computed(() => {
       Suggestions: {{ progressText }} variables
     </span>
     <span v-else-if="phaseState.status === 'done'">
-      Suggestions ready — review the highlighted fields
+      <template v-if="hasMatches">Suggestions ready — review the highlighted fields</template>
+      <template v-else>No matches found — fill in fields manually</template>
     </span>
     <span v-else-if="phaseState.status === 'failed'">
       Suggestions unavailable — fill in fields manually
