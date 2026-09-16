@@ -214,6 +214,28 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   }
 }
 
+// Persist a category selection to JSON-LD without marking the suggestion
+// as reviewed. Used by the pre-fill watch so auto-filled suggestions stay
+// "unreviewed" until the user explicitly interacts with them.
+async function _persistCategorySelection(database, variable, cat) {
+  const key = cat.key
+  const selectedOption = categorySelections[key]
+  const previousOption = previousSelections[key]
+  previousSelections[key] = selectedOption
+  try {
+    await jsonld.updateCategoryMapping(
+      database,
+      variable.localVariable,
+      variable.globalVarName,
+      String(cat.value),
+      selectedOption,
+      previousOption
+    )
+  } catch (e) {
+    console.error('Failed to update category mapping:', e)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Mapping suggestions: pre-highlight (do NOT pre-fill) per the plan. The user
 // explicitly accepts via the badge click, which goes through the same
@@ -308,9 +330,8 @@ watch(
           if (!options.includes(entry.display)) continue
           categorySelections[cat.key] = entry.display
           suggestions.markApplied(cat.key)
-          onCategoryChange(
-            dbEntry.name, variable.localVariable, variable.globalVarName,
-            cat.value, cat.key,
+          _persistCategorySelection(
+            dbEntry.name, variable, cat,
           )
         }
       }
@@ -323,22 +344,31 @@ function hasUnreviewedForVariable(variable) {
   if (variable.type !== 'categorical') return false
   return variable.categories.some((cat) => {
     const entry = suggestionFor(cat.key)
-    return entry && entry.status === 'done' && entry.display
-      && !suggestions.isApplied(cat.key)
-      && !suggestions.isDismissed(cat.key)
-      && !categorySelections[cat.key]
+    if (!entry || entry.status !== 'done' || !entry.display) return false
+    if (suggestions.isDismissed(cat.key)) return false
+    // Show the button when there are suggestions not yet applied, or
+    // applied but still unreviewed (not touched).
+    if (!suggestions.isApplied(cat.key) && !categorySelections[cat.key]) return true
+    if (suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)) return true
+    return false
   })
 }
 
 async function acceptAllForVariable(database, variable) {
   for (const cat of variable.categories) {
-    if (suggestions.isApplied(cat.key) || suggestions.isDismissed(cat.key)) continue
     const entry = suggestionFor(cat.key)
     if (!entry || !entry.display) continue
+    if (suggestions.isDismissed(cat.key)) continue
+    // If already applied and touched, skip — nothing to do.
+    if (suggestions.isApplied(cat.key) && suggestions.isTouched(cat.key)) continue
     const options = categoryOptionsFor(variable)
     if (!options.includes(entry.display)) continue
-    categorySelections[cat.key] = entry.display
-    suggestions.markApplied(cat.key)
+    // If not yet applied, fill the selection first.
+    if (!suggestions.isApplied(cat.key)) {
+      categorySelections[cat.key] = entry.display
+      suggestions.markApplied(cat.key)
+    }
+    // Mark as reviewed (touched) via the normal change path.
     await onCategoryChange(
       database, variable.localVariable, variable.globalVarName,
       cat.value, cat.key,
