@@ -356,9 +356,12 @@ onMounted(async () => {
   }
 
   // Idempotent start: the backend kicked this job off when /units was
-  // submitted; this covers reloads and backend restarts.
+  // submitted; this covers reloads and backend restarts. Send the updated
+  // mapping (reflecting the user's variable selections) so the values phase
+  // knows which variable each column maps to and which value mappings are
+  // relevant.
   suggestions.setPhase('values')
-  await suggestions.init('values')
+  await suggestions.init('values', { mapping: jsonld.getMapping() })
 })
 
 onBeforeUnmount(() => {

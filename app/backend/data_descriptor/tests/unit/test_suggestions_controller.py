@@ -228,8 +228,12 @@ class TestStart(unittest.TestCase):
             # jsonld_mapping should now be populated on the session cache.
             self.assertIsNotNone(session_cache.jsonld_mapping)
 
-    def test_start_does_not_overwrite_existing_mapping(self):
-        """When jsonld_mapping is already set, the body mapping is ignored."""
+    def test_start_updates_mapping_from_body_when_provided(self):
+        """When the frontend sends a mapping in the body, the controller should
+        always update jsonld_mapping — even if one is already set. The values
+        phase relies on this to send the UPDATED mapping (reflecting the user's
+        variable selections) so value suggestions can resolve column→variable.
+        """
         svc = _make_mock_service()
         existing = MagicMock()
         session_cache = MagicMock()
@@ -237,11 +241,12 @@ class TestStart(unittest.TestCase):
         app = _make_app(svc, session_cache=session_cache)
         with app.test_client() as client:
             resp = client.post(
-                "/api/v1/suggestions/variables/start",
+                "/api/v1/suggestions/values/start",
                 json={"mapping": {"schema": {"variables": {}}}},
             )
             self.assertEqual(resp.status_code, 200)
-            self.assertIs(session_cache.jsonld_mapping, existing)
+            # The existing mapping should be replaced, not preserved.
+            self.assertIsNot(session_cache.jsonld_mapping, existing)
 
 
 # ---------------------------------------------------------------------------

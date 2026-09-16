@@ -194,7 +194,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     if (!enabled.value) return
 
     const body = {}
-    if (phase === 'variables' && mapping) body.mapping = mapping
+    if (mapping) body.mapping = mapping
     try {
       const { data } = await api.post(
         `/api/v1/suggestions/${phase}/start`,

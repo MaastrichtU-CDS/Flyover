@@ -67,11 +67,13 @@ def start_suggestions(phase: str):
     body = request.get_json(silent=True) or {}
 
     # The mapping may only survive in the browser's IndexedDB (e.g. after a
-    # container restart). When the frontend sends it, restore it to the
-    # session cache so the service can use it — same pattern as
-    # ingest_controller.py.
+    # container restart) and the values phase needs the UPDATED mapping
+    # (reflecting the user's variable selections from the describe-variables
+    # page) to know which variable each column maps to. Always accept the
+    # mapping from the body when provided — the service's fingerprint check
+    # prevents redundant reruns.
     mapping_data = body.get("mapping")
-    if mapping_data and getattr(session_cache, "jsonld_mapping", None) is None:
+    if mapping_data:
         from loaders import JSONLDMapping
         try:
             session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
