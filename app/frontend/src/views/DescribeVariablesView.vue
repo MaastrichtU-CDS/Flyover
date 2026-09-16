@@ -251,6 +251,33 @@ const unreviewedFieldCount = computed(
       .filter((key) => formStateCache[key]?.description).length
 )
 
+function jumpToNextUnreviewed() {
+  const keys = suggestions.unreviewedKeys().filter((key) => formStateCache[key]?.description)
+  if (!keys.length) return
+  // Find the first unreviewed key and locate its database + column.
+  for (const key of keys) {
+    const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    if (!dbName) continue
+    const item = key.slice(dbName.length + 1)
+    const cols = columnInfoData.value?.[dbName] || []
+    const itemIdx = cols.indexOf(item)
+    if (itemIdx === -1) continue
+    // Expand the database and navigate to the right page.
+    if (!expandedDatabases[dbName]) expandedDatabases[dbName] = true
+    const page = Math.floor(itemIdx / PAGE_SIZE) + 1
+    databasePages[dbName] = page
+    // Scroll to the row after Vue updates the DOM.
+    nextTick(() => {
+      const el = document.getElementById(`ncit_comment_${dbName}_${item}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus({ preventScroll: true })
+      }
+    })
+    return
+  }
+}
+
 // Pre-fill: when a suggestion arrives for a column that the user hasn't
 // touched yet, auto-set the description dropdown to the suggested value
 // and mark it as "applied" (unreviewed). The user must click the badge or
@@ -763,6 +790,14 @@ onBeforeUnmount(() => {
         >
           <i class="fas fa-exclamation-circle" />
           {{ unreviewedFieldCount }} suggestion(s) need review
+          <button
+            type="button"
+            class="btn btn-sm btn-link jump-to-unreviewed"
+            title="Jump to the next unreviewed suggestion"
+            @click="jumpToNextUnreviewed"
+          >
+            <i class="fas fa-arrow-down" /> Go to next
+          </button>
         </span>
       </p>
     </form>
@@ -825,5 +860,20 @@ onBeforeUnmount(() => {
   margin-left: 0.75rem;
   color: #764ba2;
   font-size: 0.85em;
+}
+
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
 }
 </style>

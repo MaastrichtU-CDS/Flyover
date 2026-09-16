@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
@@ -392,6 +392,35 @@ const submitTooltip = computed(() => {
   return ''
 })
 
+function jumpToNextUnreviewed() {
+  const keys = suggestions.unreviewedKeys().filter((key) => categorySelections[key])
+  if (!keys.length) return
+  for (const key of keys) {
+    for (const dbEntry of parsedDatabases.value) {
+      if (!key.startsWith(`${dbEntry.name}_`)) continue
+      for (let vIdx = 0; vIdx < dbEntry.variables.length; vIdx++) {
+        const variable = dbEntry.variables[vIdx]
+        if (variable.type !== 'categorical') continue
+        const cat = variable.categories.find((c) => c.key === key)
+        if (!cat) continue
+        // Expand the database and the variable.
+        if (!expandedDatabases[dbEntry.name]) expandedDatabases[dbEntry.name] = true
+        if (!expandedVariables[dbEntry.name]) expandedVariables[dbEntry.name] = {}
+        expandedVariables[dbEntry.name][vIdx] = true
+        // Scroll to the category row after Vue updates the DOM.
+        nextTick(() => {
+          const el = document.querySelector(`select[name="${cat.backendKey}"]`)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.focus({ preventScroll: true })
+          }
+        })
+        return
+      }
+    }
+  }
+}
+
 const loadingIconClass = computed(() =>
   loadingIconIsPen.value ? 'fa-pen' : 'fa-edit'
 )
@@ -734,6 +763,14 @@ onBeforeUnmount(() => {
         >
           <i class="fas fa-exclamation-circle" />
           {{ unreviewedFieldCount }} suggestion(s) need review
+          <button
+            type="button"
+            class="btn btn-sm btn-link jump-to-unreviewed"
+            title="Jump to the next unreviewed suggestion"
+            @click="jumpToNextUnreviewed"
+          >
+            <i class="fas fa-arrow-down" /> Go to next
+          </button>
         </span>
         <RouterLink
           to="/describe/variables"
@@ -787,6 +824,21 @@ onBeforeUnmount(() => {
   margin-left: 0.75rem;
   color: #764ba2;
   font-size: 0.85em;
+}
+
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
 }
 
 .info-purple {
