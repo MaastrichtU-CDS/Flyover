@@ -50,18 +50,18 @@ logger = logging.getLogger(__name__)
 # equivalent) at a known path. The script fetches them raw from GitHub.
 AYA_REPO = "STRONGAYA/AYA-cancer-semantic-map"
 AYA_BRANCHES = [
-    "nki-amsterdam",
-    "christie-manchester",
-    "iza-maastricht",
-    "avlsweet",
-    "marc-hannover",
-    "mumc-maastricht",
-    "rmi-rotterdam",
+    "NKI-Amsterdam",
+    "TheChristie-Manchester",
+    "CLB-Lyon",
+    "IGR-Paris",
+    "INT-Milan",
+    "MSCI-Warsaw",
+    "YSRCCYP-Leeds",
 ]
 
 # Default mapping file path within each branch. Override with --mapping-path
 # if the branches use different paths.
-DEFAULT_MAPPING_PATH = "mapping.jsonld"
+DEFAULT_MAPPING_PATH = "AYA_cancer_schema.jsonld"
 
 
 def _raw_url(branch: str, path: str) -> str:
