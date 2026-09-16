@@ -171,6 +171,78 @@ class TestStart(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json()["status"], "disabled")
 
+    def test_start_restores_mapping_from_body_when_missing(self):
+        """When session_cache.jsonld_mapping is None and the frontend sends
+        a mapping dict, the controller should populate jsonld_mapping before
+        calling service.start — so the service doesn't return
+        no_semantic_map.
+        """
+        svc = _make_mock_service()
+        session_cache = MagicMock()
+        session_cache.jsonld_mapping = None
+        app = _make_app(svc, session_cache=session_cache)
+        mapping_dict = {
+            "@context": {"schema": "mapping:schema/"},
+            "@id": "mapping:root",
+            "@type": "mapping:SemanticMapping",
+            "schema": {
+                "@id": "schema:root",
+                "@type": "mapping:Schema",
+                "variables": {
+                    "biological_sex": {
+                        "@type": "schema:CategoricalVariable",
+                        "dataType": "categorical",
+                        "predicate": "sio:has_sex",
+                        "class": "ncit:C28421",
+                    },
+                },
+            },
+            "databases": {
+                "christie": {
+                    "@id": "mapping:database/christie",
+                    "@type": "mapping:Database",
+                    "name": "christie",
+                    "tables": {
+                        "data": {
+                            "@id": "mapping:table/christie/data",
+                            "@type": "mapping:Table",
+                            "sourceFile": "christie",
+                            "columns": {
+                                "sex": {
+                                    "mapsTo": "schema:variable/biological_sex",
+                                    "localColumn": "sex",
+                                },
+                            },
+                        }
+                    },
+                }
+            },
+        }
+        with app.test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/start",
+                json={"mapping": mapping_dict},
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.get_json()["status"], "started")
+            # jsonld_mapping should now be populated on the session cache.
+            self.assertIsNotNone(session_cache.jsonld_mapping)
+
+    def test_start_does_not_overwrite_existing_mapping(self):
+        """When jsonld_mapping is already set, the body mapping is ignored."""
+        svc = _make_mock_service()
+        existing = MagicMock()
+        session_cache = MagicMock()
+        session_cache.jsonld_mapping = existing
+        app = _make_app(svc, session_cache=session_cache)
+        with app.test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/start",
+                json={"mapping": {"schema": {"variables": {}}}},
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertIs(session_cache.jsonld_mapping, existing)
+
 
 # ---------------------------------------------------------------------------
 # GET phase tests

@@ -65,6 +65,19 @@ def start_suggestions(phase: str):
         return jsonify({"status": "disabled"}), 200
 
     body = request.get_json(silent=True) or {}
+
+    # The mapping may only survive in the browser's IndexedDB (e.g. after a
+    # container restart). When the frontend sends it, restore it to the
+    # session cache so the service can use it — same pattern as
+    # ingest_controller.py.
+    mapping_data = body.get("mapping")
+    if mapping_data and getattr(session_cache, "jsonld_mapping", None) is None:
+        from loaders import JSONLDMapping
+        try:
+            session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
+        except Exception:
+            logger.warning("Failed to parse mapping from request body", exc_info=True)
+
     result = service.start(
         phase,
         session_cache,
