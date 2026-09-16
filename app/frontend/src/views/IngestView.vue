@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useNavigation } from '@/composables/useNavigation'
 import { readCSVColumns } from '@/lib/csvParser'
 import { readExcelSheetInfo } from '@/lib/excelParser'
+import SuggestionBadge from '@/components/SuggestionBadge.vue'
 import {
   isValidPgUrl,
   preventBlockedKey,
@@ -192,7 +193,7 @@ const submitButtonTitle = computed(() => {
     return 'Please select primary keys for all tables that are referenced by foreign keys'
   }
   if (unreviewedFkCount.value > 0) {
-    return `Please review ${unreviewedFkCount.value} inferred foreign key suggestion(s) before submitting`
+    return `${unreviewedFkCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
   }
   return ''
 })
@@ -463,6 +464,35 @@ function hasUnreviewedFk(tableIndex) {
 
 // Count unreviewed inferred FKs across all tables.
 const unreviewedFkCount = computed(() => Object.keys(inferredFk).length)
+
+// Build a SuggestionBadge-compatible record for an inferred FK. Uses the
+// 'alias' source (column-name matching) with full confidence, matching the
+// describe-page suggestion shape so the same badge component renders identically.
+function fkSuggestionRecord(index) {
+  const refTable = fkTableSelections[index] || ''
+  return {
+    source: 'alias',
+    tier: 1,
+    confidence: 1.0,
+    reason: `Column name matches the primary key of ${refTable}`,
+    alternatives: [],
+    match: fkColumnSelections[index] || '',
+  }
+}
+
+// Scroll to the first table card that still has an unreviewed inferred FK.
+function jumpToNextUnreviewedFk() {
+  const keys = Object.keys(inferredFk)
+  if (!keys.length) return
+  const index = Number(keys[0])
+  nextTick(() => {
+    const el = document.getElementById(`fk_${index}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus({ preventScroll: true })
+    }
+  })
+}
 
 watch(pkSelections, () => {
   for (const index of Object.keys(pkSelections)) {
@@ -922,37 +952,22 @@ onMounted(async () => {
                 <small class="text-white-50">
                   ({{ getFileColumns(tableName).length }} columns detected)
                 </small>
-                <span
-                  v-if="inferredFk[index]"
-                  class="fk-inferred-badge"
-                  title="Inferred foreign key — click to accept as-is, or × to dismiss"
-                  @click="acceptFkInference(index)"
-                >
-                  <i class="fas fa-lightbulb" /> Inferred
-                  <button
-                    type="button"
-                    class="fk-dismiss-btn"
-                    title="Dismiss this inference"
-                    @click.stop="dismissFkInference(index)"
-                  >
-                    &times;
-                  </button>
-                </span>
-                <span
-                  v-else-if="reviewedFk[index]"
-                  class="fk-reviewed-badge"
-                  title="Foreign key reviewed"
-                >
-                  <i class="fas fa-check" /> reviewed
-                </span>
+                <SuggestionBadge
+                  v-if="inferredFk[index] || reviewedFk[index]"
+                  :suggestion="fkSuggestionRecord(index)"
+                  :applied="!!inferredFk[index]"
+                  :touched="!!reviewedFk[index]"
+                  @dismiss="dismissFkInference(index)"
+                  @accept="acceptFkInference(index)"
+                />
                 <button
                   v-if="hasUnreviewedFk(index)"
                   type="button"
-                  class="btn btn-sm btn-outline-secondary fk-accept-all-btn"
+                  class="btn btn-sm btn-outline-secondary suggestion-section-button"
                   title="Accept this inferred foreign key"
                   @click.stop="acceptAllFkForTable(index)"
                 >
-                  <i class="fas fa-check" /> Accept
+                  <i class="fas fa-check-double" /> Accept all
                 </button>
               </h6>
             </div>
@@ -998,7 +1013,7 @@ onMounted(async () => {
                       v-model="fkSelections[index]"
                       :name="`fk_${index}`"
                       class="form-control"
-                      :class="{ 'inferred-select': inferredFk[index] }"
+                      :class="{ 'suggestion-highlight': inferredFk[index] }"
                       @change="onFkManualChange(index)"
                     >
                       <option value="">
@@ -1060,7 +1075,7 @@ onMounted(async () => {
                       v-model="fkColumnSelections[index]"
                       :name="`fkColumn_${index}`"
                       class="form-control"
-                      :class="{ 'inferred-select': inferredFk[index] }"
+                      :class="{ 'suggestion-highlight': inferredFk[index] }"
                       @change="onFkManualChange(index)"
                     >
                       <option value="">
@@ -1247,13 +1262,21 @@ onMounted(async () => {
         />{{ submitButtonLabel }}
       </button>
 
-      <div
+      <span
         v-if="unreviewedFkCount > 0"
-        class="fk-review-hint"
+        class="submit-review-hint"
       >
         <i class="fas fa-exclamation-circle" />
-        {{ unreviewedFkCount }} inferred foreign key(s) need review
-      </div>
+        {{ unreviewedFkCount }} suggestion(s) need review
+        <button
+          type="button"
+          class="btn btn-sm btn-link jump-to-unreviewed"
+          title="Jump to the next unreviewed suggestion"
+          @click="jumpToNextUnreviewedFk"
+        >
+          <i class="fas fa-arrow-down" /> Go to next
+        </button>
+      </span>
 
       <div class="mt-4">
         <div class="alert alert-info-highlight py-2">
@@ -1372,72 +1395,35 @@ onMounted(async () => {
   border-color: rgba(0, 0, 0, 0.9) transparent transparent;
 }
 
-.inferred-select {
+.suggestion-highlight {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);
 }
 
-.fk-inferred-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-left: 0.5rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.75em;
-  background: rgba(118, 75, 162, 0.12);
-  color: rgb(90, 60, 130);
-  border: 1px dashed rgba(118, 75, 162, 0.6);
-  cursor: pointer;
-  transition: background 0.15s;
+.suggestion-section-button {
+  margin-left: 0.75rem;
+  font-size: 0.8em;
 }
 
-.fk-inferred-badge:hover {
-  background: rgba(118, 75, 162, 0.18);
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
 }
 
-.fk-reviewed-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-left: 0.5rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.75em;
-  border-style: solid;
-  border-color: rgba(40, 140, 80, 0.6);
-  background: rgba(40, 140, 80, 0.1);
-  color: rgb(30, 110, 60);
-  cursor: default;
-}
-
-.fk-dismiss-btn {
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
   border: none;
   background: none;
-  padding: 0 0.1rem;
-  line-height: 1;
-  font-size: 1.1em;
-  color: inherit;
   cursor: pointer;
 }
 
-.fk-accept-all-btn {
-  margin-left: 0.5rem;
-  font-size: 0.75em;
-  padding: 0.1rem 0.5rem;
-  line-height: 1.4;
-}
-
-.fk-review-hint {
-  margin-top: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.375rem;
-  background: rgba(118, 75, 162, 0.08);
-  color: rgb(90, 60, 130);
-  font-size: 0.875rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
 }
 </style>
