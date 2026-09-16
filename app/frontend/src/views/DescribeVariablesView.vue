@@ -251,6 +251,36 @@ const unreviewedFieldCount = computed(
       .filter((key) => formStateCache[key]?.description).length
 )
 
+// Pre-fill: when a suggestion arrives for a column that the user hasn't
+// touched yet, auto-set the description dropdown to the suggested value
+// and mark it as "applied" (unreviewed). The user must click the badge or
+// change the dropdown to mark it as "reviewed" before they can submit.
+watch(
+  () => suggestions.variables.byKey,
+  (byKey) => {
+    if (!suggestions.enabled) return
+    for (const [key, entry] of Object.entries(byKey)) {
+      if (entry.status !== 'done' || !entry.display) continue
+      if (suggestions.isDismissed(key)) continue
+      if (suggestions.isTouched(key)) continue
+      if (suggestions.isApplied(key)) continue
+      const parts = key.split('_')
+      const dbName = parts[0]
+      const item = parts.slice(1).join('_')
+      // Don't overwrite a field the user already filled manually.
+      const existing = formStateCache[key]?.description
+      if (existing) continue
+      // Check the one-variable-per-database constraint.
+      if (isDescriptionDisabled(dbName, item, entry.display)) continue
+      ensureCacheEntry(key, dbName)
+      formStateCache[key].description = entry.display
+      autoPopulateDatatype(dbName, item)
+      suggestions.markApplied(key)
+    }
+  },
+  { deep: true },
+)
+
 async function syncToIndexedDB() {
   try {
     await jsonld.updateMappingFromForm({ ...formStateCache })
@@ -282,6 +312,19 @@ const hasAnyDescription = computed(() => {
     if (v) return true
   }
   return false
+})
+
+const canSubmit = computed(() => {
+  if (!hasAnyDescription.value || isSubmitting.value) return false
+  if (unreviewedFieldCount.value > 0) return false
+  return true
+})
+
+const submitTooltip = computed(() => {
+  if (!hasAnyDescription.value) return 'Fill in at least one description first'
+  if (unreviewedFieldCount.value > 0)
+    return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+  return ''
 })
 
 const hiddenFieldEntries = computed(() => {
@@ -677,7 +720,8 @@ onBeforeUnmount(() => {
         <button
           type="submit"
           class="btn btn-primary"
-          :disabled="!hasAnyDescription || isSubmitting"
+          :disabled="!canSubmit"
+          :title="submitTooltip"
           :class="{ processing: isSubmitting }"
         >
           <template v-if="!isSubmitting">
@@ -691,6 +735,13 @@ onBeforeUnmount(() => {
             Processing descriptions...
           </template>
         </button>
+        <span
+          v-if="unreviewedFieldCount > 0"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-exclamation-circle" />
+          {{ unreviewedFieldCount }} suggestion(s) need review
+        </span>
       </p>
     </form>
 
@@ -746,5 +797,11 @@ onBeforeUnmount(() => {
     rgba(118, 75, 162, 0.75) 100%
   );
   color: white;
+}
+
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
 }
 </style>

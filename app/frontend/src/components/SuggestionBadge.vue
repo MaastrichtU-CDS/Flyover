@@ -50,7 +50,11 @@ const hasAlternatives = computed(() => {
 })
 
 const tooltipText = computed(() => {
-  return props.suggestion.reason || 'Mapping suggestion'
+  const reason = props.suggestion.reason || 'Mapping suggestion'
+  if (props.applied && !props.touched) {
+    return `${reason} — click to confirm or change the dropdown`
+  }
+  return reason
 })
 </script>
 
