@@ -40,6 +40,15 @@ services:
       # Set to true when the RDF store does not perform reasoning (RDF4J, QLever),
       # and to false when using GraphDB (which reasons natively).
       - FLYOVER_MATERIALIZE_INFERENCES=${FLYOVER_MATERIALIZE_INFERENCES:-true}
+      # Mapping suggestions: comma list of enabled tiers (1 rule-based,
+      # 2 embedding, 3 LLM). Empty disables the feature so the describe
+      # pages render exactly as today.
+      - FLYOVER_SUGGESTION_TIERS=${FLYOVER_SUGGESTION_TIERS:-1}
+      # Where model inference runs. "host" is the only mode wired so far;
+      # "browser" is parsed and reported but a no-op for tier 1.
+      - FLYOVER_SUGGESTION_COMPUTE=${FLYOVER_SUGGESTION_COMPUTE:-host}
+      # Confidence below which an item escalates to the next tier.
+      - FLYOVER_SUGGESTION_THRESHOLD=${FLYOVER_SUGGESTION_THRESHOLD:-0.8}
       # Optional: Override default timeout settings
       # - GUNICORN_TIMEOUT=300
       # - RDF_REQUEST_TIMEOUT=3600
