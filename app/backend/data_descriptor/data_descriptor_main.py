@@ -63,6 +63,12 @@ else:
 # Initialize RDF store service for use in route handlers
 rdf_store_service = RDFStoreService(rdf_store_url, repo)
 
+# Initialize the mapping-suggestions service (tier-aware; tier 1 is
+# rule-based and always available when FLYOVER_SUGGESTION_TIERS is set).
+from services.suggestions import SuggestionService
+
+suggestion_service = SuggestionService()
+
 app.secret_key = "secret_key"
 app.config["UPLOAD_FOLDER"] = os.path.join(child_dir, "static", "files")
 if not os.path.exists(app.config["UPLOAD_FOLDER"]):
@@ -143,12 +149,19 @@ session_cache = Cache()
 
 
 # Register controller blueprints
-from controllers import ingest_bp, describe_bp, annotate_bp, share_bp
+from controllers import (
+    ingest_bp,
+    describe_bp,
+    annotate_bp,
+    share_bp,
+    suggestions_bp,
+)
 
 app.register_blueprint(ingest_bp)
 app.register_blueprint(describe_bp)
 app.register_blueprint(annotate_bp)
 app.register_blueprint(share_bp)
+app.register_blueprint(suggestions_bp)
 
 
 # Serve the built Vue SPA at the application root. The Vite build output is
@@ -200,6 +213,7 @@ app.config["APP_CONTEXT"] = {
     "root_dir": root_dir,
     "child_dir": child_dir,
     "run_triplifier": _run_triplifier_and_cache,
+    "suggestion_service": suggestion_service,
     "upload_func": lambda file_type, output_files: (
         IngestService().upload_multiple_graphs(
             root_dir, rdf_store_url, repo, output_files, data_background=False

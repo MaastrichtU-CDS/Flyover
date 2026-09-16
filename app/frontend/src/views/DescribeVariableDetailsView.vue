@@ -1,8 +1,11 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { useSuggestionsStore } from '@/stores/suggestions'
+import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Yes', label: 'Yes' },
@@ -15,6 +18,8 @@ const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Missing', label: 'Missing value' },
   { value: 'Other', label: 'Other' },
 ]
+
+const suggestions = useSuggestionsStore()
 
 const descriptiveInfo = ref(null)
 const descriptiveInfoDetails = ref(null)
@@ -194,6 +199,7 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   const selectedOption = categorySelections[key]
   const previousOption = previousSelections[key]
   previousSelections[key] = selectedOption
+  suggestions.markUserTouched(key)
   try {
     await jsonld.updateCategoryMapping(
       database,
@@ -205,6 +211,213 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
     )
   } catch (e) {
     console.error('Failed to update category mapping:', e)
+  }
+}
+
+// Persist a category selection to JSON-LD without marking the suggestion
+// as reviewed. Used by the pre-fill watch so auto-filled suggestions stay
+// "unreviewed" until the user explicitly interacts with them.
+async function _persistCategorySelection(database, variable, cat) {
+  const key = cat.key
+  const selectedOption = categorySelections[key]
+  const previousOption = previousSelections[key]
+  previousSelections[key] = selectedOption
+  try {
+    await jsonld.updateCategoryMapping(
+      database,
+      variable.localVariable,
+      variable.globalVarName,
+      String(cat.value),
+      selectedOption,
+      previousOption
+    )
+  } catch (e) {
+    console.error('Failed to update category mapping:', e)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mapping suggestions: pre-highlight (do NOT pre-fill) per the plan. The user
+// explicitly accepts via the badge click, which goes through the same
+// onCategoryChange path a manual selection takes so JSON-LD persistence keeps
+// working unchanged.
+// ---------------------------------------------------------------------------
+
+function suggestionFor(key) {
+  return suggestions.values.byKey[key]
+}
+
+function hasSuggestion(key) {
+  const entry = suggestionFor(key)
+  return entry && entry.status === 'done' && entry.display
+}
+
+async function acceptSuggestion(database, variable, cat) {
+  const entry = suggestionFor(cat.key)
+  if (!entry || !entry.display) return
+  const options = categoryOptionsFor(variable)
+  if (!options.includes(entry.display)) return
+  categorySelections[cat.key] = entry.display
+  suggestions.markApplied(cat.key)
+  await onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+}
+
+function dismissSuggestion(database, variable, cat) {
+  suggestions.dismiss(cat.key)
+  if (categorySelections[cat.key]) {
+    categorySelections[cat.key] = ''
+    onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+  }
+}
+
+function clearAllSuggestions() {
+  const cleared = new Set(suggestions.clearAllApplied())
+  for (const dbEntry of parsedDatabases.value) {
+    for (const variable of dbEntry.variables) {
+      if (variable.type !== 'categorical') continue
+      for (const cat of variable.categories) {
+        if (cleared.has(cat.key) && categorySelections[cat.key]) {
+          categorySelections[cat.key] = ''
+          onCategoryChange(dbEntry.name, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+        }
+      }
+    }
+  }
+}
+
+function variableSuggestionPending(variable) {
+  return variable.categories.some((cat) => {
+    const entry = suggestionFor(cat.key)
+    return !entry || entry.status === 'pending'
+  })
+}
+
+function requestVariableFirst(dbName, variable) {
+  const keys = variable.categories.map((c) => c.key)
+  if (keys.length) suggestions.bumpPriority('values', keys)
+}
+
+function categoryOptionsFor(variable) {
+  if (variable.categoryOptions.length > 0) {
+    return [...variable.categoryOptions, 'Other']
+  }
+  return DEFAULT_CATEGORY_OPTIONS.map((o) => o.value)
+}
+
+const unreviewedFieldCount = computed(
+  () => suggestions.unreviewedKeys().filter((key) => categorySelections[key]).length
+)
+
+// Pre-fill: when a suggestion arrives for a value that the user hasn't
+// touched yet, auto-set the category dropdown to the suggested term and
+// mark it as "applied" (unreviewed). The user must click the badge or
+// change the dropdown to mark it as "reviewed" before they can submit.
+watch(
+  () => suggestions.values.byKey,
+  (byKey) => {
+    if (!suggestions.enabled) return
+    for (const dbEntry of parsedDatabases.value) {
+      for (const variable of dbEntry.variables) {
+        if (variable.type !== 'categorical') continue
+        for (const cat of variable.categories) {
+          const entry = byKey[cat.key]
+          if (!entry || entry.status !== 'done' || !entry.display) continue
+          if (suggestions.isDismissed(cat.key)) continue
+          if (suggestions.isTouched(cat.key)) continue
+          if (suggestions.isApplied(cat.key)) continue
+          if (categorySelections[cat.key]) continue
+          const options = categoryOptionsFor(variable)
+          if (!options.includes(entry.display)) continue
+          categorySelections[cat.key] = entry.display
+          suggestions.markApplied(cat.key)
+          _persistCategorySelection(
+            dbEntry.name, variable, cat,
+          )
+        }
+      }
+    }
+  },
+  { deep: true },
+)
+
+function hasUnreviewedForVariable(variable) {
+  if (variable.type !== 'categorical') return false
+  return variable.categories.some((cat) => {
+    const entry = suggestionFor(cat.key)
+    if (!entry || entry.status !== 'done' || !entry.display) return false
+    if (suggestions.isDismissed(cat.key)) return false
+    // Show the button when there are suggestions not yet applied, or
+    // applied but still unreviewed (not touched).
+    if (!suggestions.isApplied(cat.key) && !categorySelections[cat.key]) return true
+    if (suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)) return true
+    return false
+  })
+}
+
+async function acceptAllForVariable(database, variable) {
+  for (const cat of variable.categories) {
+    const entry = suggestionFor(cat.key)
+    if (!entry || !entry.display) continue
+    if (suggestions.isDismissed(cat.key)) continue
+    // If already applied and touched, skip — nothing to do.
+    if (suggestions.isApplied(cat.key) && suggestions.isTouched(cat.key)) continue
+    const options = categoryOptionsFor(variable)
+    if (!options.includes(entry.display)) continue
+    // If not yet applied, fill the selection first.
+    if (!suggestions.isApplied(cat.key)) {
+      categorySelections[cat.key] = entry.display
+      suggestions.markApplied(cat.key)
+    }
+    // Mark as reviewed (touched) via the normal change path.
+    await onCategoryChange(
+      database, variable.localVariable, variable.globalVarName,
+      cat.value, cat.key,
+    )
+  }
+}
+
+const canSubmit = computed(() => {
+  if (isProcessing.value) return false
+  if (unreviewedFieldCount.value > 0) return false
+  if (suggestions.enabled && suggestions.values.status === 'running') return false
+  if (suggestions.enabled && suggestions.values.status === 'idle') return false
+  return true
+})
+
+const submitTooltip = computed(() => {
+  if (suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running'))
+    return 'Waiting for mapping suggestions to arrive...'
+  if (unreviewedFieldCount.value > 0)
+    return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+  return ''
+})
+
+function jumpToNextUnreviewed() {
+  const keys = suggestions.unreviewedKeys().filter((key) => categorySelections[key])
+  if (!keys.length) return
+  for (const key of keys) {
+    for (const dbEntry of parsedDatabases.value) {
+      if (!key.startsWith(`${dbEntry.name}_`)) continue
+      for (let vIdx = 0; vIdx < dbEntry.variables.length; vIdx++) {
+        const variable = dbEntry.variables[vIdx]
+        if (variable.type !== 'categorical') continue
+        const cat = variable.categories.find((c) => c.key === key)
+        if (!cat) continue
+        // Expand the database and the variable.
+        if (!expandedDatabases[dbEntry.name]) expandedDatabases[dbEntry.name] = true
+        if (!expandedVariables[dbEntry.name]) expandedVariables[dbEntry.name] = {}
+        expandedVariables[dbEntry.name][vIdx] = true
+        // Scroll to the category row after Vue updates the DOM.
+        nextTick(() => {
+          const el = document.querySelector(`select[name="${cat.backendKey}"]`)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.focus({ preventScroll: true })
+          }
+        })
+        return
+      }
+    }
   }
 }
 
@@ -276,6 +489,18 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to load variable details state:', e)
   }
+
+  // Idempotent start: the backend kicked this job off when /units was
+  // submitted; this covers reloads and backend restarts. Send the updated
+  // mapping (reflecting the user's variable selections) so the values phase
+  // knows which variable each column maps to and which value mappings are
+  // relevant.
+  suggestions.setPhase('values')
+  await suggestions.init('values', { mapping: jsonld.getMapping() })
+})
+
+onBeforeUnmount(() => {
+  suggestions.stopPolling()
 })
 </script>
 
@@ -287,6 +512,15 @@ onMounted(async () => {
       Please provide more information for the categorical and continuous variables that
       were defined in the variable description page.
     </p>
+
+    <SuggestionStatusBar
+      v-if="suggestions.enabled"
+      :phase-state="suggestions.values"
+      :tiers="suggestions.tiers"
+      :compute="suggestions.compute"
+      :unreviewed-count="unreviewedFieldCount"
+      @clear-all="clearAllSuggestions"
+    />
 
     <form
       class="form-horizontal"
@@ -377,6 +611,24 @@ onMounted(async () => {
                   />
                   <div class="variable-controls">
                     <button
+                      v-if="suggestions.enabled && suggestions.values.status === 'running' && variableSuggestionPending(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Move this variable to the front of the suggestion queue"
+                      @click="requestVariableFirst(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-lightbulb" /> Suggest now
+                    </button>
+                    <button
+                      v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Accept all suggestions for this variable"
+                      @click="acceptAllForVariable(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-check-double" /> Accept all
+                    </button>
+                    <button
                       type="button"
                       class="item-toggle-button"
                       :class="{ open: isVariableExpanded(dbEntry.name, varIdx) }"
@@ -399,11 +651,26 @@ onMounted(async () => {
                     <div class="category-item">
                       <div class="category-label">
                         {{ cat.displayValue }} (counted: {{ cat.count }})
+                        <SuggestionBadge
+                          v-if="suggestions.isApplied(cat.key) || hasSuggestion(cat.key)"
+                          :suggestion="suggestionFor(cat.key) || {}"
+                          :applied="suggestions.isApplied(cat.key)"
+                          :touched="suggestions.isTouched(cat.key)"
+                          @dismiss="dismissSuggestion(dbEntry.name, variable, cat)"
+                          @accept="acceptSuggestion(dbEntry.name, variable, cat)"
+                        />
                       </div>
                       <div class="category-controls">
                         <select
                           v-model="categorySelections[cat.key]"
                           class="form-control category-select"
+                          :class="{
+                            'suggestion-highlight':
+                              hasSuggestion(cat.key) &&
+                              !suggestions.isApplied(cat.key) &&
+                              !suggestions.isDismissed(cat.key) &&
+                              !categorySelections[cat.key],
+                          }"
                           :name="cat.backendKey"
                           @change="
                             onCategoryChange(
@@ -468,7 +735,8 @@ onMounted(async () => {
         <button
           type="submit"
           class="btn btn-primary"
-          :disabled="isProcessing"
+          :disabled="!canSubmit"
+          :title="submitTooltip"
           :class="{ processing: isProcessing }"
         >
           <template v-if="!isProcessing">
@@ -482,6 +750,28 @@ onMounted(async () => {
             Processing descriptions...
           </template>
         </button>
+        <span
+          v-if="suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running')"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-hourglass-half" />
+          Waiting for suggestions...
+        </span>
+        <span
+          v-else-if="unreviewedFieldCount > 0"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-exclamation-circle" />
+          {{ unreviewedFieldCount }} suggestion(s) need review
+          <button
+            type="button"
+            class="btn btn-sm btn-link jump-to-unreviewed"
+            title="Jump to the next unreviewed suggestion"
+            @click="jumpToNextUnreviewed"
+          >
+            <i class="fas fa-arrow-down" /> Go to next
+          </button>
+        </span>
         <RouterLink
           to="/describe/variables"
           class="btn btn-light"
@@ -520,6 +810,37 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.suggestion-highlight {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
+.suggestion-section-button {
+  font-size: 0.8em;
+}
+
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
+}
+
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
+}
+
 .info-purple {
   font-size: 0.85em;
   border-left: 4px solid rgba(118, 75, 162, 0.75);

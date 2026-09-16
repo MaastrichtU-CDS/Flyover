@@ -6,3 +6,8 @@ backend/data_descriptor/.pytest_cache/
 **/__pycache__/
 **/*.pyc
 **/*.pyo
+
+# node_modules is installed inside the container by `npm install`; the local
+# symlink/directory must not be copied (causes BuildKit cache type mismatch).
+frontend/node_modules
+frontend/dist

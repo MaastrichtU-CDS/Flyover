@@ -1,11 +1,15 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
+import { useSuggestionsStore } from '@/stores/suggestions'
+import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const status = useStatusStore()
+const suggestions = useSuggestionsStore()
 
 const PAGE_SIZE = 10
 const AUTO_FILL_FEEDBACK_MS = 3000
@@ -146,6 +150,7 @@ function onDescriptionChange(dbName, item, e) {
     delete preselectedDatatypes.value[key]
   }
   autoPopulateDatatype(dbName, item)
+  suggestions.markUserTouched(key)
   syncToIndexedDB()
 }
 
@@ -154,6 +159,7 @@ function onDatatypeChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   formStateCache[key].datatype = e.target.value
   if (autoFilledFields.has(key)) manualOverrides.add(key)
+  suggestions.markUserTouched(key)
   syncToIndexedDB()
 }
 
@@ -163,6 +169,150 @@ function onCommentChange(dbName, item, e) {
   formStateCache[key].comment = e.target.value
   syncToIndexedDB()
 }
+
+// ---------------------------------------------------------------------------
+// Mapping suggestions: pre-highlight (do NOT pre-fill) per the plan. The user
+// explicitly accepts via the badge click, which goes through the same
+// onDescriptionChange path a manual selection takes so option-disabling,
+// hidden field submission, and JSON-LD persistence keep working unchanged.
+// ---------------------------------------------------------------------------
+
+function suggestionFor(dbName, item) {
+  return suggestions.variables.byKey[`${dbName}_${item}`]
+}
+
+function hasSuggestion(dbName, item) {
+  const entry = suggestionFor(dbName, item)
+  return entry && entry.status === 'done' && entry.display
+}
+
+function acceptSuggestion(dbName, item) {
+  const entry = suggestionFor(dbName, item)
+  if (!entry || !entry.display) return
+  const key = `${dbName}_${item}`
+  // Check the one-variable-per-database constraint before applying.
+  if (isDescriptionDisabled(dbName, item, entry.display)) return
+  // Go through the same path as a manual selection.
+  onDescriptionChange(dbName, item, { target: { value: entry.display } })
+  suggestions.markApplied(key)
+}
+
+function dismissSuggestion(dbName, item) {
+  const key = `${dbName}_${item}`
+  suggestions.dismiss(key)
+  // If the field was pre-filled by the suggestion, clear it.
+  if (formStateCache[key]?.description && suggestions.isDismissed(key)) {
+    formStateCache[key].description = ''
+    autoPopulateDatatype(dbName, item)
+    syncToIndexedDB()
+  }
+}
+
+function clearAllSuggestions() {
+  for (const key of suggestions.clearAllApplied()) {
+    if (formStateCache[key]?.description) {
+      const dbName = formStateCache[key].database
+      const item = key.slice(dbName.length + 1)
+      formStateCache[key].description = ''
+      autoPopulateDatatype(dbName, item)
+    }
+  }
+  syncToIndexedDB()
+}
+
+function pendingColumnsFor(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  return cols.filter((item) => {
+    const entry = suggestionFor(dbName, item)
+    return !entry || entry.status === 'pending'
+  })
+}
+
+function requestSectionFirst(dbName) {
+  const pending = pendingColumnsFor(dbName)
+  if (pending.length) {
+    const keys = pending.map((c) => `${dbName}_${c}`)
+    suggestions.bumpPriority('variables', keys)
+  }
+}
+
+const suggestionProgress = computed(() => {
+  const entries = Object.values(suggestions.variables.byKey)
+  return {
+    done: entries.filter((e) => e.status === 'done' || e.status === 'failed').length,
+    total: entries.length,
+  }
+})
+
+const unreviewedFieldCount = computed(
+  () =>
+    suggestions
+      .unreviewedKeys()
+      .filter((key) => formStateCache[key]?.description).length
+)
+
+function jumpToNextUnreviewed() {
+  const keys = suggestions.unreviewedKeys().filter((key) => formStateCache[key]?.description)
+  if (!keys.length) return
+  // Find the first unreviewed key and locate its database + column.
+  for (const key of keys) {
+    const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    if (!dbName) continue
+    const item = key.slice(dbName.length + 1)
+    const cols = columnInfoData.value?.[dbName] || []
+    const itemIdx = cols.indexOf(item)
+    if (itemIdx === -1) continue
+    // Expand the database and navigate to the right page.
+    if (!expandedDatabases[dbName]) expandedDatabases[dbName] = true
+    const page = Math.floor(itemIdx / PAGE_SIZE) + 1
+    databasePages[dbName] = page
+    // Scroll to the row after Vue updates the DOM.
+    nextTick(() => {
+      const el = document.getElementById(`ncit_comment_${dbName}_${item}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus({ preventScroll: true })
+      }
+    })
+    return
+  }
+}
+
+// Pre-fill: when a suggestion arrives for a column that the user hasn't
+// touched yet, auto-set the description dropdown to the suggested value
+// and mark it as "applied" (unreviewed). The user must click the badge or
+// change the dropdown to mark it as "reviewed" before they can submit.
+watch(
+  () => suggestions.variables.byKey,
+  (byKey) => {
+    if (!suggestions.enabled) return
+    let filled = false
+    for (const [key, entry] of Object.entries(byKey)) {
+      if (entry.status !== 'done' || !entry.display) continue
+      if (suggestions.isDismissed(key)) continue
+      if (suggestions.isTouched(key)) continue
+      if (suggestions.isApplied(key)) continue
+      // Don't overwrite a field the user already filled manually.
+      const existing = formStateCache[key]?.description
+      if (existing) continue
+      // Keys are "${dbName}_${localColumn}" and dbName can itself contain
+      // underscores (e.g. "synthetic_dutch_150"), so naive splitting
+      // truncates the name. Look up the actual dbName by prefix-matching.
+      const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+      if (!dbName) continue
+      const item = key.slice(dbName.length + 1)
+      // Check the one-variable-per-database constraint.
+      if (isDescriptionDisabled(dbName, item, entry.display)) continue
+      ensureCacheEntry(key, dbName)
+      formStateCache[key].description = entry.display
+      autoPopulateDatatype(dbName, item)
+      suggestions.markApplied(key)
+      filled = true
+    }
+    if (filled) syncToIndexedDB()
+  },
+  { deep: true },
+)
 
 async function syncToIndexedDB() {
   try {
@@ -174,6 +324,11 @@ async function syncToIndexedDB() {
 
 function toggleDatabase(dbName) {
   expandedDatabases[dbName] = !expandedDatabases[dbName]
+  if (expandedDatabases[dbName]) {
+    // Hint the visible columns to the suggestion job when expanded.
+    const visible = currentPageItems(dbName).map((c) => `${dbName}_${c}`)
+    if (visible.length) suggestions.bumpPriority('variables', visible)
+  }
 }
 
 function changePage(dbName, direction) {
@@ -190,6 +345,27 @@ const hasAnyDescription = computed(() => {
     if (v) return true
   }
   return false
+})
+
+const canSubmit = computed(() => {
+  if (!hasAnyDescription.value || isSubmitting.value) return false
+  // Block submission while suggestions are still loading and we have
+  // unreviewed pre-filled fields. Also block while the suggestion job
+  // is still running (status is 'idle' or 'running') and suggestions
+  // are enabled, to prevent submitting before pre-fill arrives.
+  if (unreviewedFieldCount.value > 0) return false
+  if (suggestions.enabled && suggestions.variables.status === 'running') return false
+  if (suggestions.enabled && suggestions.variables.status === 'idle') return false
+  return true
+})
+
+const submitTooltip = computed(() => {
+  if (!hasAnyDescription.value) return 'Fill in at least one description first'
+  if (suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running'))
+    return 'Waiting for mapping suggestions to arrive...'
+  if (unreviewedFieldCount.value > 0)
+    return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+  return ''
 })
 
 const hiddenFieldEntries = computed(() => {
@@ -248,7 +424,11 @@ function onPageShow(e) {
   if (e.persisted) resetSubmitState()
 }
 
-function onFormSubmit() {
+function onFormSubmit(e) {
+  if (!canSubmit.value) {
+    e.preventDefault()
+    return
+  }
   startLoadingAnimation()
   // native form POSTs to /units → redirects to /describe/variable-details
 }
@@ -298,6 +478,11 @@ onMounted(async () => {
   preselectedDatatypes.value = ps.preselectedDatatypes || {}
   descriptionToDatatype.value = ps.descriptionToDatatype || {}
   dropOrphanPreselections()
+
+  // Idempotent start (the backend usually began at ingest); the mapping is
+  // included in case it only survives in this browser's IndexedDB.
+  suggestions.setPhase('variables')
+  await suggestions.init('variables', { mapping: jsonld.getMapping() })
 })
 
 function dropOrphanPreselections() {
@@ -339,6 +524,7 @@ function dropOrphanPreselections() {
 onBeforeUnmount(() => {
   window.removeEventListener('pageshow', onPageShow)
   if (_loadingInterval) clearInterval(_loadingInterval)
+  suggestions.stopPolling()
 })
 </script>
 
@@ -351,6 +537,15 @@ onBeforeUnmount(() => {
       For every database that you would like to describe, please select the type and
       description of your columns from the drop-down menu.
     </p>
+
+    <SuggestionStatusBar
+      v-if="suggestions.enabled"
+      :phase-state="suggestions.variables"
+      :tiers="suggestions.tiers"
+      :compute="suggestions.compute"
+      :unreviewed-count="unreviewedFieldCount"
+      @clear-all="clearAllSuggestions"
+    />
 
     <form
       class="form-horizontal"
@@ -384,6 +579,15 @@ onBeforeUnmount(() => {
               "
             />
           </button>
+          <button
+            v-if="suggestions.enabled && suggestions.variables.status === 'running' && pendingColumnsFor(dbName).length"
+            type="button"
+            class="btn btn-sm btn-outline-secondary suggestion-section-button"
+            title="Move this database to the front of the suggestion queue"
+            @click="requestSectionFirst(dbName)"
+          >
+            <i class="fas fa-lightbulb" /> Suggest this section first
+          </button>
 
           <div
             class="content"
@@ -400,12 +604,27 @@ onBeforeUnmount(() => {
               >
                 <div class="variable-label">
                   {{ item }}
+                  <SuggestionBadge
+                    v-if="suggestions.isApplied(`${dbName}_${item}`) || hasSuggestion(dbName, item)"
+                    :suggestion="suggestionFor(dbName, item) || {}"
+                    :applied="suggestions.isApplied(`${dbName}_${item}`)"
+                    :touched="suggestions.isTouched(`${dbName}_${item}`)"
+                    @dismiss="dismissSuggestion(dbName, item)"
+                    @accept="acceptSuggestion(dbName, item)"
+                  />
                 </div>
                 <div class="variable-controls">
                   <select
                     :id="`ncit_comment_${dbName}_${item}`"
                     :name="`ncit_comment_${dbName}_${item}`"
                     class="form-control description-select"
+                    :class="{
+                      'suggestion-highlight':
+                        hasSuggestion(dbName, item) &&
+                        !suggestions.isApplied(`${dbName}_${item}`) &&
+                        !suggestions.isDismissed(`${dbName}_${item}`) &&
+                        !formStateCache[`${dbName}_${item}`]?.description,
+                    }"
                     :value="getDescriptionValue(dbName, item)"
                     @change="onDescriptionChange(dbName, item, $event)"
                   >
@@ -546,7 +765,8 @@ onBeforeUnmount(() => {
         <button
           type="submit"
           class="btn btn-primary"
-          :disabled="!hasAnyDescription || isSubmitting"
+          :disabled="!canSubmit"
+          :title="submitTooltip"
           :class="{ processing: isSubmitting }"
         >
           <template v-if="!isSubmitting">
@@ -560,6 +780,28 @@ onBeforeUnmount(() => {
             Processing descriptions...
           </template>
         </button>
+        <span
+          v-if="suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running')"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-hourglass-half" />
+          Waiting for suggestions...
+        </span>
+        <span
+          v-else-if="unreviewedFieldCount > 0"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-exclamation-circle" />
+          {{ unreviewedFieldCount }} suggestion(s) need review
+          <button
+            type="button"
+            class="btn btn-sm btn-link jump-to-unreviewed"
+            title="Jump to the next unreviewed suggestion"
+            @click="jumpToNextUnreviewed"
+          >
+            <i class="fas fa-arrow-down" /> Go to next
+          </button>
+        </span>
       </p>
     </form>
 
@@ -595,6 +837,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.suggestion-highlight {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
+.suggestion-section-button {
+  margin-left: 0.75rem;
+  font-size: 0.8em;
+}
+
 .info-purple {
   font-size: 0.85em;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
@@ -604,5 +857,26 @@ onBeforeUnmount(() => {
     rgba(118, 75, 162, 0.75) 100%
   );
   color: white;
+}
+
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
+}
+
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
 }
 </style>
