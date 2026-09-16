@@ -1029,6 +1029,10 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
+    // Auto-suggest infers an FK on visits.csv — must review before submit
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    w.find('.fk-inferred-badge').trigger('click')
+    await flushPromises()
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -1278,7 +1282,7 @@ describe('IngestView — PK/FK', () => {
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
     expect(w.text()).toContain('Inferred')
-    expect(w.text()).toContain('please verify')
+    expect(w.find('.fk-inferred-badge').exists()).toBe(true)
   })
 
   it('does not show an "Inferred" badge when no FK is auto-suggested', async () => {

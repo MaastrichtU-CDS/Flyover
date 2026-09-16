@@ -70,6 +70,7 @@ const fkSelections = reactive({})
 const fkTableSelections = reactive({})
 const fkColumnSelections = reactive({})
 const inferredFk = reactive({})
+const reviewedFk = reactive({})
 
 const showPkFkSection = ref(false)
 const showDataLinkingSection = ref(false)
@@ -153,6 +154,7 @@ function resetPkFk() {
   for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
   for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
   for (const k of Object.keys(inferredFk)) delete inferredFk[k]
+  for (const k of Object.keys(reviewedFk)) delete reviewedFk[k]
 }
 
 // --- Computed: form validation & submit ---
@@ -171,7 +173,7 @@ const isFormValid = computed(() => {
       !pgHasBlockedCharInView('password') &&
       !pgHasBlockedCharInView('url') &&
       !pgHasBlockedCharInView('db'))
-  return basic && validatePkFkRelationships()
+  return basic && validatePkFkRelationships() && unreviewedFkCount.value === 0
 })
 
 function validatePkFkRelationships() {
@@ -188,6 +190,9 @@ const submitButtonTitle = computed(() => {
   if (isFormValid.value) return ''
   if (!validatePkFkRelationships()) {
     return 'Please select primary keys for all tables that are referenced by foreign keys'
+  }
+  if (unreviewedFkCount.value > 0) {
+    return `Please review ${unreviewedFkCount.value} inferred foreign key suggestion(s) before submitting`
   }
   return ''
 })
@@ -385,10 +390,12 @@ async function onPageDrop(e) {
 function onFkTableChange(index) {
   fkColumnSelections[index] = ''
   delete inferredFk[index]
+  reviewedFk[index] = true
 }
 
 function onFkManualChange(index) {
   delete inferredFk[index]
+  reviewedFk[index] = true
 }
 
 // When a PK is set on table at index pkIndex, check every other table for
@@ -420,8 +427,42 @@ function clearAutoSuggestedFk(pkIndex) {
     fkTableSelections[index] = ''
     fkColumnSelections[index] = ''
     delete inferredFk[index]
+    delete reviewedFk[index]
   }
 }
+
+// Mark a single inferred FK as reviewed (accepted as-is).
+function acceptFkInference(index) {
+  if (inferredFk[index]) {
+    delete inferredFk[index]
+    reviewedFk[index] = true
+  }
+}
+
+// Dismiss an inferred FK — clear the FK fields and mark as reviewed.
+function dismissFkInference(index) {
+  fkSelections[index] = ''
+  fkTableSelections[index] = ''
+  fkColumnSelections[index] = ''
+  delete inferredFk[index]
+  reviewedFk[index] = true
+}
+
+// Accept all unreviewed inferred FKs for a specific table.
+function acceptAllFkForTable(tableIndex) {
+  if (inferredFk[tableIndex]) {
+    delete inferredFk[tableIndex]
+    reviewedFk[tableIndex] = true
+  }
+}
+
+// Check if a table has an unreviewed inferred FK.
+function hasUnreviewedFk(tableIndex) {
+  return !!inferredFk[tableIndex]
+}
+
+// Count unreviewed inferred FKs across all tables.
+const unreviewedFkCount = computed(() => Object.keys(inferredFk).length)
 
 watch(pkSelections, () => {
   for (const index of Object.keys(pkSelections)) {
@@ -883,10 +924,36 @@ onMounted(async () => {
                 </small>
                 <span
                   v-if="inferredFk[index]"
-                  class="badge bg-warning text-white ms-2 align-middle"
+                  class="fk-inferred-badge"
+                  title="Inferred foreign key — click to accept as-is, or × to dismiss"
+                  @click="acceptFkInference(index)"
                 >
-                  <i class="fas fa-lightbulb" /> Inferred — please verify
+                  <i class="fas fa-lightbulb" /> Inferred
+                  <button
+                    type="button"
+                    class="fk-dismiss-btn"
+                    title="Dismiss this inference"
+                    @click.stop="dismissFkInference(index)"
+                  >
+                    &times;
+                  </button>
                 </span>
+                <span
+                  v-else-if="reviewedFk[index]"
+                  class="fk-reviewed-badge"
+                  title="Foreign key reviewed"
+                >
+                  <i class="fas fa-check" /> reviewed
+                </span>
+                <button
+                  v-if="hasUnreviewedFk(index)"
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary fk-accept-all-btn"
+                  title="Accept this inferred foreign key"
+                  @click.stop="acceptAllFkForTable(index)"
+                >
+                  <i class="fas fa-check" /> Accept
+                </button>
               </h6>
             </div>
             <div class="card-body">
@@ -1180,6 +1247,14 @@ onMounted(async () => {
         />{{ submitButtonLabel }}
       </button>
 
+      <div
+        v-if="unreviewedFkCount > 0"
+        class="fk-review-hint"
+      >
+        <i class="fas fa-exclamation-circle" />
+        {{ unreviewedFkCount }} inferred foreign key(s) need review
+      </div>
+
       <div class="mt-4">
         <div class="alert alert-info-highlight py-2">
           <i class="fas fa-info-circle" />
@@ -1298,7 +1373,71 @@ onMounted(async () => {
 }
 
 .inferred-select {
-  border-color: var(--bs-warning, #ffc107);
-  background-color: var(--bs-warning-bg-subtle, #fff3cd);
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
+.fk-inferred-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  background: rgba(118, 75, 162, 0.12);
+  color: rgb(90, 60, 130);
+  border: 1px dashed rgba(118, 75, 162, 0.6);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.fk-inferred-badge:hover {
+  background: rgba(118, 75, 162, 0.18);
+}
+
+.fk-reviewed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  border-style: solid;
+  border-color: rgba(40, 140, 80, 0.6);
+  background: rgba(40, 140, 80, 0.1);
+  color: rgb(30, 110, 60);
+  cursor: default;
+}
+
+.fk-dismiss-btn {
+  border: none;
+  background: none;
+  padding: 0 0.1rem;
+  line-height: 1;
+  font-size: 1.1em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.fk-accept-all-btn {
+  margin-left: 0.5rem;
+  font-size: 0.75em;
+  padding: 0.1rem 0.5rem;
+  line-height: 1.4;
+}
+
+.fk-review-hint {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.375rem;
+  background: rgba(118, 75, 162, 0.08);
+  color: rgb(90, 60, 130);
+  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 </style>
