@@ -376,6 +376,20 @@ async function acceptAllForVariable(database, variable) {
   }
 }
 
+function dismissAllForVariable(database, variable) {
+  for (const cat of variable.categories) {
+    const entry = suggestionFor(cat.key)
+    if (!entry || !entry.display) continue
+    if (suggestions.isDismissed(cat.key)) continue
+    if (suggestions.isApplied(cat.key) && suggestions.isTouched(cat.key)) continue
+    suggestions.dismiss(cat.key)
+    if (categorySelections[cat.key]) {
+      categorySelections[cat.key] = ''
+      onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+    }
+  }
+}
+
 const canSubmit = computed(() => {
   if (isProcessing.value) return false
   if (unreviewedFieldCount.value > 0) return false
@@ -627,6 +641,15 @@ onBeforeUnmount(() => {
                       @click="acceptAllForVariable(dbEntry.name, variable)"
                     >
                       <i class="fas fa-check-double" /> Accept all
+                    </button>
+                    <button
+                      v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Dismiss all suggestions for this variable and clear the fields"
+                      @click="dismissAllForVariable(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-times" /> Dismiss all
                     </button>
                     <button
                       type="button"

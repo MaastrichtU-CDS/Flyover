@@ -228,6 +228,36 @@ function pendingColumnsFor(dbName) {
   })
 }
 
+function hasUnreviewedForDatabase(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  return cols.some((item) => {
+    const key = `${dbName}_${item}`
+    const entry = suggestionFor(dbName, item)
+    if (!entry || entry.status !== 'done' || !entry.display) return false
+    if (suggestions.isDismissed(key)) return false
+    if (!suggestions.isApplied(key) && !formStateCache[key]?.description) return true
+    if (suggestions.isApplied(key) && !suggestions.isTouched(key)) return true
+    return false
+  })
+}
+
+function dismissAllForDatabase(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  for (const item of cols) {
+    const key = `${dbName}_${item}`
+    const entry = suggestionFor(dbName, item)
+    if (!entry || entry.status !== 'done' || !entry.display) continue
+    if (suggestions.isDismissed(key)) continue
+    if (suggestions.isApplied(key) && suggestions.isTouched(key)) continue
+    suggestions.dismiss(key)
+    if (formStateCache[key]?.description) {
+      formStateCache[key].description = ''
+      autoPopulateDatatype(dbName, item)
+    }
+  }
+  syncToIndexedDB()
+}
+
 function requestSectionFirst(dbName) {
   const pending = pendingColumnsFor(dbName)
   if (pending.length) {
@@ -587,6 +617,15 @@ onBeforeUnmount(() => {
             @click="requestSectionFirst(dbName)"
           >
             <i class="fas fa-lightbulb" /> Suggest this section first
+          </button>
+          <button
+            v-if="suggestions.enabled && hasUnreviewedForDatabase(dbName)"
+            type="button"
+            class="btn btn-sm btn-outline-secondary suggestion-section-button"
+            title="Dismiss all suggestions for this database and clear the fields"
+            @click="dismissAllForDatabase(dbName)"
+          >
+            <i class="fas fa-times" /> Dismiss all
           </button>
 
           <div
