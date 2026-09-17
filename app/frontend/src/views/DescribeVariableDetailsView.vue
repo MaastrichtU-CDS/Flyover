@@ -625,48 +625,38 @@ onBeforeUnmount(() => {
                   />
                   <div class="variable-controls">
                     <button
+                      v-if="suggestions.enabled && suggestions.values.status === 'running' && variableSuggestionPending(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Move this variable to the front of the suggestion queue"
+                      @click="requestVariableFirst(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-lightbulb" /> Suggest now
+                    </button>
+                    <button
+                      v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Accept all suggestions for this variable"
+                      @click="acceptAllForVariable(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-check-double" /> Accept all suggestions
+                    </button>
+                    <button
+                      v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary suggestion-section-button"
+                      title="Dismiss all suggestions for this variable and clear the fields"
+                      @click="dismissAllForVariable(dbEntry.name, variable)"
+                    >
+                      <i class="fas fa-times" /> Dismiss all suggestions
+                    </button>
+                    <button
                       type="button"
                       class="item-toggle-button"
                       :class="{ open: isVariableExpanded(dbEntry.name, varIdx) }"
                       @click="toggleVariable(dbEntry.name, varIdx)"
-                    >
-                      <span class="toggle-text">
-                        {{ isVariableExpanded(dbEntry.name, varIdx) ? 'Show less' : 'Show more' }}
-                      </span>
-                      <i
-                        class="fas"
-                        :class="isVariableExpanded(dbEntry.name, varIdx) ? 'fa-chevron-down' : 'fa-chevron-up'"
-                      />
-                    </button>
-                    <div class="variable-actions">
-                      <button
-                        v-if="suggestions.enabled && suggestions.values.status === 'running' && variableSuggestionPending(variable)"
-                        type="button"
-                        class="btn btn-sm btn-outline-secondary suggestion-section-button"
-                        title="Move this variable to the front of the suggestion queue"
-                        @click="requestVariableFirst(dbEntry.name, variable)"
-                      >
-                        <i class="fas fa-lightbulb" /> Suggest now
-                      </button>
-                      <button
-                        v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
-                        type="button"
-                        class="btn btn-sm btn-outline-secondary suggestion-section-button"
-                        title="Accept all suggestions for this variable"
-                        @click="acceptAllForVariable(dbEntry.name, variable)"
-                      >
-                        <i class="fas fa-check-double" /> Accept all suggestions
-                      </button>
-                      <button
-                        v-if="suggestions.enabled && hasUnreviewedForVariable(variable)"
-                        type="button"
-                        class="btn btn-sm btn-outline-secondary suggestion-section-button"
-                        title="Dismiss all suggestions for this variable and clear the fields"
-                        @click="dismissAllForVariable(dbEntry.name, variable)"
-                      >
-                        <i class="fas fa-times" /> Dismiss all suggestions
-                      </button>
-                    </div>
+                    />
                   </div>
                 </div>
 
@@ -883,38 +873,5 @@ onBeforeUnmount(() => {
     rgba(118, 75, 162, 0.75) 100%
   );
   color: white;
-}
-
-.variable-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.variable-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.item-toggle-button {
-  white-space: nowrap;
-  font-size: 0.8em;
-  color: #764ba2;
-  background: none;
-  border: none;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.item-toggle-button .toggle-text {
-  font-size: 0.85em;
-}
-
-.item-toggle-button:hover {
-  text-decoration: underline;
 }
 </style>

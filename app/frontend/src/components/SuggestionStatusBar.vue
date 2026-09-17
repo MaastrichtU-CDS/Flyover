@@ -19,6 +19,12 @@
 
 import { computed } from 'vue'
 
+const TIER_DESCRIPTIONS = {
+  1: 'regex and string matching (tier 1)',
+  2: 'transformer embeddings (tier 2)',
+  3: 'LLM suggestions (tier 3)',
+}
+
 const props = defineProps({
   phaseState: { type: Object, required: true },
   tiers: { type: Object, default: () => ({}) },
@@ -31,32 +37,29 @@ defineEmits(['clear-all'])
 const activeTiers = computed(() => {
   return Object.entries(props.tiers)
     .filter(([_, info]) => info?.state === 'active')
-    .map(([n]) => `tier ${n}`)
+    .map(([n]) => TIER_DESCRIPTIONS[n] || `tier ${n}`)
     .join(', ')
 })
 
 const inactiveTiers = computed(() => {
   const inactive = Object.entries(props.tiers)
     .filter(([_, info]) => info?.state === 'inactive')
-    .map(([n]) => `tier ${n}`)
+    .map(([n]) => TIER_DESCRIPTIONS[n] || `tier ${n}`)
     .join(', ')
   if (!inactive) return ''
-  const reasons = Object.entries(props.tiers)
-    .filter(([_, info]) => info?.state === 'inactive')
-    .map(([_, info]) => info?.reason)
-    .filter(Boolean)
-  const reason = reasons[0] || `tiers ${inactive} inactive`
-  return `${inactive} ${reason}`
+  return inactive
 })
 
 const tierNote = computed(() => {
   if (activeTiers.value && inactiveTiers.value) {
-    return `${activeTiers.value} active · ${inactiveTiers.value}`
+    return `${activeTiers.value} enabled · ${inactiveTiers.value} disabled — see FLYOVER_SUGGESTION_TIERS in docker-compose.yml`
   }
   if (activeTiers.value) {
-    return `${activeTiers.value} active`
+    return `${activeTiers.value} enabled`
   }
-  return inactiveTiers.value || 'all tiers inactive'
+  return inactiveTiers.value
+    ? `${inactiveTiers.value} disabled — see FLYOVER_SUGGESTION_TIERS in docker-compose.yml`
+    : 'all tiers inactive'
 })
 
 const progressText = computed(() => {
