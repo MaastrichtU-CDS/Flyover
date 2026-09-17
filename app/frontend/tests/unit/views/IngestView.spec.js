@@ -1036,6 +1036,28 @@ describe('IngestView — PK/FK', () => {
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
+  it('enables submit after dismissing all inferred FKs for a table', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    // Auto-suggest infers an FK on visits.csv — submit disabled
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    // Click "Dismiss all" button for that table
+    const dismissBtn = w.findAll('button').find((b) => b.text().includes('Dismiss all'))
+    expect(dismissBtn).toBeDefined()
+    await dismissBtn.trigger('click')
+    await flushPromises()
+    // FK fields cleared and submit enabled
+    expect(w.find('#fk_1').element.value).toBe('')
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('disables submit when FK is selected but referenced table has no PK', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()

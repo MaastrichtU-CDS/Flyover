@@ -457,6 +457,18 @@ function acceptAllFkForTable(tableIndex) {
   }
 }
 
+// Dismiss all unreviewed inferred FKs for a specific table — clear the
+// FK fields and mark as reviewed so the user can proceed.
+function dismissAllFkForTable(tableIndex) {
+  if (inferredFk[tableIndex]) {
+    fkSelections[tableIndex] = ''
+    fkTableSelections[tableIndex] = ''
+    fkColumnSelections[tableIndex] = ''
+    delete inferredFk[tableIndex]
+    reviewedFk[tableIndex] = true
+  }
+}
+
 // Check if a table has an unreviewed inferred FK.
 function hasUnreviewedFk(tableIndex) {
   return !!inferredFk[tableIndex]
@@ -960,14 +972,23 @@ onMounted(async () => {
                   @dismiss="dismissFkInference(index)"
                   @accept="acceptFkInference(index)"
                 />
+               <button
+                 v-if="hasUnreviewedFk(index)"
+                 type="button"
+                 class="btn btn-sm btn-light suggestion-section-button"
+                 title="Accept this inferred foreign key"
+                 @click.stop="acceptAllFkForTable(index)"
+               >
+                 <i class="fas fa-check-double" /> Accept all
+               </button>
                 <button
                   v-if="hasUnreviewedFk(index)"
                   type="button"
                   class="btn btn-sm btn-light suggestion-section-button"
-                  title="Accept this inferred foreign key"
-                  @click.stop="acceptAllFkForTable(index)"
+                  title="Dismiss this inferred foreign key and clear the fields"
+                  @click.stop="dismissAllFkForTable(index)"
                 >
-                  <i class="fas fa-check-double" /> Accept all
+                  <i class="fas fa-times" /> Dismiss all
                 </button>
               </h6>
             </div>
