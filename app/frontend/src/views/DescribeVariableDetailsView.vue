@@ -649,7 +649,7 @@ onBeforeUnmount(() => {
                       title="Dismiss all suggestions for this variable and clear the fields"
                       @click="dismissAllForVariable(dbEntry.name, variable)"
                     >
-                      <i class="fas fa-times" /> Dismiss all
+                      <i class="fas fa-times" /> Dismiss all suggestions
                     </button>
                     <button
                       type="button"

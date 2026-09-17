@@ -972,23 +972,23 @@ onMounted(async () => {
                   @dismiss="dismissFkInference(index)"
                   @accept="acceptFkInference(index)"
                 />
-               <button
-                 v-if="hasUnreviewedFk(index)"
-                 type="button"
-                 class="btn btn-sm btn-light suggestion-section-button"
-                 title="Accept this inferred foreign key"
-                 @click.stop="acceptAllFkForTable(index)"
-               >
-                 <i class="fas fa-check-double" /> Accept all
-               </button>
                 <button
                   v-if="hasUnreviewedFk(index)"
                   type="button"
                   class="btn btn-sm btn-light suggestion-section-button"
-                  title="Dismiss this inferred foreign key and clear the fields"
-                  @click.stop="dismissAllFkForTable(index)"
+                  title="Accept this inferred foreign key"
+                  @click.stop="acceptAllFkForTable(index)"
                 >
-                  <i class="fas fa-times" /> Dismiss all
+                  <i class="fas fa-check-double" /> Accept all
+                </button>
+                <button
+                  v-if="hasUnreviewedFk(index)"
+                  type="button"
+                  class="btn btn-sm btn-light suggestion-section-button"
+                 title="Dismiss this inferred foreign key and clear the fields"
+                 @click.stop="dismissAllFkForTable(index)"
+                >
+                  <i class="fas fa-times" /> Dismiss all suggestions
                 </button>
               </h6>
             </div>

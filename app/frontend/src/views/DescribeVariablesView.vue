@@ -625,7 +625,7 @@ onBeforeUnmount(() => {
             title="Dismiss all suggestions for this database and clear the fields"
             @click="dismissAllForDatabase(dbName)"
           >
-            <i class="fas fa-times" /> Dismiss all
+          <i class="fas fa-times" /> Dismiss all suggestions
           </button>
 
           <div
