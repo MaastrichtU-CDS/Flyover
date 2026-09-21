@@ -1,0 +1,114 @@
+{
+  "version": "1.0.0",
+  "description": "Value-type regexes and abbreviation table for tier-1 rule-based mapping suggestions. Not site-specific; nothing here is written into the schema.",
+  "missing_codes": ["", "999", "-1", "NA", "N/A", "onbekend", "unknown", "missing", "null"],
+  "value_regexes": [
+    {
+      "name": "yes_no",
+      "comment": "Boolean yes/no pairs across nl/en/fr/it/pl plus {0,1}.",
+      "value_sets": [
+        ["ja", "nee"],
+        ["yes", "no"],
+        ["oui", "non"],
+        ["si", "no"],
+        ["tak", "nie"],
+        ["0", "1"]
+      ],
+      "variable_predicates": ["yes_no", "boolean", "response"],
+      "term_predicates": ["yes", "no", "true", "false", "present", "absent"]
+    },
+    {
+      "name": "sex",
+      "comment": "Biological sex codes and labels.",
+      "value_sets": [
+        ["M", "F"],
+        ["M", "V"],
+        ["male", "female"],
+        ["man", "vrouw"],
+        ["uomo", "donna"]
+      ],
+      "variable_predicates": ["biological_sex", "sex"],
+      "term_predicates": ["male", "female", "man", "vrouw", "maschio", "donna"]
+    },
+    {
+      "name": "icd_o_topography",
+      "comment": "ICD-O topography codes, e.g. C50.9, M-8000/3.",
+      "patterns": ["^[CM]\\d{2}(\\.\\d)?$", "^\\d{4}/[0-3]$"],
+      "variable_predicates": ["tumour_topography_icd_o", "topography_icd_o"]
+    },
+    {
+      "name": "icd_o_morphology",
+      "comment": "ICD-O morphology codes, e.g. 8500/3.",
+      "patterns": ["^\\d{4}/[0-3]$"],
+      "variable_predicates": ["tumour_morphology_icd_o", "morphology_icd_o"]
+    },
+    {
+      "name": "tnm_t",
+      "comment": "TNM T-stage codes.",
+      "patterns": ["^[cp]?T[0-4][a-z]?$"],
+      "variable_predicates": ["tnm_tumour_stage", "tumour_stage_t"]
+    },
+    {
+      "name": "tnm_n",
+      "comment": "TNM N-stage codes.",
+      "patterns": ["^N[0-3][a-z]?$"],
+      "variable_predicates": ["tnm_lymph_node_stage", "tumour_stage_n"]
+    },
+    {
+      "name": "tnm_m",
+      "comment": "TNM M-stage codes.",
+      "patterns": ["^M[01][a-z]?$"],
+      "variable_predicates": ["tnm_metastasis_stage", "tumour_stage_m"]
+    },
+    {
+      "name": "year",
+      "comment": "4-digit years in 1900..current year. Abstains when more than one year_of_* variable exists.",
+      "patterns": ["^\\d{4}$"],
+      "variable_predicates_contains": ["year_of"],
+      "range": {"min": 1900, "max": "current"}
+    }
+  ],
+  "abbreviations": {
+    "jaar": "year",
+    "jaarlijks": "yearly",
+    "leeft": "age",
+    "leeftijd": "age",
+    "diag": "diagnosis",
+    "diagnose": "diagnosis",
+    "ther": "therapy",
+    "therapie": "therapy",
+    "rt": "radiotherapy",
+    "radiotherapie": "radiotherapy",
+    "chemo": "chemotherapy",
+    "chemotherapie": "chemotherapy",
+    "beh": "treatment",
+    "behandeling": "treatment",
+    "gesl": "sex",
+    "geslacht": "sex",
+    "pat": "patient",
+    "patient": "patient",
+    "id": "identifier",
+    "nr": "identifier",
+    "nummer": "identifier",
+    "rnnummer": "identifier",
+    "dat": "date",
+    "datum": "date",
+    "geb": "birth",
+    "geboorte": "birth",
+    "overl": "death",
+    "overlijden": "death",
+    "stad": "stage",
+    "stadium": "stage",
+    "loc": "location",
+    "lokatie": "location",
+    "ziek": "disease",
+    "ziekte": "disease",
+    "tum": "tumour",
+    "tumor": "tumour",
+    "morfol": "morphology",
+    "morphologie": "morphology",
+    "topo": "topography",
+    "topografie": "topography"
+  },
+  "stopwords": ["van", "de", "of", "the", "te", "en", "and", "der", "den", "het"]
+}
