@@ -321,8 +321,10 @@ watch(
       if (entry.status !== 'done' || !entry.display) continue
       if (suggestions.isDismissed(key)) continue
       if (suggestions.isTouched(key)) continue
-      if (suggestions.isApplied(key)) continue
-      // Don't overwrite a field the user already filled manually.
+      // Re-fill applied keys too: on a hard reload the in-memory form state
+      // is lost but the "applied" mark survives in IndexedDB, so restore the
+      // field from the suggestion. The existing-value guard below keeps user
+      // input safe and dedups repeated watch firings.
       const existing = formStateCache[key]?.description
       if (existing) continue
       // Keys are "${dbName}_${localColumn}" and dbName can itself contain
@@ -394,7 +396,7 @@ const submitTooltip = computed(() => {
   if (suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running'))
     return 'Waiting for mapping suggestions to arrive...'
   if (unreviewedFieldCount.value > 0)
-    return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+    return `${unreviewedFieldCount.value} ${unreviewedFieldCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
   return ''
 })
 
@@ -831,7 +833,7 @@ onBeforeUnmount(() => {
           class="submit-review-hint"
         >
           <i class="fas fa-exclamation-circle" />
-          {{ unreviewedFieldCount }} suggestion(s) need review
+          {{ unreviewedFieldCount }} {{ unreviewedFieldCount === 1 ? 'suggestion needs' : 'suggestions need' }} review
           <button
             type="button"
             class="btn btn-sm btn-link jump-to-unreviewed"

@@ -193,7 +193,7 @@ const submitButtonTitle = computed(() => {
     return 'Please select primary keys for all tables that are referenced by foreign keys'
   }
   if (unreviewedFkCount.value > 0) {
-    return `${unreviewedFkCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+    return `${unreviewedFkCount.value} ${unreviewedFkCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
   }
   return ''
 })
@@ -1288,7 +1288,7 @@ onMounted(async () => {
         class="submit-review-hint"
       >
         <i class="fas fa-exclamation-circle" />
-        {{ unreviewedFkCount }} suggestion(s) need review
+        {{ unreviewedFkCount }} {{ unreviewedFkCount === 1 ? 'suggestion needs' : 'suggestions need' }} review
         <button
           type="button"
           class="btn btn-sm btn-link jump-to-unreviewed"

@@ -324,7 +324,10 @@ watch(
           if (!entry || entry.status !== 'done' || !entry.display) continue
           if (suggestions.isDismissed(cat.key)) continue
           if (suggestions.isTouched(cat.key)) continue
-          if (suggestions.isApplied(cat.key)) continue
+          // Re-fill applied keys too: on a hard reload the in-memory
+          // categorySelections are lost but the "applied" mark survives in
+          // IndexedDB, so restore the field from the suggestion. The
+          // existing-value guard below keeps user input safe.
           if (categorySelections[cat.key]) continue
           const options = categoryOptionsFor(variable)
           if (!options.includes(entry.display)) continue
@@ -402,7 +405,7 @@ const submitTooltip = computed(() => {
   if (suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running'))
     return 'Waiting for mapping suggestions to arrive...'
   if (unreviewedFieldCount.value > 0)
-    return `${unreviewedFieldCount.value} suggestion(s) need review — click each highlighted badge to confirm or change the dropdown`
+    return `${unreviewedFieldCount.value} ${unreviewedFieldCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
   return ''
 })
 
@@ -785,7 +788,7 @@ onBeforeUnmount(() => {
           class="submit-review-hint"
         >
           <i class="fas fa-exclamation-circle" />
-          {{ unreviewedFieldCount }} suggestion(s) need review
+          {{ unreviewedFieldCount }} {{ unreviewedFieldCount === 1 ? 'suggestion needs' : 'suggestions need' }} review
           <button
             type="button"
             class="btn btn-sm btn-link jump-to-unreviewed"
