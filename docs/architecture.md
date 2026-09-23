@@ -121,14 +121,16 @@ Why not an agent protocol (ACP/MCP/A2A)? Those standardise agent↔client or age
 | `FLYOVER_LLM_PROVIDER` | `ollama` | `ollama` \| `openai` \| `anthropic`; unknown values disable the feature |
 | `FLYOVER_LLM_BASE_URL` | provider-dependent | Endpoint for ollama/openai. `FLYOVER_OLLAMA_HOST` remains a working alias |
 | `FLYOVER_LLM_API_KEY` | — | Credential for openai/anthropic (anthropic also honors `ANTHROPIC_API_KEY`) |
-| `FLYOVER_LLM_MODEL` | `llama3.2:3b` / `claude-opus-4-8` | Model per provider; **required** for openai |
-| `FLYOVER_LLM_FALLBACK_MODELS` | `llama3.2:1b` (ollama only) | Comma-separated pull fallbacks |
+| `FLYOVER_LLM_MODEL` | `qwen2.5:7b` / `claude-opus-4-8` | Model per provider; **required** for openai |
+| `FLYOVER_LLM_FALLBACK_MODELS` | `llama3.2:3b` (ollama only) | Comma-separated pull fallbacks |
 | `FLYOVER_LLM_ALLOW_REMOTE` | `false` | Consent gate: required for any remote provider |
 | `FLYOVER_LLM_REMOTE` | per provider | Explicit local/remote override (e.g. `false` for in-network vLLM) |
 | `FLYOVER_LLM_CHUNK_SIZE` | `8` | Columns per matching request (variables phase) |
 | `FLYOVER_LLM_TIMEOUT_S` | `180` | Read timeout per LLM request |
 
-Latency expectations: a chunk is ~4–8 s on a GPU (first form page filled in ≤ 15 s; 100 columns in 1–2 min) and ~25–60 s on CPU — nothing blocks either way, fields simply fill in as chunks land. The suggestion jobs live on the process-local `session_cache`, which is also why gunicorn runs a single gevent worker (see [`backend/entrypoint.sh`](../backend/entrypoint.sh)) and why worker recycling (`GUNICORN_MAX_REQUESTS`) defaults to off.
+Latency expectations for the default `qwen2.5:7b`: a chunk is ~8–15 s on a GPU (first form page filled in ≤ 30 s; 100 columns in 2–4 min) and ~60–100 s on CPU — nothing blocks either way, fields simply fill in as chunks land. `qwen2.5:7b` matches meaningfully more reliably than 3B-class models at this task (see below), so the slower CPU path is a deliberate quality/latency trade-off; drop to a 3B model via `FLYOVER_LLM_MODEL` if CPU-only latency matters more than accuracy. The suggestion jobs live on the process-local `session_cache`, which is also why gunicorn runs a single gevent worker (see [`backend/entrypoint.sh`](../backend/entrypoint.sh)) and why worker recycling (`GUNICORN_MAX_REQUESTS`) defaults to off.
+
+**Why small models struggle at this task.** Matching a CSV column name against a large (100+ item) flat list of semantic variable candidates is a set-membership *verification* task, not a lookup — the model must actually check every candidate, not just recall a fuzzy impression of the list. Smaller models frequently claim a candidate "isn't in the list" when it demonstrably is, rather than truly enumerating. Near-duplicate, numerically-suffixed candidates (`hads_q1`..`hads_q14`, `surv1`..`surv120`) compound this, since number tokenization doesn't preserve the numeric adjacency a human sees at a glance. Verbalized confidence scores from small models are also often poorly calibrated (a stylistic token rather than a real uncertainty estimate) — `qwen2.5:7b` differentiates confidence meaningfully in practice, which 3B-class models were observed not to do.
 
 ## What is `userRepo`?
 

@@ -60,9 +60,14 @@ docker compose -f docker-compose.yml -f docker-compose.llm.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.llm.yml -f docker-compose.llm-gpu.yml up -d
 ```
 
-The model (default `llama3.2:3b`) is pulled automatically on first boot and cached in a
+The model (default `qwen2.5:7b`) is pulled automatically on first boot and cached in a
 Docker volume. Suggestions appear progressively in the describe forms and never overwrite
 values you have entered yourself. Without the overlay, no AI features are shown.
+
+Matching CSV columns against a large semantic map candidate list is a genuinely hard task
+for small local models — `qwen2.5:7b` is noticeably more reliable than 3B-class models at
+this, at the cost of slower inference on CPU-only hosts. A GPU (see the `llm-gpu` overlay
+above) is recommended for interactive-feeling suggestion speed with a 7B model.
 
 Other backends are supported via `FLYOVER_LLM_PROVIDER`: any OpenAI-compatible server
 (vLLM, LM Studio, llama.cpp, OpenAI, Azure, Mistral, Groq, OpenRouter, …) or Anthropic

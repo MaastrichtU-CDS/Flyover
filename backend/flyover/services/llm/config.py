@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 KNOWN_PROVIDERS = ("ollama", "openai", "anthropic")
 
 _DEFAULT_MODELS = {
-    "ollama": "llama3.2:3b",
+    "ollama": "qwen2.5:7b",
     "anthropic": "claude-opus-4-8",
 }
 
@@ -85,8 +85,8 @@ class LLMConfig:
     provider: str = "ollama"
     base_url: str = "http://localhost:11434"
     api_key: str | None = None
-    model: str = "llama3.2:3b"
-    fallback_models: list[str] = field(default_factory=lambda: ["llama3.2:1b"])
+    model: str = "qwen2.5:7b"
+    fallback_models: list[str] = field(default_factory=lambda: ["llama3.2:3b"])
     chunk_size: int = 8
     request_timeout: float = 180.0
     allow_remote: bool = False
@@ -114,7 +114,7 @@ class LLMConfig:
         )
         enabled = _env_flag("FLYOVER_LLM_ENABLED", default=bool(any_llm_env))
 
-        fallbacks_default = "llama3.2:1b" if provider == "ollama" else ""
+        fallbacks_default = "llama3.2:3b" if provider == "ollama" else ""
         fallbacks = [
             m.strip()
             for m in os.getenv(

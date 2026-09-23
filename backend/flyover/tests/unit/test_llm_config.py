@@ -52,7 +52,7 @@ class TestDefaultsAndBackCompat(unittest.TestCase):
         self.assertFalse(config.enabled)
         self.assertEqual(config.provider, "ollama")
         self.assertEqual(config.base_url, "http://localhost:11434")
-        self.assertEqual(config.model, "llama3.2:3b")
+        self.assertEqual(config.model, "qwen2.5:7b")
         self.assertFalse(config.remote)
 
     def test_ollama_host_alias_enables_ollama_path(self):
@@ -60,7 +60,7 @@ class TestDefaultsAndBackCompat(unittest.TestCase):
         self.assertTrue(config.enabled)
         self.assertEqual(config.provider, "ollama")
         self.assertEqual(config.base_url, "http://ollama:11434")
-        self.assertEqual(config.fallback_models, ["llama3.2:1b"])
+        self.assertEqual(config.fallback_models, ["llama3.2:3b"])
 
     def test_base_url_takes_precedence_over_ollama_host(self):
         config = _from_env(

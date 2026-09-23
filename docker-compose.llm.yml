@@ -21,8 +21,8 @@ services:
       - FLYOVER_LLM_ENABLED=true
       - FLYOVER_OLLAMA_HOST=http://ollama:11434
       # Optional overrides (defaults shown):
-      # - FLYOVER_LLM_MODEL=llama3.2:3b
-      # - FLYOVER_LLM_FALLBACK_MODELS=llama3.2:1b
+      # - FLYOVER_LLM_MODEL=qwen2.5:7b
+      # - FLYOVER_LLM_FALLBACK_MODELS=llama3.2:3b
       # - FLYOVER_LLM_CHUNK_SIZE=8
       # - FLYOVER_LLM_TIMEOUT_S=180
 
