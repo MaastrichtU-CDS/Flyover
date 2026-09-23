@@ -45,8 +45,12 @@ class SuggestionJob:
         pending: Ordered chunk descriptors still to process. Reordering this
             list is the priority mechanism.
         results: Suggestion entries by database (shape depends on phase).
-        used_matches: Per-database matches already handed out, for
-            cross-chunk first-wins deduplication in the variables phase.
+        used_matches: Per-database ``{variable_key: (column, confidence)}``
+            of matches currently handed out, for cross-chunk deduplication in
+            the variables phase. A later chunk with strictly higher
+            confidence for the same variable evicts the current holder
+            (whose result is rewritten to a null match) rather than losing
+            to whichever chunk merely happened to run first.
         blueprints: Per (database, column) chunk templates used to rebuild
             single-item chunks for retries.
     """
@@ -61,7 +65,7 @@ class SuggestionJob:
         self.chunks_total = 0
         self.chunks_done = 0
         self.error: dict | None = None
-        self.used_matches: dict[str, set] = {}
+        self.used_matches: dict[str, dict[str, tuple[str, float]]] = {}
         self.blueprints: dict[tuple[str, str], dict] = {}
         self.model_in_use: str | None = None
         self.worker = None
@@ -486,7 +490,9 @@ class LLMSuggestionService:
         if phase == VARIABLES_PHASE:
             held = entry.get("variable_key")
             if held:
-                job.used_matches.get(database, set()).discard(held)
+                db_used = job.used_matches.get(database, {})
+                if db_used.get(held, (None, None))[0] == column:
+                    del db_used[held]
             job.results[database][column] = {"status": "pending"}
         else:
             entry["status"] = "pending"
@@ -546,21 +552,35 @@ class LLMSuggestionService:
         """Write one chunk's sanitised pairs into the job results."""
         database = chunk["database"]
         if job.phase == VARIABLES_PHASE:
-            used = job.used_matches.setdefault(database, set())
+            used = job.used_matches.setdefault(database, {})
             for pair in pairs:
+                item = pair["item"]
                 match = pair["match"]
                 reason = pair["reason"]
                 confidence = pair["confidence"]
-                if match is not None and match in used:
-                    reason = (
-                        f"{reason} | Note: candidate already suggested for "
-                        "another column."
-                    ).strip()
-                    match = None
-                    confidence = 0.0
-                elif match is not None:
-                    used.add(match)
-                job.results[database][pair["item"]] = {
+                if match is not None:
+                    holder = used.get(match)
+                    if holder is not None and holder[1] >= confidence:
+                        reason = (
+                            f"{reason} | Note: candidate already suggested for "
+                            "another column with equal or higher confidence."
+                        ).strip()
+                        match = None
+                        confidence = 0.0
+                    else:
+                        if holder is not None:
+                            evicted_item, _ = holder
+                            job.results[database][evicted_item] = {
+                                "status": "done",
+                                "variable_key": None,
+                                "confidence": 0.0,
+                                "reason": (
+                                    f"'{item}' matched this variable with higher "
+                                    "confidence, so this suggestion was withdrawn."
+                                ),
+                            }
+                        used[match] = (item, confidence)
+                job.results[database][item] = {
                     "status": "done",
                     "variable_key": match,
                     "confidence": confidence,

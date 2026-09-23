@@ -93,6 +93,52 @@ class TestParseAndSanitise(unittest.TestCase):
         self.assertEqual(result[1]["confidence"], 1.0)
         self.assertIsNone(result[2]["match"])
 
+    def test_duplicate_matches_resolved_by_confidence_not_order(self):
+        # "sexe" appears first but is the weaker claim — the higher-confidence
+        # "sex" claim must win regardless of output order.
+        pairs = [
+            {"a": "sexe", "match": "biological_sex", "confidence": 0.4, "reason": "r"},
+            {"a": "sex", "match": "biological_sex", "confidence": 0.95, "reason": "r"},
+        ]
+        result = sanitise_pairs(pairs, ["sex", "sexe"], ["biological_sex"])
+        by_item = {r["item"]: r for r in result}
+        self.assertEqual(by_item["sex"]["match"], "biological_sex")
+        self.assertIsNone(by_item["sexe"]["match"])
+
+    def test_duplicate_matches_tie_keeps_first_seen(self):
+        pairs = [
+            {"a": "sexe", "match": "biological_sex", "confidence": 0.8, "reason": "r"},
+            {"a": "sex", "match": "biological_sex", "confidence": 0.8, "reason": "r"},
+        ]
+        result = sanitise_pairs(pairs, ["sex", "sexe"], ["biological_sex"])
+        by_item = {r["item"]: r for r in result}
+        self.assertEqual(by_item["sexe"]["match"], "biological_sex")
+        self.assertIsNone(by_item["sex"]["match"])
+
+    def test_model_reported_no_match_carries_zero_confidence(self):
+        # The prompt asks the model to abstain when unsure, so it returns
+        # null matches with a confidence of its own. That number described
+        # the *absence* of a mapping and reached the UI badge as e.g. "50%"
+        # next to an empty description field.
+        pairs = [
+            {"a": "Age_diag", "match": None, "confidence": 0.5, "reason": "unsure"},
+        ]
+        result = sanitise_pairs(pairs, ["Age_diag"], ["age_at_diagnosis"])
+        self.assertIsNone(result[0]["match"])
+        self.assertEqual(result[0]["confidence"], 0.0)
+        self.assertEqual(result[0]["reason"], "unsure")
+
+    def test_deduplicated_loser_carries_zero_confidence(self):
+        pairs = [
+            {"a": "sex", "match": "biological_sex", "confidence": 0.95, "reason": "r"},
+            {"a": "sexe", "match": "biological_sex", "confidence": 0.4, "reason": "r"},
+        ]
+        result = sanitise_pairs(pairs, ["sex", "sexe"], ["biological_sex"])
+        by_item = {r["item"]: r for r in result}
+        self.assertIsNone(by_item["sexe"]["match"])
+        self.assertEqual(by_item["sexe"]["confidence"], 0.0)
+        self.assertEqual(by_item["sex"]["confidence"], 0.95)
+
 
 if __name__ == "__main__":
     unittest.main()

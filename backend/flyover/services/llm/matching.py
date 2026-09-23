@@ -44,12 +44,15 @@ Rules:
 - Consider synonyms, abbreviations, pluralization, and domain-specific naming.
 - Only match items that refer to the same real-world concept.
 - IMPORTANT: If you find a match, set "match" to the EXACT string from list_b (character-for-character).
-- If there is no equivalent in list_b for an item in list_a, set "match" to null and briefly explain why in "reason".
+- If there is no equivalent in list_b for an item in list_a, or you are not genuinely
+  confident it is the same real-world concept, set "match" to null and briefly explain
+  why in "reason". A confident "no match" is far more useful than a guess.
 - If multiple items in list_b could match, choose the single best one and explain briefly in "reason".
+- Set "confidence" honestly: high only when you are sure, low when you are guessing.
 - The "item" field in the output MUST correspond exactly to the items in list_a.
 - For every item, "reason" MUST be a non-empty natural-language explanation (at least one sentence) of why you chose that match, or why no match exists.
 - Return ONLY JSON according to the provided schema. Do not include any text outside JSON.
-- CRITICAL: For every matched item, "match" MUST be an exact element of list_b. Do NOT leave "match" as null if a match exist.
+- CRITICAL: For every matched item, "match" MUST be an exact element of list_b.
 """
 
 
@@ -81,20 +84,28 @@ def sanitise_pairs(pairs: list[dict], list_a: list[str], list_b: list[str]) -> l
 
     Confidences are clamped to [0, 1], matches not literally present in
     list_b are nulled (hallucination guard), pairs for unknown list_a items
-    are dropped, duplicate matches within the call are nulled (first wins),
-    and items the model omitted are returned with a null match.
+    are dropped, and items the model omitted are returned with a null match.
+
+    A null match always carries confidence 0.0, including when the model
+    itself reported no match with a confidence of its own. Confidence
+    describes how sure the model is *about a mapping*; attaching one to the
+    absence of a mapping gives the UI a number it cannot render meaningfully.
+
+    When two items in this call claim the same list_b target, the
+    higher-confidence claim wins (ties keep whichever was seen first) —
+    conflicts are resolved by how sure the model was, not by output order.
 
     Returns:
         One dict per list_a item, in list_a order:
         ``{"item", "match", "confidence", "reason"}``.
     """
     valid_targets = set(list_b)
+    valid_items = set(list_a)
     by_item: dict[str, dict] = {}
-    used_matches: set[str] = set()
 
     for pair in pairs:
         item = pair["a"]
-        if item not in set(list_a) or item in by_item:
+        if item not in valid_items or item in by_item:
             continue
 
         match = pair["match"]
@@ -111,15 +122,9 @@ def sanitise_pairs(pairs: list[dict], list_a: list[str], list_b: list[str]) -> l
                 "a valid target."
             ).strip()
             match = None
-            confidence = 0.0
 
-        if match is not None and match in used_matches:
-            reason = (
-                f"{reason} | Note: candidate already matched to another item."
-            ).strip()
-            match = None
-        elif match is not None:
-            used_matches.add(match)
+        if match is None:
+            confidence = 0.0
 
         by_item[item] = {
             "item": item,
@@ -127,6 +132,22 @@ def sanitise_pairs(pairs: list[dict], list_a: list[str], list_b: list[str]) -> l
             "confidence": confidence,
             "reason": reason,
         }
+
+    used_matches: dict[str, str] = {}
+    for item in sorted(by_item, key=lambda i: by_item[i]["confidence"], reverse=True):
+        entry = by_item[item]
+        match = entry["match"]
+        if match is None:
+            continue
+        if match in used_matches:
+            entry["reason"] = (
+                f"{entry['reason']} | Note: candidate already matched to "
+                "another item."
+            ).strip()
+            entry["match"] = None
+            entry["confidence"] = 0.0
+        else:
+            used_matches[match] = item
 
     return [
         by_item.get(

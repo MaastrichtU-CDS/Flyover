@@ -247,7 +247,7 @@ class TestStartVariableJob(unittest.TestCase):
         self.assertEqual(state["suggestions"]["db"]["a"]["variable_key"], "v1")
         self.assertIsNone(state["suggestions"]["db"]["b"]["variable_key"])
 
-    def test_cross_chunk_dedup_first_wins(self):
+    def test_cross_chunk_dedup_first_wins_on_tie(self):
         client = FakeClient(_match_all_to("v1"))
         service = _service(client, chunk_size=1)
         cache = _cache(FakeMapping(["v1", "v2"]))
@@ -257,6 +257,30 @@ class TestStartVariableJob(unittest.TestCase):
         self.assertEqual(suggestions["a"]["variable_key"], "v1")
         self.assertIsNone(suggestions["b"]["variable_key"])
         self.assertIn("already suggested", suggestions["b"]["reason"])
+
+    def test_cross_chunk_dedup_prefers_higher_confidence(self):
+        # "a" is processed first (weak, forced guess) and claims "v1"; "b" is
+        # processed later with a much stronger claim on the same variable.
+        # The later, better claim must evict the earlier weak one instead of
+        # losing to it just because it ran first.
+        def matcher(items, candidates):
+            confidence = 0.3 if items == ["a"] else 0.95
+            return [
+                {"item": i, "match": "v1", "confidence": confidence, "reason": "r"}
+                for i in items
+            ]
+
+        client = FakeClient(matcher)
+        service = _service(client, chunk_size=1)
+        cache = _cache(FakeMapping(["v1", "v2"]))
+        service.start_variable_job(cache, _rdf({"db": ["a", "b"]}))
+
+        suggestions = service.get_state(cache, VARIABLES_PHASE)["suggestions"]["db"]
+        self.assertIsNone(suggestions["a"]["variable_key"])
+        self.assertIn("withdrawn", suggestions["a"]["reason"])
+        self.assertEqual(suggestions["b"]["variable_key"], "v1")
+        job = cache.llm_jobs[VARIABLES_PHASE]
+        self.assertEqual(job.used_matches["db"]["v1"], ("b", 0.95))
 
     def test_fingerprint_idempotency_and_force(self):
         client = FakeClient(_match_by({}))
