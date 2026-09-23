@@ -264,6 +264,15 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     _persistMarks()
   }
 
+  // Withdraws a previously-applied-but-unreviewed suggestion without
+  // dismissing it, so a fresh suggestion for the same key can still be
+  // applied later (unlike dismiss, which is permanent).
+  function retract(key) {
+    delete applied[key]
+    delete touched[key]
+    _persistMarks()
+  }
+
   function isApplied(key) {
     return !!applied[key]
   }
@@ -312,6 +321,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     markApplied,
     markUserTouched,
     dismiss,
+    retract,
     isApplied,
     isTouched,
     isDismissed,

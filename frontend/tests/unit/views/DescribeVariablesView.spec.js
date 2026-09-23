@@ -27,6 +27,7 @@ vi.mock('@/lib/jsonld', () => ({
 }))
 
 import api from '@/services/api'
+import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import DescribeVariablesView from '@/views/DescribeVariablesView.vue'
 import SearchableSelect from '@/components/SearchableSelect.vue'
@@ -114,6 +115,8 @@ describe('DescribeVariablesView — IndexedDB sync on form changes', () => {
     setActivePinia(pinia)
     api.get.mockReset()
     api.post.mockReset()
+    db.getData.mockReset()
+    db.getData.mockResolvedValue(null)
     jsonld.computePreselectionsForDatabases.mockReset()
     jsonld.updateMappingFromForm.mockReset()
     jsonld.computePreselectionsForDatabases.mockReturnValue({
@@ -344,6 +347,123 @@ describe('DescribeVariablesView — LLM suggestion merging', () => {
 
     expect(w.find('.llm-badge').classes()).toContain('confirmed')
     expect(w.find('.llm-badge').text()).toContain('reviewed')
+  })
+
+  it('shows a pending indicator for a column still waiting on the AI', async () => {
+    wireApi({
+      status: 'running',
+      suggestions: { patients: { age: { status: 'pending' } } },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.llm-pending').exists()).toBe(true)
+    expect(w.find('.llm-badge').exists()).toBe(false)
+    expect(w.find('.llm-no-match').exists()).toBe(false)
+  })
+
+  it('shows a no-suggestion indicator once the AI checked and found nothing', async () => {
+    wireApi({
+      suggestions: {
+        patients: {
+          age: { status: 'done', variable_key: null, confidence: 0, reason: 'no match' },
+        },
+      },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.llm-no-match').exists()).toBe(true)
+    expect(w.find('.llm-pending').exists()).toBe(false)
+    expect(w.find('.llm-badge').exists()).toBe(false)
+  })
+
+  it('accepting a suggestion marks it reviewed without changing its value', async () => {
+    wireApi({ suggestions: AGE_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Age')
+
+    await w.find('.llm-accept').trigger('click')
+
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Age')
+    expect(w.find('.llm-badge').classes()).toContain('confirmed')
+    expect(w.find('.llm-badge').text()).toContain('reviewed')
+  })
+
+  it('retracts an unreviewed suggestion that gets displaced by a better match elsewhere', async () => {
+    wireApi({ suggestions: AGE_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Age')
+
+    const { useSuggestionsStore } = await import('@/stores/suggestions.js')
+    const store = useSuggestionsStore()
+    store.variables.byKey['patients_age'] = {
+      status: 'done',
+      database: 'patients',
+      column: 'age',
+      variableKey: null,
+      display: null,
+      confidence: 0,
+      reason: "'sex' matched this variable with higher confidence, so this suggestion was withdrawn.",
+    }
+    await flushPromises()
+
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('')
+    expect(w.find('.llm-badge').exists()).toBe(false)
+    expect(store.isApplied('patients_age')).toBe(false)
+  })
+
+  // The applied marks are persisted in IndexedDB but formStateCache is
+  // component-local and starts empty on every mount, so a restored mark used
+  // to render a confidence badge over a description that was never filled in.
+  function restoreMarks(applied) {
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'llm_suggestion_marks'
+        ? { applied, touched: [], dismissed: [] }
+        : null
+    )
+  }
+
+  it('drops a restored applied mark when the suggestion came back as no match', async () => {
+    restoreMarks(['patients_age'])
+    wireApi({
+      suggestions: {
+        patients: {
+          age: { status: 'done', variable_key: null, confidence: 0.5, reason: 'unsure' },
+        },
+      },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    const { useSuggestionsStore } = await import('@/stores/suggestions.js')
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('')
+    expect(w.find('.llm-badge').exists()).toBe(false)
+    expect(useSuggestionsStore().isApplied('patients_age')).toBe(false)
+    expect(w.find('.llm-no-match').exists()).toBe(true)
+  })
+
+  it('drops a restored applied mark when the suggested description is taken by another column', async () => {
+    restoreMarks(['patients_sex'])
+    wireApi({
+      suggestions: {
+        patients: {
+          age: { status: 'done', variable_key: 'age', confidence: 0.9, reason: 'r' },
+          sex: { status: 'done', variable_key: 'age', confidence: 0.5, reason: 'r' },
+        },
+      },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    const { useSuggestionsStore } = await import('@/stores/suggestions.js')
+    // 'age' wins the description; 'sex' cannot have it and must not keep a badge.
+    expect(descValue(w, 'ncit_comment_patients_age')).toBe('Age')
+    expect(descValue(w, 'ncit_comment_patients_sex')).toBe('')
+    expect(useSuggestionsStore().isApplied('patients_sex')).toBe(false)
+    expect(w.findAll('.llm-badge')).toHaveLength(1)
   })
 
   it('submit asks for confirmation while unreviewed AI fields exist', async () => {

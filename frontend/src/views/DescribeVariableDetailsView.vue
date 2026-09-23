@@ -229,7 +229,23 @@ function applyArrivedSuggestions() {
       if (variable.type !== 'categorical') continue
       for (const cat of variable.categories) {
         const entry = suggestions.values.byKey[cat.key]
-        if (!entry || entry.status !== 'done' || !entry.display) continue
+        if (!entry || entry.status !== 'done') continue
+
+        // Applied marks are restored from IndexedDB but categorySelections is
+        // component-local, so a mark can outlive the selection it describes
+        // (or the suggestion behind it can come back as "no match"). Drop the
+        // mark rather than render a confidence badge over an empty select.
+        // Nothing is blanked here: this only fires when the selection already
+        // differs from what is being suggested.
+        if (
+          suggestions.isApplied(cat.key) &&
+          !suggestions.isTouched(cat.key) &&
+          (categorySelections[cat.key] || '') !== entry.display
+        ) {
+          suggestions.retract(cat.key)
+        }
+
+        if (!entry.display) continue
         if (categorySelections[cat.key]) continue
         if (suggestions.isDismissed(cat.key)) continue
         if (!variable.categoryOptions.includes(entry.display)) continue
@@ -243,6 +259,10 @@ function dismissSuggestion(database, variable, cat) {
   suggestions.dismiss(cat.key)
   categorySelections[cat.key] = ''
   onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+}
+
+function acceptSuggestion(cat) {
+  suggestions.markUserTouched(cat.key)
 }
 
 function suggestionFor(key) {
@@ -611,6 +631,14 @@ onBeforeUnmount(() => {
                             {{ Math.round((suggestionFor(cat.key)?.confidence || 0) * 100) }}%
                             <button
                               type="button"
+                              class="llm-accept"
+                              title="Accept this AI suggestion as correct"
+                              @click="acceptSuggestion(cat)"
+                            >
+                              <i class="fas fa-check" />
+                            </button>
+                            <button
+                              type="button"
                               class="llm-dismiss"
                               title="Dismiss this AI suggestion"
                               @click="dismissSuggestion(dbEntry.name, variable, cat)"
@@ -618,6 +646,27 @@ onBeforeUnmount(() => {
                               &times;
                             </button>
                           </template>
+                        </span>
+                        <span
+                          v-else-if="
+                            suggestionsActive &&
+                              suggestionFor(cat.key)?.status !== 'done'
+                          "
+                          class="llm-pending"
+                          title="AI suggestion in progress"
+                        >
+                          <i class="fas fa-spinner fa-spin" />
+                        </span>
+                        <span
+                          v-else-if="
+                            suggestionFor(cat.key)?.status === 'done' &&
+                              !suggestionFor(cat.key)?.display &&
+                              !suggestions.isDismissed(cat.key)
+                          "
+                          class="llm-no-match"
+                          title="The AI found no confident match for this value"
+                        >
+                          <i class="fas fa-robot" /> no suggestion
                         </span>
                       </div>
                       <div class="category-controls">
@@ -781,6 +830,16 @@ onBeforeUnmount(() => {
   color: rgb(30, 110, 60);
 }
 
+.llm-accept {
+  border: none;
+  background: none;
+  padding: 0 0.1rem;
+  line-height: 1;
+  font-size: 0.9em;
+  color: rgb(30, 110, 60);
+  cursor: pointer;
+}
+
 .llm-dismiss {
   border: none;
   background: none;
@@ -799,6 +858,25 @@ onBeforeUnmount(() => {
   color: rgb(90, 60, 130);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.llm-pending {
+  margin-left: 0.5rem;
+  font-size: 0.85em;
+  color: rgba(118, 75, 162, 0.7);
+}
+
+.llm-no-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  background: rgba(0, 0, 0, 0.04);
+  color: #888;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
 }
 
 .llm-suggested :deep(.searchable-select-input) {

@@ -170,8 +170,37 @@ function suggestionFor(dbName, item) {
 function applyArrivedSuggestions() {
   let appliedAny = false
   for (const entry of Object.values(suggestions.variables.byKey)) {
-    if (entry.status !== 'done' || !entry.display) continue
+    if (entry.status !== 'done') continue
     const key = `${entry.database}_${entry.column}`
+
+    // A later, higher-confidence match for another column can withdraw this
+    // one server-side (see suggestion_service.py's cross-chunk resolution).
+    // If that suggestion was auto-filled but never reviewed, retract it here
+    // too instead of leaving a now-unsuggested value silently in the form.
+    //
+    // The comparison reads the field's effective value rather than the form
+    // cache, because the cache is component-local and starts empty on every
+    // mount while the applied marks are restored from IndexedDB. Keying off
+    // the cache alone left a restored mark stranded on an empty field — the
+    // badge rendered a confidence for a description that was never filled in.
+    const heldDescription = getDescriptionValue(entry.database, entry.column)
+    if (
+      suggestions.isApplied(key) &&
+      !suggestions.isTouched(key) &&
+      heldDescription !== entry.display
+    ) {
+      // Only blank what this session auto-filled; a value that lives solely in
+      // preselectedDescriptions came from the user's own mapping, so the stale
+      // mark is dropped without touching it.
+      if (formStateCache[key]?.description) {
+        formStateCache[key].description = ''
+        autoPopulateDatatype(entry.database, entry.column)
+      }
+      suggestions.retract(key)
+      appliedAny = true
+    }
+
+    if (!entry.display) continue
     if (formStateCache[key]?.description) continue
     if (preselectedDescriptions.value[key]) continue
     if (suggestions.isDismissed(key)) continue
@@ -185,6 +214,10 @@ function applyArrivedSuggestions() {
     appliedAny = true
   }
   if (appliedAny) syncToIndexedDB()
+}
+
+function acceptSuggestion(dbName, item) {
+  suggestions.markUserTouched(`${dbName}_${item}`)
 }
 
 function dismissSuggestion(dbName, item) {
@@ -559,6 +592,14 @@ onBeforeUnmount(() => {
                       {{ Math.round((suggestionFor(dbName, item)?.confidence || 0) * 100) }}%
                       <button
                         type="button"
+                        class="llm-accept"
+                        title="Accept this AI suggestion as correct"
+                        @click="acceptSuggestion(dbName, item)"
+                      >
+                        <i class="fas fa-check" />
+                      </button>
+                      <button
+                        type="button"
                         class="llm-dismiss"
                         title="Dismiss this AI suggestion"
                         @click="dismissSuggestion(dbName, item)"
@@ -576,6 +617,27 @@ onBeforeUnmount(() => {
                   >
                     <i class="fas fa-rotate-right" /> retry AI
                   </button>
+                  <span
+                    v-else-if="
+                      suggestionsActive &&
+                        suggestionFor(dbName, item)?.status !== 'done'
+                    "
+                    class="llm-pending"
+                    title="AI suggestion in progress"
+                  >
+                    <i class="fas fa-spinner fa-spin" />
+                  </span>
+                  <span
+                    v-else-if="
+                      suggestionFor(dbName, item)?.status === 'done' &&
+                        !suggestionFor(dbName, item)?.display &&
+                        !suggestions.isDismissed(`${dbName}_${item}`)
+                    "
+                    class="llm-no-match"
+                    title="The AI found no confident match for this column"
+                  >
+                    <i class="fas fa-robot" /> no suggestion
+                  </span>
                 </div>
                 <div class="variable-controls">
                   <SearchableSelect
@@ -826,6 +888,16 @@ onBeforeUnmount(() => {
   color: rgb(30, 110, 60);
 }
 
+.llm-accept {
+  border: none;
+  background: none;
+  padding: 0 0.1rem;
+  line-height: 1;
+  font-size: 0.9em;
+  color: rgb(30, 110, 60);
+  cursor: pointer;
+}
+
 .llm-dismiss {
   border: none;
   background: none;
@@ -845,6 +917,25 @@ onBeforeUnmount(() => {
   color: rgb(90, 60, 130);
   text-decoration: underline;
   cursor: pointer;
+}
+
+.llm-pending {
+  margin-left: 0.5rem;
+  font-size: 0.85em;
+  color: rgba(118, 75, 162, 0.7);
+}
+
+.llm-no-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  background: rgba(0, 0, 0, 0.04);
+  color: #888;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
 }
 
 .llm-suggested :deep(.searchable-select-input) {

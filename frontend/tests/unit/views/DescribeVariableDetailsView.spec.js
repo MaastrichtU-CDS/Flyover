@@ -214,6 +214,35 @@ describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging'
     expect(args.slice(0, 5)).toEqual(['patients', 'sex', 'sex', 'M', 'Male'])
   })
 
+  it('drops a restored applied mark when the suggestion came back as no match', async () => {
+    // Applied marks are restored from IndexedDB but categorySelections is
+    // component-local, so a restored mark used to render a confidence badge
+    // over an empty select.
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'llm_suggestion_marks'
+        ? { applied: ['patients_sex_M'], touched: [], dismissed: [] }
+        : null
+    )
+    wireApi({
+      suggestions: {
+        patients: {
+          sex: {
+            status: 'done',
+            variable_key: 'biological_sex',
+            values: { M: { term_key: null, confidence: 0.0, reason: 'no confident match' } },
+          },
+        },
+      },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    const { useSuggestionsStore } = await import('@/stores/suggestions.js')
+    expect(findCategorySelect(w, 'patients_sex_category_"M"').props('modelValue')).toBe('')
+    expect(w.find('.llm-badge').exists()).toBe(false)
+    expect(useSuggestionsStore().isApplied('patients_sex_M')).toBe(false)
+  })
+
   it('does not overwrite a mapping the JSON-LD already preseeds', async () => {
     jsonld.getLocalMappingsForVariable.mockReturnValue({ female: ['M'] })
     wireApi({ suggestions: SEX_SUGGESTION })
@@ -249,6 +278,49 @@ describe('Frontend unit: DescribeVariableDetailsView — LLM suggestion merging'
     await useSuggestionsStore().refresh('values')
     await flushPromises()
     expect(findCategorySelect(w, 'patients_sex_category_"M"').props('modelValue')).toBe('')
+  })
+
+  it('shows a pending indicator for a value still waiting on the AI', async () => {
+    wireApi({ status: 'running', suggestions: {} })
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.llm-pending').exists()).toBe(true)
+    expect(w.find('.llm-badge').exists()).toBe(false)
+    expect(w.find('.llm-no-match').exists()).toBe(false)
+  })
+
+  it('shows a no-suggestion indicator once the AI checked and found nothing', async () => {
+    wireApi({
+      suggestions: {
+        patients: {
+          sex: {
+            status: 'done',
+            variable_key: 'biological_sex',
+            values: { M: { term_key: null, confidence: 0, reason: 'no match' } },
+          },
+        },
+      },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.llm-no-match').exists()).toBe(true)
+    expect(w.find('.llm-pending').exists()).toBe(false)
+    expect(w.find('.llm-badge').exists()).toBe(false)
+  })
+
+  it('accepting a suggestion marks it reviewed without changing its value', async () => {
+    wireApi({ suggestions: SEX_SUGGESTION })
+    const w = mountView()
+    await flushPromises()
+    expect(findCategorySelect(w, 'patients_sex_category_"M"').props('modelValue')).toBe('Male')
+
+    await w.find('.llm-accept').trigger('click')
+
+    expect(findCategorySelect(w, 'patients_sex_category_"M"').props('modelValue')).toBe('Male')
+    expect(w.find('.llm-badge').classes()).toContain('confirmed')
+    expect(w.find('.llm-badge').text()).toContain('reviewed')
   })
 
   it('renders zero LLM UI when the feature is disabled', async () => {

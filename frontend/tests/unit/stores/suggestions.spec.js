@@ -273,4 +273,26 @@ describe('Frontend unit: useSuggestionsStore', () => {
     s.markUserTouched('db1_x')
     expect(s.isTouched('db1_x')).toBe(false)
   })
+
+  it('markUserTouched lets the user accept a suggestion as correct', () => {
+    const s = useSuggestionsStore()
+    s.markApplied('db1_a')
+    s.markUserTouched('db1_a')
+    expect(s.isTouched('db1_a')).toBe(true)
+    expect(s.isApplied('db1_a')).toBe(true)
+  })
+
+  it('retract clears applied/touched but leaves the key open to reapply', () => {
+    const s = useSuggestionsStore()
+    s.markApplied('db1_a')
+    s.markUserTouched('db1_a')
+
+    s.retract('db1_a')
+    expect(s.isApplied('db1_a')).toBe(false)
+    expect(s.isTouched('db1_a')).toBe(false)
+    expect(s.isDismissed('db1_a')).toBe(false)
+
+    s.markApplied('db1_a')
+    expect(s.isApplied('db1_a')).toBe(true)
+  })
 })
