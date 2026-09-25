@@ -653,7 +653,11 @@ class StringMatcher:
                     {
                         "item": item,
                         "match": None,
-                        "confidence": round(top1, 4),
+                        # Abstains always carry confidence 0 so they never
+                        # beat a real match in the cascade merge and always
+                        # escalate to the next tier; the raw scores live in
+                        # the reason text.
+                        "confidence": 0.0,
                         "reason": (
                             f"Top candidates too close (top1={top1:.3f}, "
                             f"top2={top2:.3f}, margin={margin}); abstaining."

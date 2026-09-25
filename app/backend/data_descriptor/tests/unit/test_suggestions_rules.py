@@ -367,6 +367,9 @@ class TestStringMatcher(unittest.TestCase):
             ctx,
         )
         self.assertIsNone(out[0]["match"])
+        # Abstains carry confidence 0 (raw scores in the reason) so they
+        # never beat a real match in the merge and always escalate.
+        self.assertEqual(out[0]["confidence"], 0.0)
         self.assertIn("margin", out[0]["reason"])
 
     def test_alg_v7_abstains(self):
@@ -396,6 +399,7 @@ class TestStringMatcher(unittest.TestCase):
             ctx,
         )
         self.assertIsNone(out[0]["match"])
+        self.assertEqual(out[0]["confidence"], 0.0)
 
     def test_empty_label_abstains(self):
         ctx = SuggestionContext(
