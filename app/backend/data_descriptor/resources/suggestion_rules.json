@@ -1,18 +1,18 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Value-type regexes and abbreviation table for tier-1 rule-based mapping suggestions. Not site-specific; nothing here is written into the schema.",
   "missing_codes": ["", "999", "-1", "NA", "N/A", "onbekend", "unknown", "missing", "null"],
   "value_regexes": [
     {
       "name": "yes_no",
-      "comment": "Boolean yes/no pairs across nl/en/fr/it/pl plus {0,1}.",
+      "comment": "Boolean yes/no pairs across nl/en/fr/it/pl. Sets are positional (first element = yes); {1, 0} maps 1=yes, 0=no, the near-universal coding convention.",
       "value_sets": [
         ["ja", "nee"],
         ["yes", "no"],
         ["oui", "non"],
         ["si", "no"],
         ["tak", "nie"],
-        ["0", "1"]
+        ["1", "0"]
       ],
       "variable_predicates": ["yes_no", "boolean", "response"],
       "term_predicates": ["yes", "no", "true", "false", "present", "absent"]
@@ -32,8 +32,8 @@
     },
     {
       "name": "icd_o_topography",
-      "comment": "ICD-O topography codes, e.g. C50.9, M-8000/3.",
-      "patterns": ["^[CM]\\d{2}(\\.\\d)?$", "^\\d{4}/[0-3]$"],
+      "comment": "ICD-O topography codes, e.g. C50.9. Morphology codes (8500/3) belong to icd_o_morphology and must not match here.",
+      "patterns": ["^[CM]\\d{2}(\\.\\d)?$"],
       "variable_predicates": ["tumour_topography_icd_o", "topography_icd_o"]
     },
     {

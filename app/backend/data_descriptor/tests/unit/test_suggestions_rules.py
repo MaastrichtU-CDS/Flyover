@@ -60,6 +60,12 @@ def _make_mapping() -> JSONLDMapping:
                         "predicate": "sio:has_morphology",
                         "class": "ncit:C94812",
                     },
+                    "tumour_topography_icd_o": {
+                        "@type": "schema:StandardisedVariable",
+                        "dataType": "standardised",
+                        "predicate": "sio:has_topography",
+                        "class": "ncit:C94812",
+                    },
                     "year_of_initial_diagnosis": {
                         "@type": "schema:ContinuousVariable",
                         "dataType": "continuous",
@@ -143,6 +149,7 @@ def _make_mapping() -> JSONLDMapping:
 VARIABLE_KEYS = [
     "biological_sex",
     "tumour_morphology_icd_o",
+    "tumour_topography_icd_o",
     "year_of_initial_diagnosis",
     "year_of_last_followup",
     "yes_no_response",
@@ -303,6 +310,45 @@ class TestValueRegexMatcher(unittest.TestCase):
         )
         self.assertEqual(out[0]["match"], "biological_sex")
 
+    def test_morphology_codes_suggest_morphology_not_topography(self):
+        """Morphology codes (8500/3) must not be grabbed by the topography
+        rule: its pattern list used to include the morphology regex, so a
+        morphology column was suggested as tumour_topography_icd_o."""
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="variables",
+            mapping=mapping,
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=0.1,
+            column_values={"db": {"morfo": ["8500/3", "8010/3"]}},
+        )
+        out = ValueRegexMatcher().run(
+            ["morfo"],
+            {"*": VARIABLE_KEYS},
+            ctx,
+        )
+        self.assertEqual(out[0]["match"], "tumour_morphology_icd_o")
+
+    def test_topography_codes_suggest_topography(self):
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="variables",
+            mapping=mapping,
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=0.1,
+            column_values={"db": {"topo": ["C50.9", "C18.5"]}},
+        )
+        out = ValueRegexMatcher().run(
+            ["topo"],
+            {"*": VARIABLE_KEYS},
+            ctx,
+        )
+        self.assertEqual(out[0]["match"], "tumour_topography_icd_o")
+
     def test_year_column_abstains_when_multiple_year_variables(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(
@@ -337,6 +383,25 @@ class TestValueRegexMatcher(unittest.TestCase):
             ctx,
         )
         self.assertEqual(out[0]["match"], "yes")
+
+    def test_values_phase_maps_one_to_yes_and_zero_to_no(self):
+        """The {1, 0} yes/no set is positional; 1 must map to the yes term
+        and 0 to the no term (the old {0, 1} order inverted both)."""
+        ctx = SuggestionContext(
+            phase="values",
+            mapping=_make_mapping(),
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=0.1,
+        )
+        out = ValueRegexMatcher().run(
+            ["1", "0"],
+            {"1": ["yes", "no"], "0": ["yes", "no"]},
+            ctx,
+        )
+        self.assertEqual(out[0]["match"], "yes")
+        self.assertEqual(out[1]["match"], "no")
 
     def test_no_pattern_matched_abstains(self):
         ctx = SuggestionContext(
