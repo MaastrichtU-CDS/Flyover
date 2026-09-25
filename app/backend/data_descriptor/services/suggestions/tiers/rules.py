@@ -54,6 +54,12 @@ SOURCE_STRING = "string"
 
 TIER = 1
 
+# Near-hit floor for fuzzy alias matches. Jaro-Winkler('morf', 'morph') is
+# 0.848, so the floor must sit below that for the headline near-miss example
+# to fire; the resulting confidence (0.9 x similarity) stays modest so the
+# item can still escalate to a later tier.
+ALIAS_SIMILARITY_FLOOR = 0.84
+
 _RESOURCES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "resources"
 _RULES_PATH = _RESOURCES_DIR / "suggestion_rules.json"
 
@@ -259,8 +265,10 @@ class AliasMatcher:
     tier = TIER
     source = SOURCE_ALIAS
 
-    def __init__(self, similarity_floor: float = 0.95):
-        self.similarity_floor = similarity_floor
+    def __init__(self, similarity_floor: Optional[float] = None):
+        self.similarity_floor = (
+            ALIAS_SIMILARITY_FLOOR if similarity_floor is None else similarity_floor
+        )
 
     def run(
         self,

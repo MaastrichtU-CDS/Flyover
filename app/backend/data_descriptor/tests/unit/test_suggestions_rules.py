@@ -202,6 +202,33 @@ class TestAliasMatcher(unittest.TestCase):
         self.assertIn("christie", out[0]["reason"])
 
     def test_near_hit_uses_similarity(self):
+        """The design doc's headline example: NKI's 'morf' fuzzy-matches
+        christie's 'morph' above the similarity floor and is suggested with
+        confidence 0.9 x similarity (Jaro-Winkler('morf', 'morph') = 0.848,
+        so confidence lands near 0.76)."""
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="variables",
+            mapping=mapping,
+            described_database="nki",
+            rules=_RULES,
+            threshold=0.8,
+            margin=0.1,
+        )
+        out = AliasMatcher().run(
+            ["morf"],
+            {"*": VARIABLE_KEYS},
+            ctx,
+        )
+        self.assertEqual(out[0]["match"], "tumour_morphology_icd_o")
+        self.assertGreater(out[0]["confidence"], 0.7)
+        self.assertLess(out[0]["confidence"], 0.9)
+        self.assertIn("christie", out[0]["reason"])
+
+    def test_below_floor_abstains(self):
+        """A label near an alias key but below the similarity floor abstains:
+        describing christie leaves only nki's 'geslacht' in memory, which
+        'morf' does not resemble closely enough."""
         mapping = _make_mapping()
         ctx = SuggestionContext(
             phase="variables",
@@ -211,14 +238,13 @@ class TestAliasMatcher(unittest.TestCase):
             threshold=0.8,
             margin=0.1,
         )
-        # 'morf' is near 'morph' (christie excluded, so no exact hit; nki has
-        # no morphology column, so this abstains).
         out = AliasMatcher().run(
             ["morf"],
             {"*": VARIABLE_KEYS},
             ctx,
         )
         self.assertIsNone(out[0]["match"])
+        self.assertEqual(out[0]["confidence"], 0.0)
 
     def test_values_phase_uses_value_alias_memory(self):
         mapping = _make_mapping()
