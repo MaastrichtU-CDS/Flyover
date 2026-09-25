@@ -391,7 +391,14 @@ class SuggestionService:
 
     @staticmethod
     def _downgrade_conflicts(best: dict) -> None:
-        """Downgrade variables-phase duplicate matches to alternatives."""
+        """Resolve variables-phase duplicate matches, keeping the winner.
+
+        Within one database each schema variable may be chosen by one column
+        only. When several columns are suggested the same variable, the
+        highest-confidence record keeps its match (ties go to the first
+        column in item order); the losers are nulled with a reason naming
+        the winning column so the user still gets a hint on the winner.
+        """
         by_match: dict[str, list[str]] = {}
         for item, record in best.items():
             if record is None:
@@ -402,11 +409,22 @@ class SuggestionService:
         for match, items in by_match.items():
             if len(items) <= 1:
                 continue
+            winner = items[0]
+            for item in items[1:]:
+                if best[item].get("confidence", 0.0) > best[winner].get(
+                    "confidence", 0.0
+                ):
+                    winner = item
             for item in items:
+                if item == winner:
+                    continue
                 record = best[item]
                 record["match"] = None
                 record["confidence"] = 0.0
-                record["reason"] = f"conflict: {len(items)} columns mapped to {match}"
+                record["reason"] = (
+                    f"conflict: column '{winner}' is a stronger candidate "
+                    f"for {match}"
+                )
                 record["status"] = "done"
 
     # ------------------------------------------------------------------

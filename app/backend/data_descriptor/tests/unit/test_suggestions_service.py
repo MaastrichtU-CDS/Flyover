@@ -396,7 +396,7 @@ class TestCascadeMerge(unittest.TestCase):
 
 class TestConflictDowngrade(unittest.TestCase):
     @patch("services.suggestions.tier1_producers")
-    def test_two_columns_same_variable_both_nulled(self, mock_producers):
+    def test_two_columns_same_variable_winner_keeps_match(self, mock_producers):
         mapping = _make_mapping()
         cache = _make_session_cache(mapping)
         rdf = _make_rdf_store(
@@ -425,11 +425,13 @@ class TestConflictDowngrade(unittest.TestCase):
         state = svc.get_state(cache, VARIABLES_PHASE)
         rec_a = state["records"]["christie_col_a"]
         rec_b = state["records"]["christie_col_b"]
-        self.assertIsNone(rec_a["match"])
-        self.assertEqual(rec_a["confidence"], 0.0)
-        self.assertIn("conflict", rec_a["reason"])
-        self.assertIn("2 columns", rec_a["reason"])
+        # The higher-confidence column keeps its match.
+        self.assertEqual(rec_a["match"], "biological_sex")
+        self.assertEqual(rec_a["confidence"], 0.95)
+        # The loser is nulled with a reason naming the winning column.
         self.assertIsNone(rec_b["match"])
+        self.assertEqual(rec_b["confidence"], 0.0)
+        self.assertIn("col_a", rec_b["reason"])
         self.assertIn("conflict", rec_b["reason"])
 
 
