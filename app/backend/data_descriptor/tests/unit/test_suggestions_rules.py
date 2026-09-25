@@ -9,6 +9,7 @@ value-type regexes, and string similarity with margin abstain.
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -272,7 +273,36 @@ class TestAliasMatcher(unittest.TestCase):
         self.assertEqual(out[0]["confidence"], 1.0)
 
 
+_ENABLE_VALUE_BASED = patch(
+    "services.suggestions.tiers.rules.VALUE_BASED_VARIABLE_SUGGESTIONS", True
+)
+
+
 class TestValueRegexMatcher(unittest.TestCase):
+    def test_variables_phase_abstains_while_disabled(self):
+        """Value-based variable suggestions are disabled by default: the
+        matcher abstains in the variables phase even when distinct values
+        are available, so no RDF-store value queries are needed."""
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="variables",
+            mapping=mapping,
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=0.1,
+            column_values={"db": {"resp": ["ja", "nee"]}},
+        )
+        out = ValueRegexMatcher().run(
+            ["resp"],
+            {"*": VARIABLE_KEYS},
+            ctx,
+        )
+        self.assertIsNone(out[0]["match"])
+        self.assertEqual(out[0]["confidence"], 0.0)
+        self.assertIn("disabled", out[0]["reason"])
+
+    @_ENABLE_VALUE_BASED
     def test_yes_no_value_set_suggests_yes_no_variable(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(
@@ -292,6 +322,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         self.assertEqual(out[0]["match"], "yes_no_response")
         self.assertEqual(out[0]["confidence"], 0.9)
 
+    @_ENABLE_VALUE_BASED
     def test_sex_values_suggest_biological_sex(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(
@@ -310,6 +341,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         )
         self.assertEqual(out[0]["match"], "biological_sex")
 
+    @_ENABLE_VALUE_BASED
     def test_morphology_codes_suggest_morphology_not_topography(self):
         """Morphology codes (8500/3) must not be grabbed by the topography
         rule: its pattern list used to include the morphology regex, so a
@@ -331,6 +363,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         )
         self.assertEqual(out[0]["match"], "tumour_morphology_icd_o")
 
+    @_ENABLE_VALUE_BASED
     def test_topography_codes_suggest_topography(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(
@@ -349,6 +382,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         )
         self.assertEqual(out[0]["match"], "tumour_topography_icd_o")
 
+    @_ENABLE_VALUE_BASED
     def test_year_column_abstains_when_multiple_year_variables(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(
@@ -403,6 +437,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         self.assertEqual(out[0]["match"], "yes")
         self.assertEqual(out[1]["match"], "no")
 
+    @_ENABLE_VALUE_BASED
     def test_no_pattern_matched_abstains(self):
         ctx = SuggestionContext(
             phase="variables",

@@ -60,6 +60,17 @@ TIER = 1
 # item can still escalate to a later tier.
 ALIAS_SIMILARITY_FLOOR = 0.84
 
+# Value-based variable recommendations: in the variables phase, check a
+# column's distinct values against the value_regexes in
+# suggestion_rules.json to suggest which schema variable the column maps
+# to. The matcher works (its tests run against it) but collecting the
+# distinct values costs one RDF-store query per column on every job start,
+# which is too expensive for the air-gapped target. The feature will be
+# re-enabled once categorical columns can be detected without querying the
+# store. Flip this flag and the matching guard in
+# services/suggestions/__init__.py to re-enable it.
+VALUE_BASED_VARIABLE_SUGGESTIONS = False
+
 _RESOURCES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "resources"
 _RULES_PATH = _RESOURCES_DIR / "suggestion_rules.json"
 
@@ -411,13 +422,20 @@ class ValueRegexMatcher:
         ctx: SuggestionContext,
     ) -> list[dict]:
         rules = ctx.rules or load_rules()
-        records: list[dict] = []
 
         if ctx.phase == "variables":
-            records = self._run_variables(items, schema_slice, ctx, rules)
-        else:
-            records = self._run_values(items, schema_slice, ctx, rules)
-        return records
+            if not VALUE_BASED_VARIABLE_SUGGESTIONS:
+                return [
+                    {
+                        "item": item,
+                        "match": None,
+                        "confidence": 0.0,
+                        "reason": "Value-based variable suggestions are disabled.",
+                    }
+                    for item in items
+                ]
+            return self._run_variables(items, schema_slice, ctx, rules)
+        return self._run_values(items, schema_slice, ctx, rules)
 
     def _run_variables(
         self,

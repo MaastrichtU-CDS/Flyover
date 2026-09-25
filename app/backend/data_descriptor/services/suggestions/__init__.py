@@ -19,7 +19,12 @@ from typing import Any, Optional
 
 from .contract import sanitise_pairs
 from .tiers import SuggestionContext
-from .tiers.rules import _iter_columns, load_rules, tier1_producers
+from .tiers.rules import (
+    VALUE_BASED_VARIABLE_SUGGESTIONS,
+    _iter_columns,
+    load_rules,
+    tier1_producers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -491,8 +496,13 @@ class SuggestionService:
             "schema_slice": {"*": variable_keys},
             "mapping": mapping,
             "described_database": described_db,
-            "column_values": self._collect_column_values(
-                mapping, rdf_store_service, columns_by_db
+            # Collecting distinct values costs one RDF-store query per
+            # column; only pay it while value-based variable suggestions
+            # are enabled (see tiers/rules.VALUE_BASED_VARIABLE_SUGGESTIONS).
+            "column_values": (
+                self._collect_column_values(mapping, rdf_store_service, columns_by_db)
+                if VALUE_BASED_VARIABLE_SUGGESTIONS
+                else {}
             ),
             "groups": groups,
             "key_for": groups[0]["key_for"] if groups else (lambda item: item),

@@ -239,6 +239,17 @@ class TestStartLifecycle(unittest.TestCase):
         self.assertEqual(rec["status"], "done")
 
     @patch("services.suggestions.tier1_producers")
+    def test_variables_job_skips_category_queries(self, mock_producers):
+        """Value-based variable suggestions are disabled, so building the
+        variables payload must not issue a distinct-values query per
+        column."""
+        mock_producers.return_value = [FakeProducer(1, "alias", {})]
+        rdf = _make_rdf_store(columns_by_db={"christie": ["morph"]})
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, self.cache, rdf)
+        rdf.get_categories.assert_not_called()
+
+    @patch("services.suggestions.tier1_producers")
     def test_fingerprint_reuse_returns_already_done(self, mock_producers):
         mock_producers.return_value = [
             FakeProducer(
