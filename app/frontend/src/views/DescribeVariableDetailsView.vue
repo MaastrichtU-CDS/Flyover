@@ -263,8 +263,11 @@ async function acceptSuggestion(database, variable, cat) {
 }
 
 function dismissSuggestion(database, variable, cat) {
+  // Only a field the suggestion pre-filled (applied and never reviewed) is
+  // cleared on dismissal; a manually chosen value must survive it.
+  const prefilled = suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)
   suggestions.dismiss(cat.key)
-  if (categorySelections[cat.key]) {
+  if (prefilled && categorySelections[cat.key]) {
     categorySelections[cat.key] = ''
     onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
   }
@@ -385,8 +388,12 @@ function dismissAllForVariable(database, variable) {
     if (!entry || !entry.display) continue
     if (suggestions.isDismissed(cat.key)) continue
     if (suggestions.isApplied(cat.key) && suggestions.isTouched(cat.key)) continue
+    // Only pre-filled, unreviewed fields are cleared; manually chosen
+    // values survive the dismissal.
+    const prefilled =
+      suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)
     suggestions.dismiss(cat.key)
-    if (categorySelections[cat.key]) {
+    if (prefilled && categorySelections[cat.key]) {
       categorySelections[cat.key] = ''
       onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
     }

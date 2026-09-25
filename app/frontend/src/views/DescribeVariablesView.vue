@@ -199,9 +199,11 @@ function acceptSuggestion(dbName, item) {
 
 function dismissSuggestion(dbName, item) {
   const key = `${dbName}_${item}`
+  // Only a field the suggestion pre-filled (applied and never reviewed) is
+  // cleared on dismissal; a manually chosen value must survive it.
+  const prefilled = suggestions.isApplied(key) && !suggestions.isTouched(key)
   suggestions.dismiss(key)
-  // If the field was pre-filled by the suggestion, clear it.
-  if (formStateCache[key]?.description && suggestions.isDismissed(key)) {
+  if (prefilled && formStateCache[key]?.description) {
     formStateCache[key].description = ''
     autoPopulateDatatype(dbName, item)
     syncToIndexedDB()
@@ -254,8 +256,11 @@ function dismissAllForDatabase(dbName) {
     if (!entry || entry.status !== 'done' || !entry.display) continue
     if (suggestions.isDismissed(key)) continue
     if (suggestions.isApplied(key) && suggestions.isTouched(key)) continue
+    // Only pre-filled, unreviewed fields are cleared; manually chosen
+    // values survive the dismissal.
+    const prefilled = suggestions.isApplied(key) && !suggestions.isTouched(key)
     suggestions.dismiss(key)
-    if (formStateCache[key]?.description) {
+    if (prefilled && formStateCache[key]?.description) {
       formStateCache[key].description = ''
       autoPopulateDatatype(dbName, item)
     }
