@@ -446,16 +446,15 @@ class ValueRegexMatcher:
     ) -> list[dict]:
         targets = schema_slice.get("*", [])
         variable_keys = {v for v in targets}
-        column_values = ctx.column_values or {}
         out: list[dict] = []
 
         for item in items:
-            # Find this column's distinct values across databases.
-            distinct: list[str] = []
-            for cols in column_values.values():
-                if item in cols:
-                    distinct = cols[item]
-                    break
+            # Only the described database's values are relevant; a column
+            # with the same name in another database may hold entirely
+            # different values.
+            distinct = (ctx.column_values or {}).get(
+                ctx.described_database, {}
+            ).get(item, [])
             values = _strip_missing(distinct, rules)
             match = self._match_variable_rule(values, rules, variable_keys)
             if match is None:

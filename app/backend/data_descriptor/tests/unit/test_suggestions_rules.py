@@ -287,7 +287,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         ctx = SuggestionContext(
             phase="variables",
             mapping=mapping,
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
@@ -308,7 +308,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         ctx = SuggestionContext(
             phase="variables",
             mapping=mapping,
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
@@ -328,7 +328,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         ctx = SuggestionContext(
             phase="variables",
             mapping=mapping,
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
@@ -350,7 +350,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         ctx = SuggestionContext(
             phase="variables",
             mapping=mapping,
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
@@ -369,7 +369,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         ctx = SuggestionContext(
             phase="variables",
             mapping=mapping,
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
@@ -383,12 +383,39 @@ class TestValueRegexMatcher(unittest.TestCase):
         self.assertEqual(out[0]["match"], "tumour_topography_icd_o")
 
     @_ENABLE_VALUE_BASED
+    def test_variables_phase_uses_only_described_database_values(self):
+        """A column with the same name in two databases must be scored
+        against the described database's values, not whichever database
+        happens to be iterated first."""
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="variables",
+            mapping=mapping,
+            described_database="nki",
+            rules=_RULES,
+            threshold=0.8,
+            margin=0.1,
+            column_values={
+                "christie": {"sex": ["M", "F"]},
+                "nki": {"sex": ["abc", "def"]},
+            },
+        )
+        out = ValueRegexMatcher().run(
+            ["sex"],
+            {"*": VARIABLE_KEYS},
+            ctx,
+        )
+        # nki's values match no pattern, so the matcher abstains instead of
+        # suggesting biological_sex from christie's M/F values.
+        self.assertIsNone(out[0]["match"])
+
+    @_ENABLE_VALUE_BASED
     def test_year_column_abstains_when_multiple_year_variables(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(
             phase="variables",
             mapping=mapping,
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
@@ -442,7 +469,7 @@ class TestValueRegexMatcher(unittest.TestCase):
         ctx = SuggestionContext(
             phase="variables",
             mapping=_make_mapping(),
-            described_database=None,
+            described_database="db",
             rules=_RULES,
             threshold=0.8,
             margin=0.1,
