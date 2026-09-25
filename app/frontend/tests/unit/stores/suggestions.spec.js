@@ -191,6 +191,53 @@ describe('Frontend unit: useSuggestionsStore', () => {
 
     await vi.advanceTimersByTimeAsync(POLL_HARD_STOP_MS + POLL_INTERVAL_MS)
     expect(s.isPolling()).toBe(false)
+    // The hard stop also fails the submit gate open.
+    expect(s.variables.gaveUp).toBe(true)
+  })
+
+  it('gives up after repeated failed polls so the gate fails open', async () => {
+    api.get
+      .mockResolvedValueOnce(statusResponse())
+      .mockRejectedValue(new Error('backend unreachable'))
+    api.post.mockResolvedValue({ data: { status: 'started' } })
+
+    const s = useSuggestionsStore()
+    // init already made the first (failing) snapshot poll.
+    await s.init('variables')
+    expect(s.variables.gaveUp).toBe(false)
+
+    await s.refresh('variables')
+    await s.refresh('variables')
+    expect(s.variables.gaveUp).toBe(true)
+    expect(s.isPolling()).toBe(false)
+  })
+
+  it('gives up when no job is ever created', async () => {
+    api.get.mockResolvedValue(snapshot({ status: 'idle' }))
+    const s = useSuggestionsStore()
+    await s.refresh('variables')
+    await s.refresh('variables')
+    expect(s.variables.gaveUp).toBe(false)
+    await s.refresh('variables')
+    expect(s.variables.gaveUp).toBe(true)
+  })
+
+  it('a fresh init retries after giving up', async () => {
+    api.get.mockResolvedValue(snapshot({ status: 'idle' }))
+    const s = useSuggestionsStore()
+    await s.refresh('variables')
+    await s.refresh('variables')
+    await s.refresh('variables')
+    expect(s.variables.gaveUp).toBe(true)
+
+    // A fresh page visit (init) resets the stall tracking.
+    api.get.mockReset()
+    api.get
+      .mockResolvedValueOnce(statusResponse())
+      .mockResolvedValue(snapshot({ status: 'done' }))
+    api.post.mockResolvedValue({ data: { status: 'started' } })
+    await s.init('variables')
+    expect(s.variables.gaveUp).toBe(false)
   })
 
   it('exposes the unavailable reason from the snapshot error', async () => {

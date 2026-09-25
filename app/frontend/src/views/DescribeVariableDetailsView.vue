@@ -393,16 +393,25 @@ function dismissAllForVariable(database, variable) {
   }
 }
 
+// True while suggestions are still expected AND the store has not given
+// up on them. The submit gate fails open when waiting can no longer make
+// progress: a broken poll or a stalled job must never block the core flow.
+const waitingForSuggestions = computed(
+  () =>
+    suggestions.enabled &&
+    !suggestions.values.gaveUp &&
+    ['idle', 'pending', 'running'].includes(suggestions.values.status)
+)
+
 const canSubmit = computed(() => {
   if (isProcessing.value) return false
   if (unreviewedFieldCount.value > 0) return false
-  if (suggestions.enabled && suggestions.values.status === 'running') return false
-  if (suggestions.enabled && suggestions.values.status === 'idle') return false
+  if (waitingForSuggestions.value) return false
   return true
 })
 
 const submitTooltip = computed(() => {
-  if (suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running'))
+  if (waitingForSuggestions.value)
     return 'Waiting for mapping suggestions to arrive...'
   if (unreviewedFieldCount.value > 0)
     return `${unreviewedFieldCount.value} ${unreviewedFieldCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
@@ -777,7 +786,7 @@ onBeforeUnmount(() => {
           </template>
         </button>
         <span
-          v-if="suggestions.enabled && (suggestions.values.status === 'idle' || suggestions.values.status === 'running')"
+          v-if="waitingForSuggestions"
           class="submit-review-hint"
         >
           <i class="fas fa-hourglass-half" />

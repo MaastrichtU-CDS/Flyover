@@ -17,6 +17,11 @@ import { useStatusStore } from '@/stores/status'
 
 export const POLL_INTERVAL_MS = 2000
 export const POLL_HARD_STOP_MS = 15 * 60 * 1000
+// After this many consecutive failed polls (backend unreachable) or idle
+// polls (no job was ever created), the submit gate must stop waiting on
+// suggestions; blocking the core flow forever is worse than proceeding
+// without suggestions.
+export const MAX_STALLED_POLLS = 3
 
 const TERMINAL_STATUSES = ['done', 'failed', 'unavailable', 'disabled']
 const MARKS_KEY_PREFIX = 'suggestion_marks_'
@@ -46,12 +51,17 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     reason: null,
     progress: { done: 0, total: 0 },
     byKey: {},
+    // True once the store stopped expecting suggestion results (poll
+    // failures, no job, or the hard stop): views use it to fail open
+    // instead of holding the submit gate closed forever.
+    gaveUp: false,
   })
   const values = reactive({
     status: 'idle',
     reason: null,
     progress: { done: 0, total: 0 },
     byKey: {},
+    gaveUp: false,
   })
 
   // Marks are plain reactive objects keyed like the form state
@@ -73,6 +83,9 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   let _pollTimer = null
   let _pollStartedAt = 0
   let _errorToastShown = false
+  // Consecutive polls that made no progress, per phase: failed GETs and
+  // snapshots that are still 'idle' (no job was ever created).
+  const _stalledPolls = { variables: 0, values: 0 }
 
   function _phaseState(phase) {
     return phase === 'values' ? values : variables
@@ -163,6 +176,10 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       const { data } = await api.get(`/api/v1/suggestions/${phase}`)
       snapshot = data
     } catch {
+      // The backend may be unreachable. Count the stall so the submit
+      // gate fails open instead of waiting on suggestions that can
+      // never arrive.
+      _noteStalledPoll(phase, state)
       return
     }
 
@@ -188,6 +205,19 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
     if (TERMINAL_STATUSES.includes(snapshot.status)) {
       stopPolling()
+    } else if (snapshot.status === 'idle') {
+      // No job exists; if nothing starts within a few polls, stop waiting.
+      _noteStalledPoll(phase, state)
+    } else {
+      _stalledPolls[phase] = 0
+    }
+  }
+
+  function _noteStalledPoll(phase, state) {
+    _stalledPolls[phase] += 1
+    if (_stalledPolls[phase] >= MAX_STALLED_POLLS) {
+      state.gaveUp = true
+      stopPolling()
     }
   }
 
@@ -196,6 +226,9 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     _pollStartedAt = Date.now()
     _pollTimer = setInterval(() => {
       if (Date.now() - _pollStartedAt > POLL_HARD_STOP_MS) {
+        // Out of time budget: fail open rather than gating the submit
+        // button on a job that is taking longer than any tier-1 job should.
+        _phaseState(phase).gaveUp = true
         stopPolling()
         return
       }
@@ -215,6 +248,11 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   }
 
   async function init(phase, { mapping } = {}) {
+    // A fresh page visit retries: reset the per-phase stall tracking.
+    const state = _phaseState(phase)
+    state.gaveUp = false
+    _stalledPolls[phase] = 0
+
     await _loadMarks(phase)
 
     if (enabled.value === null) {

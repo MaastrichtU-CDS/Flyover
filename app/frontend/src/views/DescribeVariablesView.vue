@@ -389,6 +389,17 @@ const hasAnyDescription = computed(() => {
   return false
 })
 
+// True while suggestions are still expected (job pending/running, or no
+// snapshot yet) AND the store has not given up on them. The submit gate
+// deliberately fails open when waiting can no longer make progress: a
+// broken poll or a stalled job must never block the core flow.
+const waitingForSuggestions = computed(
+  () =>
+    suggestions.enabled &&
+    !suggestions.variables.gaveUp &&
+    ['idle', 'pending', 'running'].includes(suggestions.variables.status)
+)
+
 const canSubmit = computed(() => {
   if (!hasAnyDescription.value || isSubmitting.value) return false
   // Block submission while suggestions are still loading and we have
@@ -396,14 +407,13 @@ const canSubmit = computed(() => {
   // is still running (status is 'idle' or 'running') and suggestions
   // are enabled, to prevent submitting before pre-fill arrives.
   if (unreviewedFieldCount.value > 0) return false
-  if (suggestions.enabled && suggestions.variables.status === 'running') return false
-  if (suggestions.enabled && suggestions.variables.status === 'idle') return false
+  if (waitingForSuggestions.value) return false
   return true
 })
 
 const submitTooltip = computed(() => {
   if (!hasAnyDescription.value) return 'Fill in at least one description first'
-  if (suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running'))
+  if (waitingForSuggestions.value)
     return 'Waiting for mapping suggestions to arrive...'
   if (unreviewedFieldCount.value > 0)
     return `${unreviewedFieldCount.value} ${unreviewedFieldCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
@@ -832,7 +842,7 @@ onBeforeUnmount(() => {
           </template>
         </button>
         <span
-          v-if="suggestions.enabled && (suggestions.variables.status === 'idle' || suggestions.variables.status === 'running')"
+          v-if="waitingForSuggestions"
           class="submit-review-hint"
         >
           <i class="fas fa-hourglass-half" />
