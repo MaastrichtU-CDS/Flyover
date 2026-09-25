@@ -42,6 +42,12 @@ SUGGESTION_RECORD_SCHEMA = {
         "source": {"type": "string", "enum": list(SOURCES)},
         "tier": {"type": "integer", "enum": [1, 2, 3]},
         "status": {"type": "string", "enum": list(STATUSES)},
+        # Explicit location fields so consumers never have to recover them
+        # by splitting the composite key (database names may contain
+        # underscores, which makes prefix matching ambiguous).
+        "database": {"type": "string"},
+        "column": {"type": "string"},
+        "value": {"type": "string"},
         "alternatives": {
             "type": "array",
             "items": {

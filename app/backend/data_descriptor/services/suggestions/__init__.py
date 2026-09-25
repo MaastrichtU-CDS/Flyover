@@ -154,6 +154,7 @@ class SuggestionJob:
     def to_public_dict(self) -> dict:
         return {
             "status": self.status,
+            "fingerprint": self.fingerprint,
             "progress": self.progress,
             "error": self.error,
             "records": dict(self.records),
@@ -381,7 +382,7 @@ class SuggestionService:
         for item, record in best.items():
             key = key_for(item)
             if record is None:
-                job.records[key] = {
+                record = {
                     "item": item,
                     "match": None,
                     "confidence": 0.0,
@@ -392,7 +393,32 @@ class SuggestionService:
                 }
             else:
                 record["status"] = "done"
-                job.records[key] = record
+            record.update(self._record_location_fields(group, item, phase))
+            job.records[key] = record
+
+    @staticmethod
+    def _record_location_fields(group: dict, item: str, phase: str) -> dict:
+        """Explicit location fields for one record.
+
+        The frontend must never have to recover the database or column by
+        splitting the composite key: database names can themselves contain
+        underscores (``nki`` vs ``nki_prospective``), which makes prefix
+        matching ambiguous. Variables-phase records carry ``database`` and
+        ``column``; values-phase records additionally carry ``value`` (the
+        item itself).
+        """
+        fields: dict[str, str] = {}
+        database = group.get("described_database") or group.get("database")
+        if database:
+            fields["database"] = database
+        if phase == VARIABLES_PHASE:
+            fields["column"] = item
+        else:
+            column = group.get("column")
+            if column:
+                fields["column"] = column
+                fields["value"] = item
+        return fields
 
     @staticmethod
     def _downgrade_conflicts(best: dict) -> None:
@@ -614,6 +640,8 @@ class SuggestionService:
                             "items": group_items,
                             "schema_slice": {value: terms for value in group_items},
                             "key_for": make_key_for(),
+                            "database": database,
+                            "column": local_column,
                         }
                     )
 
@@ -722,6 +750,8 @@ class SuggestionService:
                         "items": group_items,
                         "schema_slice": {v: terms for v in group_items},
                         "key_for": make_key_for(),
+                        "database": db,
+                        "column": col,
                     }
                 )
 

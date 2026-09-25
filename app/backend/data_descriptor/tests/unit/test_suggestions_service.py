@@ -609,6 +609,74 @@ class TestMultiDatabaseVariables(unittest.TestCase):
             )
 
     @patch("services.suggestions.tier1_producers")
+    def test_records_carry_explicit_location_fields(self, mock_producers):
+        """Records must expose database/column(/value) as separate fields so
+        the frontend never has to recover them by splitting the composite
+        key (database names may contain underscores)."""
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "morph": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                    "morfo": {
+                        "match": "tumour_morphology_icd_o",
+                        "confidence": 0.9,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, self.cache, self.rdf)
+        state = svc.get_state(self.cache, VARIABLES_PHASE)
+        rec = state["records"]["christie_morph"]
+        self.assertEqual(rec["database"], "christie")
+        self.assertEqual(rec["column"], "morph")
+        rec_nki = state["records"]["nki_morfo"]
+        self.assertEqual(rec_nki["database"], "nki")
+        self.assertEqual(rec_nki["column"], "morfo")
+        # The job snapshot exposes its fingerprint so clients can expire
+        # per-job state (e.g. the frontend's suggestion marks).
+        self.assertTrue(state["fingerprint"])
+
+    @patch("services.suggestions.tier1_producers")
+    def test_values_records_carry_database_column_value(self, mock_producers):
+        mapping = _make_mapping()
+        cache = _make_session_cache(mapping)
+        cache.DescriptiveInfoDetails = {
+            "christie": [
+                {'Biological Sex (or "sex")': [{"value": "M"}, {"value": "F"}]},
+            ]
+        }
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "M": {
+                        "match": "male",
+                        "confidence": 1.0,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
+        svc = SuggestionService(_config())
+        result = svc.start(VALUES_PHASE, cache, None)
+        self.assertEqual(result["status"], "started")
+        state = svc.get_state(cache, VALUES_PHASE)
+        rec = state["records"]["christie_sex_M"]
+        self.assertEqual(rec["database"], "christie")
+        self.assertEqual(rec["column"], "sex")
+        self.assertEqual(rec["value"], "M")
+        self.assertEqual(rec["match"], "male")
+
+    @patch("services.suggestions.tier1_producers")
     def test_total_progress_covers_all_databases(self, mock_producers):
         mock_producers.return_value = [FakeProducer(1, "alias", {})]
         svc = SuggestionService(_config())
