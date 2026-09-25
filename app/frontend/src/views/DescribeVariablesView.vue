@@ -210,9 +210,14 @@ function dismissSuggestion(dbName, item) {
 
 function clearAllSuggestions() {
   for (const key of suggestions.clearAllApplied()) {
+    const entry = suggestions.variables.byKey[key]
+    // Prefer the record's explicit location fields; fall back to prefix
+    // matching for records without them (fallback groups).
+    const dbName =
+      entry?.database || databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    const item = entry?.column || (dbName ? key.slice(dbName.length + 1) : null)
+    if (!dbName || !item) continue
     if (formStateCache[key]?.description) {
-      const dbName = formStateCache[key].database
-      const item = key.slice(dbName.length + 1)
       formStateCache[key].description = ''
       autoPopulateDatatype(dbName, item)
     }
@@ -284,11 +289,14 @@ const unreviewedFieldCount = computed(
 function jumpToNextUnreviewed() {
   const keys = suggestions.unreviewedKeys().filter((key) => formStateCache[key]?.description)
   if (!keys.length) return
-  // Find the first unreviewed key and locate its database + column.
+  // Find the first unreviewed key and locate its database + column,
+  // preferring the record's explicit location fields.
   for (const key of keys) {
-    const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    const entry = suggestions.variables.byKey[key]
+    const dbName =
+      entry?.database || databaseNames.value.find((d) => key.startsWith(`${d}_`))
     if (!dbName) continue
-    const item = key.slice(dbName.length + 1)
+    const item = entry?.column || key.slice(dbName.length + 1)
     const cols = columnInfoData.value?.[dbName] || []
     const itemIdx = cols.indexOf(item)
     if (itemIdx === -1) continue
@@ -327,12 +335,14 @@ watch(
       // input safe and dedups repeated watch firings.
       const existing = formStateCache[key]?.description
       if (existing) continue
-      // Keys are "${dbName}_${localColumn}" and dbName can itself contain
-      // underscores (e.g. "synthetic_dutch_150"), so naive splitting
-      // truncates the name. Look up the actual dbName by prefix-matching.
-      const dbName = databaseNames.value.find((d) => key.startsWith(`${d}_`))
+      // Prefer the record's explicit location fields (database names can
+      // contain underscores, making prefix matching ambiguous); fall back
+      // to prefix matching for records without them.
+      const dbName =
+        entry.database ||
+        databaseNames.value.find((d) => key.startsWith(`${d}_`))
       if (!dbName) continue
-      const item = key.slice(dbName.length + 1)
+      const item = entry.column || key.slice(dbName.length + 1)
       // Check the one-variable-per-database constraint.
       if (isDescriptionDisabled(dbName, item, entry.display)) continue
       ensureCacheEntry(key, dbName)

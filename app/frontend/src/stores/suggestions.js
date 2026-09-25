@@ -55,12 +55,20 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   })
 
   // Marks are plain reactive objects keyed like the form state
-  // (`${db}_${col}` / `${db}_${var}_${value}`) so views react per key.
-  // Marks are stored per-phase so dismissing a variable suggestion doesn't
-  // affect a value suggestion for the same column.
-  const applied = reactive({})
-  const touched = reactive({})
-  const dismissed = reactive({})
+  // (`${db}_${col}` / `${db}_${col}_${value}`) so views react per key. They
+  // are kept per phase so dismissing a variable suggestion can never
+  // affect a value suggestion, and each phase carries the job fingerprint
+  // its marks belong to: when a job with a different fingerprint arrives
+  // (new dataset, changed rules) the marks expire, so a stale dismissal
+  // can never hide fresh suggestions forever.
+  function _emptyMarks() {
+    return { applied: {}, touched: {}, dismissed: {}, fingerprint: null }
+  }
+
+  const marks = reactive({
+    variables: _emptyMarks(),
+    values: _emptyMarks(),
+  })
 
   let _pollTimer = null
   let _pollStartedAt = 0
@@ -77,26 +85,50 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   async function _loadMarks(phase) {
     try {
       const stored = await db.getData('metadata', _marksKey(phase))
-      for (const key of stored?.applied || []) applied[key] = true
-      for (const key of stored?.touched || []) touched[key] = true
-      for (const key of stored?.dismissed || []) dismissed[key] = true
+      const m = marks[phase]
+      for (const key of stored?.applied || []) m.applied[key] = true
+      for (const key of stored?.touched || []) m.touched[key] = true
+      for (const key of stored?.dismissed || []) m.dismissed[key] = true
+      m.fingerprint = stored?.fingerprint || null
     } catch {
       // Marks are cosmetic bookkeeping; a failed load must not block the page.
     }
   }
 
   async function _persistMarks(phase) {
+    const m = marks[phase]
     try {
       await db.saveData('metadata', {
         key: _marksKey(phase),
-        applied: Object.keys(applied).filter((k) => applied[k]),
-        touched: Object.keys(touched).filter((k) => touched[k]),
-        dismissed: Object.keys(dismissed).filter((k) => dismissed[k]),
+        applied: Object.keys(m.applied).filter((k) => m.applied[k]),
+        touched: Object.keys(m.touched).filter((k) => m.touched[k]),
+        dismissed: Object.keys(m.dismissed).filter((k) => m.dismissed[k]),
+        fingerprint: m.fingerprint,
         timestamp: new Date().toISOString(),
       })
     } catch {
       // Same as _loadMarks: never let bookkeeping break the flow.
     }
+  }
+
+  // Adopt or expire the phase's marks when a job fingerprint arrives.
+  function _syncMarksToFingerprint(phase, fingerprint) {
+    const m = marks[phase]
+    if (m.fingerprint === fingerprint) return
+    if (m.fingerprint === null) {
+      // Marks persisted before fingerprints existed: keep them once, adopt
+      // the fingerprint so any later job change expires them.
+      m.fingerprint = fingerprint
+      _persistMarks(phase)
+      return
+    }
+    // A new job invalidates the old marks: a dismissal from an earlier
+    // dataset or ruleset must not hide the new suggestions.
+    for (const key of Object.keys(m.applied)) delete m.applied[key]
+    for (const key of Object.keys(m.touched)) delete m.touched[key]
+    for (const key of Object.keys(m.dismissed)) delete m.dismissed[key]
+    m.fingerprint = fingerprint
+    _persistMarks(phase)
   }
 
   function _ingestRecords(phase, snapshot) {
@@ -114,8 +146,14 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
         source: rec.source || 'manual',
         tier: rec.tier ?? 1,
         alternatives: rec.alternatives || [],
+        // Explicit location fields from the record; null when the backend
+        // could not attribute them (e.g. the no-database fallback group).
+        database: rec.database || null,
+        column: rec.column || null,
+        value: rec.value ?? null,
       }
     }
+    if (snapshot.fingerprint) _syncMarksToFingerprint(phase, snapshot.fingerprint)
   }
 
   async function refresh(phase) {
@@ -233,48 +271,56 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
   }
 
+  function _currentMarks() {
+    return marks[_currentPhase]
+  }
+
   function markApplied(key) {
-    applied[key] = true
+    _currentMarks().applied[key] = true
     _persistMarks(_currentPhase)
   }
 
   function markUserTouched(key) {
-    if (applied[key]) {
-      touched[key] = true
+    const m = _currentMarks()
+    if (m.applied[key]) {
+      m.touched[key] = true
       _persistMarks(_currentPhase)
     }
   }
 
   function dismiss(key) {
-    dismissed[key] = true
-    delete applied[key]
-    delete touched[key]
+    const m = _currentMarks()
+    m.dismissed[key] = true
+    delete m.applied[key]
+    delete m.touched[key]
     _persistMarks(_currentPhase)
   }
 
   function isApplied(key) {
-    return !!applied[key]
+    return !!_currentMarks().applied[key]
   }
 
   function isTouched(key) {
-    return !!touched[key]
+    return !!_currentMarks().touched[key]
   }
 
   function isDismissed(key) {
-    return !!dismissed[key]
+    return !!_currentMarks().dismissed[key]
   }
 
   // Returns the keys the view should clear (applied and never reviewed);
   // the view owns actually emptying the form fields.
   function unreviewedKeys() {
-    return Object.keys(applied).filter((k) => applied[k] && !touched[k])
+    const m = _currentMarks()
+    return Object.keys(m.applied).filter((k) => m.applied[k] && !m.touched[k])
   }
 
   function clearAllApplied() {
+    const m = _currentMarks()
     const cleared = unreviewedKeys()
     for (const key of cleared) {
-      delete applied[key]
-      delete touched[key]
+      delete m.applied[key]
+      delete m.touched[key]
     }
     _persistMarks(_currentPhase)
     return cleared
@@ -296,9 +342,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     rulesVersion,
     variables,
     values,
-    applied,
-    touched,
-    dismissed,
+    marks,
     init,
     refresh,
     startPolling,

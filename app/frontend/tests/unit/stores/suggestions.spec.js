@@ -45,11 +45,13 @@ function snapshot({
   done = 0,
   total = 3,
   error = null,
+  fingerprint = null,
 } = {}) {
   return {
     data: {
       enabled: true,
       status,
+      fingerprint,
       progress: { done, total },
       error,
       records,
@@ -295,6 +297,71 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const s = useSuggestionsStore()
     s.markUserTouched('db1_x')
     expect(s.isTouched('db1_x')).toBe(false)
+  })
+
+  it('ingests explicit database and column fields from records', async () => {
+    api.get.mockResolvedValue(
+      snapshot({
+        status: 'done',
+        records: {
+          nki_prospective_age: {
+            status: 'done',
+            item: 'age',
+            match: 'age_at_diagnosis',
+            confidence: 0.9,
+            reason: 'r',
+            source: 'alias',
+            tier: 1,
+            database: 'nki_prospective',
+            column: 'age',
+          },
+        },
+      }),
+    )
+    const s = useSuggestionsStore()
+    await s.refresh('variables')
+    expect(s.variables.byKey['nki_prospective_age']).toMatchObject({
+      database: 'nki_prospective',
+      column: 'age',
+    })
+  })
+
+  it('marks expire when a job with a different fingerprint arrives', async () => {
+    const s = useSuggestionsStore()
+    s.setPhase('variables')
+    // First job: adopt the fingerprint.
+    api.get.mockResolvedValue(snapshot({ status: 'done', fingerprint: 'aaa' }))
+    await s.refresh('variables')
+    s.markApplied('db1_leeftijd')
+    s.dismiss('db1_gewicht')
+    expect(s.isApplied('db1_leeftijd')).toBe(true)
+
+    // Same fingerprint: marks survive.
+    await s.refresh('variables')
+    expect(s.isApplied('db1_leeftijd')).toBe(true)
+    expect(s.isDismissed('db1_gewicht')).toBe(true)
+
+    // New dataset / rules (new fingerprint): stale marks must not hide
+    // the new suggestions.
+    api.get.mockResolvedValue(snapshot({ status: 'done', fingerprint: 'bbb' }))
+    await s.refresh('variables')
+    expect(s.isApplied('db1_leeftijd')).toBe(false)
+    expect(s.isDismissed('db1_gewicht')).toBe(false)
+    // The new fingerprint is persisted with the reset marks.
+    const saved = db.saveData.mock.calls.at(-1)[1]
+    expect(saved.fingerprint).toBe('bbb')
+  })
+
+  it('marks are separated per phase', () => {
+    const s = useSuggestionsStore()
+    s.setPhase('variables')
+    s.markApplied('db1_leeftijd')
+    s.setPhase('values')
+    expect(s.isApplied('db1_leeftijd')).toBe(false)
+    s.markApplied('db1_leeftijd_man')
+    s.setPhase('variables')
+    expect(s.isApplied('db1_leeftijd_man')).toBe(false)
+    expect(s.isApplied('db1_leeftijd')).toBe(true)
   })
 
   it('SOURCE_ICONS maps every tier-1 source', () => {
