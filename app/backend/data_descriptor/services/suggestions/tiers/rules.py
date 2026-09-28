@@ -452,9 +452,9 @@ class ValueRegexMatcher:
             # Only the described database's values are relevant; a column
             # with the same name in another database may hold entirely
             # different values.
-            distinct = (ctx.column_values or {}).get(
-                ctx.described_database, {}
-            ).get(item, [])
+            distinct = (
+                (ctx.column_values or {}).get(ctx.described_database, {}).get(item, [])
+            )
             values = _strip_missing(distinct, rules)
             match = self._match_variable_rule(values, rules, variable_keys)
             if match is None:
