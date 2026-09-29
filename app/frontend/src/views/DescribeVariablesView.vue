@@ -235,6 +235,15 @@ function needsSuggestionReview(dbName, item) {
   return !getDescriptionValue(dbName, item)
 }
 
+// A suggestion that arrived for a column the loaded JSON-LD already
+// mapped: the field is filled in, so nothing needs reviewing. The badge
+// shows a quiet "already filled in" pill instead of the accept/dismiss
+// one, which read as if this column still needed a suggestion review.
+function isAlreadyMapped(dbName, item) {
+  if (suggestions.isApplied(`${dbName}_${item}`)) return false
+  return !!getDescriptionValue(dbName, item)
+}
+
 function acceptSuggestion(dbName, item, display) {
   const entry = suggestionFor(dbName, item)
   const value = display || entry?.display
@@ -853,6 +862,7 @@ onBeforeUnmount(() => {
                     :suggestion="suggestionFor(dbName, item) || {}"
                     :applied="suggestions.isApplied(`${dbName}_${item}`)"
                     :touched="suggestions.isTouched(`${dbName}_${item}`)"
+                    :already-filled="isAlreadyMapped(dbName, item)"
                     :coachmark="coachmarkTarget === `${dbName}_${item}`"
                     :coachmark-copy="COACHMARK_COPY"
                     @dismiss="dismissSuggestion(dbName, item)"

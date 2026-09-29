@@ -318,6 +318,18 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     // The preselected column is not highlighted as needing review.
     const morphSelect = wrapper.find('select[name="ncit_comment_test_db_morph"]')
     expect(morphSelect.classes()).not.toContain('suggestion-highlight')
+    // Its pill is informational ("already filled in"), not an
+    // accept/dismiss one: a suggestion on a mapped column must not read
+    // as if the column still needed a suggestion review.
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    const morphBadge = badges.find((b) => b.props('suggestion').item === 'morph')
+    const sexBadge = badges.find((b) => b.props('suggestion').item === 'sex')
+    expect(morphBadge.props('alreadyFilled')).toBe(true)
+    expect(morphBadge.find('.suggestion-badge').classes()).toContain('already-filled')
+    expect(morphBadge.text()).toContain('already filled in')
+    expect(morphBadge.find('button.suggestion-accept').exists()).toBe(false)
+    expect(sexBadge.props('alreadyFilled')).toBe(false)
+    expect(sexBadge.find('button.suggestion-accept').exists()).toBe(true)
     expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
   })
 

@@ -85,6 +85,30 @@ describe('Frontend unit: SuggestionBadge', () => {
     expect(wrapper.text()).not.toContain('reviewed')
   })
 
+  it('renders a quiet informational pill when the field was already filled in', () => {
+    // A field pre-filled from the loaded semantic map does not need a
+    // suggestion review: no accept/dismiss affordances, no percentage,
+    // just a note that it was already filled in.
+    const wrapper = mount(SuggestionBadge, {
+      props: {
+        suggestion: makeRecord(),
+        applied: false,
+        touched: false,
+        alreadyFilled: true,
+      },
+    })
+    const badge = wrapper.find('.suggestion-badge')
+    expect(badge.classes()).toContain('already-filled')
+    expect(wrapper.text()).toContain('already filled in')
+    expect(wrapper.text()).not.toContain('92%')
+    expect(wrapper.text()).not.toContain('reviewed')
+    expect(wrapper.find('button.suggestion-accept').exists()).toBe(false)
+    expect(wrapper.find('button.suggestion-dismiss').exists()).toBe(false)
+    expect(badge.attributes('title')).toBe(
+      'Already filled in from your semantic map; it does not necessarily need review'
+    )
+  })
+
   it('emits dismiss when the × button is clicked', async () => {
     const wrapper = mount(SuggestionBadge, {
       props: {

@@ -15,6 +15,10 @@
  *     alternatives-only pill: nothing to accept, just the choices it kept.
  *   applied — whether the user has accepted this suggestion.
  *   touched — whether the user subsequently edited the field.
+ *   alreadyFilled — the field already holds a value (pre-filled from the
+ *     loaded semantic map) that this suggestion did not put there. Nothing
+ *     needs reviewing, so instead of the accept/dismiss pill a quiet
+ *     informational one is shown.
  *   showDismiss — render the × dismiss button (default true).
  *   coachmark — show the first-visit review callout anchored to this pill.
  *   coachmarkCopy — { title, body } copy for that callout.
@@ -39,6 +43,7 @@ const props = defineProps({
   suggestion: { type: Object, required: true },
   applied: { type: Boolean, default: false },
   touched: { type: Boolean, default: false },
+  alreadyFilled: { type: Boolean, default: false },
   showDismiss: { type: Boolean, default: true },
   coachmark: { type: Boolean, default: false },
   coachmarkCopy: {
@@ -86,6 +91,9 @@ const alternativesOnly = computed(
 )
 
 const tooltipText = computed(() => {
+  if (props.alreadyFilled) {
+    return 'Already filled in from your semantic map; it does not necessarily need review'
+  }
   const reason = props.suggestion.reason || 'Mapping suggestion'
   if (props.applied && !props.touched) {
     return `${reason} — click to confirm or change the dropdown`
@@ -142,6 +150,16 @@ onBeforeUnmount(() => {
     :title="tooltipText"
   >
     <i class="fas fa-check" /> reviewed
+  </span>
+  <span
+    v-else-if="alreadyFilled"
+    class="suggestion-badge already-filled"
+    :title="tooltipText"
+  >
+    <!-- A field the loaded map already filled in: nothing to review, so a -->
+    <!-- quiet informational pill instead of the accept/dismiss one. -->
+    <i class="fas fa-circle-check" />
+    already filled in
   </span>
   <span
     v-else
@@ -283,6 +301,21 @@ onBeforeUnmount(() => {
   border-color: rgba(40, 140, 80, 0.6);
   background: rgba(40, 140, 80, 0.1);
   color: rgb(30, 110, 60);
+  cursor: default;
+}
+
+.suggestion-badge.already-filled {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75em;
+  border-style: solid;
+  border-color: rgba(108, 117, 125, 0.55);
+  background: rgba(108, 117, 125, 0.08);
+  color: rgb(95, 103, 111);
   cursor: default;
 }
 
