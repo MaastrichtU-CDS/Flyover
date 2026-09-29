@@ -40,6 +40,7 @@ vi.mock('@/lib/jsonld', async (importOriginal) => {
 
 import api from '@/services/api'
 import * as jsonld from '@/lib/jsonld'
+import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import DescribeVariablesView from '@/views/DescribeVariablesView.vue'
 import DescribeVariableDetailsView from '@/views/DescribeVariableDetailsView.vue'
@@ -215,6 +216,29 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     // The reviewed value is restored into the form state for display, but
     // a value the user never reviewed in this session is not re-written.
     expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
+  })
+
+  it('explains an accept blocked by the one-variable-per-database rule', async () => {
+    // Both columns suggest the same variable: morph pre-fills it first,
+    // so accepting it for sex must not write, and must say why.
+    const clash = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    clash.records.test_db_sex.match = 'tumour_morphology_icd_o'
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: clash }],
+    ])
+
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    await badges[1].vm.$emit('accept')
+    await flushPromises()
+
+    expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
+    const warnings = useStatusStore().messages.filter((m) => m.level === 'warning')
+    expect(warnings.at(-1)?.text).toContain("already used by column 'morph'")
   })
 
   it('applying an alternative writes that column through the same accept path', async () => {

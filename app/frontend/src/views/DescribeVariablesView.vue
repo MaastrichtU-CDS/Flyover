@@ -216,8 +216,19 @@ function acceptSuggestion(dbName, item, display) {
   const value = display || entry?.display
   if (!value) return
   const key = `${dbName}_${item}`
-  // Check the one-variable-per-database constraint before applying.
-  if (isDescriptionDisabled(dbName, item, value)) return
+  // Check the one-variable-per-database constraint before applying. A
+  // blocked accept must say why: silently doing nothing reads as a broken
+  // button, and for a conflict loser's alternative it is the normal case.
+  if (isDescriptionDisabled(dbName, item, value)) {
+    const holder = selectedDescriptionsByDb.value[dbName]?.[value] || ''
+    const holderColumn = holder.startsWith(`${dbName}_`)
+      ? holder.slice(dbName.length + 1)
+      : holder
+    status.warning(
+      `'${value}' is already used by column '${holderColumn}' in ${dbName}; change that column first to map '${item}' to it.`
+    )
+    return
+  }
   // Mark applied first: the explicit accept is a review, so the
   // markUserTouched inside onDescriptionChange must find the applied mark
   // and mark the field reviewed (WS1.4 — an explicit accept must never
