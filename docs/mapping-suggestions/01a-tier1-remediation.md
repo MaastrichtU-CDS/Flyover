@@ -196,5 +196,15 @@ Still open, for the team to decide:
 
 - [ ] Margin: `0.05` stays; `0.02` trades +6.4 pp correct pre-fills for +4.2 pp wrong hint pills (see `benchmark-results.md`).
 - [ ] Whether the values page gets its own threshold (`0.60`–`0.65` measured best).
-- [ ] `mapping_plan.md` at the repo root is still untracked.
+- [x] `mapping_plan.md` stays out of the repo on purpose; the plan lives in the GitHub issues.
 - [ ] The Playwright suggestion flows have not been run against a live stack in this pass.
+
+## Third pass: browser testing
+
+Found while using the app, fixed on this branch:
+
+- [x] Once any map had been adopted, the variables job kept running on it: re-uploading a map, or opening another (incognito) browser, showed suggestions computed on the first map. This reverses WS4.2's "variables phase sends its map only after `no_semantic_map`": both phases now send the browser's map and the backend runs the job on it job-locally. The session mapping is still never overwritten.
+- [x] With no map in the browser the store still started a job, and the page pre-filled values its dropdown could not show. It now reports "Upload a semantic map to enable suggestions", and the variables page only uses suggestions whose variable is a dropdown option.
+- [x] Uploading a semantic map did not reset the review marks, so after a re-upload a field could be empty while its pill said "reviewed". The describe landing page now resets them.
+- [x] The first-visit callout inherited its anchor's font (huge in a table heading, tiny next to a pill) and was wordy; it now has its own size and two short sentences.
+- [x] The status bar wrapped its message and tier note into each other; it now has two rows.
