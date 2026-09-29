@@ -143,6 +143,9 @@ function onDescriptionChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   const value = e.target.value
   formStateCache[key].description = value
+  // The user set this field themselves in this session: not "already
+  // filled in", so the informational pill stays off it.
+  manuallyEdited.add(key)
   // Deselecting must fully clear the preselected hint too; otherwise the stale
   // value leaks back via preselectedHiddenEntries and reappears in the details
   // view as a ghost "none" row.
@@ -235,12 +238,19 @@ function needsSuggestionReview(dbName, item) {
   return !getDescriptionValue(dbName, item)
 }
 
-// A suggestion that arrived for a column the loaded JSON-LD already
-// mapped: the field is filled in, so nothing needs reviewing. The badge
-// shows a quiet "already filled in" pill instead of the accept/dismiss
-// one, which read as if this column still needed a suggestion review.
+// A column the loaded JSON-LD already mapped — whether or not a suggestion
+// also exists for it. The field is filled in, so nothing needs reviewing,
+// and the badge shows a quiet "already filled in" pill instead of the
+// accept/dismiss one, which read as if the column still needed a suggestion
+// review. A column the user changed in THIS session is not "already"
+// filled in; after a reload the value returns from the map and the pill
+// returns with it.
+const manuallyEdited = reactive(new Set())
+
 function isAlreadyMapped(dbName, item) {
-  if (suggestions.isApplied(`${dbName}_${item}`)) return false
+  const key = `${dbName}_${item}`
+  if (suggestions.isApplied(key)) return false
+  if (manuallyEdited.has(key)) return false
   return !!getDescriptionValue(dbName, item)
 }
 
@@ -857,7 +867,8 @@ onBeforeUnmount(() => {
                     v-if="
                       suggestions.isApplied(`${dbName}_${item}`) ||
                         hasSuggestion(dbName, item) ||
-                        hasAlternativesOnly(dbName, item)
+                        hasAlternativesOnly(dbName, item) ||
+                        isAlreadyMapped(dbName, item)
                     "
                     :suggestion="suggestionFor(dbName, item) || {}"
                     :applied="suggestions.isApplied(`${dbName}_${item}`)"
