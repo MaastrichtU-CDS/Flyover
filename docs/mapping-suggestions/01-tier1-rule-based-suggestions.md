@@ -2,6 +2,19 @@
 
 Part of #35. Shared design (contract, API, cascade, compute flag, invariants): [`docs/mapping-suggestions/README.md`](README.md).
 
+
+> **Remediation decisions (D1–D5, recorded during the tier-1 remediation
+> review — see [`01a-tier1-remediation.md`](01a-tier1-remediation.md)):**
+> **D1** the describe views pre-fill the dropdown for display but persist
+> to the JSON-LD only on review; **D2** on a conflict the strongest
+> candidate keeps the variable, the losers are nulled naming the winner,
+> and the winner carries their matches in `alternatives`; **D3** marks
+> expire per key on a new fingerprint, keeping reviews whose suggestion is
+> unchanged; **D4** the IngestView FK review gate moved to its own branch;
+> **D5** value-based variable suggestions stay disabled — the
+> `{M,V} → biological_sex` and year-abstain criteria below are deferred
+> to a follow-up issue.
+
 ## Context & motivation
 
 Users map every local column to a `schema.variables` key on `DescribeVariablesView` and every distinct value to a `valueMapping.terms` key on `DescribeVariableDetailsView`, by hand. A large share of that work is mechanical: the same column has already been mapped by another site in the loaded semantic map, or the distinct values (`{ja, nee}`, `^[CM]\d{2}(\.\d)?$`) give the answer away. None of this needs a model, and it must work on a 4-core/8 GB air-gapped box.
@@ -42,19 +55,19 @@ Cherry-picks from `origin/feature/llm-mapping-suggestions` (old layout → curre
 
 | Branch file | New location | What changes |
 |---|---|---|
-| `backend/flyover/services/llm/matching.py` (`MATCH_OUTPUT_SCHEMA`, `sanitise_pairs`) | `flyover/backend/data_descriptor/services/suggestions/contract.py` | Add `source`, `tier`, `status`; `sanitise_pairs` becomes the generic server-side validator used by every producer |
-| `backend/flyover/services/llm/suggestion_service.py` (jobs, fingerprint, chunking, priority) | `flyover/backend/data_descriptor/services/suggestions/__init__.py` (`SuggestionService`) | Drop the provider dependency; the job runs a list of tier producers with the cascade rules from the README |
-| `backend/flyover/controllers/llm_controller.py` | `flyover/backend/data_descriptor/controllers/suggestions_controller.py` | Routes renamed `/api/v1/llm/*` → `/api/v1/suggestions/*`; `_maybe_adopt_mapping` kept; registered in `data_descriptor_main.py` next to `describe_bp` |
+| `backend/flyover/services/llm/matching.py` (`MATCH_OUTPUT_SCHEMA`, `sanitise_pairs`) | `app/backend/data_descriptor/services/suggestions/contract.py` | Add `source`, `tier`, `status`; `sanitise_pairs` becomes the generic server-side validator used by every producer |
+| `backend/flyover/services/llm/suggestion_service.py` (jobs, fingerprint, chunking, priority) | `app/backend/data_descriptor/services/suggestions/__init__.py` (`SuggestionService`) | Drop the provider dependency; the job runs a list of tier producers with the cascade rules from the README |
+| `backend/flyover/controllers/llm_controller.py` | `app/backend/data_descriptor/controllers/suggestions_controller.py` | Routes renamed `/api/v1/llm/*` → `/api/v1/suggestions/*`; `_maybe_adopt_mapping` kept; registered in `data_descriptor_main.py` next to `describe_bp` |
 | `backend/flyover/tests/unit/test_llm_suggestion_service.py`, `test_llm_controller.py`, `test_llm_matching.py` | `tests/unit/test_suggestions_service.py`, `test_suggestions_controller.py`, `test_suggestions_contract.py` | Provider mocks replaced by a fake tier producer |
 
 New files:
 
 ```
-flyover/backend/data_descriptor/services/suggestions/tiers/__init__.py   # Producer protocol: run(items, schema_slice, ctx) -> list[Record]
-flyover/backend/data_descriptor/services/suggestions/tiers/rules.py      # tier 1: the three matchers below
-flyover/backend/data_descriptor/resources/suggestion_rules.json          # value regexes + abbreviation table, versioned
-flyover/backend/data_descriptor/tests/unit/test_suggestions_rules.py
-scripts/benchmark_suggestions.py
+app/backend/data_descriptor/services/suggestions/tiers/__init__.py   # Producer protocol: run(items, schema_slice, ctx) -> list[Record]
+app/backend/data_descriptor/services/suggestions/tiers/rules.py      # tier 1: the three matchers below
+app/backend/data_descriptor/resources/suggestion_rules.json          # value regexes + abbreviation table, versioned
+app/backend/data_descriptor/tests/unit/test_suggestions_rules.py
+app/backend/scripts/benchmark_suggestions.py
 ```
 
 Routes delivered in this issue: `GET /status`, `POST /{variables|values}/start`, `GET /{variables|values}`, `POST /{variables|values}/priority`. `/ingest` and `/prompt` are added in issues 2/3 but the blueprint and `SuggestionService.ingest()` signature are reserved now. Inputs come from what `describe_controller.py` already exposes: `column_info` per database (`/api/v1/describe-variables-state`) and distinct categorical values (`rdf_store_service.get_categories`), plus the session JSON-LD.
@@ -86,9 +99,9 @@ Cascade inside tier 1: alias → value_regex → string; merge per README (highe
 
 | Branch file | New location | What changes |
 |---|---|---|
-| `frontend/src/stores/suggestions.js` | `flyover/frontend/src/stores/suggestions.js` | Endpoints renamed; records keep `source`/`tier`; `applied`/`touched`/`dismissed` marks persisted in the IndexedDB `metadata` store (`src/lib/db.js`) under `suggestion_marks_<phase>` |
-| `frontend/tests/unit/stores/suggestions.spec.js` | `flyover/frontend/tests/unit/stores/suggestions.spec.js` | Same, plus a `source`-agnostic rendering test |
-| `frontend/src/views/DescribeVariablesView.vue`, `DescribeVariableDetailsView.vue` — the suggestion **aesthetics** (template + `<style scoped>` blocks) | `flyover/frontend/src/components/SuggestionBadge.vue` + `SuggestionStatusBar.vue`; per-view styles moved into the components | Extract, don't redraw: the branch already has the purple dashed look for suggestions; we keep it and only rename `llm-*` → `suggestion-*` and make the labels source-agnostic |
+| `frontend/src/stores/suggestions.js` | `app/frontend/src/stores/suggestions.js` | Endpoints renamed; records keep `source`/`tier`; `applied`/`touched`/`dismissed` marks persisted in the IndexedDB `metadata` store (`src/lib/db.js`) under `suggestion_marks_<phase>` |
+| `frontend/tests/unit/stores/suggestions.spec.js` | `app/frontend/tests/unit/stores/suggestions.spec.js` | Same, plus a `source`-agnostic rendering test |
+| `frontend/src/views/DescribeVariablesView.vue`, `DescribeVariableDetailsView.vue` — the suggestion **aesthetics** (template + `<style scoped>` blocks) | `app/frontend/src/components/SuggestionBadge.vue` + `SuggestionStatusBar.vue`; per-view styles moved into the components | Extract, don't redraw: the branch already has the purple dashed look for suggestions; we keep it and only rename `llm-*` → `suggestion-*` and make the labels source-agnostic |
 
 **Cherry-pick the existing look and feel.** The branch's describe views already contain a finished suggestion UI; reuse these pieces verbatim (renamed, componentised) rather than designing new ones:
 
@@ -121,9 +134,9 @@ Integration points:
 
 Setting `FLYOVER_SUGGESTION_TIERS=` (empty) disables the feature; `/status` then reports all tiers `inactive (disabled by FLYOVER_SUGGESTION_TIERS)` and the views render exactly as today.
 
-### Benchmark (`scripts/benchmark_suggestions.py`)
+### Benchmark (`app/backend/scripts/benchmark_suggestions.py`)
 
-Protocol per README. CLI: `python scripts/benchmark_suggestions.py --tiers 1 --sites all --out docs/mapping-suggestions/benchmark-results.md`. Uses the same `tiers/rules.py` code path as the app; leave-one-site-out for alias memory.
+Protocol per README (leave one SITE out, through `SuggestionService` itself). CLI: `python app/backend/scripts/benchmark_suggestions.py --sites all --sweep --out docs/mapping-suggestions/benchmark-results.md`. The `--tiers` flag is gone: only tier 1 is implemented, and `/status` reports tiers 2/3 as `inactive (not implemented yet)`.
 
 ## Acceptance criteria
 
@@ -148,7 +161,7 @@ Protocol per README. CLI: `python scripts/benchmark_suggestions.py --tiers 1 --s
 - `tests/unit/test_suggestions_controller.py` — routes, env flag parsing, `/status` shape, 400 on unknown phase.
 - Vitest `tests/unit/stores/suggestions.spec.js` and `components/SuggestionBadge.spec.js`.
 - Playwright: existing describe flows with suggestions disabled; one new flow accepting and dismissing a suggestion.
-- Manual: run `scripts/benchmark_suggestions.py --tiers 1` and attach the summary to the PR.
+- Manual: run `app/backend/scripts/benchmark_suggestions.py --sites all --sweep` and attach the summary to the PR.
 
 ## Open questions
 

@@ -73,3 +73,6 @@ CLAUDE.md
 .claudeignore
 frontend/node_modules/
 .junie
+# Local dev tree: target of the app/frontend/node_modules symlink.
+# Never commit; the symlink keeps the installed dependencies usable.
+/flyover/
