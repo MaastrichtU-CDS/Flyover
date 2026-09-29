@@ -654,7 +654,16 @@ async function onFormSubmit() {
 
 onMounted(async () => {
   try {
-    const { data } = await api.get('/api/v1/describe-variable-details-state')
+    // The describe pages work on the map in this browser's IndexedDB: it is
+    // what the dropdowns collect their value-mapping options from. The state
+    // request carries it so the backend renders the variables, the details
+    // population and the preselected values on the same map (request-locally
+    // — the session's adopted mapping may be an older one).
+    await jsonld.loadFromIndexedDB()
+    mapperLoaded.value = true
+    const { data } = await api.post('/api/v1/describe-variable-details-state', {
+      mapping: jsonld.getMapping(),
+    })
     descriptiveInfo.value = data.descriptive_info || {}
     descriptiveInfoDetails.value = data.descriptive_info_details || {}
     preselectedValues.value = data.preselected_values || {}
@@ -668,8 +677,6 @@ onMounted(async () => {
       data: descriptiveInfoDetails.value,
       timestamp: new Date().toISOString(),
     })
-    await jsonld.loadFromIndexedDB()
-    mapperLoaded.value = true
   } catch (e) {
     console.error('Failed to load variable details state:', e)
   }

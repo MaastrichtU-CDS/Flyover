@@ -149,13 +149,21 @@ const VALUES_SNAPSHOT = {
 }
 
 function mockApiRoutes(routes) {
-  api.get.mockImplementation(async (url) => {
+  const respond = async (url) => {
     for (const [prefix, response] of routes) {
       if (url === prefix) return response
     }
     return { data: {} }
+  }
+  api.get.mockImplementation(respond)
+  // The details state arrives by POST (it carries the browser's map); any
+  // other POST (suggestions /start) defaults to a started job.
+  api.post.mockImplementation(async (url) => {
+    for (const [prefix, response] of routes) {
+      if (url === prefix) return response
+    }
+    return { data: { status: 'started' } }
   })
-  api.post.mockResolvedValue({ data: { status: 'started' } })
 }
 
 function variablesRoutes(snapshot = VARIABLES_SNAPSHOT) {

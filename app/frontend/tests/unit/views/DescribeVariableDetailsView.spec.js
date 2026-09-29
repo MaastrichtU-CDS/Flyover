@@ -81,6 +81,7 @@ const STATE = {
 describe('DescribeVariableDetailsView', () => {
   beforeEach(() => {
     api.get.mockReset()
+    api.post.mockReset()
     db.saveData.mockClear()
     jsonld.loadFromIndexedDB.mockClear()
     jsonld.updateCategoryMapping.mockClear()
@@ -89,7 +90,7 @@ describe('DescribeVariableDetailsView', () => {
   })
 
   it('renders the form posting to /end', async () => {
-    api.get.mockResolvedValue({ data: STATE })
+    api.post.mockResolvedValue({ data: STATE })
     const w = mountView()
     await flushPromises()
     const form = w.find('form')
@@ -98,17 +99,21 @@ describe('DescribeVariableDetailsView', () => {
   })
 
   it('hydrates from the state endpoint and seeds IndexedDB on mount', async () => {
-    api.get.mockResolvedValue({ data: STATE })
+    api.post.mockResolvedValue({ data: STATE })
     mountView()
     await flushPromises()
-    expect(api.get).toHaveBeenCalledWith('/api/v1/describe-variable-details-state')
+    // The state request carries the browser's semantic map so the backend
+    // renders the page on the same map the dropdowns collect options from.
+    expect(api.post).toHaveBeenCalledWith('/api/v1/describe-variable-details-state', {
+      mapping: {},
+    })
     const saveKeys = db.saveData.mock.calls.map((c) => c[1].key)
     expect(saveKeys).toEqual(['descriptive_info', 'descriptive_info_details'])
     expect(jsonld.loadFromIndexedDB).toHaveBeenCalled()
   })
 
   it('renders one section per database with its variables', async () => {
-    api.get.mockResolvedValue({ data: STATE })
+    api.post.mockResolvedValue({ data: STATE })
     const w = mountView()
     await flushPromises()
     expect(w.findAll('.database-section')).toHaveLength(1)
@@ -118,7 +123,7 @@ describe('DescribeVariableDetailsView', () => {
   })
 
   it('writes updated continuous unit on submit', async () => {
-    api.get.mockResolvedValue({ data: STATE })
+    api.post.mockResolvedValue({ data: STATE })
     const w = mountView()
     await flushPromises()
     db.saveData.mockClear()
@@ -137,7 +142,7 @@ describe('DescribeVariableDetailsView', () => {
   })
 
   it('calls jsonld.updateCategoryMapping with correct args on category change', async () => {
-    api.get.mockResolvedValue({ data: STATE })
+    api.post.mockResolvedValue({ data: STATE })
     const w = mountView()
     await flushPromises()
 
@@ -158,7 +163,7 @@ describe('DescribeVariableDetailsView', () => {
     // Local mapping preselects 'M' -> 'Male'; the option must exist to be held.
     jsonld.getLocalMappingsForVariable.mockReturnValue({ male: 'M', female: 'F' })
     jsonld.getCategoryOptionsForVariable.mockReturnValue(['Male', 'Female'])
-    api.get.mockResolvedValue({ data: STATE })
+    api.post.mockResolvedValue({ data: STATE })
     const w = mountView()
     await flushPromises()
 
@@ -176,7 +181,7 @@ describe('DescribeVariableDetailsView', () => {
   })
 
   it('does not crash when /api/v1/describe-variable-details-state rejects', async () => {
-    api.get.mockRejectedValue(new Error('boom'))
+    api.post.mockRejectedValue(new Error("boom"))
     const w = mountView()
     await flushPromises()
     expect(w.find('form').exists()).toBe(true)

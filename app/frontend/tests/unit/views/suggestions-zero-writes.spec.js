@@ -160,16 +160,24 @@ const VALUES_SNAPSHOT = {
   },
 }
 
-// Route api.get by URL so the store's status/poll calls and the views'
-// state calls can coexist in one mock.
+// Route api.get/api.post by URL so the store's status/poll calls, the
+// views' state calls and the suggestions /start can coexist in one mock.
+// The details state arrives by POST (it carries the browser's map); any
+// other POST (suggestions /start) defaults to a started job.
 function mockApiRoutes(routes) {
-  api.get.mockImplementation(async (url) => {
+  const respond = async (url) => {
     for (const [prefix, response] of routes) {
       if (url === prefix) return response
     }
     return { data: {} }
+  }
+  api.get.mockImplementation(respond)
+  api.post.mockImplementation(async (url) => {
+    for (const [prefix, response] of routes) {
+      if (url === prefix) return response
+    }
+    return { data: { status: 'started' } }
   })
-  api.post.mockResolvedValue({ data: { status: 'started' } })
 }
 
 beforeEach(() => {
@@ -446,6 +454,20 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
       global: { stubs: { RouterLink: RouterLinkStub } },
     })
   }
+
+  it('requests the details state on the browser semantic map', async () => {
+    // The dropdowns collect their value-mapping options from the map in
+    // this browser's IndexedDB, so the state request must carry it: the
+    // backend renders the variables and preselected values on that map.
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const call = api.post.mock.calls.find(
+      (c) => c[0] === '/api/v1/describe-variable-details-state',
+    )
+    expect(call).toBeTruthy()
+    expect(call[1].mapping).toEqual(SEMANTIC_MAP)
+  })
 
   it('pre-fills a value suggestion below the column threshold', async () => {
     // Value scores sit on another scale than column names ('1' against
