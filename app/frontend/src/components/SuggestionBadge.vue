@@ -20,10 +20,16 @@
  * Emits:
  *   dismiss — the user clicked ×.
  *   accept — the user clicked the accept button.
+ *   apply-alternative — the user picked one of the alternative matches
+ *     from the popover; the payload is the alternative record dict.
  *   coachmark-close — the user acknowledged the callout.
+ *
+ * Slots:
+ *   retry — reserved for tier 3 (a "retry suggestion" affordance);
+ *     unused for now.
  */
 
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { SOURCE_ICONS } from '@/stores/suggestions'
 import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 
@@ -39,7 +45,12 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['dismiss', 'accept', 'coachmark-close'])
+const emit = defineEmits([
+  'dismiss',
+  'accept',
+  'apply-alternative',
+  'coachmark-close',
+])
 
 const sourceIcon = computed(() => {
   return SOURCE_ICONS[props.suggestion.source] || 'fa-lightbulb'
@@ -54,8 +65,15 @@ const confidencePct = computed(() => {
   return Math.round((props.suggestion.confidence || 0) * 100)
 })
 
-const hasAlternatives = computed(() => {
-  return (props.suggestion.alternatives || []).length > 0
+// Only real choices for the user: a non-null alternative that differs
+// from the record's own match. Abstains and duplicates of the winner are
+// filtered out by the backend merge; keep the guard here so a stale
+// record cannot resurrect the noise.
+const alternatives = computed(() => {
+  const own = props.suggestion.match
+  return (props.suggestion.alternatives || []).filter(
+    (alt) => alt?.match && alt.match !== own
+  )
 })
 
 const tooltipText = computed(() => {
@@ -75,6 +93,37 @@ const acceptLabel = computed(() => {
   if (match && item) return `Accept suggestion: map '${item}' to '${match}' (${pct}%)`
   return `Accept suggestion (${pct}%)`
 })
+
+// Alternatives popover: CSS-only, positioned under the pill (the root is
+// position: relative), toggled by its own button so it stays outside the
+// accept button (buttons cannot nest). The Escape listener is attached
+// only while the popover is open — a page can render hundreds of badges.
+const showAlternatives = ref(false)
+
+function toggleAlternatives() {
+  showAlternatives.value = !showAlternatives.value
+}
+
+function applyAlternative(alt) {
+  showAlternatives.value = false
+  emit('apply-alternative', alt)
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && showAlternatives.value) showAlternatives.value = false
+}
+
+watch(showAlternatives, (open) => {
+  if (typeof document === 'undefined') return
+  if (open) document.addEventListener('keydown', onKeydown)
+  else document.removeEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('keydown', onKeydown)
+  }
+})
 </script>
 
 <template>
@@ -90,9 +139,9 @@ const acceptLabel = computed(() => {
     class="suggestion-badge"
     :class="{ applied }"
   >
-    <!-- Accept and dismiss are two sibling buttons so both are keyboard
-         reachable; a button cannot nest inside another button, so the
-         pill body itself is no longer a clickable span. -->
+    <!-- Accept, alternatives, and dismiss are sibling buttons so all are
+         keyboard reachable; a button cannot nest inside another button,
+         so the pill body itself is no longer a clickable span. -->
     <button
       type="button"
       class="suggestion-accept"
@@ -106,13 +155,41 @@ const acceptLabel = computed(() => {
       />
       {{ confidencePct }}%
       <span
-        v-if="hasAlternatives"
-        class="suggestion-alternatives"
-        :title="`${suggestion.alternatives.length} alternative(s) available`"
-      >
-        <i class="fas fa-list" />
-      </span>
+        v-if="tierLabel"
+        class="suggestion-tier"
+      >{{ tierLabel }}</span>
     </button>
+    <button
+      v-if="alternatives.length"
+      type="button"
+      class="suggestion-alternatives"
+      :aria-expanded="showAlternatives ? 'true' : 'false'"
+      :aria-label="`${alternatives.length} alternative match${alternatives.length === 1 ? '' : 'es'} available — show them`"
+      :title="`${alternatives.length} alternative match${alternatives.length === 1 ? '' : 'es'} available`"
+      @click.stop="toggleAlternatives"
+    >
+      <i class="fas fa-list" />
+    </button>
+    <div
+      v-if="showAlternatives"
+      class="suggestion-alternatives-popover"
+    >
+      <button
+        v-for="alt in alternatives"
+        :key="alt.match"
+        type="button"
+        class="alternative-entry"
+        :aria-label="`Apply alternative: map to '${alt.match}' (${alt.source}, ${Math.round((alt.confidence || 0) * 100)}%)`"
+        @click.stop="applyAlternative(alt)"
+      >
+        <i
+          class="fas"
+          :class="SOURCE_ICONS[alt.source] || 'fa-lightbulb'"
+        />
+        <span class="alternative-match">{{ alt.match }}</span>
+        <span class="alternative-confidence">{{ Math.round((alt.confidence || 0) * 100) }}%</span>
+      </button>
+    </div>
     <button
       v-if="showDismiss"
       type="button"
@@ -123,6 +200,7 @@ const acceptLabel = computed(() => {
     >
       &times;
     </button>
+    <slot name="retry" />
     <!-- First-visit review cue: anchored under this pill. The root span is
          position: relative so the callout needs no positioning library. -->
     <SuggestionCoachmark
@@ -163,7 +241,7 @@ const acceptLabel = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.1rem 0.45rem 0.1rem 0.35rem;
+  padding: 0.1rem 0.35rem 0.1rem 0.35rem;
   border: none;
   border-radius: 999px 0 0 999px;
   background: none;
@@ -173,7 +251,9 @@ const acceptLabel = computed(() => {
 }
 
 .suggestion-accept:focus-visible,
-.suggestion-dismiss:focus-visible {
+.suggestion-dismiss:focus-visible,
+.suggestion-alternatives:focus-visible,
+.alternative-entry:focus-visible {
   outline: 2px solid rgba(118, 75, 162, 0.9);
   outline-offset: 1px;
 }
@@ -193,12 +273,65 @@ const acceptLabel = computed(() => {
   cursor: default;
 }
 
+.suggestion-tier {
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+
 .suggestion-alternatives {
   display: inline-flex;
   align-items: center;
-  margin-left: 0.1rem;
+  padding: 0.1rem 0.15rem;
+  border: none;
+  background: none;
   opacity: 0.7;
   font-size: 0.85em;
+  color: inherit;
+  cursor: pointer;
+}
+
+.suggestion-alternatives-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1070;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  font-size: 0.9em;
+  text-align: left;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.25);
+}
+
+.alternative-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 0.2rem;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.alternative-entry:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.alternative-match {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.alternative-confidence {
+  opacity: 0.75;
 }
 
 .suggestion-dismiss {

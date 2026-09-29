@@ -146,7 +146,34 @@ describe('Frontend unit: SuggestionBadge', () => {
     expect(wrapper.emitted('dismiss')).toBeTruthy()
   })
 
-  it('shows the alternatives indicator when alternatives exist', () => {
+  it('shows the alternatives button only for real alternatives', () => {
+    // Null matches and duplicates of the winner are not choices; only a
+    // genuinely different match renders the alternatives button (WS5.2).
+    const record = makeRecord()
+    record.alternatives = [
+      { match: 'biological_sex', confidence: 0.7, source: 'string', tier: 1 },
+      { match: null, confidence: 0.0, source: 'string', tier: 1 },
+      { match: record.match, confidence: 0.95, source: 'alias', tier: 1 },
+    ]
+    const wrapper = mount(SuggestionBadge, {
+      props: { suggestion: record, applied: false, touched: false },
+    })
+    const btn = wrapper.find('button.suggestion-alternatives')
+    expect(btn.exists()).toBe(true)
+    expect(btn.attributes('aria-label')).toContain('1 alternative match available')
+
+    const clean = makeRecord()
+    clean.alternatives = [
+      { match: null, confidence: 0.0, source: 'string', tier: 1 },
+      { match: clean.match, confidence: 0.99, source: 'alias', tier: 1 },
+    ]
+    const wrapperClean = mount(SuggestionBadge, {
+      props: { suggestion: clean, applied: false, touched: false },
+    })
+    expect(wrapperClean.find('button.suggestion-alternatives').exists()).toBe(false)
+  })
+
+  it('popover lists alternatives with source and confidence and applies one on click', async () => {
     const record = makeRecord()
     record.alternatives = [
       { match: 'biological_sex', confidence: 0.7, source: 'string', tier: 1 },
@@ -154,7 +181,49 @@ describe('Frontend unit: SuggestionBadge', () => {
     const wrapper = mount(SuggestionBadge, {
       props: { suggestion: record, applied: false, touched: false },
     })
-    expect(wrapper.find('.suggestion-alternatives').exists()).toBe(true)
+    // Closed until toggled.
+    expect(wrapper.find('.suggestion-alternatives-popover').exists()).toBe(false)
+
+    await wrapper.find('button.suggestion-alternatives').trigger('click')
+    const entries = wrapper.findAll('.alternative-entry')
+    expect(entries.length).toBe(1)
+    expect(entries[0].text()).toContain('biological_sex')
+    expect(entries[0].text()).toContain('70%')
+
+    await entries[0].trigger('click')
+    expect(wrapper.emitted('apply-alternative')).toBeTruthy()
+    expect(wrapper.emitted('apply-alternative')[0][0]).toMatchObject({
+      match: 'biological_sex',
+      source: 'string',
+    })
+    // Applying closes the popover.
+    expect(wrapper.find('.suggestion-alternatives-popover').exists()).toBe(false)
+  })
+
+  it('Escape closes the alternatives popover without applying', async () => {
+    const record = makeRecord()
+    record.alternatives = [
+      { match: 'biological_sex', confidence: 0.7, source: 'string', tier: 1 },
+    ]
+    const wrapper = mount(SuggestionBadge, {
+      props: { suggestion: record, applied: false, touched: false },
+    })
+    await wrapper.find('button.suggestion-alternatives').trigger('click')
+    expect(wrapper.find('.suggestion-alternatives-popover').exists()).toBe(true)
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.suggestion-alternatives-popover').exists()).toBe(false)
+    expect(wrapper.emitted('apply-alternative')).toBeFalsy()
+  })
+
+  it('renders the tier label and leaves the retry slot for tier 3', () => {
+    const wrapper = mount(SuggestionBadge, {
+      props: { suggestion: makeRecord(), applied: false, touched: false },
+      slots: { retry: '<button class="retry-stub">retry suggestion</button>' },
+    })
+    expect(wrapper.find('.suggestion-tier').text()).toBe('tier 1')
+    expect(wrapper.find('.retry-stub').exists()).toBe(true)
   })
 
   it('does not show the dismiss button when showDismiss is false', () => {

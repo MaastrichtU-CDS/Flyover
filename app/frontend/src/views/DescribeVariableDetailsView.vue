@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { formatToTitleCase } from '@/lib/jsonld'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
 import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
@@ -256,15 +257,23 @@ function needsSuggestionReview(key) {
   return !categorySelections[key]
 }
 
-async function acceptSuggestion(database, variable, cat) {
+async function acceptSuggestion(database, variable, cat, display) {
   const entry = suggestionFor(cat.key)
-  if (!entry || !entry.display) return
+  const value = display || entry?.display
+  if (!value) return
   const options = categoryOptionsFor(variable)
-  if (!options.includes(entry.display)) return
-  categorySelections[cat.key] = entry.display
+  if (!options.includes(value)) return
+  categorySelections[cat.key] = value
   suggestions.markApplied(cat.key)
   await onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
   maybeCloseCoachmark()
+}
+
+// Applying an alternative from the badge popover goes through the same
+// accept path as the suggestion itself.
+async function applyAlternative(database, variable, cat, alt) {
+  if (!alt?.match) return
+  await acceptSuggestion(database, variable, cat, formatToTitleCase(alt.match))
 }
 
 function dismissSuggestion(database, variable, cat) {
@@ -647,6 +656,7 @@ onBeforeUnmount(() => {
       :tiers="suggestions.tiers"
       :compute="suggestions.compute"
       :unreviewed-count="unreviewedFieldCount"
+      item-label="values"
       @clear-all="clearAllSuggestions"
       @show-coachmark="coachmarkRequested = true"
     />
@@ -804,6 +814,7 @@ onBeforeUnmount(() => {
                           :coachmark-copy="COACHMARK_COPY"
                           @dismiss="dismissSuggestion(dbEntry.name, variable, cat)"
                           @accept="acceptSuggestion(dbEntry.name, variable, cat)"
+                          @apply-alternative="applyAlternative(dbEntry.name, variable, cat, $event)"
                           @coachmark-close="closeCoachmark"
                         />
                       </div>

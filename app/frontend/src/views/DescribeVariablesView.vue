@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick, watch } 
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { formatToTitleCase } from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
@@ -205,20 +206,29 @@ function needsSuggestionReview(dbName, item) {
   return !formStateCache[key]?.description
 }
 
-function acceptSuggestion(dbName, item) {
+function acceptSuggestion(dbName, item, display) {
   const entry = suggestionFor(dbName, item)
-  if (!entry || !entry.display) return
+  const value = display || entry?.display
+  if (!value) return
   const key = `${dbName}_${item}`
   // Check the one-variable-per-database constraint before applying.
-  if (isDescriptionDisabled(dbName, item, entry.display)) return
+  if (isDescriptionDisabled(dbName, item, value)) return
   // Mark applied first: the explicit accept is a review, so the
   // markUserTouched inside onDescriptionChange must find the applied mark
   // and mark the field reviewed (WS1.4 — an explicit accept must never
   // leave the field in the "needs review" state).
   suggestions.markApplied(key)
   // Go through the same path as a manual selection.
-  onDescriptionChange(dbName, item, { target: { value: entry.display } })
+  onDescriptionChange(dbName, item, { target: { value } })
   maybeCloseCoachmark()
+}
+
+// Applying an alternative from the badge popover goes through the same
+// accept path as the suggestion itself; the alternative only differs in
+// which value it puts in the dropdown.
+function applyAlternative(dbName, item, alt) {
+  if (!alt?.match) return
+  acceptSuggestion(dbName, item, formatToTitleCase(alt.match))
 }
 
 function dismissSuggestion(dbName, item) {
@@ -300,14 +310,6 @@ function requestSectionFirst(dbName) {
     suggestions.bumpPriority('variables', keys)
   }
 }
-
-const suggestionProgress = computed(() => {
-  const entries = Object.values(suggestions.variables.byKey)
-  return {
-    done: entries.filter((e) => e.status === 'done' || e.status === 'failed').length,
-    total: entries.length,
-  }
-})
 
 const unreviewedFieldCount = computed(
   () =>
@@ -793,6 +795,7 @@ onBeforeUnmount(() => {
                     :coachmark-copy="COACHMARK_COPY"
                     @dismiss="dismissSuggestion(dbName, item)"
                     @accept="acceptSuggestion(dbName, item)"
+                    @apply-alternative="applyAlternative(dbName, item, $event)"
                     @coachmark-close="closeCoachmark"
                   />
                 </div>

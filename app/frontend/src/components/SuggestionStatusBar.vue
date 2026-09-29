@@ -15,6 +15,8 @@
  *   tiers — the /status tiers dict.
  *   compute — the /status compute mode.
  *   unreviewedCount — number of applied-but-unreviewed fields.
+ *   itemLabel — what the progress counter counts ("variables" or
+ *     "values"); the details page describes values, not variables.
  */
 
 import { computed } from 'vue'
@@ -30,6 +32,7 @@ const props = defineProps({
   tiers: { type: Object, default: () => ({}) },
   compute: { type: String, default: 'host' },
   unreviewedCount: { type: Number, default: 0 },
+  itemLabel: { type: String, default: 'variables' },
 })
 
 defineEmits(['clear-all', 'show-coachmark'])
@@ -93,7 +96,7 @@ const unavailableMessage = computed(() => {
     <i class="fas fa-lightbulb" />
     <span v-if="phaseState.status === 'running'">
       <i class="fas fa-spinner fa-spin" />
-      Suggestions: {{ progressText }} variables
+      Suggestions: {{ progressText }} {{ itemLabel }}
     </span>
     <span v-else-if="phaseState.status === 'done'">
       <template v-if="hasMatches">Suggestions ready — review the highlighted fields</template>

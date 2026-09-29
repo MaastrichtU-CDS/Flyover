@@ -216,6 +216,40 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     // a value the user never reviewed in this session is not re-written.
     expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
   })
+
+  it('applying an alternative writes that column through the same accept path', async () => {
+    // Give the morph record one real alternative (a different match);
+    // null matches and duplicates of the winner must not be offered.
+    const withAlt = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    withAlt.records.test_db_morph.alternatives = [
+      { match: 'year_of_initial_diagnosis', confidence: 0.7, source: 'string', tier: 1 },
+      { match: null, confidence: 0.0, source: 'string', tier: 1 },
+    ]
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: withAlt }],
+    ])
+
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const badge = wrapper.findAllComponents({ name: 'SuggestionBadge' })[0]
+    await badge.vm.$emit('apply-alternative', {
+      match: 'year_of_initial_diagnosis',
+      confidence: 0.7,
+      source: 'string',
+      tier: 1,
+    })
+    await flushPromises()
+
+    // The alternative's match was applied to the morph column through the
+    // accept path and marked reviewed — a write the user explicitly made.
+    const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
+    expect(payload.test_db_morph?.description).toBe('Year of initial diagnosis')
+    const store = useSuggestionsStore()
+    expect(store.isTouched('test_db_morph')).toBe(true)
+  })
 })
 
 describe('DescribeVariableDetailsView — zero writes without explicit review', () => {
