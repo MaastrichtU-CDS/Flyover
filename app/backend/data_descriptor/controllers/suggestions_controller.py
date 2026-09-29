@@ -125,15 +125,15 @@ def start_suggestions(phase: str):
 
     body = request.get_json(silent=True) or {}
 
-    # The mapping may only survive in the browser's IndexedDB (e.g. after a
-    # container restart). The values phase also needs the UPDATED mapping
-    # (the user's variable selections) to know which variable each column
-    # maps to — but a request body must never silently overwrite the
-    # session's own mapping. So:
-    # - variables phase: adopt the body mapping only when the session has
-    #   none, after MappingValidator passes;
-    # - values phase: use the body mapping for this job only (the service
-    #   keeps it job-local).
+    # The describe pages work on the semantic map in the browser's
+    # IndexedDB: the describe-landing upload never reaches the session, so
+    # the session may hold an older map (or one another browser sent).
+    # Both phases therefore run on the body mapping when one is sent, for
+    # this job only (the service keeps it job-local); the fingerprint
+    # covers the mapping, so a different map starts a fresh job. A request
+    # body never overwrites the session's own mapping: the variables phase
+    # only adopts it when the session has none (e.g. after a container
+    # restart), after MappingValidator passes.
     mapping = _parse_mapping(body.get("mapping"))
     if phase == "variables":
         _maybe_adopt_mapping(session_cache, mapping)
@@ -143,7 +143,7 @@ def start_suggestions(phase: str):
         session_cache,
         rdf_store_service,
         force=bool(body.get("force")),
-        mapping=mapping if phase == "values" else None,
+        mapping=mapping,
     )
     return jsonify(result)
 

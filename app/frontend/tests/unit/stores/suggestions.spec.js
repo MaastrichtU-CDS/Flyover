@@ -132,9 +132,10 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const s = useSuggestionsStore()
     await s.init('variables', { mapping: { some: 'mapping' } })
 
-    // WS4.2: the variables phase does not send the browser's mapping
-    // upfront — only after the backend answers no_semantic_map.
-    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {})
+    // The job runs on the browser's semantic map.
+    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {
+      mapping: { some: 'mapping' },
+    })
     expect(s.enabled).toBe(true)
     expect(s.variables.status).toBe('running')
     expect(s.variables.byKey['db1_leeftijd']).toMatchObject({
@@ -222,15 +223,10 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(s.variables.gaveUp).toBe(true)
   })
 
-  it('the variables phase offers its mapping only after no_semantic_map', async () => {
-    // First /start answers no_semantic_map (the session has no mapping);
-    // only then does the store retry once with the browser's mapping
-    // (WS4.2) — a request body must not reach the session unprompted.
-    api.post
-      .mockResolvedValueOnce({
-        data: { status: 'unavailable', reason: 'no_semantic_map' },
-      })
-      .mockResolvedValueOnce({ data: { status: 'started' } })
+  it('the variables phase always sends the browser mapping', async () => {
+    // The describe pages work on the browser's map; the backend session
+    // may hold an older one, so the variables job must run on this one.
+    api.post.mockResolvedValue({ data: { status: 'started' } })
     api.get
       .mockResolvedValueOnce(statusResponse())
       .mockResolvedValue(snapshot({ status: 'done' }))
@@ -238,16 +234,10 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const s = useSuggestionsStore()
     await s.init('variables', { mapping: { some: 'mapping' } })
 
-    expect(api.post).toHaveBeenNthCalledWith(
-      1,
-      '/api/v1/suggestions/variables/start',
-      {}
-    )
-    expect(api.post).toHaveBeenNthCalledWith(
-      2,
-      '/api/v1/suggestions/variables/start',
-      { mapping: { some: 'mapping' } }
-    )
+    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {
+      mapping: { some: 'mapping' },
+    })
+    expect(api.post).toHaveBeenCalledTimes(1)
   })
 
   it('the values phase always sends the mapping job-locally', async () => {

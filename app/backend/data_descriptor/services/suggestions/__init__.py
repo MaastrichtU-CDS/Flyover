@@ -283,9 +283,10 @@ class SuggestionService:
 
         Returns a status dict (``{"status": ...}``) mirroring the LLM branch.
 
-        ``mapping`` is a validated job-local mapping (the values phase needs
-        the browser's latest variable selections); it is used for this job
-        only and never written back to ``session_cache.jsonld_mapping``.
+        ``mapping`` is a validated job-local mapping: the browser's current
+        semantic map, which the describe pages work on (and, in the values
+        phase, the user's latest variable selections). It is used for this
+        job only and never written back to ``session_cache.jsonld_mapping``.
         Without it the session's own mapping is used.
         """
         if phase not in PHASES:

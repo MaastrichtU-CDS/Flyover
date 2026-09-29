@@ -262,10 +262,11 @@ class TestStart(unittest.TestCase):
         # The job ran on the session mapping (None), not the rejected body.
         self.assertIs(svc.start.call_args.kwargs.get("mapping"), None)
 
-    def test_start_never_overwrites_an_existing_session_mapping(self):
-        """The variables phase must not replace the session's mapping with
-        the browser's copy: the session mapping is what the rest of the
-        app reads, and the body may be stale or partial."""
+    def test_start_variables_uses_body_mapping_without_overwriting_session(self):
+        """The describe pages work on the browser's semantic map, and the
+        session may hold an older one (the describe-landing upload never
+        reaches it). The variables job therefore runs on the body mapping,
+        job-locally, and the session's own mapping is left untouched."""
         svc = _make_mock_service()
         existing = MagicMock(name="existing-session-mapping")
         session_cache = MagicMock()
@@ -278,8 +279,10 @@ class TestStart(unittest.TestCase):
             )
             self.assertEqual(resp.status_code, 200)
         self.assertIs(session_cache.jsonld_mapping, existing)
-        # The variables job runs on the session mapping, not the body's.
-        self.assertIsNone(svc.start.call_args.kwargs.get("mapping"))
+        # The variables job runs on the browser's map, not the session's.
+        job_mapping = svc.start.call_args.kwargs.get("mapping")
+        self.assertIsNotNone(job_mapping)
+        self.assertEqual(job_mapping.get_all_variable_keys(), ["biological_sex"])
 
     def test_start_values_phase_uses_body_mapping_job_locally(self):
         """The values phase needs the browser's latest variable

@@ -338,36 +338,24 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
     if (!enabled.value) return
 
-    // Mapping send policy (WS4.2): the values phase always sends the
-    // browser's mapping — it reflects the user's variable selections,
-    // which the values job needs, and the backend keeps it job-local.
-    // The variables phase sends its mapping ONLY after the backend
-    // answered no_semantic_map (the mapping may only survive in this
-    // browser's IndexedDB); sending it on every mount would let a
-    // request body influence the session mapping.
-    const startUrl = `/api/v1/suggestions/${phase}/start`
+    // Mapping send policy: both phases send the browser's semantic map.
+    // The describe pages work on the map in this browser's IndexedDB, and
+    // the backend session may hold an older one (the describe-landing
+    // upload never reaches it, and another browser may have started a job
+    // on its own map). The backend runs the job on the body mapping
+    // job-locally and never lets it overwrite the session's mapping.
     let data
     try {
-      const body = mapping && phase === 'values' ? { mapping } : {}
-      ;({ data } = await api.post(startUrl, body))
+      ;({ data } = await api.post(
+        `/api/v1/suggestions/${phase}/start`,
+        mapping ? { mapping } : {},
+      ))
     } catch {
       data = null
     }
     if (data?.status === 'disabled') {
       enabled.value = false
       return
-    }
-    if (data?.reason === 'no_semantic_map' && mapping && phase !== 'values') {
-      // The backend has no mapping: offer the browser's copy once.
-      try {
-        ;({ data } = await api.post(startUrl, { mapping }))
-      } catch {
-        data = null
-      }
-      if (data?.status === 'disabled') {
-        enabled.value = false
-        return
-      }
     }
 
     await refresh(phase)
