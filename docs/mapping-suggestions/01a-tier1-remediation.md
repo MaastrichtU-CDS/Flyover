@@ -43,7 +43,7 @@ These change what the workstreams build, so settle them before starting.
 **Behaviour.**
 
 - **When:** suggestions enabled, the phase job is `done`, at least one unreviewed suggestion exists, and the "seen" flag for this phase is not set. Show about 300 ms after the target pill mounts so it does not flash during layout.
-- **Where:** the first unreviewed pill in display order on the current page. Databases start collapsed (`DescribeVariablesView.vue:527`), so when no pill is rendered the callout anchors to the header of the first database that has suggestions, with copy "Suggestions ready for N columns — expand to review". Once expanded, it moves to the first pill.
+- **Where:** the first pre-filled pill awaiting review on the current page of the first section the user opens (a database table on the variables page, a variable section on the values page), wherever that section sits in the list; opening more sections afterwards does not move it. While every section is folded nothing shows. An earlier revision anchored to a database header while the tables were collapsed; that header variant was dropped in the browser-testing pass (see the third pass).
 - **Copy (variables page):**
   > **Review suggested mappings**
   > Flyover filled in this field from its mapping suggestions. Nothing is saved until you review it: check the dropdown, then click the pill to confirm, or × to dismiss. You can continue once every suggestion is reviewed.
@@ -63,7 +63,7 @@ These change what the workstreams build, so settle them before starting.
 
 **Tests.**
 
-- Vitest: shows on the first pill only; not shown when disabled, when there are no suggestions, or once seen; Got it / Escape / accept all close it and persist the flag; header variant when collapsed.
+- Vitest: shows on the first pill only; not shown when disabled, when there are no suggestions, or once seen; Got it / Escape / accept all close it and persist the flag; nothing shows while every section is folded.
 - Playwright: first visit shows it, dismiss, reload, gone. Add a `dismissCoachmarkIfPresent(page)` helper so the existing accept/dismiss e2e flow is not blocked by the callout.
 
 **Depends on** WS1 (the copy promises "nothing is saved until you review it") and WS5 item 1 (the pill must be keyboard-reachable).
@@ -207,4 +207,5 @@ Found while using the app, fixed on this branch:
 - [x] With no map in the browser the store still started a job, and the page pre-filled values its dropdown could not show. It now reports "Upload a semantic map to enable suggestions", and the variables page only uses suggestions whose variable is a dropdown option.
 - [x] Uploading a semantic map did not reset the review marks, so after a re-upload a field could be empty while its pill said "reviewed". The describe landing page now resets them.
 - [x] The first-visit callout inherited its anchor's font (huge in a table heading, tiny next to a pill) and was wordy; it now has its own size and two short sentences.
+- [x] The callout's header variant (anchored to the first database's heading while every table was folded, then jumping to a pill) is gone: while everything is folded nothing shows, and the cue pops up on the first pre-filled pill of the first section the user opens, wherever that section sits in the list. "How do suggestions work?" reopens it; when no open section has a pre-filled pill it opens the first section that has one, at that pill's page.
 - [x] The status bar wrapped its message and tier note into each other; it now has two rows.
