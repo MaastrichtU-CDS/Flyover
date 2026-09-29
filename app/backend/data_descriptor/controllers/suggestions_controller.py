@@ -3,9 +3,10 @@ Suggestions controller for mapping suggestion endpoints.
 
 Serves the polling API the describe pages use to start suggestion jobs,
 fetch arriving suggestions, and reprioritise the queue. Routes are the
-``/api/v1/suggestions/*`` surface; the ``/ingest`` and ``/prompt`` routes
-are reserved for issues 2/3 and added later, but the blueprint and
-``SuggestionService.ingest()`` signature are reserved now.
+``/api/v1/suggestions/*`` surface. The ``/ingest`` and ``/prompt`` routes
+belong to issues 2/3 and are deliberately absent here;
+``SuggestionService.ingest()`` is reserved with the plan's signature but
+raises ``NotImplementedError`` until those issues land.
 
 Adapted from the LLM branch's ``llm_controller.py`` with provider-specific
 status replaced by the tier-aware ``/status`` shape.
@@ -14,6 +15,9 @@ status replaced by the tier-aware ``/status`` shape.
 import logging
 
 from flask import Blueprint, jsonify, request
+
+from loaders import JSONLDMapping
+from validation.mapping_validator import MappingValidator
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,48 @@ def get_app_context() -> dict:
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
+
+
+def _parse_mapping(mapping_data) -> object:
+    """Parse and validate a mapping from the request body.
+
+    Returns the parsed :class:`JSONLDMapping` when it passes
+    :class:`MappingValidator`, otherwise None. An unvalidated request body
+    must never reach the suggestion job.
+    """
+    if not mapping_data:
+        return None
+    try:
+        mapping = JSONLDMapping.from_dict(mapping_data)
+    except Exception:
+        logger.warning("Failed to parse mapping from request body", exc_info=True)
+        return None
+    try:
+        result = MappingValidator().validate(mapping_data)
+        if not result.is_valid:
+            logger.warning(
+                "Rejected mapping from request body: %s",
+                "; ".join(i.message for i in result.issues[:3]),
+            )
+            return None
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("Mapping validation failed", exc_info=True)
+        return None
+    return mapping
+
+
+def _maybe_adopt_mapping(session_cache, mapping) -> None:
+    """Adopt a body mapping into the session — only when the session has none.
+
+    Never overwrites an existing session mapping: the browser may hold a
+    stale or partial copy, and the session's mapping is the one the rest
+    of the app (annotation, export) reads.
+    """
+    if mapping is None:
+        return
+    if getattr(session_cache, "jsonld_mapping", None) is not None:
+        return
+    session_cache.jsonld_mapping = mapping
 
 
 @suggestions_bp.route("/api/v1/suggestions/status", methods=["GET"])
@@ -80,25 +126,24 @@ def start_suggestions(phase: str):
     body = request.get_json(silent=True) or {}
 
     # The mapping may only survive in the browser's IndexedDB (e.g. after a
-    # container restart) and the values phase needs the UPDATED mapping
-    # (reflecting the user's variable selections from the describe-variables
-    # page) to know which variable each column maps to. Always accept the
-    # mapping from the body when provided — the service's fingerprint check
-    # prevents redundant reruns.
-    mapping_data = body.get("mapping")
-    if mapping_data:
-        from loaders import JSONLDMapping
-
-        try:
-            session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
-        except Exception:
-            logger.warning("Failed to parse mapping from request body", exc_info=True)
+    # container restart). The values phase also needs the UPDATED mapping
+    # (the user's variable selections) to know which variable each column
+    # maps to — but a request body must never silently overwrite the
+    # session's own mapping. So:
+    # - variables phase: adopt the body mapping only when the session has
+    #   none, after MappingValidator passes;
+    # - values phase: use the body mapping for this job only (the service
+    #   keeps it job-local).
+    mapping = _parse_mapping(body.get("mapping"))
+    if phase == "variables":
+        _maybe_adopt_mapping(session_cache, mapping)
 
     result = service.start(
         phase,
         session_cache,
         rdf_store_service,
         force=bool(body.get("force")),
+        mapping=mapping if phase == "values" else None,
     )
     return jsonify(result)
 

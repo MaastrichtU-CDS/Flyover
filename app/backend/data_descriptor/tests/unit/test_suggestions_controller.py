@@ -72,6 +72,63 @@ def _make_mock_service(enabled=True, compute="host", threshold=0.8):
     return svc
 
 
+# A minimal mapping that passes MappingValidator (the full @context and
+# the mapping:DataMapping @type are required).
+_VALID_MAPPING = {
+    "@context": {
+        "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/",
+        "sio": "http://semanticscience.org/resource/",
+        "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+        "schema": "schema/",
+        "mapping": "mapping/",
+        "variables": {"@id": "schema:hasVariable", "@container": "@index"},
+        "valueMapping": {"@id": "schema:hasValueMapping"},
+        "terms": {"@id": "schema:hasTerms", "@container": "@index"},
+        "targetClass": {"@id": "schema:mapsToClass", "@type": "@id"},
+        "databases": {"@id": "mapping:hasDatabase", "@container": "@index"},
+        "tables": {"@id": "mapping:hasTable", "@container": "@index"},
+        "columns": {"@id": "mapping:hasColumn", "@container": "@index"},
+        "localMappings": {"@id": "mapping:hasLocalMappings", "@container": "@index"},
+        "mapsTo": {"@id": "mapping:mapsToVariable", "@type": "@id"},
+    },
+    "@id": "mapping:test",
+    "@type": "mapping:DataMapping",
+    "schema": {
+        "@id": "schema:root",
+        "@type": "schema:SemanticSchema",
+        "variables": {
+            "biological_sex": {
+                "@type": "schema:CategoricalVariable",
+                "dataType": "categorical",
+                "predicate": "sio:has_sex",
+                "class": "ncit:C28421",
+                "valueMapping": {"terms": {"male": {"targetClass": "ncit:C20197"}}},
+            }
+        },
+    },
+    "databases": {
+        "christie": {
+            "@id": "mapping:database/christie",
+            "@type": "mapping:Database",
+            "name": "christie",
+            "tables": {
+                "data": {
+                    "@id": "mapping:table/christie/data",
+                    "@type": "mapping:Table",
+                    "sourceFile": "christie",
+                    "columns": {
+                        "sex": {
+                            "mapsTo": "schema:variable/biological_sex",
+                            "localColumn": "sex",
+                        }
+                    },
+                }
+            },
+        }
+    },
+}
+
+
 # ---------------------------------------------------------------------------
 # Status tests
 # ---------------------------------------------------------------------------
@@ -168,82 +225,85 @@ class TestStart(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json()["status"], "disabled")
 
-    def test_start_restores_mapping_from_body_when_missing(self):
-        """When session_cache.jsonld_mapping is None and the frontend sends
-        a mapping dict, the controller should populate jsonld_mapping before
-        calling service.start — so the service doesn't return
-        no_semantic_map.
-        """
+    def test_start_adopts_valid_body_mapping_when_session_has_none(self):
+        """The mapping may only survive in the browser's IndexedDB (e.g.
+        after a container restart): when the session has no mapping and the
+        body carries a VALID one (MappingValidator passes), it is adopted
+        so the job does not return no_semantic_map."""
         svc = _make_mock_service()
         session_cache = MagicMock()
         session_cache.jsonld_mapping = None
         app = _make_app(svc, session_cache=session_cache)
-        mapping_dict = {
-            "@context": {"schema": "mapping:schema/"},
-            "@id": "mapping:root",
-            "@type": "mapping:SemanticMapping",
-            "schema": {
-                "@id": "schema:root",
-                "@type": "mapping:Schema",
-                "variables": {
-                    "biological_sex": {
-                        "@type": "schema:CategoricalVariable",
-                        "dataType": "categorical",
-                        "predicate": "sio:has_sex",
-                        "class": "ncit:C28421",
-                    },
-                },
-            },
-            "databases": {
-                "christie": {
-                    "@id": "mapping:database/christie",
-                    "@type": "mapping:Database",
-                    "name": "christie",
-                    "tables": {
-                        "data": {
-                            "@id": "mapping:table/christie/data",
-                            "@type": "mapping:Table",
-                            "sourceFile": "christie",
-                            "columns": {
-                                "sex": {
-                                    "mapsTo": "schema:variable/biological_sex",
-                                    "localColumn": "sex",
-                                },
-                            },
-                        }
-                    },
-                }
-            },
-        }
         with app.test_client() as client:
             resp = client.post(
                 "/api/v1/suggestions/variables/start",
-                json={"mapping": mapping_dict},
+                json={"mapping": _VALID_MAPPING},
             )
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json()["status"], "started")
-            # jsonld_mapping should now be populated on the session cache.
-            self.assertIsNotNone(session_cache.jsonld_mapping)
+        self.assertIsNotNone(session_cache.jsonld_mapping)
 
-    def test_start_updates_mapping_from_body_when_provided(self):
-        """When the frontend sends a mapping in the body, the controller should
-        always update jsonld_mapping — even if one is already set. The values
-        phase relies on this to send the UPDATED mapping (reflecting the user's
-        variable selections) so value suggestions can resolve column→variable.
-        """
+    def test_start_rejects_invalid_body_mapping(self):
+        """An unvalidated request body must never reach the session or the
+        job: a mapping that fails MappingValidator is dropped."""
         svc = _make_mock_service()
-        existing = MagicMock()
+        session_cache = MagicMock()
+        session_cache.jsonld_mapping = None
+        app = _make_app(svc, session_cache=session_cache)
+        invalid = dict(_VALID_MAPPING)
+        invalid["@type"] = "mapping:NotAThing"
+        with app.test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/start",
+                json={"mapping": invalid},
+            )
+            self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(session_cache.jsonld_mapping)
+        # The job ran on the session mapping (None), not the rejected body.
+        self.assertIs(svc.start.call_args.kwargs.get("mapping"), None)
+
+    def test_start_never_overwrites_an_existing_session_mapping(self):
+        """The variables phase must not replace the session's mapping with
+        the browser's copy: the session mapping is what the rest of the
+        app reads, and the body may be stale or partial."""
+        svc = _make_mock_service()
+        existing = MagicMock(name="existing-session-mapping")
+        session_cache = MagicMock()
+        session_cache.jsonld_mapping = existing
+        app = _make_app(svc, session_cache=session_cache)
+        with app.test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/start",
+                json={"mapping": _VALID_MAPPING},
+            )
+            self.assertEqual(resp.status_code, 200)
+        self.assertIs(session_cache.jsonld_mapping, existing)
+        # The variables job runs on the session mapping, not the body's.
+        self.assertIsNone(svc.start.call_args.kwargs.get("mapping"))
+
+    def test_start_values_phase_uses_body_mapping_job_locally(self):
+        """The values phase needs the browser's latest variable
+        selections, so the body mapping is parsed, validated, and passed
+        to the service for THIS JOB only — never assigned to the session
+        cache."""
+        svc = _make_mock_service()
+        existing = MagicMock(name="existing-session-mapping")
         session_cache = MagicMock()
         session_cache.jsonld_mapping = existing
         app = _make_app(svc, session_cache=session_cache)
         with app.test_client() as client:
             resp = client.post(
                 "/api/v1/suggestions/values/start",
-                json={"mapping": {"schema": {"variables": {}}}},
+                json={"mapping": _VALID_MAPPING},
             )
             self.assertEqual(resp.status_code, 200)
-            # The existing mapping should be replaced, not preserved.
-            self.assertIsNot(session_cache.jsonld_mapping, existing)
+        self.assertEqual(resp.get_json()["status"], "started")
+        # The session mapping is untouched...
+        self.assertIs(session_cache.jsonld_mapping, existing)
+        # ...and the job received the parsed body mapping.
+        job_mapping = svc.start.call_args.kwargs.get("mapping")
+        self.assertIsNotNone(job_mapping)
+        self.assertEqual(job_mapping.get_all_variable_keys(), ["biological_sex"])
 
 
 # ---------------------------------------------------------------------------
