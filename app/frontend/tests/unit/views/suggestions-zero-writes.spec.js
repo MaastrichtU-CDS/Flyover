@@ -342,6 +342,44 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
   })
 
+  it('shows the already-filled pill on a mapped column even without a suggestion', async () => {
+    // The pill must not depend on the suggestion job also producing a
+    // record for the column: any column the loaded JSON-LD already maps
+    // gets the informational pill. A column the user changes themselves is
+    // not "already" filled in — its pill disappears.
+    preselection.value = {
+      preselectedDescriptions: { test_db_morph: 'Year of initial diagnosis' },
+      preselectedDatatypes: {},
+      descriptionToDatatype: {},
+    }
+    const noSuggestion = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    delete noSuggestion.records.test_db_morph
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: noSuggestion }],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const labelFor = (item) =>
+      wrapper.findAll('.variable-label').find((el) => el.text().startsWith(item))
+    const morphBadge = labelFor('morph').find('.suggestion-badge')
+    expect(morphBadge.classes()).toContain('already-filled')
+    expect(labelFor('morph').text()).toContain('already filled in')
+    expect(labelFor('morph').find('button.suggestion-accept').exists()).toBe(false)
+    // sex has no mapping and a live suggestion: the normal review pill.
+    expect(labelFor('sex').find('button.suggestion-accept').exists()).toBe(true)
+
+    // The user picks the pre-filled column's value themselves: the field
+    // is no longer "already" filled in, so its pill goes away.
+    await wrapper
+      .find('select[name="ncit_comment_test_db_morph"]')
+      .setValue('Year of initial diagnosis')
+    await flushPromises()
+    expect(labelFor('morph').find('.suggestion-badge').exists()).toBe(false)
+  })
+
   it('explains an accept blocked by the one-variable-per-database rule', async () => {
     // Both columns suggest the same variable: morph pre-fills it first,
     // so accepting it for sex must not write, and must say why.
@@ -460,7 +498,7 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     // The dropdowns collect their value-mapping options from the map in
     // this browser's IndexedDB, so the state request must carry it: the
     // backend renders the variables and preselected values on that map.
-    const wrapper = mountDetails()
+    mountDetails()
     await flushPromises()
 
     const call = api.post.mock.calls.find(
@@ -568,6 +606,38 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     expect(fBadge.props('alreadyFilled')).toBe(false)
     expect(fBadge.find('button.suggestion-accept').exists()).toBe(true)
     expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+  })
+
+  it('shows the already-filled pill on a mapped value even without a suggestion', async () => {
+    // The pill must not depend on the suggestion job also producing a
+    // record for the value: any value the loaded JSON-LD already maps gets
+    // the informational pill. A value the user picks themselves is not
+    // "already" filled in — its pill disappears.
+    const state = JSON.parse(JSON.stringify(DETAILS_STATE))
+    state.preselected_values = { 'patients_sex_category_"M"': 'Male' }
+    const noM = JSON.parse(JSON.stringify(VALUES_SNAPSHOT))
+    delete noM.records.patients_sex_M
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: state }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: noM }],
+    ])
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const items = () => wrapper.findAll('.category-item')
+    expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
+    expect(items()[0].find('.suggestion-badge').classes()).toContain('already-filled')
+    expect(items()[0].text()).toContain('already filled in')
+    expect(items()[0].find('button.suggestion-accept').exists()).toBe(false)
+    // F has no mapping and a live suggestion: the normal review pill.
+    expect(items()[1].find('button.suggestion-accept').exists()).toBe(true)
+
+    // The user picks the pre-filled value's option themselves: the field
+    // is no longer "already" filled in, so its pill goes away.
+    await wrapper.findAll('select.category-select')[0].setValue('Female')
+    await flushPromises()
+    expect(items()[0].find('.suggestion-badge').exists()).toBe(false)
   })
 
   it('persists only the accepted value when the user accepts one suggestion', async () => {

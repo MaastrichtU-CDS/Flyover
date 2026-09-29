@@ -274,12 +274,15 @@ function needsSuggestionReview(key) {
   return !categorySelections[key]
 }
 
-// A suggestion that arrived for a value the loaded JSON-LD already
-// mapped: the field is filled in, so nothing needs reviewing. The badge
-// shows a quiet "already filled in" pill instead of the accept/dismiss
-// one, which read as if this value still needed a suggestion review.
+// A category value the loaded JSON-LD already mapped — whether or not a
+// suggestion also exists for it. The field is filled in, so nothing needs
+// reviewing, and the badge shows a quiet "already filled in" pill instead
+// of the accept/dismiss one. A selection the user made in THIS session is
+// not "already" filled in (it was persisted through onCategoryChange);
+// after a reload the value returns from the map and the pill with it.
 function isAlreadyMapped(key) {
   if (suggestions.isApplied(key)) return false
+  if (persistedSelections.has(key)) return false
   return !!categorySelections[key]
 }
 
@@ -870,7 +873,7 @@ onBeforeUnmount(() => {
                       <div class="category-label">
                         {{ cat.displayValue }} (counted: {{ cat.count }})
                         <SuggestionBadge
-                          v-if="suggestions.isApplied(cat.key) || hasSuggestion(cat.key)"
+                          v-if="suggestions.isApplied(cat.key) || hasSuggestion(cat.key) || isAlreadyMapped(cat.key)"
                           :suggestion="suggestionFor(cat.key) || {}"
                           :applied="suggestions.isApplied(cat.key)"
                           :touched="suggestions.isTouched(cat.key)"
