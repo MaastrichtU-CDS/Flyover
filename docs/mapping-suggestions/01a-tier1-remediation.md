@@ -176,3 +176,25 @@ These change what the workstreams build, so settle them before starting.
 - [x] Benchmark not leave-one-site-out; bypasses the service; TBDs unfilled → WS6
 - [x] IngestView FK gate out of scope and outside the flag → D4, WS7
 - [x] Untracked docs / reload spec; stale plan paths; local compose change → WS7
+
+## Second review pass
+
+A check of the ticked checklist against the code found items that were ticked but not done, and some new issues. Fixed on this branch:
+
+- [x] Values-phase whole-column rule depended on column order: the column context was one payload-wide `value → column values` map, so a 1/2/3 column's `1` became `yes` when a 1/0 column came first. It is now built per column.
+- [x] Alias reason named the item instead of the remembered column ("column 'morf' in database 'christie'"; christie's column is `morph`).
+- [x] Values fallback still scanned every mapping column per store column (WS4.4); it is indexed by local name now.
+- [x] D2 was not implemented: conflict losers now keep the contested variable in their own `alternatives`, and the variables page shows it as an alternatives-only pill. The D2 wording in the README and 01 ("the winner carries the losers' matches") is corrected.
+- [x] An accept blocked by the one-variable-per-database rule did nothing silently; it now says which column holds the variable.
+- [x] A dismissed suggestion's pill came back in the unreviewed look; it now disappears.
+- [x] The accept button's `aria-label` read "(undefined%)".
+- [x] The variables pre-fill overrode mappings preselected from the loaded JSON-LD.
+- [x] The variables page pre-filled suggestions of any confidence; it now pre-fills only at or above the threshold and shows the rest as hints. The values page is deliberately not gated (see 01, open questions).
+- [x] Benchmark run and committed, its sweep scoring corrected (it rewarded a higher threshold for free), and 01's TBDs filled (WS6).
+
+Still open, for the team to decide:
+
+- [ ] Margin: `0.05` stays; `0.02` trades +6.4 pp correct pre-fills for +4.2 pp wrong hint pills (see `benchmark-results.md`).
+- [ ] Whether the values page gets its own threshold (`0.60`–`0.65` measured best).
+- [ ] `mapping_plan.md` at the repo root is still untracked.
+- [ ] The Playwright suggestion flows have not been run against a live stack in this pass.
