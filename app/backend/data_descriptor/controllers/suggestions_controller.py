@@ -16,8 +16,7 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-from loaders import JSONLDMapping
-from validation.mapping_validator import MappingValidator
+from utils.mapping_request import parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -31,34 +30,6 @@ def get_app_context() -> dict:
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
-
-
-def _parse_mapping(mapping_data) -> object:
-    """Parse and validate a mapping from the request body.
-
-    Returns the parsed :class:`JSONLDMapping` when it passes
-    :class:`MappingValidator`, otherwise None. An unvalidated request body
-    must never reach the suggestion job.
-    """
-    if not mapping_data:
-        return None
-    try:
-        mapping = JSONLDMapping.from_dict(mapping_data)
-    except Exception:
-        logger.warning("Failed to parse mapping from request body", exc_info=True)
-        return None
-    try:
-        result = MappingValidator().validate(mapping_data)
-        if not result.is_valid:
-            logger.warning(
-                "Rejected mapping from request body: %s",
-                "; ".join(i.message for i in result.issues[:3]),
-            )
-            return None
-    except Exception:  # pragma: no cover - defensive
-        logger.warning("Mapping validation failed", exc_info=True)
-        return None
-    return mapping
 
 
 def _maybe_adopt_mapping(session_cache, mapping) -> None:
@@ -134,7 +105,7 @@ def start_suggestions(phase: str):
     # body never overwrites the session's own mapping: the variables phase
     # only adopts it when the session has none (e.g. after a container
     # restart), after MappingValidator passes.
-    mapping = _parse_mapping(body.get("mapping"))
+    mapping = parse_and_validate_mapping(body.get("mapping"))
     if phase == "variables":
         _maybe_adopt_mapping(session_cache, mapping)
 
