@@ -114,12 +114,10 @@ const tooltipText = computed(() => {
   background: rgba(118, 75, 162, 0.18);
 }
 
-.suggestion-badge.applied {
-  border-style: solid;
-  border-color: rgba(40, 140, 80, 0.6);
-  background: rgba(40, 140, 80, 0.1);
-  color: rgb(30, 110, 60);
-}
+/* An applied-but-unreviewed suggestion keeps the dashed purple "needs
+ * review" look (WS1.3): only a reviewed field turns green. The `applied`
+ * class stays on the element for tooltips and tests, it just no longer
+ * restyles the pill. */
 
 .suggestion-badge.confirmed {
   display: inline-flex;

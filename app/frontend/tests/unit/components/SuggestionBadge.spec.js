@@ -68,7 +68,9 @@ describe('Frontend unit: SuggestionBadge', () => {
     expect(wrapper.text()).not.toContain('92%')
   })
 
-  it('shows the applied (green) state when applied but not touched', () => {
+  it('keeps the dashed "needs review" pill when applied but not touched', () => {
+    // WS1.3: only reviewed fields turn green; an applied-but-unreviewed
+    // pre-fill keeps the purple dashed pill so it is visibly unreviewed.
     const wrapper = mount(SuggestionBadge, {
       props: {
         suggestion: makeRecord(),
@@ -76,7 +78,11 @@ describe('Frontend unit: SuggestionBadge', () => {
         touched: false,
       },
     })
-    expect(wrapper.find('.suggestion-badge.applied').exists()).toBe(true)
+    const badge = wrapper.find('.suggestion-badge')
+    expect(badge.classes()).toContain('applied')
+    expect(badge.classes()).not.toContain('confirmed')
+    expect(wrapper.text()).toContain('92%')
+    expect(wrapper.text()).not.toContain('reviewed')
   })
 
   it('emits dismiss when the × button is clicked', async () => {
