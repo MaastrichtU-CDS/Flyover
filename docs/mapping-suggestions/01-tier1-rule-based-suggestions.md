@@ -8,7 +8,8 @@ Part of #35. Shared design (contract, API, cascade, compute flag, invariants): [
 > **D1** the describe views pre-fill the dropdown for display but persist
 > to the JSON-LD only on review; **D2** on a conflict the strongest
 > candidate keeps the variable, the losers are nulled naming the winner,
-> and the winner carries their matches in `alternatives`; **D3** marks
+> and each loser keeps the contested variable in its own `alternatives`;
+> **D3** marks
 > expire per key on a new fingerprint, keeping reviews whose suggestion is
 > unchanged; **D4** the IngestView FK review gate moved to its own branch;
 > **D5** value-based variable suggestions stay disabled — the

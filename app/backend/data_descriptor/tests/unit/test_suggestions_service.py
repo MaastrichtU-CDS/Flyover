@@ -705,6 +705,21 @@ class TestConflictDowngrade(unittest.TestCase):
         self.assertEqual(rec_b["confidence"], 0.0)
         self.assertIn("col_a", rec_b["reason"])
         self.assertIn("conflict", rec_b["reason"])
+        # D2: the loser keeps the contested variable as an alternative so
+        # the user can still pick it; the winner gains nothing.
+        self.assertEqual(
+            rec_b["alternatives"],
+            [
+                {
+                    "match": "biological_sex",
+                    "confidence": 0.90,
+                    "reason": "Alias hit.",
+                    "source": "alias",
+                    "tier": 1,
+                }
+            ],
+        )
+        self.assertNotIn("alternatives", rec_a)
 
 
 class TestGetState(unittest.TestCase):

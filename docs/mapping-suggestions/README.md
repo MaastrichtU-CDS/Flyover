@@ -101,7 +101,7 @@ Cascade by **confidence**, not by count.
 2. Within a tier, a matcher must **abstain** when its top-2 candidates are closer than a margin (default `0.05`, `DEFAULT_MARGIN`). This is what stops string similarity from confidently mapping `surv1 → q1` for a site with `surv1..surv72` against `eortc_qlq_c30_q1..q30` — the real mapping is `surv70 → eortc_qlq_c30_q6` and only a codebook or the human knows that. The fuzzy alias matcher additionally rejects near hits whose labels differ only in digits and abstains when its two best candidates with distinct targets sit within the margin.
 3. Merge: per key, the record with the highest confidence wins; on a tie the **lowest** tier wins (cheaper and deterministic). Only losing records with a **non-null match different from the winner's** are kept in `alternatives` for the UI popover; abstains and duplicates of the winner are dropped. When every matcher abstains, the reason that names the margin wins, so the most informative diagnosis reaches the UI.
 4. User marks (`applied`, `touched`, `dismissed` in the store) are never overwritten by a later job; `force: true` only clears machine records. When a job with a new fingerprint arrives, marks expire **per key**: a mark survives while the suggestion it was made against (its `match`) is unchanged, so a stale dismissal can never hide a different suggestion but finished reviews are kept.
-5. One-variable-per-database constraint: if two columns get the same `match` in the variables phase, the strongest candidate keeps it and the losers are nulled with a `reason` naming the winning column, and the winner keeps each loser's match in its `alternatives` so the user still sees what it lost to. (Decision D2: the original "downgrade both" rule was dropped — a hint on the winner is more useful than two abstains.)
+5. One-variable-per-database constraint: if two columns get the same `match` in the variables phase, the strongest candidate keeps it and the losers are nulled with a `reason` naming the winning column, and each loser keeps the contested variable in its own `alternatives` so the user can still pick it. (Decision D2: the original "downgrade both" rule was dropped — a hint on the winner is more useful than two abstains.)
 
 ```mermaid
 graph LR
@@ -195,8 +195,8 @@ Decisions taken during the tier-1 remediation review
   reviews the field; the reload logic restores pre-fills from the marks,
   not from the JSON-LD.
 - **D2 — Conflict rule.** The strongest candidate keeps the variable and
-  the losers are nulled with a reason naming the winner; the winner also
-  carries each loser's match in `alternatives`. (Supersedes rule 5's
+  the losers are nulled with a reason naming the winner; each loser
+  keeps the contested variable in its own `alternatives`. (Supersedes rule 5's
   original "downgrade both".)
 - **D3 — Marks on a new fingerprint.** Marks expire per key, not
   wholesale: a mark survives while the suggestion it was made against is

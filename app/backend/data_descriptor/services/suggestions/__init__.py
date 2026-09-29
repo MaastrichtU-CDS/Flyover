@@ -535,7 +535,10 @@ class SuggestionService:
         only. When several columns are suggested the same variable, the
         highest-confidence record keeps its match (ties go to the first
         column in item order); the losers are nulled with a reason naming
-        the winning column so the user still gets a hint on the winner.
+        the winning column (decision D2). Each loser keeps the contested
+        variable in its ``alternatives``, with the confidence, source and
+        tier it had, so the UI can still offer it: if the user decides the
+        winner is wrong, the loser's candidate is one click away.
         """
         by_match: dict[str, list[str]] = {}
         for item, record in best.items():
@@ -557,6 +560,16 @@ class SuggestionService:
                 if item == winner:
                     continue
                 record = best[item]
+                contested = {
+                    k: record[k]
+                    for k in ("match", "confidence", "reason", "source", "tier")
+                    if k in record
+                }
+                record["alternatives"] = [contested] + [
+                    alt
+                    for alt in record.get("alternatives", [])
+                    if alt.get("match") != match
+                ]
                 record["match"] = None
                 record["confidence"] = 0.0
                 record["reason"] = (
