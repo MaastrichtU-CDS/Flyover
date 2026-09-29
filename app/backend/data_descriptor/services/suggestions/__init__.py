@@ -782,17 +782,17 @@ class SuggestionService:
         all_items: list[str] = []
         value_targets: dict = {}
 
-        # Index the mapping's (database, local column) -> variable pairs
-        # once instead of scanning every column for every store column.
+        # Index the mapping's columns by local name once: each store column
+        # then only checks the few mapping columns sharing its name instead
+        # of scanning every column of every database. The database check
+        # stays a name_match call (it tolerates a ".csv" suffix), so the
+        # index is keyed by column, not by (database, column).
         name_match = RDFStoreService.graph_database_find_name_match
-        column_index: list[tuple[str, str, str]] = [
-            (
-                db.name or "",
-                str(column.local_column or ""),
-                column.get_variable_key() or "",
+        columns_by_local: dict[str, list[tuple[str, str]]] = {}
+        for mapping_db, column in _iter_columns(mapping):
+            columns_by_local.setdefault(str(column.local_column or ""), []).append(
+                (mapping_db.name or "", column.get_variable_key() or "")
             )
-            for db, column in _iter_columns(mapping)
-        ]
 
         for db, cols in columns_by_db.items():
             for col in cols or []:
@@ -802,8 +802,8 @@ class SuggestionService:
                 var_key = next(
                     (
                         vk
-                        for db_name, local, vk in column_index
-                        if local == col and name_match(db_name, db)
+                        for db_name, vk in columns_by_local.get(col, ())
+                        if name_match(db_name, db)
                     ),
                     None,
                 )
