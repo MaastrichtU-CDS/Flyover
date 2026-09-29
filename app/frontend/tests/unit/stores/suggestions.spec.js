@@ -327,7 +327,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(s.isDismissed('db1_b')).toBe(true)
   })
 
-  it('clearAllApplied returns only unreviewed keys and unmarks them', () => {
+  it('clearAllApplied returns only unreviewed keys, unmarks them, and records dismissals', () => {
     const s = useSuggestionsStore()
     s.setPhase('variables')
     s.markApplied('db1_a')
@@ -338,6 +338,10 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(cleared).toEqual(['db1_a'])
     expect(s.isApplied('db1_a')).toBe(false)
     expect(s.isApplied('db1_b')).toBe(true)
+    // The cleared key must be dismissed so the pre-fill watch does not
+    // re-fill it on the next visit.
+    expect(s.isDismissed('db1_a')).toBe(true)
+    expect(s.isDismissed('db1_b')).toBe(false)
   })
 
   it('touching a non-applied key is a no-op', () => {

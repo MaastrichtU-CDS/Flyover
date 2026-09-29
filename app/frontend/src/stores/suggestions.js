@@ -353,10 +353,16 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     return Object.keys(m.applied).filter((k) => m.applied[k] && !m.touched[k])
   }
 
+  // Returns the keys the view should clear (applied and never reviewed);
+  // the view owns actually emptying the form fields. Every cleared key is
+  // also recorded as dismissed: without the dismissal the pre-fill watch
+  // would fill the same fields again from the same records on the next
+  // visit, silently undoing the "clear all".
   function clearAllApplied() {
     const m = _currentMarks()
     const cleared = unreviewedKeys()
     for (const key of cleared) {
+      m.dismissed[key] = true
       delete m.applied[key]
       delete m.touched[key]
     }
