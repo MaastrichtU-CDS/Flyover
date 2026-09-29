@@ -417,8 +417,11 @@ const coachmarkTarget = computed(() => {
   for (const dbName of databaseNames.value) {
     if (!expandedDatabases[dbName]) continue
     for (const item of currentPageItems(dbName)) {
-      if (needsSuggestionReview(dbName, item)) {
-        return { type: 'badge', key: `${dbName}_${item}` }
+      // The copy says Flyover filled the field in, so anchor on a
+      // pre-filled pill awaiting review, not on a low-confidence hint.
+      const key = `${dbName}_${item}`
+      if (suggestions.isApplied(key) && !suggestions.isTouched(key)) {
+        return { type: 'badge', key }
       }
     }
   }
@@ -459,6 +462,9 @@ watch(
     if (!suggestions.enabled) return
     for (const [key, entry] of Object.entries(byKey)) {
       if (entry.status !== 'done' || !entry.display) continue
+      // Below the threshold a suggestion stays a hint (highlight + pill,
+      // accepted by click) instead of a pre-filled answer.
+      if (!suggestions.isConfident(entry)) continue
       if (suggestions.isDismissed(key)) continue
       if (suggestions.isTouched(key)) continue
       // Prefer the record's explicit location fields (database names can

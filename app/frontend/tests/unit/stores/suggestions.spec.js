@@ -518,6 +518,18 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(s.isApplied('db1_leeftijd')).toBe(true)
   })
 
+  it('isConfident compares a record against the /status threshold', async () => {
+    api.get
+      .mockResolvedValueOnce(statusResponse(true, { threshold: 0.7 }))
+      .mockResolvedValue(snapshot({ status: 'done' }))
+    api.post.mockResolvedValue({ data: { status: 'started' } })
+    const s = useSuggestionsStore()
+    await s.init('variables')
+    expect(s.isConfident({ confidence: 0.7 })).toBe(true)
+    expect(s.isConfident({ confidence: 0.69 })).toBe(false)
+    expect(s.isConfident({})).toBe(false)
+  })
+
   it('SOURCE_ICONS maps every tier-1 source', () => {
     expect(SOURCE_ICONS.alias).toBeDefined()
     expect(SOURCE_ICONS.value_regex).toBeDefined()

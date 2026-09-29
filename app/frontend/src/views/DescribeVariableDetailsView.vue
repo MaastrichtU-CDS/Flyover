@@ -351,6 +351,11 @@ watch(
         for (const cat of variable.categories) {
           const entry = byKey[cat.key]
           if (!entry || entry.status !== 'done' || !entry.display) continue
+          // No confidence gate here, unlike the variables page: value
+          // scores sit on another scale (a code like '1' against the term
+          // 'score_1_not_at_all' scores ~0.69 and is usually right), so the
+          // column-name threshold would switch off nearly every value
+          // pre-fill. See benchmark-results.md; a values threshold is open.
           if (suggestions.isDismissed(cat.key)) continue
           if (suggestions.isTouched(cat.key)) continue
           // Re-fill applied keys too: on a hard reload the in-memory
@@ -531,7 +536,9 @@ const coachmarkTarget = computed(() => {
       if (variable.type !== 'categorical') continue
       if (!isVariableExpanded(dbEntry.name, vIdx)) continue
       for (const cat of variable.categories) {
-        if (needsSuggestionReview(cat.key)) {
+        // Anchor on a pre-filled pill awaiting review (the copy says
+        // Flyover filled it in), not on a low-confidence hint.
+        if (suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)) {
           return { type: 'badge', key: cat.key }
         }
       }

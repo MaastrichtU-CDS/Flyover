@@ -201,6 +201,21 @@ describe('First-visit cue — DescribeVariablesView', () => {
     expect(row.querySelector('.suggestion-badge')).toBeTruthy()
   })
 
+  it('anchors to a pre-filled pill, skipping a low-confidence hint', async () => {
+    // morph is below the threshold: a hint, not pre-filled. The copy says
+    // Flyover filled the field in, so the callout goes to sex instead.
+    const weak = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    weak.records.test_db_morph.confidence = 0.55
+    variablesRoutes(weak)
+    const w = mount(DescribeVariablesView)
+    await flushPromises()
+    await w.find('.toggle-button').trigger('click')
+    await flushPromises()
+
+    const row = singleCallout(w).element.closest('.variable-row')
+    expect(row.querySelector('.variable-label').textContent).toContain('sex')
+  })
+
   it('does not show once the phase flag is seen', async () => {
     db.getData.mockImplementation(async (_store, key) => {
       if (key === 'suggestion_coachmark_seen') return { variables: true, values: true }

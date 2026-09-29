@@ -438,6 +438,16 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     return !!_currentMarks().touched[key]
   }
 
+  // Only a confident column suggestion (at or above the tier threshold
+  // from /status) is pre-filled on the variables page. Below the threshold
+  // the cascade treats a record as "escalate to the next tier", so the
+  // page shows it as a hint the user can accept, never as a pre-filled
+  // answer. The values page does not use it: value scores are calibrated
+  // differently (see DescribeVariableDetailsView's pre-fill watcher).
+  function isConfident(record) {
+    return (record?.confidence ?? 0) >= threshold.value
+  }
+
   function isDismissed(key) {
     return !!_currentMarks().dismissed[key]
   }
@@ -501,6 +511,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     isApplied,
     isTouched,
     isDismissed,
+    isConfident,
     unreviewedKeys,
     clearAllApplied,
     setPhase,

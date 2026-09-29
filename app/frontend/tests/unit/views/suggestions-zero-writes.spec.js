@@ -225,6 +225,34 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
   })
 
+  it('shows a below-threshold suggestion as a hint instead of pre-filling it', async () => {
+    const weak = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    weak.records.test_db_morph.confidence = 0.55
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: weak }],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    // Not pre-filled and not gating submit; sex (0.9) still is.
+    expect(store.isApplied('test_db_morph')).toBe(false)
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    expect(wrapper.text()).toContain('1 suggestion needs review')
+    // Still offered: highlighted dropdown and a pill the user can accept.
+    const morphSelect = wrapper.find('select[name="ncit_comment_test_db_morph"]')
+    expect(morphSelect.element.value).toBe('')
+    expect(morphSelect.classes()).toContain('suggestion-highlight')
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    await badges[0].vm.$emit('accept')
+    await flushPromises()
+    const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
+    expect(payload.test_db_morph?.description).toBeTruthy()
+    expect(store.isTouched('test_db_morph')).toBe(true)
+  })
+
   it('never pre-fills over a mapping the loaded JSON-LD already holds', async () => {
     // morph is already mapped in the uploaded JSON-LD; the suggestion
     // disagrees. The existing mapping must stay, unreviewed-free.
@@ -360,6 +388,26 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
       global: { stubs: { RouterLink: RouterLinkStub } },
     })
   }
+
+  it('pre-fills a value suggestion below the column threshold', async () => {
+    // Value scores sit on another scale than column names ('1' against
+    // 'score_1_not_at_all' scores ~0.69 and is usually right), so the
+    // values page does not apply the variables threshold.
+    const weak = JSON.parse(JSON.stringify(VALUES_SNAPSHOT))
+    weak.records.patients_sex_M.confidence = 0.55
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: DETAILS_STATE }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: weak }],
+    ])
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    expect(store.isApplied('patients_sex_M')).toBe(true)
+    expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
+    expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+  })
 
   it('pre-fills the category dropdown for display but never calls updateCategoryMapping', async () => {
     const wrapper = mountDetails()

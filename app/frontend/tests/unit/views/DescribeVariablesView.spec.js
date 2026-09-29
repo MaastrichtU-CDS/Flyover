@@ -33,6 +33,7 @@ vi.mock('@/stores/suggestions', () => ({
     isApplied: () => false,
     isTouched: () => false,
     isDismissed: () => false,
+    isConfident: (r) => (r?.confidence ?? 0) >= 0.8,
     markApplied: vi.fn(),
     markUserTouched: vi.fn(),
     dismiss: vi.fn(),

@@ -80,6 +80,7 @@ function createStoreStub({ appliedKeys = [], records = {} } = {}) {
     isApplied: (k) => !!applied[k],
     isTouched: (k) => !!touched[k],
     isDismissed: (k) => !!dismissed[k],
+    isConfident: (r) => (r?.confidence ?? 0) >= 0.8,
     markApplied: (k) => {
       applied[k] = true
     },
