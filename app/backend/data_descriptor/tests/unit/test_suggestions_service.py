@@ -685,5 +685,81 @@ class TestMultiDatabaseVariables(unittest.TestCase):
         self.assertEqual(state["progress"]["total"], 6)
 
 
+class TestProductionAbstains(unittest.TestCase):
+    """WS3.7: the README's warning cases must hold end-to-end, through the
+    real tier-1 producers, the sanitiser, and the cascade — not only in
+    the matcher unit tests."""
+
+    @staticmethod
+    def _mapping_with_site(site_columns: dict) -> JSONLDMapping:
+        """The standard fixture plus a 'leeds' site whose columns are
+        remembered as ``{label: variable_key}``."""
+        data = _make_mapping().to_dict()
+        stub = {
+            "@type": "schema:ContinuousVariable",
+            "dataType": "continuous",
+            "predicate": "sio:has_x",
+            "class": "ncit:C00000",
+        }
+        for key in site_columns.values():
+            data["schema"]["variables"].setdefault(key, dict(stub))
+        data["databases"]["leeds"] = {
+            "@id": "mapping:database/leeds",
+            "@type": "mapping:Database",
+            "name": "leeds",
+            "tables": {
+                "data": {
+                    "@id": "mapping:table/leeds/data",
+                    "@type": "mapping:Table",
+                    "sourceFile": "leeds",
+                    "columns": {
+                        label: {
+                            "mapsTo": f"schema:variable/{var_key}",
+                            "localColumn": label,
+                        }
+                        for label, var_key in site_columns.items()
+                    },
+                }
+            },
+        }
+        return JSONLDMapping.from_dict(data)
+
+    def _records_for(self, mapping, columns_by_db):
+        cache = _make_session_cache(mapping)
+        rdf = _make_rdf_store(columns_by_db=columns_by_db)
+        svc = SuggestionService(_config())
+        result = svc.start(VARIABLES_PHASE, cache, rdf)
+        self.assertEqual(result["status"], "started")
+        return svc.get_state(cache, VARIABLES_PHASE)["records"]
+
+    def test_surv1_is_never_confidently_mapped_from_another_sites_surv7(self):
+        """The alias matcher used to map surv1 to whatever another site's
+        surv7 maps to at confidence 0.84 — above the 0.8 threshold. Through
+        the full service the alias hit must be gone: whatever survives may
+        only be a below-threshold hint, never the confident mis-map."""
+        mapping = self._mapping_with_site({"surv7": "eortc_qlq_c30_q6"})
+        records = self._records_for(mapping, {"nki": ["surv1"]})
+        rec = records["nki_surv1"]
+        self.assertNotEqual(rec["match"], "eortc_qlq_c30_q6")
+        self.assertLess(rec["confidence"], 0.8)
+        # The confident alias record must not hide in alternatives either.
+        for alt in rec.get("alternatives", []):
+            self.assertNotEqual(alt.get("match"), "eortc_qlq_c30_q6")
+
+    def test_alg_v7_abstains_between_similar_remembered_columns(self):
+        mapping = self._mapping_with_site(
+            {"alg_v1b": "eortc_qlq_c30_q6", "alg_v2b": "eortc_qlq_c30_q12"}
+        )
+        records = self._records_for(mapping, {"nki": ["alg_v7"]})
+        rec = records["nki_alg_v7"]
+        self.assertIsNone(rec["match"])
+        self.assertEqual(rec["confidence"], 0.0)
+        # Every matcher abstained: the cascade merge keeps the most
+        # informative reason, which mentions the margin.
+        self.assertIn("margin", rec["reason"])
+        # No abstain pollutes the alternatives list.
+        self.assertEqual(rec.get("alternatives", []), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,10 +20,10 @@ from typing import Any, Optional
 from .contract import sanitise_pairs
 from .tiers import SuggestionContext
 from .tiers.rules import (
-    VALUE_BASED_VARIABLE_SUGGESTIONS,
     _iter_columns,
     load_rules,
     tier1_producers,
+    value_based_variable_suggestions_enabled,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,10 +115,26 @@ def _fingerprint(payload: dict) -> str:
 def _merge_records(a: dict, b: dict) -> tuple[dict, Optional[dict]]:
     """Merge two records for the same item; return (winner, loser_or_None).
 
-    Highest confidence wins; ties go to the lower tier (cheaper). The loser is
-    kept (without ``alternatives``) so the UI can offer it in a popover.
+    Highest confidence wins; ties go to the lower tier (cheaper). When
+    both records abstain, the reason that mentions the margin wins: the
+    string matcher's abstain names the scores it saw, the earlier tiers'
+    "no hit" reasons do not — the plan's "reason mentions margin"
+    criterion must hold end-to-end.
+
+    Only a losing record with a non-null ``match`` different from the
+    winner's is kept in ``alternatives``: abstains and duplicates of the
+    winner are noise, not choices for the user.
     """
-    if a.get("confidence") == b.get("confidence"):
+    both_abstain = a.get("match") is None and b.get("match") is None
+    if (
+        both_abstain
+        and "margin" in str(b.get("reason", ""))
+        and "margin" not in str(a.get("reason", ""))
+    ):
+        winner, loser = b, a
+    elif both_abstain:
+        winner, loser = a, b
+    elif a.get("confidence") == b.get("confidence"):
         if a.get("tier", 99) <= b.get("tier", 99):
             winner, loser = a, b
         else:
@@ -129,10 +145,11 @@ def _merge_records(a: dict, b: dict) -> tuple[dict, Optional[dict]]:
         winner, loser = b, a
 
     loser_copy = {k: v for k, v in loser.items() if k != "alternatives"}
-    alts = list(winner.get("alternatives", []))
-    alts.append(loser_copy)
     winner = dict(winner)
-    winner["alternatives"] = alts
+    if loser_copy.get("match") and loser_copy["match"] != winner.get("match"):
+        alts = list(winner.get("alternatives", []))
+        alts.append(loser_copy)
+        winner["alternatives"] = alts
     return winner, loser_copy
 
 
@@ -358,6 +375,7 @@ class SuggestionService:
                 rules=self._rules,
                 column_values=payload.get("column_values", {}),
                 value_targets=payload.get("value_targets", {}),
+                item_column_values=payload.get("item_column_values", {}),
             )
             raw = producer.run(list(to_run), schema_slice, ctx)
             sanitised = sanitise_pairs(
@@ -524,10 +542,10 @@ class SuggestionService:
             "described_database": described_db,
             # Collecting distinct values costs one RDF-store query per
             # column; only pay it while value-based variable suggestions
-            # are enabled (see tiers/rules.VALUE_BASED_VARIABLE_SUGGESTIONS).
+            # are enabled (see tiers/rules.value_based_variable_suggestions_enabled).
             "column_values": (
                 self._collect_column_values(mapping, rdf_store_service, columns_by_db)
-                if VALUE_BASED_VARIABLE_SUGGESTIONS
+                if value_based_variable_suggestions_enabled()
                 else {}
             ),
             "groups": groups,
@@ -647,6 +665,15 @@ class SuggestionService:
 
         described_db = next(iter(details), None)
 
+        # Per-value column context for the values phase: a value-set rule
+        # only applies when the whole column (minus missing codes) falls
+        # inside one of the rule's sets. A value string can appear in
+        # several columns; the first group (display order) wins.
+        item_column_values: dict[str, list[str]] = {}
+        for group in groups:
+            for value in group["items"]:
+                item_column_values.setdefault(value, list(group["items"]))
+
         # Fallback: when DescriptiveInfoDetails is empty (e.g. when
         # _populate_details_from_jsonld bailed out on a database-name
         # mismatch), build value groups directly from the mapping + RDF
@@ -655,6 +682,12 @@ class SuggestionService:
             groups, all_items, value_targets, described_db = (
                 self._build_values_fallback(mapping, rdf_store_service)
             )
+
+        # Per-value column context (see the primary path above).
+        item_column_values = {}
+        for group in groups:
+            for value in group["items"]:
+                item_column_values.setdefault(value, list(group["items"]))
 
         schema_slice: dict[str, list[str]] = {}
         for group in groups:
@@ -665,6 +698,7 @@ class SuggestionService:
             "mapping": mapping,
             "described_database": described_db,
             "value_targets": value_targets,
+            "item_column_values": item_column_values,
             "groups": groups,
             "key_for": lambda item: f"{described_db}_{item}" if described_db else item,
         }
