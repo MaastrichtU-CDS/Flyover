@@ -56,6 +56,16 @@ const tooltipText = computed(() => {
   }
   return reason
 })
+
+// Screen-reader labels: the pill's visible text is just an icon and a
+// percentage, so each button needs an explicit, self-describing label.
+const acceptLabel = computed(() => {
+  const match = props.suggestion.match
+  const item = props.suggestion.item
+  const pct = props.confidencePct
+  if (match && item) return `Accept suggestion: map '${item}' to '${match}' (${pct}%)`
+  return `Accept suggestion (${pct}%)`
+})
 </script>
 
 <template>
@@ -70,22 +80,35 @@ const tooltipText = computed(() => {
     v-else
     class="suggestion-badge"
     :class="{ applied }"
-    :title="tooltipText"
-    @click.stop="emit('accept')"
   >
-    <i class="fas" :class="sourceIcon" />
-    {{ confidencePct }}%
-    <span
-      v-if="hasAlternatives"
-      class="suggestion-alternatives"
-      :title="`${hasAlternatives} alternative(s) available`"
+    <!-- Accept and dismiss are two sibling buttons so both are keyboard
+         reachable; a button cannot nest inside another button, so the
+         pill body itself is no longer a clickable span. -->
+    <button
+      type="button"
+      class="suggestion-accept"
+      :aria-label="acceptLabel"
+      :title="tooltipText"
+      @click.stop="emit('accept')"
     >
-      <i class="fas fa-list" />
-    </span>
+      <i
+        class="fas"
+        :class="sourceIcon"
+      />
+      {{ confidencePct }}%
+      <span
+        v-if="hasAlternatives"
+        class="suggestion-alternatives"
+        :title="`${suggestion.alternatives.length} alternative(s) available`"
+      >
+        <i class="fas fa-list" />
+      </span>
+    </button>
     <button
       v-if="showDismiss"
       type="button"
       class="suggestion-dismiss"
+      aria-label="Dismiss this suggestion"
       title="Dismiss this suggestion"
       @click.stop="emit('dismiss')"
     >
@@ -98,15 +121,14 @@ const tooltipText = computed(() => {
 .suggestion-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0;
   margin-left: 0.5rem;
-  padding: 0.1rem 0.45rem;
+  padding: 0;
   border-radius: 999px;
   font-size: 0.75em;
   background: rgba(118, 75, 162, 0.12);
   color: rgb(90, 60, 130);
   border: 1px dashed rgba(118, 75, 162, 0.6);
-  cursor: pointer;
   transition: background 0.15s;
 }
 
@@ -118,6 +140,25 @@ const tooltipText = computed(() => {
  * review" look (WS1.3): only a reviewed field turns green. The `applied`
  * class stays on the element for tooltips and tests, it just no longer
  * restyles the pill. */
+
+.suggestion-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem 0.1rem 0.35rem;
+  border: none;
+  border-radius: 999px 0 0 999px;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.suggestion-accept:focus-visible,
+.suggestion-dismiss:focus-visible {
+  outline: 2px solid rgba(118, 75, 162, 0.9);
+  outline-offset: 1px;
+}
 
 .suggestion-badge.confirmed {
   display: inline-flex;
@@ -145,7 +186,7 @@ const tooltipText = computed(() => {
 .suggestion-dismiss {
   border: none;
   background: none;
-  padding: 0 0.1rem;
+  padding: 0.1rem 0.4rem 0.1rem 0.1rem;
   line-height: 1;
   font-size: 1.1em;
   color: inherit;

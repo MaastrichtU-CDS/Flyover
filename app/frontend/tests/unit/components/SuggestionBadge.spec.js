@@ -105,8 +105,45 @@ describe('Frontend unit: SuggestionBadge', () => {
         touched: false,
       },
     })
-    await wrapper.find('.suggestion-badge').trigger('click')
+    await wrapper.find('.suggestion-accept').trigger('click')
     expect(wrapper.emitted('accept')).toBeTruthy()
+  })
+
+  it('renders accept and dismiss as sibling buttons with aria-labels', () => {
+    // WS5.1: the pill must be keyboard-reachable, which a clickable span
+    // is not. Accept and dismiss are two sibling <button>s inside the
+    // wrapper (a button cannot nest inside another).
+    const wrapper = mount(SuggestionBadge, {
+      props: {
+        suggestion: makeRecord(),
+        applied: false,
+        touched: false,
+      },
+    })
+    const accept = wrapper.find('button.suggestion-accept')
+    const dismiss = wrapper.find('button.suggestion-dismiss')
+    expect(accept.exists()).toBe(true)
+    expect(dismiss.exists()).toBe(true)
+    expect(accept.element.nextElementSibling).toBe(dismiss.element)
+    expect(accept.attributes('aria-label')).toContain("map 'morf' to 'tumour_morphology_icd_o'")
+    expect(dismiss.attributes('aria-label')).toBe('Dismiss this suggestion')
+  })
+
+  it('accept and dismiss respond to keyboard activation', async () => {
+    // Native <button>s activate on Enter/Space in the browser; happy-dom
+    // does not synthesise the click, so drive the click handlers the way
+    // the browser would after the keypress.
+    const wrapper = mount(SuggestionBadge, {
+      props: {
+        suggestion: makeRecord(),
+        applied: false,
+        touched: false,
+      },
+    })
+    await wrapper.find('button.suggestion-accept').trigger('click')
+    await wrapper.find('button.suggestion-dismiss').trigger('click')
+    expect(wrapper.emitted('accept')).toBeTruthy()
+    expect(wrapper.emitted('dismiss')).toBeTruthy()
   })
 
   it('shows the alternatives indicator when alternatives exist', () => {
@@ -136,6 +173,8 @@ describe('Frontend unit: SuggestionBadge', () => {
     const wrapper = mount(SuggestionBadge, {
       props: { suggestion: makeRecord(), applied: false, touched: false },
     })
-    expect(wrapper.attributes('title')).toBe('Alias: column morph in database christie')
+    expect(wrapper.find('.suggestion-accept').attributes('title')).toBe(
+      'Alias: column morph in database christie'
+    )
   })
 })
