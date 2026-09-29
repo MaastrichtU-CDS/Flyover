@@ -486,27 +486,37 @@ function jumpToNextUnreviewed() {
   const keys = suggestions.unreviewedKeys().filter((key) => categorySelections[key])
   if (!keys.length) return
   for (const key of keys) {
-    for (const dbEntry of parsedDatabases.value) {
-      if (!key.startsWith(`${dbEntry.name}_`)) continue
-      for (let vIdx = 0; vIdx < dbEntry.variables.length; vIdx++) {
-        const variable = dbEntry.variables[vIdx]
-        if (variable.type !== 'categorical') continue
-        const cat = variable.categories.find((c) => c.key === key)
-        if (!cat) continue
-        // Expand the database and the variable.
-        if (!expandedDatabases[dbEntry.name]) expandedDatabases[dbEntry.name] = true
-        if (!expandedVariables[dbEntry.name]) expandedVariables[dbEntry.name] = {}
-        expandedVariables[dbEntry.name][vIdx] = true
-        // Scroll to the category row after Vue updates the DOM.
-        nextTick(() => {
-          const el = document.querySelector(`select[name="${cat.backendKey}"]`)
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            el.focus({ preventScroll: true })
-          }
-        })
-        return
-      }
+    // Prefer the record's explicit database; fall back to prefix matching
+    // for keys without one (a database name that is a prefix of another
+    // would otherwise steal the key).
+    const record = suggestionFor(key)
+    const dbEntry =
+      (record?.database &&
+        parsedDatabases.value.find((d) => d.name === record.database)) ||
+      parsedDatabases.value.find((d) => key.startsWith(`${d.name}_`))
+    if (!dbEntry) continue
+    for (let vIdx = 0; vIdx < dbEntry.variables.length; vIdx++) {
+      const variable = dbEntry.variables[vIdx]
+      if (variable.type !== 'categorical') continue
+      const cat = variable.categories.find((c) => c.key === key)
+      if (!cat) continue
+      // Expand the database and the variable.
+      if (!expandedDatabases[dbEntry.name]) expandedDatabases[dbEntry.name] = true
+      if (!expandedVariables[dbEntry.name]) expandedVariables[dbEntry.name] = {}
+      expandedVariables[dbEntry.name][vIdx] = true
+      // Scroll to the category row after Vue updates the DOM.
+      nextTick(() => {
+        // The backend name embeds the quoted category value, which no CSS
+        // attribute selector can carry reliably (the raw quotes made
+        // querySelector throw in a real browser, so the scroll never
+        // happened). The select carries an id for exactly this lookup.
+        const el = document.getElementById(`category_select_${cat.key}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          el.focus({ preventScroll: true })
+        }
+      })
+      return
     }
   }
 }
@@ -888,6 +898,7 @@ onBeforeUnmount(() => {
                       </div>
                       <div class="category-controls">
                         <select
+                          :id="`category_select_${cat.key}`"
                           v-model="categorySelections[cat.key]"
                           class="form-control category-select"
                           :class="{

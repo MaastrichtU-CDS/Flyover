@@ -640,6 +640,46 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     expect(items()[0].find('.suggestion-badge').exists()).toBe(false)
   })
 
+  it('"Go to next" expands the section and scrolls to the first unreviewed value', async () => {
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: DETAILS_STATE }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: VALUES_SNAPSHOT }],
+    ])
+    // The category backend name embeds the quoted value, which no CSS
+    // attribute selector can carry: "Go to next" used to build one anyway,
+    // so the element was never found and the scroll silently never
+    // happened. The select now carries an id for the lookup. The view is
+    // attached to the document because the jump looks the element up
+    // through document.getElementById.
+    const scrolled = []
+    const proto = window.Element.prototype
+    const original = proto.scrollIntoView
+    proto.scrollIntoView = function scrollSpy() {
+      scrolled.push(this)
+    }
+    let wrapper
+    try {
+      wrapper = mount(DescribeVariableDetailsView, {
+        attachTo: document.body,
+        global: { stubs: { RouterLink: RouterLinkStub } },
+      })
+      await flushPromises()
+
+      const jump = wrapper.find('button.jump-to-unreviewed')
+      expect(jump.exists()).toBe(true)
+      await jump.trigger('click')
+      await flushPromises()
+      await flushPromises()
+
+      expect(scrolled).toHaveLength(1)
+      expect(scrolled[0].getAttribute('name')).toBe('patients_sex_category_"M"')
+    } finally {
+      proto.scrollIntoView = original
+      wrapper?.unmount()
+    }
+  })
+
   it('persists only the accepted value when the user accepts one suggestion', async () => {
     const wrapper = mountDetails()
     await flushPromises()
