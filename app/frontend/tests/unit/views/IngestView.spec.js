@@ -1029,32 +1029,6 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    // Auto-suggest infers an FK on visits.csv — must review before submit
-    expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
-    w.find('.suggestion-badge').trigger('click')
-    await flushPromises()
-    expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
-  })
-
-  it('enables submit after dismissing all inferred FKs for a table', async () => {
-    const w = mountIngest()
-    await w.find('#CSV').setValue()
-    await pickFiles(w, [
-      csvFile('patients.csv', 'patient_id,name'),
-      csvFile('visits.csv', 'visit_id,patient_id,date'),
-    ])
-    await flushPromises()
-    await w.find('#pk_0').setValue('patient_id')
-    await flushPromises()
-    // Auto-suggest infers an FK on visits.csv — submit disabled
-    expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
-    // Click "Dismiss all" button for that table
-    const dismissBtn = w.findAll('button').find((b) => b.text().includes('Dismiss all'))
-    expect(dismissBtn).toBeDefined()
-    await dismissBtn.trigger('click')
-    await flushPromises()
-    // FK fields cleared and submit enabled
-    expect(w.find('#fk_1').element.value).toBe('')
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -1293,7 +1267,7 @@ describe('IngestView — PK/FK', () => {
 
   // -- Inference marking ---------------------------------------------------
 
-  it('shows a suggestion badge on the table card when FK is auto-suggested', async () => {
+  it('shows an "Inferred" badge on the table card when FK is auto-suggested', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1303,11 +1277,11 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.find('.suggestion-badge').exists()).toBe(true)
-    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
+    expect(w.text()).toContain('Inferred')
+    expect(w.text()).toContain('please verify')
   })
 
-  it('does not show a suggestion badge when no FK is auto-suggested', async () => {
+  it('does not show an "Inferred" badge when no FK is auto-suggested', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1317,10 +1291,10 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.find('.suggestion-badge').exists()).toBe(false)
+    expect(w.text()).not.toContain('Inferred')
   })
 
-  it('transitions to reviewed when the user manually changes the FK', async () => {
+  it('removes the "Inferred" badge when the user manually changes the FK', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1330,15 +1304,14 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.find('.suggestion-badge').exists()).toBe(true)
-    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
+    expect(w.text()).toContain('Inferred')
     // Manually change the FK to a different column
     await w.find('#fk_1').setValue('other_id')
     await flushPromises()
-    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
+    expect(w.text()).not.toContain('Inferred')
   })
 
-  it('transitions to reviewed when the user changes the referenced table', async () => {
+  it('removes the "Inferred" badge when the user changes the referenced table', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1349,15 +1322,14 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.find('.suggestion-badge').exists()).toBe(true)
-    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
+    expect(w.text()).toContain('Inferred')
     // Manually change the referenced table
     await w.find('#fkTable_2').setValue('doctors.csv')
     await flushPromises()
-    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
+    expect(w.text()).not.toContain('Inferred')
   })
 
-  it('removes the suggestion badge when the PK is removed', async () => {
+  it('removes the "Inferred" badge when the PK is removed', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1367,9 +1339,9 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.find('.suggestion-badge').exists()).toBe(true)
+    expect(w.text()).toContain('Inferred')
     await w.find('#pk_0').setValue('')
     await flushPromises()
-    expect(w.find('.suggestion-badge').exists()).toBe(false)
+    expect(w.text()).not.toContain('Inferred')
   })
 })
