@@ -241,6 +241,47 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     expect(warnings.at(-1)?.text).toContain("already used by column 'morph'")
   })
 
+  it('offers a conflict loser its contested variable as an alternative (D2)', async () => {
+    // sex lost 'biological_sex' to another column that the user has since
+    // remapped, so the variable is free again: applying the kept
+    // alternative writes it through the normal accept path.
+    const loser = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    Object.assign(loser.records.test_db_sex, {
+      match: null,
+      confidence: 0,
+      reason: "conflict: column 'gender' is a stronger candidate for biological_sex",
+      alternatives: [{ match: 'biological_sex', confidence: 0.9, source: 'alias', tier: 1 }],
+    })
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: loser }],
+    ])
+
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    expect(badges).toHaveLength(2)
+    const sexBadge = badges[1]
+    expect(sexBadge.find('.suggestion-badge').classes()).toContain('alternatives-only')
+    // Nothing was pre-filled for the loser, and it does not gate submit.
+    const store = useSuggestionsStore()
+    expect(store.isApplied('test_db_sex')).toBe(false)
+
+    await sexBadge.vm.$emit('apply-alternative', {
+      match: 'biological_sex',
+      confidence: 0.9,
+      source: 'alias',
+      tier: 1,
+    })
+    await flushPromises()
+
+    const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
+    expect(payload.test_db_sex?.description).toBe('Biological sex')
+    expect(store.isTouched('test_db_sex')).toBe(true)
+  })
+
   it('applying an alternative writes that column through the same accept path', async () => {
     // Give the morph record one real alternative (a different match);
     // null matches and duplicates of the winner must not be offered.

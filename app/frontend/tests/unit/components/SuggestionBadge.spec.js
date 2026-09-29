@@ -202,6 +202,32 @@ describe('Frontend unit: SuggestionBadge', () => {
     expect(wrapper.find('.suggestion-alternatives-popover').exists()).toBe(false)
   })
 
+  it('renders an alternatives-only pill for a conflict loser (D2)', async () => {
+    // The backend nulled the loser's match and kept the contested variable
+    // as an alternative: nothing to accept, only the kept choice.
+    const record = makeRecord()
+    record.match = null
+    record.confidence = 0
+    record.reason = "conflict: column 'sex_code' is a stronger candidate for biological_sex"
+    record.alternatives = [
+      { match: 'biological_sex', confidence: 0.9, source: 'alias', tier: 1 },
+    ]
+    const wrapper = mount(SuggestionBadge, {
+      props: { suggestion: record, applied: false, touched: false },
+    })
+    expect(wrapper.find('.suggestion-badge').classes()).toContain('alternatives-only')
+    expect(wrapper.find('button.suggestion-accept').exists()).toBe(false)
+    const btn = wrapper.find('button.suggestion-alternatives')
+    expect(btn.text()).toContain('1 alternative')
+    expect(btn.attributes('title')).toContain('stronger candidate')
+
+    await btn.trigger('click')
+    await wrapper.find('.alternative-entry').trigger('click')
+    expect(wrapper.emitted('apply-alternative')[0][0]).toMatchObject({
+      match: 'biological_sex',
+    })
+  })
+
   it('Escape closes the alternatives popover without applying', async () => {
     const record = makeRecord()
     record.alternatives = [

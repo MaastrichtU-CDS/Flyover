@@ -10,7 +10,9 @@
  *
  * Props:
  *   suggestion — the store record dict (status, match, confidence, reason,
- *     source, tier, alternatives).
+ *     source, tier, alternatives). A record with no match of its own but
+ *     with alternatives (a conflict loser, decision D2) renders an
+ *     alternatives-only pill: nothing to accept, just the choices it kept.
  *   applied — whether the user has accepted this suggestion.
  *   touched — whether the user subsequently edited the field.
  *   showDismiss — render the × dismiss button (default true).
@@ -76,6 +78,13 @@ const alternatives = computed(() => {
   )
 })
 
+// A conflict loser (D2): the backend nulled its match but kept the
+// contested variable as an alternative. There is nothing to accept, so
+// the pill shows only the alternatives (the reason names the winner).
+const alternativesOnly = computed(
+  () => !props.suggestion.match && alternatives.value.length > 0
+)
+
 const tooltipText = computed(() => {
   const reason = props.suggestion.reason || 'Mapping suggestion'
   if (props.applied && !props.touched) {
@@ -137,12 +146,13 @@ onBeforeUnmount(() => {
   <span
     v-else
     class="suggestion-badge"
-    :class="{ applied }"
+    :class="{ applied, 'alternatives-only': alternativesOnly }"
   >
     <!-- Accept, alternatives, and dismiss are sibling buttons so all are
          keyboard reachable; a button cannot nest inside another button,
          so the pill body itself is no longer a clickable span. -->
     <button
+      v-if="!alternativesOnly"
       type="button"
       class="suggestion-accept"
       :aria-label="acceptLabel"
@@ -165,10 +175,13 @@ onBeforeUnmount(() => {
       class="suggestion-alternatives"
       :aria-expanded="showAlternatives ? 'true' : 'false'"
       :aria-label="`${alternatives.length} alternative match${alternatives.length === 1 ? '' : 'es'} available — show them`"
-      :title="`${alternatives.length} alternative match${alternatives.length === 1 ? '' : 'es'} available`"
+      :title="alternativesOnly ? tooltipText : `${alternatives.length} alternative match${alternatives.length === 1 ? '' : 'es'} available`"
       @click.stop="toggleAlternatives"
     >
       <i class="fas fa-list" />
+      <template v-if="alternativesOnly">
+        {{ alternatives.length }} alternative{{ alternatives.length === 1 ? '' : 's' }}
+      </template>
     </button>
     <div
       v-if="showAlternatives"
@@ -288,6 +301,11 @@ onBeforeUnmount(() => {
   font-size: 0.85em;
   color: inherit;
   cursor: pointer;
+}
+
+.suggestion-badge.alternatives-only .suggestion-alternatives {
+  gap: 0.3rem;
+  opacity: 1;
 }
 
 .suggestion-alternatives-popover {

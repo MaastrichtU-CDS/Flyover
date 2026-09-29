@@ -197,6 +197,18 @@ function hasSuggestion(dbName, item) {
   return entry && entry.status === 'done' && entry.display
 }
 
+// A conflict loser (decision D2): another column of this database won the
+// variable, so the backend nulled this record's match but kept the
+// contested variable in its alternatives. It renders an alternatives-only
+// pill so the user can still pick it (after changing the winner).
+function hasAlternativesOnly(dbName, item) {
+  const key = `${dbName}_${item}`
+  if (suggestions.isDismissed(key)) return false
+  const entry = suggestionFor(dbName, item)
+  if (!entry || entry.status !== 'done' || entry.display) return false
+  return (entry.alternatives || []).some((alt) => alt?.match)
+}
+
 // True while a suggestion for this column still needs review: either it
 // pre-filled the field (applied, never touched) or it arrived for an
 // empty field the pre-fill watch could not fill (e.g. the
@@ -800,7 +812,11 @@ onBeforeUnmount(() => {
                 <div class="variable-label">
                   {{ item }}
                   <SuggestionBadge
-                    v-if="suggestions.isApplied(`${dbName}_${item}`) || hasSuggestion(dbName, item)"
+                    v-if="
+                      suggestions.isApplied(`${dbName}_${item}`) ||
+                        hasSuggestion(dbName, item) ||
+                        hasAlternativesOnly(dbName, item)
+                    "
                     :suggestion="suggestionFor(dbName, item) || {}"
                     :applied="suggestions.isApplied(`${dbName}_${item}`)"
                     :touched="suggestions.isTouched(`${dbName}_${item}`)"
