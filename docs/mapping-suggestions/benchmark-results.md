@@ -1,67 +1,151 @@
 # Tier-1 benchmark results
 
-## Status
 
-The numbers below were produced by the **pre-remediation benchmark
-protocol** and are superseded: each branch was loaded alone, so
-single-database sites got no alias memory at all while NKI and Leeds
-(each carrying two databases) leaked into their own alias memory, the
-run bypassed `SuggestionService` (no `sanitise_pairs`, merge, or
-conflict handling), IGR-Paris was silently missing, and recall@3,
-precision, per-source counts, the values phase, and wall-clock were not
-measured. They are kept only as a reference point.
+Run at threshold=0.80, margin=0.05 (production defaults: 0.8/0.05).
 
-The benchmark script (`app/backend/scripts/benchmark_suggestions.py`)
-was reworked in WS6 of the tier-1 remediation to fix all of that. It
-still needs one run with network access to fetch the AYA branches
-(`--cache-dir` caches them afterwards); until then the "New protocol"
-table below is a placeholder.
+## Variables phase (column -> variable)
 
-```bash
-python app/backend/scripts/benchmark_suggestions.py \
-    --cache-dir "$TMPDIR/aya-benchmark" --sweep \
-    --out docs/mapping-suggestions/benchmark-results.md
-```
+| Site | Items | Recall@1 | Recall@3 | Pre-filled correct | Abstain | False-accept | Precision (accepted) | alias / value_regex / string | Wall-clock |
+|---|---|---|---|---|---|---|---|---|---|
+| CLB-Lyon | 19 | 10.5% | 10.5% | 5.3% | 84.2% | 0.0% | 66.7% | 2 / 0 / 1 | 0.03s |
+| IGR-Paris | 0 | n/a | n/a | n/a | n/a | n/a | n/a | 0 / 0 / 0 | 0.00s |
+| INT-Milan | 38 | 57.9% | 60.5% | 57.9% | 31.6% | 7.9% | 84.6% | 6 / 0 / 20 | 0.06s |
+| MSCI-Warsaw | 133 | 45.9% | 45.9% | 45.9% | 42.9% | 10.5% | 80.3% | 75 / 0 / 1 | 0.09s |
+| NKI-Amsterdam | 546 | 22.7% | 22.7% | 21.8% | 75.1% | 0.9% | 91.2% | 129 / 0 / 7 | 0.50s |
+| TheChristie-Manchester | 13 | 30.8% | 30.8% | 30.8% | 61.5% | 0.0% | 80.0% | 5 / 0 / 0 | 0.01s |
+| YSRCCYP-Leeds | 127 | 10.2% | 10.2% | 10.2% | 77.2% | 3.1% | 44.8% | 11 / 0 / 18 | 0.21s |
+| **Pooled** | 876 | 25.8% | 25.9% | 25.1% | 68.6% | 3.0% | 82.2% | 228 / 0 / 47 | 0.90s |
 
-## New protocol (pending run)
+## Values phase (distinct value -> term, over localMappings)
 
-- Leave one **site** out: all branches are loaded into one pool and a
-  branch counts as a site; when a site is evaluated, all of its
-  databases are hidden from the alias memory (NKI prospective and
-  retrospective together).
-- The run goes through `SuggestionService` with a fake session cache
-  and RDF store, so `sanitise_pairs`, the cascade merge, conflict
-  handling, and the values-phase column guards all apply.
-- Metrics per site and pooled, with exact counts: recall@1, recall@3
-  (from `alternatives`), abstain rate, false-accept rate at the
-  threshold, precision of accepted matches, a per-source breakdown
-  (`alias` / `value_regex` / `string`), a values-phase run over
-  `localMappings`, and wall-clock time.
-- `--sweep` runs the variables phase over threshold 0.60–0.95 and margin
-  0.02–0.15 and reports the best combination (recall@1 minus
-  false-accept) to inform `DEFAULT_THRESHOLD` / `DEFAULT_MARGIN`.
-- Per-branch mapping paths are tried in order (IGR-Paris was missing
-  before because its file lives at a different path);
-  `--mapping-path` overrides them.
+| Site | Items | Recall@1 | Recall@3 | Pre-filled correct | Abstain | False-accept | Precision (accepted) | alias / value_regex / string | Wall-clock |
+|---|---|---|---|---|---|---|---|---|---|
+| CLB-Lyon | 87 | 55.2% | 55.2% | 55.2% | 2.3% | 42.5% | 56.5% | 41 / 6 / 38 | 0.05s |
+| IGR-Paris | 0 | n/a | n/a | n/a | n/a | n/a | n/a | 0 / 0 / 0 | 0.00s |
+| INT-Milan | 0 | n/a | n/a | n/a | n/a | n/a | n/a | 0 / 0 / 0 | 0.00s |
+| MSCI-Warsaw | 532 | 53.6% | 53.6% | 53.6% | 36.7% | 9.8% | 84.6% | 1 / 0 / 336 | 0.37s |
+| NKI-Amsterdam | 2143 | 71.1% | 71.1% | 71.1% | 27.5% | 1.4% | 98.1% | 6 / 25 / 1523 | 0.91s |
+| TheChristie-Manchester | 74 | 62.2% | 62.2% | 62.2% | 28.4% | 9.5% | 86.8% | 40 / 0 / 13 | 0.03s |
+| YSRCCYP-Leeds | 596 | 55.9% | 55.9% | 55.9% | 37.1% | 7.0% | 88.8% | 4 / 21 / 350 | 0.47s |
+| **Pooled** | 3432 | 65.2% | 65.2% | 65.2% | 30.0% | 4.9% | 93.0% | 92 / 52 / 2260 | 1.83s |
 
-| Site | Items | Recall@1 | Recall@3 | Abstain | False-accept | Precision (accepted) | alias / value_regex / string | Wall-clock |
-|---|---|---|---|---|---|---|---|---|
-| _pending a run with network access_ | | | | | | | | |
+## Parameter sweep (variables phase, pooled)
 
-## Old protocol numbers (superseded, kept for reference)
+Scored on what the variables page pre-fills (records at or above the threshold): correct pre-fills minus wrong pre-fills (false-accept), pooled over all sites; higher is better. Recall@1 counts every correct match at any confidence, so on its own it cannot be traded against false-accept: raising the threshold lowers false-accept without costing recall@1. The score does not count wrong hints (wrong matches below the threshold, shown as pills but never pre-filled): a smaller margin abstains less, which adds correct pre-fills but also wrong hints, so read both columns before changing DEFAULT_MARGIN.
 
-Produced before the WS6 rework; see "Status" above for why they do not
-measure what the plan asks for. IGR-Paris is absent because its mapping
-file lives at a different path than the one the old script requested.
+| Threshold | Margin | Recall@1 | Pre-filled correct | False-accept | Wrong hints | Score |
+|---|---|---|---|---|---|---|
+| 0.60 | 0.02 | 32.8% | 32.8% | 10.3% | 0.0% | +0.225 |
+| 0.60 | 0.03 | 29.9% | 29.9% | 7.6% | 0.0% | +0.223 |
+| 0.60 | 0.04 | 28.7% | 28.7% | 6.5% | 0.0% | +0.221 |
+| 0.60 | 0.05 | 25.9% | 25.9% | 5.6% | 0.0% | +0.203 |
+| 0.60 | 0.06 | 25.7% | 25.7% | 5.4% | 0.0% | +0.203 |
+| 0.60 | 0.07 | 25.5% | 25.5% | 4.7% | 0.0% | +0.208 |
+| 0.60 | 0.08 | 25.1% | 25.1% | 4.7% | 0.0% | +0.204 |
+| 0.60 | 0.09 | 25.0% | 25.0% | 4.3% | 0.0% | +0.207 |
+| 0.60 | 0.10 | 24.3% | 24.3% | 4.0% | 0.0% | +0.203 |
+| 0.60 | 0.11 | 24.1% | 24.1% | 3.8% | 0.0% | +0.203 |
+| 0.60 | 0.12 | 24.0% | 24.0% | 3.7% | 0.0% | +0.203 |
+| 0.60 | 0.13 | 24.0% | 24.0% | 3.5% | 0.0% | +0.204 |
+| 0.60 | 0.14 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.60 | 0.15 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.65 | 0.02 | 32.8% | 32.8% | 10.0% | 0.2% | +0.227 |
+| 0.65 | 0.03 | 29.9% | 29.9% | 7.5% | 0.1% | +0.224 |
+| 0.65 | 0.04 | 28.7% | 28.7% | 6.5% | 0.0% | +0.221 |
+| 0.65 | 0.05 | 25.9% | 25.9% | 5.6% | 0.0% | +0.203 |
+| 0.65 | 0.06 | 25.7% | 25.7% | 5.4% | 0.0% | +0.203 |
+| 0.65 | 0.07 | 25.5% | 25.5% | 4.7% | 0.0% | +0.208 |
+| 0.65 | 0.08 | 25.1% | 25.1% | 4.7% | 0.0% | +0.204 |
+| 0.65 | 0.09 | 25.0% | 25.0% | 4.3% | 0.0% | +0.207 |
+| 0.65 | 0.10 | 24.3% | 24.3% | 4.0% | 0.0% | +0.203 |
+| 0.65 | 0.11 | 24.1% | 24.1% | 3.8% | 0.0% | +0.203 |
+| 0.65 | 0.12 | 24.0% | 24.0% | 3.7% | 0.0% | +0.203 |
+| 0.65 | 0.13 | 24.0% | 24.0% | 3.5% | 0.0% | +0.204 |
+| 0.65 | 0.14 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.65 | 0.15 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.70 | 0.02 | 32.8% | 32.8% | 8.1% | 2.2% | +0.247 |
+| 0.70 | 0.03 | 29.9% | 29.9% | 6.7% | 0.9% | +0.232 |
+| 0.70 | 0.04 | 28.7% | 28.7% | 6.1% | 0.5% | +0.226 |
+| 0.70 | 0.05 | 25.9% | 25.9% | 5.5% | 0.1% | +0.204 |
+| 0.70 | 0.06 | 25.7% | 25.7% | 5.3% | 0.1% | +0.204 |
+| 0.70 | 0.07 | 25.5% | 25.5% | 4.7% | 0.0% | +0.208 |
+| 0.70 | 0.08 | 25.1% | 25.1% | 4.7% | 0.0% | +0.204 |
+| 0.70 | 0.09 | 25.0% | 25.0% | 4.3% | 0.0% | +0.207 |
+| 0.70 | 0.10 | 24.3% | 24.3% | 4.0% | 0.0% | +0.203 |
+| 0.70 | 0.11 | 24.1% | 24.1% | 3.8% | 0.0% | +0.203 |
+| 0.70 | 0.12 | 24.0% | 24.0% | 3.7% | 0.0% | +0.203 |
+| 0.70 | 0.13 | 24.0% | 24.0% | 3.5% | 0.0% | +0.204 |
+| 0.70 | 0.14 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.70 | 0.15 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.75 | 0.02 | 32.8% | 32.4% | 5.0% | 5.3% | +0.274 |
+| 0.75 | 0.03 | 29.9% | 29.9% | 4.2% | 3.4% | +0.257 |
+| 0.75 | 0.04 | 28.7% | 28.7% | 4.2% | 2.3% | +0.244 |
+| 0.75 | 0.05 | 25.9% | 25.9% | 4.1% | 1.5% | +0.218 |
+| 0.75 | 0.06 | 25.7% | 25.7% | 4.1% | 1.3% | +0.216 |
+| 0.75 | 0.07 | 25.5% | 25.5% | 4.0% | 0.7% | +0.215 |
+| 0.75 | 0.08 | 25.1% | 25.1% | 4.0% | 0.7% | +0.211 |
+| 0.75 | 0.09 | 25.0% | 25.0% | 4.0% | 0.3% | +0.210 |
+| 0.75 | 0.10 | 24.3% | 24.3% | 3.9% | 0.1% | +0.204 |
+| 0.75 | 0.11 | 24.1% | 24.1% | 3.8% | 0.0% | +0.203 |
+| 0.75 | 0.12 | 24.0% | 24.0% | 3.7% | 0.0% | +0.203 |
+| 0.75 | 0.13 | 24.0% | 24.0% | 3.5% | 0.0% | +0.204 |
+| 0.75 | 0.14 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.75 | 0.15 | 23.9% | 23.9% | 3.4% | 0.0% | +0.204 |
+| 0.80 | 0.02 | 32.5% | 31.5% | 3.4% | 6.8% | +0.281 |
+| 0.80 | 0.03 | 29.7% | 29.0% | 3.0% | 4.7% | +0.260 |
+| 0.80 | 0.04 | 28.4% | 27.7% | 3.0% | 3.7% | +0.248 |
+| 0.80 | 0.05 | 25.8% | 25.1% | 3.0% | 2.6% | +0.221 |
+| 0.80 | 0.06 | 25.7% | 25.0% | 3.0% | 2.4% | +0.220 |
+| 0.80 | 0.07 | 25.5% | 24.8% | 3.0% | 1.7% | +0.218 |
+| 0.80 | 0.08 | 25.1% | 24.4% | 3.0% | 1.7% | +0.215 |
+| 0.80 | 0.09 | 25.0% | 24.3% | 3.0% | 1.4% | +0.213 |
+| 0.80 | 0.10 | 24.3% | 23.7% | 3.0% | 1.0% | +0.208 |
+| 0.80 | 0.11 | 24.1% | 23.6% | 3.0% | 0.8% | +0.207 |
+| 0.80 | 0.12 | 24.0% | 23.5% | 3.0% | 0.7% | +0.205 |
+| 0.80 | 0.13 | 23.9% | 23.4% | 3.0% | 0.7% | +0.204 |
+| 0.80 | 0.14 | 23.7% | 23.3% | 2.9% | 0.7% | +0.204 |
+| 0.80 | 0.15 | 23.9% | 23.3% | 2.7% | 0.7% | +0.205 |
+| 0.85 | 0.02 | 32.8% | 29.9% | 2.7% | 7.1% | +0.272 |
+| 0.85 | 0.03 | 29.9% | 27.5% | 2.6% | 4.6% | +0.249 |
+| 0.85 | 0.04 | 28.7% | 27.3% | 2.6% | 3.5% | +0.247 |
+| 0.85 | 0.05 | 26.0% | 24.7% | 2.6% | 2.6% | +0.220 |
+| 0.85 | 0.06 | 25.9% | 24.5% | 2.6% | 2.4% | +0.219 |
+| 0.85 | 0.07 | 25.7% | 24.3% | 2.6% | 1.7% | +0.217 |
+| 0.85 | 0.08 | 25.3% | 24.0% | 2.6% | 1.7% | +0.213 |
+| 0.85 | 0.09 | 25.2% | 23.9% | 2.6% | 1.4% | +0.212 |
+| 0.85 | 0.10 | 24.5% | 23.3% | 2.6% | 1.0% | +0.207 |
+| 0.85 | 0.11 | 24.3% | 23.2% | 2.6% | 0.8% | +0.205 |
+| 0.85 | 0.12 | 24.2% | 23.2% | 2.6% | 0.7% | +0.205 |
+| 0.85 | 0.13 | 24.0% | 22.9% | 2.6% | 0.8% | +0.203 |
+| 0.85 | 0.14 | 23.9% | 22.9% | 2.6% | 0.8% | +0.203 |
+| 0.85 | 0.15 | 24.0% | 22.9% | 2.5% | 0.8% | +0.204 |
+| 0.90 | 0.02 | 32.8% | 24.4% | 2.6% | 7.2% | +0.218 |
+| 0.90 | 0.03 | 29.9% | 24.4% | 2.5% | 4.7% | +0.219 |
+| 0.90 | 0.04 | 28.7% | 24.4% | 2.5% | 3.7% | +0.219 |
+| 0.90 | 0.05 | 26.0% | 24.0% | 2.5% | 2.7% | +0.215 |
+| 0.90 | 0.06 | 25.9% | 23.9% | 2.5% | 2.5% | +0.213 |
+| 0.90 | 0.07 | 25.7% | 23.7% | 2.5% | 1.8% | +0.212 |
+| 0.90 | 0.08 | 25.3% | 23.4% | 2.5% | 1.8% | +0.209 |
+| 0.90 | 0.09 | 25.2% | 23.3% | 2.5% | 1.5% | +0.208 |
+| 0.90 | 0.10 | 24.5% | 22.8% | 2.5% | 1.1% | +0.203 |
+| 0.90 | 0.11 | 24.3% | 22.7% | 2.5% | 0.9% | +0.202 |
+| 0.90 | 0.12 | 24.2% | 22.7% | 2.5% | 0.8% | +0.202 |
+| 0.90 | 0.13 | 24.0% | 22.5% | 2.5% | 0.9% | +0.200 |
+| 0.90 | 0.14 | 23.9% | 22.5% | 2.5% | 0.9% | +0.200 |
+| 0.90 | 0.15 | 24.0% | 22.5% | 2.4% | 0.9% | +0.201 |
+| 0.95 | 0.02 | 32.8% | 24.1% | 2.5% | 7.3% | +0.216 |
+| 0.95 | 0.03 | 29.9% | 24.1% | 2.5% | 4.7% | +0.216 |
+| 0.95 | 0.04 | 28.7% | 24.1% | 2.5% | 3.7% | +0.216 |
+| 0.95 | 0.05 | 26.0% | 23.6% | 2.5% | 2.7% | +0.211 |
+| 0.95 | 0.06 | 25.9% | 23.5% | 2.5% | 2.5% | +0.210 |
+| 0.95 | 0.07 | 25.7% | 23.4% | 2.5% | 1.8% | +0.209 |
+| 0.95 | 0.08 | 25.3% | 23.1% | 2.5% | 1.8% | +0.205 |
+| 0.95 | 0.09 | 25.2% | 22.9% | 2.5% | 1.5% | +0.204 |
+| 0.95 | 0.10 | 24.5% | 22.5% | 2.5% | 1.1% | +0.200 |
+| 0.95 | 0.11 | 24.3% | 22.4% | 2.5% | 0.9% | +0.199 |
+| 0.95 | 0.12 | 24.2% | 22.4% | 2.5% | 0.8% | +0.199 |
+| 0.95 | 0.13 | 24.0% | 22.1% | 2.5% | 0.9% | +0.196 |
+| 0.95 | 0.14 | 23.9% | 22.1% | 2.5% | 0.9% | +0.196 |
+| 0.95 | 0.15 | 24.0% | 22.1% | 2.4% | 0.9% | +0.197 |
 
-| Site | Columns | Recall@1 | False-accept | Abstain |
-|---|---|---|---|---|
-| CLB-Lyon/CLB_retrospective_data | 19 | 10.5% | 0.0% | 89.5% |
-| INT-Milan/STRONGAYA_Flyover_DATA_LABELS_2026_08_13_1756 | 38 | 68.4% | 5.3% | 23.7% |
-| MSCI-Warsaw/MSCI_prospective_data | 133 | 15.0% | 3.8% | 74.4% |
-| NKI-Amsterdam/NKI_prospective_data | 403 | 17.9% | 3.0% | 77.2% |
-| NKI-Amsterdam/NKI_retrospective_data | 143 | 57.3% | 2.1% | 39.2% |
-| TheChristie-Manchester/TheChristie_retrospective_data | 13 | 15.4% | 0.0% | 84.6% |
-| YSRCCYP-Leeds/YSRCCYP_prospective_data | 100 | 5.0% | 1.0% | 82.0% |
-| YSRCCYP-Leeds/YSRCCYP_retrospective_data | 27 | 25.9% | 3.7% | 70.4% |
-| **Pooled** | **876** | **24.7%** | **2.7%** | **68.9%** |
+Best by score: threshold=0.80, margin=0.02 (score +0.281). The score ignores wrong hints; weigh that column before changing DEFAULT_THRESHOLD/DEFAULT_MARGIN in services/suggestions/__init__.py.

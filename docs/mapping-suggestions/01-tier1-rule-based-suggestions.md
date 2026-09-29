@@ -147,7 +147,7 @@ Protocol per README (leave one SITE out, through `SuggestionService` itself). CL
 - [ ] Alias memory: with the AYA JSON-LD loaded and NKI as the described database, `morf` receives `tumour_morphology_icd_o` with `source: alias` and a reason naming the source database.
 - [ ] Value regexes: a column with distinct values `{ja, nee}` receives yes/no term suggestions in the values phase; `{M, V}` suggests `biological_sex`; a 4-digit year column abstains when multiple `year_of_*` variables exist.
 - [ ] String matcher: `jaar_van_diagnose → year_of_initial_diagnosis` with confidence ≥ 0.8; `surv1` and `alg_v7` abstain (`match: null`, reason mentions margin).
-- [ ] Benchmark on the 7 AYA branches: tier-1 recall@1 ≥ `TBD from benchmark` on English-header sites, false-accept rate (confidence ≥ threshold but wrong) ≤ `TBD from benchmark` pooled; results committed to `docs/mapping-suggestions/benchmark-results.md`.
+- [ ] Benchmark on the 7 AYA branches (IGR-Paris has no mapped databases yet, so 6 contribute): tier-1 recall@1 ≥ 21.9% on English-header sites (INT-Milan, TheChristie-Manchester, YSRCCYP-Leeds; the measured baseline at threshold 0.8 / margin 0.05), variables-phase false-accept rate (confidence ≥ threshold but wrong) ≤ 3.0% pooled; results committed to `docs/mapping-suggestions/benchmark-results.md`.
 - [ ] Zero writes to the JSON-LD without an explicit accept: a Vitest test loads suggestions, asserts `jsonld.getMapping()` unchanged, accepts one, asserts only that column changed.
 - [ ] `SuggestionBadge` renders identically for `source: alias | value_regex | string` and for a fabricated `source: llm` record (source-agnostic).
 - [ ] `applied` / `touched` / `dismissed` marks survive a page reload (IndexedDB) and are not overwritten by a re-run job.
@@ -168,7 +168,8 @@ Protocol per README (leave one SITE out, through `SuggestionService` itself). CL
 
 - Should alias memory also read an optional site-provided data dictionary (CSV `column,label`) uploaded on the ingest page? Proposed: follow-up issue, keep the hook (`ctx.dictionary`) in the producer protocol.
 - Abbreviation table language coverage: start with NL/EN from the AYA branches; FR/IT/PL added as sites contribute.
-- Default threshold `0.8` and margin `0.05` are placeholders until the benchmark runs.
+- Threshold and margin, measured (`benchmark-results.md`): threshold `0.8` scores best in the sweep and stays. The score keeps rising as the margin shrinks, but so do wrong hint pills: margin `0.02` against `0.05` gives +6.4 pp correct pre-fills, +0.4 pp false-accept and +4.2 pp wrong hints. That trade-off is a product decision; `0.05` stays until it is taken.
+- The values page pre-fills every match: value scores sit on another scale than column names (`1 → score_1_not_at_all` scores ~0.69 and is usually right), so the `0.8` column threshold would cut correct value pre-fills from 65.2% to 5.3%. If the values page should be gated, a values threshold of `0.60`–`0.65` measured best (61.7% correct pre-fills at ~3% false-accept, against 65.2% / 4.9% ungated).
 - Pre-fill vs pre-highlight: the branch pre-fills untouched dropdowns with the suggestion (dashed style until the user confirms); this issue proposes pre-highlighting only, with an explicit accept, to counter over-trust. Decide before implementing; the cherry-picked aesthetics work for either.
 
 ## Depends on / blocks
