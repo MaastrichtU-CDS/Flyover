@@ -132,9 +132,9 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const s = useSuggestionsStore()
     await s.init('variables', { mapping: { some: 'mapping' } })
 
-    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {
-      mapping: { some: 'mapping' },
-    })
+    // WS4.2: the variables phase does not send the browser's mapping
+    // upfront — only after the backend answers no_semantic_map.
+    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {})
     expect(s.enabled).toBe(true)
     expect(s.variables.status).toBe('running')
     expect(s.variables.byKey['db1_leeftijd']).toMatchObject({
@@ -220,6 +220,109 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(s.variables.gaveUp).toBe(false)
     await s.refresh('variables')
     expect(s.variables.gaveUp).toBe(true)
+  })
+
+  it('the variables phase offers its mapping only after no_semantic_map', async () => {
+    // First /start answers no_semantic_map (the session has no mapping);
+    // only then does the store retry once with the browser's mapping
+    // (WS4.2) — a request body must not reach the session unprompted.
+    api.post
+      .mockResolvedValueOnce({
+        data: { status: 'unavailable', reason: 'no_semantic_map' },
+      })
+      .mockResolvedValueOnce({ data: { status: 'started' } })
+    api.get
+      .mockResolvedValueOnce(statusResponse())
+      .mockResolvedValue(snapshot({ status: 'done' }))
+
+    const s = useSuggestionsStore()
+    await s.init('variables', { mapping: { some: 'mapping' } })
+
+    expect(api.post).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/suggestions/variables/start',
+      {}
+    )
+    expect(api.post).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/suggestions/variables/start',
+      { mapping: { some: 'mapping' } }
+    )
+  })
+
+  it('the values phase always sends the mapping job-locally', async () => {
+    // The values job needs the browser's latest variable selections, so
+    // its mapping goes with every start; the backend keeps it job-local.
+    api.post.mockResolvedValue({ data: { status: 'started' } })
+    api.get
+      .mockResolvedValueOnce(statusResponse())
+      .mockResolvedValue(snapshot({ status: 'done' }))
+
+    const s = useSuggestionsStore()
+    await s.init('values', { mapping: { some: 'mapping' } })
+
+    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/values/start', {
+      mapping: { some: 'mapping' },
+    })
+    expect(api.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('a new fingerprint keeps marks whose match is unchanged and drops the rest', async () => {
+    // Decision D3: mark expiry is per key, not wholesale. A stale
+    // dismissal must not hide a DIFFERENT suggestion, but reviews the
+    // user already did must survive a new job.
+    const record = (key, match) => ({
+      status: 'done',
+      item: key,
+      match,
+      confidence: 0.9,
+      reason: 'r',
+      source: 'alias',
+      tier: 1,
+    })
+    const s = useSuggestionsStore()
+    s.setPhase('variables')
+
+    // First job: the user reviews db1_a and dismisses db1_b.
+    api.get.mockResolvedValue(
+      snapshot({
+        status: 'done',
+        fingerprint: 'old',
+        records: {
+          db1_a: record('db1_a', 'age_at_diagnosis'),
+          db1_b: record('db1_b', 'biological_sex'),
+        },
+      })
+    )
+    await s.refresh('variables')
+    s.markApplied('db1_a')
+    s.markUserTouched('db1_a')
+    s.dismiss('db1_b')
+    expect(s.isDismissed('db1_b')).toBe(true)
+
+    // New job, new fingerprint: db1_a's suggestion is unchanged, db1_b's
+    // now suggests a different variable.
+    api.get.mockResolvedValue(
+      snapshot({
+        status: 'done',
+        fingerprint: 'new',
+        records: {
+          db1_a: record('db1_a', 'age_at_diagnosis'),
+          db1_b: record('db1_b', 'year_of_diagnosis'),
+        },
+      })
+    )
+    await s.refresh('variables')
+
+    // The finished review survives; the stale dismissal does not.
+    expect(s.isApplied('db1_a')).toBe(true)
+    expect(s.isTouched('db1_a')).toBe(true)
+    expect(s.isDismissed('db1_b')).toBe(false)
+    expect(s.marks.variables.fingerprint).toBe('new')
+
+    const saved = db.saveData.mock.calls.at(-1)[1]
+    expect(saved.applied).toContain('db1_a')
+    expect(saved.dismissed).toEqual([])
   })
 
   it('a fresh init retries after giving up', async () => {

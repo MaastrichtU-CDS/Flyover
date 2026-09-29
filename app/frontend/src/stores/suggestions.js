@@ -73,7 +73,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   // (new dataset, changed rules) the marks expire, so a stale dismissal
   // can never hide fresh suggestions forever.
   function _emptyMarks() {
-    return { applied: {}, touched: {}, dismissed: {}, fingerprint: null }
+    return { applied: {}, touched: {}, dismissed: {}, matches: {}, fingerprint: null }
   }
 
   const marks = reactive({
@@ -110,6 +110,12 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       for (const key of stored?.applied || []) m.applied[key] = true
       for (const key of stored?.touched || []) m.touched[key] = true
       for (const key of stored?.dismissed || []) m.dismissed[key] = true
+      // `matches` records what each mark was made against, so a later job
+      // can expire marks per key (D3). Marks persisted before this field
+      // exist simply carry no match and are expired wholesale.
+      for (const [key, match] of Object.entries(stored?.matches || {})) {
+        m.matches[key] = match
+      }
       m.fingerprint = stored?.fingerprint || null
     } catch {
       // Marks are cosmetic bookkeeping; a failed load must not block the page.
@@ -124,6 +130,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
         applied: Object.keys(m.applied).filter((k) => m.applied[k]),
         touched: Object.keys(m.touched).filter((k) => m.touched[k]),
         dismissed: Object.keys(m.dismissed).filter((k) => m.dismissed[k]),
+        matches: { ...m.matches },
         fingerprint: m.fingerprint,
         timestamp: new Date().toISOString(),
       })
@@ -163,6 +170,12 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   }
 
   // Adopt or expire the phase's marks when a job fingerprint arrives.
+  // Decision D3: expiry is per key — a new job keeps applied/touched/
+  // dismissed marks for keys whose suggestion (match) is unchanged in
+  // the new records and drops only the keys whose match changed or
+  // disappeared. That satisfies the intent of the fingerprint (a stale
+  // dismissal must not hide a DIFFERENT suggestion) without throwing
+  // away reviews the user already did.
   function _syncMarksToFingerprint(phase, fingerprint) {
     const m = marks[phase]
     if (m.fingerprint === fingerprint) return
@@ -173,11 +186,28 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       _persistMarks(phase)
       return
     }
-    // A new job invalidates the old marks: a dismissal from an earlier
-    // dataset or ruleset must not hide the new suggestions.
-    for (const key of Object.keys(m.applied)) delete m.applied[key]
-    for (const key of Object.keys(m.touched)) delete m.touched[key]
-    for (const key of Object.keys(m.dismissed)) delete m.dismissed[key]
+    const byKey = _phaseState(phase).byKey
+    const markStillApplies = (key) => {
+      const record = byKey[key]
+      if (!record) return false
+      // Marks written before match bookkeeping carry no match value:
+      // conservatively drop them (they cannot be verified).
+      if (!(key in m.matches)) return false
+      return (m.matches[key] ?? null) === (record.match ?? null)
+    }
+    for (const key of Object.keys(m.applied)) {
+      if (!markStillApplies(key)) {
+        delete m.applied[key]
+        delete m.touched[key]
+        delete m.matches[key]
+      }
+    }
+    for (const key of Object.keys(m.dismissed)) {
+      if (!markStillApplies(key)) {
+        delete m.dismissed[key]
+        delete m.matches[key]
+      }
+    }
     m.fingerprint = fingerprint
     _persistMarks(phase)
   }
@@ -308,19 +338,36 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
     if (!enabled.value) return
 
-    const body = {}
-    if (mapping) body.mapping = mapping
+    // Mapping send policy (WS4.2): the values phase always sends the
+    // browser's mapping — it reflects the user's variable selections,
+    // which the values job needs, and the backend keeps it job-local.
+    // The variables phase sends its mapping ONLY after the backend
+    // answered no_semantic_map (the mapping may only survive in this
+    // browser's IndexedDB); sending it on every mount would let a
+    // request body influence the session mapping.
+    const startUrl = `/api/v1/suggestions/${phase}/start`
+    let data
     try {
-      const { data } = await api.post(
-        `/api/v1/suggestions/${phase}/start`,
-        body,
-      )
-      if (data.status === 'disabled') {
+      const body = mapping && phase === 'values' ? { mapping } : {}
+      ;({ data } = await api.post(startUrl, body))
+    } catch {
+      data = null
+    }
+    if (data?.status === 'disabled') {
+      enabled.value = false
+      return
+    }
+    if (data?.reason === 'no_semantic_map' && mapping && phase !== 'values') {
+      // The backend has no mapping: offer the browser's copy once.
+      try {
+        ;({ data } = await api.post(startUrl, { mapping }))
+      } catch {
+        data = null
+      }
+      if (data?.status === 'disabled') {
         enabled.value = false
         return
       }
-    } catch {
-      // The snapshot poll below reports the job state either way.
     }
 
     await refresh(phase)
@@ -352,8 +399,17 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     return marks[_currentPhase.value]
   }
 
+  // Remember which record (its match) a mark was made against, so a job
+  // with a new fingerprint can expire marks per key (D3).
+  function _rememberMatch(key) {
+    const m = _currentMarks()
+    const record = _phaseState(_currentPhase.value).byKey[key]
+    m.matches[key] = record?.match ?? null
+  }
+
   function markApplied(key) {
     _currentMarks().applied[key] = true
+    _rememberMatch(key)
     _persistMarks(_currentPhase.value)
   }
 
@@ -368,6 +424,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   function dismiss(key) {
     const m = _currentMarks()
     m.dismissed[key] = true
+    _rememberMatch(key)
     delete m.applied[key]
     delete m.touched[key]
     _persistMarks(_currentPhase.value)
