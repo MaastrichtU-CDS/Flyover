@@ -25,6 +25,7 @@ export const MAX_STALLED_POLLS = 3
 
 const TERMINAL_STATUSES = ['done', 'failed', 'unavailable', 'disabled']
 const MARKS_KEY_PREFIX = 'suggestion_marks_'
+const COACHMARK_KEY = 'suggestion_coachmark_seen'
 
 // Source-to-icon mapping for source-agnostic rendering. The badge component
 // also uses this; exported here so tests can assert on it.
@@ -80,6 +81,13 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     values: _emptyMarks(),
   })
 
+  // First-visit cue (WS2): whether the user has already seen the
+  // "review suggested mappings" coachmark per phase, persisted in the
+  // metadata store as { variables, values }. `loaded` is false until
+  // loadCoachmark() resolved, so a view never flashes the cue before the
+  // persisted flags arrive.
+  const coachmarkSeen = reactive({ loaded: false, variables: false, values: false })
+
   let _pollTimer = null
   let _pollStartedAt = 0
   let _errorToastShown = false
@@ -121,6 +129,36 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       })
     } catch {
       // Same as _loadMarks: never let bookkeeping break the flow.
+    }
+  }
+
+  // Load the persisted coachmark "seen" flags. Wrapped in try/catch like
+  // _loadMarks: if IndexedDB is unavailable the flags stay false and the
+  // cue shows at most once per page session (markCoachmarkSeen keeps the
+  // in-memory flag even when the persist fails).
+  async function loadCoachmark() {
+    try {
+      const stored = await db.getData('metadata', COACHMARK_KEY)
+      coachmarkSeen.variables = !!stored?.variables
+      coachmarkSeen.values = !!stored?.values
+    } catch {
+      // Fall through: flags stay false until first close.
+    }
+    coachmarkSeen.loaded = true
+  }
+
+  async function markCoachmarkSeen(phase) {
+    coachmarkSeen[phase] = true
+    try {
+      const stored = await db.getData('metadata', COACHMARK_KEY)
+      await db.saveData('metadata', {
+        ...(stored || {}),
+        key: COACHMARK_KEY,
+        [phase]: true,
+        timestamp: new Date().toISOString(),
+      })
+    } catch {
+      // The in-memory flag above already gives per-session behaviour.
     }
   }
 
@@ -254,6 +292,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     _stalledPolls[phase] = 0
 
     await _loadMarks(phase)
+    await loadCoachmark()
 
     if (enabled.value === null) {
       try {
@@ -310,19 +349,19 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   }
 
   function _currentMarks() {
-    return marks[_currentPhase]
+    return marks[_currentPhase.value]
   }
 
   function markApplied(key) {
     _currentMarks().applied[key] = true
-    _persistMarks(_currentPhase)
+    _persistMarks(_currentPhase.value)
   }
 
   function markUserTouched(key) {
     const m = _currentMarks()
     if (m.applied[key]) {
       m.touched[key] = true
-      _persistMarks(_currentPhase)
+      _persistMarks(_currentPhase.value)
     }
   }
 
@@ -331,7 +370,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     m.dismissed[key] = true
     delete m.applied[key]
     delete m.touched[key]
-    _persistMarks(_currentPhase)
+    _persistMarks(_currentPhase.value)
   }
 
   function isApplied(key) {
@@ -366,16 +405,19 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       delete m.applied[key]
       delete m.touched[key]
     }
-    _persistMarks(_currentPhase)
+    _persistMarks(_currentPhase.value)
     return cleared
   }
 
   // Tracks which phase's marks are active for persistence. Set by the view
-  // when it calls init(phase).
-  let _currentPhase = 'variables'
+  // when it calls init(phase). It is a ref, not a plain let: computeds that
+  // read the active phase's marks (unreviewedKeys and friends) must
+  // re-evaluate when the phase switches, otherwise the details view's
+  // unreviewed count caches against the variables marks and freezes at 0.
+  const _currentPhase = ref('variables')
 
   function setPhase(phase) {
-    _currentPhase = phase
+    _currentPhase.value = phase
   }
 
   return {
@@ -387,12 +429,15 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     variables,
     values,
     marks,
+    coachmarkSeen,
     init,
     refresh,
     startPolling,
     stopPolling,
     isPolling,
     bumpPriority,
+    loadCoachmark,
+    markCoachmarkSeen,
     markApplied,
     markUserTouched,
     dismiss,
