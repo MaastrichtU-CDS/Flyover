@@ -89,7 +89,7 @@ const tooltipText = computed(() => {
 const acceptLabel = computed(() => {
   const match = props.suggestion.match
   const item = props.suggestion.item
-  const pct = props.confidencePct
+  const pct = confidencePct.value
   if (match && item) return `Accept suggestion: map '${item}' to '${match}' (${pct}%)`
   return `Accept suggestion (${pct}%)`
 })

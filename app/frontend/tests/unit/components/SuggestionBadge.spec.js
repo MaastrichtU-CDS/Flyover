@@ -125,7 +125,9 @@ describe('Frontend unit: SuggestionBadge', () => {
     expect(accept.exists()).toBe(true)
     expect(dismiss.exists()).toBe(true)
     expect(accept.element.nextElementSibling).toBe(dismiss.element)
-    expect(accept.attributes('aria-label')).toContain("map 'morf' to 'tumour_morphology_icd_o'")
+    expect(accept.attributes('aria-label')).toBe(
+      "Accept suggestion: map 'morf' to 'tumour_morphology_icd_o' (92%)",
+    )
     expect(dismiss.attributes('aria-label')).toBe('Dismiss this suggestion')
   })
 
