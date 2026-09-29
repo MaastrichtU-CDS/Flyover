@@ -80,7 +80,7 @@ test.describe('Suggestions on describe pages', () => {
 
     // Expanding the database moves the callout to the first pill.
     await page.locator('.toggle-button').first().click()
-    await expect(callout.first()).toContainText(/Nothing is saved until you review it/i)
+    await expect(callout.first()).toContainText(/nothing is saved until you do/i)
 
     // Dismiss it with "Got it".
     await callout.first().getByRole('button', { name: 'Got it' }).click()

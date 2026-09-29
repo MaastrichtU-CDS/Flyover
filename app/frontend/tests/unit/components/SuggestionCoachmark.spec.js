@@ -7,8 +7,8 @@ import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 // ---------------------------------------------------------------------------
 
 const COPY = {
-  title: 'Review suggested mappings',
-  body: 'Flyover filled in this field from its mapping suggestions.',
+  title: 'Check this suggestion',
+  body: 'Flyover pre-filled this field.',
 }
 
 function mountCoachmark(props = {}) {

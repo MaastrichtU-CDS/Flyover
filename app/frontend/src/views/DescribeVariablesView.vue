@@ -396,10 +396,13 @@ function jumpToNextUnreviewed() {
 // "How do suggestions work?" link in the status bar reopens it.
 // ---------------------------------------------------------------------------
 
+// Kept to two short sentences: the callout sits next to a pill in a
+// narrow column, and the submit hint already explains the review gate.
 const COACHMARK_COPY = {
-  title: 'Review suggested mappings',
-  body: 'Flyover filled in this field from its mapping suggestions. Nothing is saved until you review it: check the dropdown, then click the pill to confirm, or × to dismiss. You can continue once every suggestion is reviewed.',
+  title: 'Check this suggestion',
+  body: 'Flyover pre-filled this field. Click the pill to confirm it or × to dismiss it; nothing is saved until you do.',
 }
+const COACHMARK_HEADER_TITLE = 'Suggestions to review'
 
 // True when the user reopened the cue via the status-bar link; bypasses
 // the persisted "seen" flag until closed again.
@@ -446,7 +449,7 @@ const coachmarkTarget = computed(() => {
 
 function coachmarkHeaderBody(dbName) {
   const n = unreviewedCountForDatabase(dbName)
-  return `Suggestions ready for ${n} column${n === 1 ? '' : 's'} — expand to review.`
+  return `${n} suggested column${n === 1 ? '' : 's'} — expand to review.`
 }
 
 function closeCoachmark() {
@@ -777,7 +780,7 @@ onBeforeUnmount(() => {
             <i class="fas fa-database" /> {{ dbName }}
             <SuggestionCoachmark
               v-if="coachmarkTarget?.type === 'header' && coachmarkTarget.dbName === dbName"
-              :title="COACHMARK_COPY.title"
+              :title="COACHMARK_HEADER_TITLE"
               :body="coachmarkHeaderBody(dbName)"
               @close="closeCoachmark"
             />

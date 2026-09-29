@@ -205,7 +205,8 @@ describe('First-visit cue — DescribeVariablesView', () => {
     const callout = singleCallout(w)
     // Anchored to the database heading, not to a (hidden) pill.
     expect(callout.element.closest('.database-heading')).toBeTruthy()
-    expect(callout.text()).toContain('Suggestions ready for 2 columns — expand to review.')
+    expect(callout.text()).toContain('Suggestions to review')
+    expect(callout.text()).toContain('2 suggested columns — expand to review.')
   })
 
   it('moves to the first unreviewed pill once the database is expanded, with the field copy', async () => {
@@ -220,9 +221,9 @@ describe('First-visit cue — DescribeVariablesView', () => {
     const callout = singleCallout(w)
     expect(callout.element.closest('.database-heading')).toBeFalsy()
     expect(callout.element.closest('.variable-row')).toBeTruthy()
-    expect(callout.text()).toContain('Review suggested mappings')
-    expect(callout.text()).toContain('filled in this field')
-    expect(callout.text()).toContain('Nothing is saved until you review it')
+    expect(callout.text()).toContain('Check this suggestion')
+    expect(callout.text()).toContain('pre-filled this field')
+    expect(callout.text()).toContain('nothing is saved until you do')
     // Anchored to the first pill in display order (morph): the callout
     // lives in the same row as the morph badge.
     const row = callout.element.closest('.variable-row')
@@ -357,7 +358,7 @@ describe('First-visit cue — DescribeVariableDetailsView', () => {
 
     const callout = singleCallout(w)
     expect(callout.element.closest('.database-heading')).toBeTruthy()
-    expect(callout.text()).toContain('Suggestions ready for 2 values — expand to review.')
+    expect(callout.text()).toContain('2 suggested values — expand to review.')
   })
 
   it('moves to the first unreviewed pill once expanded, with the value copy', async () => {
@@ -371,8 +372,8 @@ describe('First-visit cue — DescribeVariableDetailsView', () => {
 
     const callout = singleCallout(w)
     expect(callout.element.closest('.category-item')).toBeTruthy()
-    expect(callout.text()).toContain('filled in this value')
-    expect(callout.text()).toContain('Nothing is saved until you review it')
+    expect(callout.text()).toContain('pre-filled this value')
+    expect(callout.text()).toContain('nothing is saved until you do')
   })
 
   it('accepting a value closes the callout and persists the seen flag', async () => {

@@ -117,13 +117,23 @@ onBeforeUnmount(() => {
   top: calc(100% + 10px);
   left: 0;
   z-index: 1080;
-  max-width: 280px;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.25rem;
+  /* The callout sits inside a small bold pill or a large bold h2, so it
+     sizes itself in rem and resets the text styles it would inherit:
+     with em units it came out tiny next to a pill and huge in a heading.
+     max-content lets it grow past its (narrow) anchor up to max-width. */
+  width: max-content;
+  max-width: min(300px, calc(100vw - 2rem));
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.375rem;
   background-color: rgba(0, 0, 0, 0.9);
   color: #fff;
-  font-size: 0.8em;
-  line-height: 1.4;
+  font-size: 0.875rem;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: normal;
   text-align: left;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.25);
   transition: opacity 0.2s ease-in;
@@ -142,7 +152,9 @@ onBeforeUnmount(() => {
 
 .coachmark-title {
   display: block;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 .coachmark-body {
@@ -150,8 +162,8 @@ onBeforeUnmount(() => {
 }
 
 .coachmark-confirm {
-  font-size: 0.9em;
-  padding: 0.1rem 0.5rem;
+  font-size: 0.8125rem;
+  padding: 0.15rem 0.6rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
