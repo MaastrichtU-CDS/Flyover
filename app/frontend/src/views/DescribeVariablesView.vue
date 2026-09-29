@@ -159,7 +159,8 @@ function onDatatypeChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   formStateCache[key].datatype = e.target.value
   if (autoFilledFields.has(key)) manualOverrides.add(key)
-  suggestions.markUserTouched(key)
+  // Deliberately no markUserTouched here: changing the datatype is not a
+  // review of the description the suggestion pre-filled (WS1.6).
   syncToIndexedDB()
 }
 
@@ -171,10 +172,13 @@ function onCommentChange(dbName, item, e) {
 }
 
 // ---------------------------------------------------------------------------
-// Mapping suggestions: pre-highlight (do NOT pre-fill) per the plan. The user
-// explicitly accepts via the badge click, which goes through the same
-// onDescriptionChange path a manual selection takes so option-disabling,
-// hidden field submission, and JSON-LD persistence keep working unchanged.
+// Mapping suggestions. Per decision D1 of the tier-1 remediation the watcher
+// PRE-FILLS the dropdown for display, but a pre-filled value is never
+// persisted to the JSON-LD: syncToIndexedDB drops applied-but-unreviewed
+// keys, and only an explicit review (accept via the badge, or a manual
+// dropdown change) writes the mapping — exactly as a hand-picked value
+// would. The user must click the badge or change the dropdown to mark it
+// as "reviewed" before they can submit.
 // ---------------------------------------------------------------------------
 
 function suggestionFor(dbName, item) {
@@ -186,15 +190,33 @@ function hasSuggestion(dbName, item) {
   return entry && entry.status === 'done' && entry.display
 }
 
+// True while a suggestion for this column still needs review: either it
+// pre-filled the field (applied, never touched) or it arrived for an
+// empty field the pre-fill watch could not fill (e.g. the
+// one-variable-per-database constraint blocked it). Reviewed and
+// dismissed suggestions lose the highlight — reviewed fields turn green
+// via the badge instead (WS1.3).
+function needsSuggestionReview(dbName, item) {
+  const key = `${dbName}_${item}`
+  if (suggestions.isDismissed(key)) return false
+  if (suggestions.isApplied(key)) return !suggestions.isTouched(key)
+  if (!hasSuggestion(dbName, item)) return false
+  return !formStateCache[key]?.description
+}
+
 function acceptSuggestion(dbName, item) {
   const entry = suggestionFor(dbName, item)
   if (!entry || !entry.display) return
   const key = `${dbName}_${item}`
   // Check the one-variable-per-database constraint before applying.
   if (isDescriptionDisabled(dbName, item, entry.display)) return
+  // Mark applied first: the explicit accept is a review, so the
+  // markUserTouched inside onDescriptionChange must find the applied mark
+  // and mark the field reviewed (WS1.4 — an explicit accept must never
+  // leave the field in the "needs review" state).
+  suggestions.markApplied(key)
   // Go through the same path as a manual selection.
   onDescriptionChange(dbName, item, { target: { value: entry.display } })
-  suggestions.markApplied(key)
 }
 
 function dismissSuggestion(dbName, item) {
@@ -323,13 +345,15 @@ function jumpToNextUnreviewed() {
 
 // Pre-fill: when a suggestion arrives for a column that the user hasn't
 // touched yet, auto-set the description dropdown to the suggested value
-// and mark it as "applied" (unreviewed). The user must click the badge or
-// change the dropdown to mark it as "reviewed" before they can submit.
+// and mark it as "applied" (unreviewed). The value lives in the form
+// state only — syncToIndexedDB strips applied-but-unreviewed keys, so
+// nothing reaches the JSON-LD until the user reviews the field. The user
+// must click the badge or change the dropdown to mark it as "reviewed"
+// before they can submit.
 watch(
   () => suggestions.variables.byKey,
   (byKey) => {
     if (!suggestions.enabled) return
-    let filled = false
     for (const [key, entry] of Object.entries(byKey)) {
       if (entry.status !== 'done' || !entry.display) continue
       if (suggestions.isDismissed(key)) continue
@@ -354,16 +378,25 @@ watch(
       formStateCache[key].description = entry.display
       autoPopulateDatatype(dbName, item)
       suggestions.markApplied(key)
-      filled = true
     }
-    if (filled) syncToIndexedDB()
+    // No syncToIndexedDB here: a pre-fill is display-only until reviewed.
   },
   { deep: true },
 )
 
 async function syncToIndexedDB() {
+  // Applied-but-unreviewed pre-fills are display-only (WS1.1): leave their
+  // columns out of the payload so updateMappingFromForm — which groups by
+  // the keys it receives — never writes or tombstones them. Absent keys
+  // are untouched by its passes, so the JSON-LD keeps whatever the user
+  // last reviewed.
+  const payload = {}
+  for (const [key, cached] of Object.entries(formStateCache)) {
+    if (suggestions.isApplied(key) && !suggestions.isTouched(key)) continue
+    payload[key] = cached
+  }
   try {
-    await jsonld.updateMappingFromForm({ ...formStateCache })
+    await jsonld.updateMappingFromForm(payload)
   } catch (err) {
     console.error('Failed to sync to IndexedDB:', err)
   }
@@ -685,11 +718,7 @@ onBeforeUnmount(() => {
                     :name="`ncit_comment_${dbName}_${item}`"
                     class="form-control description-select"
                     :class="{
-                      'suggestion-highlight':
-                        hasSuggestion(dbName, item) &&
-                        !suggestions.isApplied(`${dbName}_${item}`) &&
-                        !suggestions.isDismissed(`${dbName}_${item}`) &&
-                        !formStateCache[`${dbName}_${item}`]?.description,
+                      'suggestion-highlight': needsSuggestionReview(dbName, item),
                     }"
                     :value="getDescriptionValue(dbName, item)"
                     @change="onDescriptionChange(dbName, item, $event)"
