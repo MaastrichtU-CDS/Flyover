@@ -483,6 +483,37 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
   })
 
+  it('shows a value the loaded JSON-LD already mapped an informational pill', async () => {
+    // M is already mapped to Male in the uploaded JSON-LD; the suggestion
+    // agrees, but nothing needs reviewing. The pill must say "already
+    // filled in" instead of offering an accept/dismiss review flow.
+    const state = JSON.parse(JSON.stringify(DETAILS_STATE))
+    state.preselected_values = { 'patients_sex_category_"M"': 'Male' }
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: state }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: VALUES_SNAPSHOT }],
+    ])
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    expect(store.isApplied('patients_sex_M')).toBe(false)
+    expect(store.isApplied('patients_sex_F')).toBe(true)
+    expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
+
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    const mBadge = badges.find((b) => b.props('suggestion').item === 'M')
+    const fBadge = badges.find((b) => b.props('suggestion').item === 'F')
+    expect(mBadge.props('alreadyFilled')).toBe(true)
+    expect(mBadge.find('.suggestion-badge').classes()).toContain('already-filled')
+    expect(mBadge.text()).toContain('already filled in')
+    expect(mBadge.find('button.suggestion-accept').exists()).toBe(false)
+    expect(fBadge.props('alreadyFilled')).toBe(false)
+    expect(fBadge.find('button.suggestion-accept').exists()).toBe(true)
+    expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+  })
+
   it('persists only the accepted value when the user accepts one suggestion', async () => {
     const wrapper = mountDetails()
     await flushPromises()
