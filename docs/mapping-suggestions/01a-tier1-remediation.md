@@ -154,25 +154,25 @@ These change what the workstreams build, so settle them before starting.
 
 ## Checklist (review finding → workstream)
 
-- [ ] Pre-fill writes to JSON-LD without review; zero-writes test is vacuous → WS1
-- [ ] Unreviewed and reviewed pills look alike → WS1.3
-- [ ] "Clear all" undone on reload; explicit accept leaves "needs review" → WS1.4–1.5
-- [ ] First-visit review cue on the first pill → WS2
-- [ ] Fuzzy alias has no margin; `surv1` confidently mis-mapped → WS3.1
-- [ ] `rnnummer` / risky abbreviations in the rules file → WS3.4
-- [ ] Abstain reason and noisy `alternatives` from the merge → WS3.5
-- [ ] Values matched per value; missing-codes rule absent → WS3.6
-- [ ] Tests use margin 0.1; no `surv1` / `alg_v7` tests → WS3.7
-- [ ] Value-based variable suggestions disabled vs. acceptance criteria → D5, WS3.8
-- [ ] `/status` reports tiers 2 and 3 active → WS4.1
-- [ ] Session mapping overwritten by unvalidated request body → WS4.2
-- [ ] Values-phase "self" database is always the first database → WS4.3
-- [ ] Fallback maps columns via other sites; O(n²) → WS4.4
-- [ ] Fingerprint ignores alias memory and rules version → WS4.5
-- [ ] Marks wiped on any new fingerprint → D3, WS4.6
-- [ ] `ingest()` not reserved → WS4.7
-- [ ] Alias / string matching too slow for the target box → WS4.8
-- [ ] Pill not keyboard-accessible; no alternatives popover; "true alternative(s)" → WS5
-- [ ] Benchmark not leave-one-site-out; bypasses the service; TBDs unfilled → WS6
-- [ ] IngestView FK gate out of scope and outside the flag → D4, WS7
-- [ ] Untracked docs / reload spec; stale plan paths; local compose change → WS7
+- [x] Pre-fill writes to JSON-LD without review; zero-writes test is vacuous → WS1
+- [x] Unreviewed and reviewed pills look alike → WS1.3
+- [x] "Clear all" undone on reload; explicit accept leaves "needs review" → WS1.4–1.5
+- [x] First-visit review cue on the first pill → WS2
+- [x] Fuzzy alias has no margin; `surv1` confidently mis-mapped → WS3.1
+- [x] `rnnummer` / risky abbreviations in the rules file → WS3.4
+- [x] Abstain reason and noisy `alternatives` from the merge → WS3.5
+- [x] Values matched per value; missing-codes rule absent → WS3.6
+- [x] Tests use margin 0.1; no `surv1` / `alg_v7` tests → WS3.7
+- [x] Value-based variable suggestions disabled vs. acceptance criteria → D5, WS3.8
+- [x] `/status` reports tiers 2 and 3 active → WS4.1
+- [x] Session mapping overwritten by unvalidated request body → WS4.2
+- [x] Values-phase "self" database is always the first database → WS4.3
+- [x] Fallback maps columns via other sites; O(n²) → WS4.4
+- [x] Fingerprint ignores alias memory and rules version → WS4.5
+- [x] Marks wiped on any new fingerprint → D3, WS4.6
+- [x] `ingest()` not reserved → WS4.7
+- [x] Alias / string matching too slow for the target box → WS4.8
+- [x] Pill not keyboard-accessible; no alternatives popover; "true alternative(s)" → WS5
+- [x] Benchmark not leave-one-site-out; bypasses the service; TBDs unfilled → WS6
+- [x] IngestView FK gate out of scope and outside the flag → D4, WS7
+- [x] Untracked docs / reload spec; stale plan paths; local compose change → WS7
