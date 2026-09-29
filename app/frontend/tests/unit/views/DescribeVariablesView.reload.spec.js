@@ -106,6 +106,10 @@ function createStoreStub({ appliedKeys = [], records = {} } = {}) {
     isPolling: () => false,
     bumpPriority: vi.fn(async () => {}),
     setPhase: vi.fn(),
+
+    coachmarkSeen: { loaded: true, variables: true, values: true },
+
+    markCoachmarkSeen: vi.fn(async () => {}),
   }
 }
 

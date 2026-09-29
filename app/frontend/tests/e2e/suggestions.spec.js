@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { runIngestFlow, watchConsoleErrors } from './helpers/ingest.js'
+import { dismissCoachmarkIfPresent } from './helpers/suggestions.js'
 
 // ---------------------------------------------------------------------------
 // E2E tests for mapping suggestions on the describe pages.
@@ -33,9 +34,13 @@ test.describe('Suggestions on describe pages', () => {
     const badge = page.locator('.suggestion-badge:not(.confirmed):not(.applied)').first()
     await expect(badge).toBeVisible({ timeout: 30_000 })
 
+    // The first-visit coachmark may appear on the first pill; dismiss it
+    // so the badge interactions below are unambiguous.
+    await dismissCoachmarkIfPresent(page)
+
     // --- Accept a suggestion ------------------------------------------------
-    // Clicking the badge body (not the dismiss ×) triggers accept.
-    await badge.click()
+    // Clicking the accept button (not the dismiss ×) triggers accept.
+    await badge.locator('.suggestion-accept').click()
 
     // The badge should now show the "applied" state.
     await expect(page.locator('.suggestion-badge.applied').first()).toBeVisible()
@@ -57,6 +62,40 @@ test.describe('Suggestions on describe pages', () => {
     }
 
     expect(errors, 'JS errors during suggestions flow').toEqual([])
+  })
+
+  test('first-visit coachmark appears once, is dismissible, and stays gone after reload', async ({ page }) => {
+    const errors = watchConsoleErrors(page)
+    await runIngestFlow(page)
+
+    await page.getByRole('button', { name: /^\s*Skip\s*$/i }).click()
+    await page.getByRole('button', { name: /Click here to describe the data/i }).click()
+    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
+
+    // The first visit shows the callout. Databases start collapsed, so the
+    // header variant appears with the "expand to review" copy.
+    const callout = page.locator('.suggestion-coachmark')
+    await expect(callout.first()).toBeVisible({ timeout: 30_000 })
+    await expect(callout.first()).toContainText(/expand to review/i)
+
+    // Expanding the database moves the callout to the first pill.
+    await page.locator('.toggle-button').first().click()
+    await expect(callout.first()).toContainText(/Nothing is saved until you review it/i)
+
+    // Dismiss it with "Got it".
+    await callout.first().getByRole('button', { name: 'Got it' }).click()
+    await expect(callout).toHaveCount(0)
+
+    // Reload: the seen flag persisted in IndexedDB, so it must not return.
+    await page.reload()
+    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
+    await expect(page.locator('.suggestion-badge').first()).toBeVisible({ timeout: 30_000 })
+    // The callout mounts ~300 ms after its target; give it a chance before
+    // asserting it stays gone.
+    await page.waitForTimeout(1_000)
+    await expect(page.locator('.suggestion-coachmark')).toHaveCount(0)
+
+    expect(errors, 'JS errors during coachmark flow').toEqual([])
   })
 
   test('describe page works without errors when suggestions are idle', async ({ page }) => {
