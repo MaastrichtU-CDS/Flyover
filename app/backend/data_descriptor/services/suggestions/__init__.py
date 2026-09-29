@@ -430,6 +430,17 @@ class SuggestionService:
         else:
             targets = _all_targets(schema_slice)
 
+        # Values-phase column context: a value-set rule only applies when the
+        # whole column (minus missing codes) falls inside one of the rule's
+        # sets. A values group is exactly one column, so its own items are
+        # that column's distinct values. This must stay per group: the same
+        # value string ("1") appears in many columns with different coding
+        # schemes, and a payload-wide map would let whichever column came
+        # first decide for all of them.
+        item_column_values = (
+            {value: list(items) for value in items} if phase == VALUES_PHASE else {}
+        )
+
         best: dict[str, dict] = {item: None for item in items}
         for producer in producers:
             tier = getattr(producer, "tier", 1)
@@ -452,7 +463,7 @@ class SuggestionService:
                 rules=self._rules,
                 column_values=payload.get("column_values", {}),
                 value_targets=payload.get("value_targets", {}),
-                item_column_values=payload.get("item_column_values", {}),
+                item_column_values=item_column_values,
                 database_name_match=RDFStoreService.graph_database_find_name_match,
             )
             raw = producer.run(list(to_run), schema_slice, ctx)
@@ -728,15 +739,6 @@ class SuggestionService:
 
         described_db = next(iter(details), None)
 
-        # Per-value column context for the values phase: a value-set rule
-        # only applies when the whole column (minus missing codes) falls
-        # inside one of the rule's sets. A value string can appear in
-        # several columns; the first group (display order) wins.
-        item_column_values: dict[str, list[str]] = {}
-        for group in groups:
-            for value in group["items"]:
-                item_column_values.setdefault(value, list(group["items"]))
-
         # Fallback: when DescriptiveInfoDetails is empty (e.g. when
         # _populate_details_from_jsonld bailed out on a database-name
         # mismatch), build value groups directly from the mapping + RDF
@@ -745,12 +747,6 @@ class SuggestionService:
             groups, all_items, value_targets, described_db = (
                 self._build_values_fallback(mapping, rdf_store_service)
             )
-
-        # Per-value column context (see the primary path above).
-        item_column_values = {}
-        for group in groups:
-            for value in group["items"]:
-                item_column_values.setdefault(value, list(group["items"]))
 
         schema_slice: dict[str, list[str]] = {}
         for group in groups:
@@ -761,7 +757,6 @@ class SuggestionService:
             "mapping": mapping,
             "described_database": described_db,
             "value_targets": value_targets,
-            "item_column_values": item_column_values,
             "groups": groups,
             "key_for": lambda item: f"{described_db}_{item}" if described_db else item,
         }

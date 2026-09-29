@@ -252,6 +252,61 @@ class TestValuesLeaveOneSiteOut(unittest.TestCase):
         )
 
 
+class TestValuesColumnContextPerColumn(unittest.TestCase):
+    """The whole-column value-set rule must judge each column by its OWN
+    distinct values. The column context used to be one payload-wide
+    ``value -> column values`` map where the first column containing a
+    value won, so '1' in a 1/2/3 grade column inherited a yes/no column's
+    coding (or the other way round, depending on column order)."""
+
+    def _records(self, column_order):
+        data = _make_mapping().to_dict()
+        yes_no_terms = {
+            "yes": {"targetClass": "ncit:C49488"},
+            "no": {"targetClass": "ncit:C49487"},
+        }
+        data["schema"]["variables"]["has_chemo"] = {
+            "@type": "schema:CategoricalVariable",
+            "dataType": "categorical",
+            "predicate": "sio:has_chemo",
+            "class": "ncit:C15632",
+            "valueMapping": {"terms": dict(yes_no_terms)},
+        }
+        data["schema"]["variables"]["grade"] = {
+            "@type": "schema:CategoricalVariable",
+            "dataType": "categorical",
+            "predicate": "sio:has_grade",
+            "class": "ncit:C28076",
+            "valueMapping": {
+                "terms": {**yes_no_terms, "grade_2": {"targetClass": "ncit:C28078"}}
+            },
+        }
+        columns = {
+            "chemo": ('Has Chemo (or "chemo")', ["1", "0"]),
+            "grade": ('Grade (or "grade")', ["1", "2", "3"]),
+        }
+        cache = _make_session_cache(JSONLDMapping.from_dict(data))
+        cache.DescriptiveInfoDetails = {
+            "nki": [
+                {columns[c][0]: [{"value": v} for v in columns[c][1]]}
+                for c in column_order
+            ]
+        }
+        svc = SuggestionService(_config())
+        svc.start(VALUES_PHASE, cache, None)
+        return svc.get_state(cache, VALUES_PHASE)["records"]
+
+    def test_result_does_not_depend_on_column_order(self):
+        for order in (["chemo", "grade"], ["grade", "chemo"]):
+            with self.subTest(order=order):
+                records = self._records(order)
+                # The 1/0 column is a yes/no coding: 1 -> yes.
+                self.assertEqual(records["nki_chemo_1"]["match"], "yes")
+                self.assertEqual(records["nki_chemo_1"]["source"], "value_regex")
+                # The 1/2/3 column is not; its '1' must not become 'yes'.
+                self.assertNotEqual(records["nki_grade_1"]["match"], "yes")
+
+
 class TestValuesFallback(unittest.TestCase):
     """WS4.4: the values-phase fallback must resolve a column's variable by
     (database, local column), not by local name across all databases."""
