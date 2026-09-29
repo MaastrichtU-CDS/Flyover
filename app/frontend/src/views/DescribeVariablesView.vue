@@ -7,7 +7,6 @@ import { formatToTitleCase } from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
-import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const status = useStatusStore()
@@ -390,10 +389,10 @@ function jumpToNextUnreviewed() {
 }
 
 // ---------------------------------------------------------------------------
-// First-visit cue (WS2): a small non-modal callout on the first unreviewed
-// suggestion pill, shown once per phase. It tells the user the fields were
-// pre-filled for them and must be reviewed before they can continue. The
-// "How do suggestions work?" link in the status bar reopens it.
+// First-visit cue (WS2): a small non-modal callout on a pre-filled pill,
+// shown once per phase. It pops up when the user first opens a table and
+// tells them the fields were pre-filled and must be reviewed. The "How do
+// suggestions work?" link in the status bar reopens it.
 // ---------------------------------------------------------------------------
 
 // Kept to two short sentences: the callout sits next to a pill in a
@@ -402,7 +401,6 @@ const COACHMARK_COPY = {
   title: 'Check this suggestion',
   body: 'Flyover pre-filled this field. Click the pill to confirm it or × to dismiss it; nothing is saved until you do.',
 }
-const COACHMARK_HEADER_TITLE = 'Suggestions to review'
 
 // True when the user reopened the cue via the status-bar link; bypasses
 // the persisted "seen" flag until closed again.
@@ -417,39 +415,56 @@ const showCoachmark = computed(
       (suggestions.coachmarkSeen.loaded && !suggestions.coachmarkSeen.variables)),
 )
 
-function unreviewedCountForDatabase(dbName) {
-  const cols = columnInfoData.value?.[dbName] || []
-  return cols.filter((item) => needsSuggestionReview(dbName, item)).length
+// Tables in the order the user opened them; a closed table drops out.
+// Watching the expanded set covers every way a table opens (its toggle,
+// "Go to next", the help link).
+const openedTables = ref([])
+watch(
+  () => databaseNames.value.filter((d) => expandedDatabases[d]),
+  (open) => {
+    const kept = openedTables.value.filter((d) => open.includes(d))
+    for (const d of open) if (!kept.includes(d)) kept.push(d)
+    openedTables.value = kept
+  },
+)
+
+// The copy says Flyover filled the field in, so the callout only anchors
+// on a pre-filled pill awaiting review, never on a low-confidence hint.
+function awaitsReview(key) {
+  return suggestions.isApplied(key) && !suggestions.isTouched(key)
 }
 
-// The callout anchors to the first unreviewed pill in display order on
-// the current page. Databases start collapsed, so when no pill is
-// rendered it anchors to the header of the first database that has
-// suggestions; once expanded it moves to the first pill.
+// The callout pops up on the first pre-filled pill (on the current page)
+// of the first table the user opens, wherever that table sits in the
+// list. While every table is folded there is nothing to point at, so
+// nothing shows.
 const coachmarkTarget = computed(() => {
   if (!showCoachmark.value) return null
-  for (const dbName of databaseNames.value) {
-    if (!expandedDatabases[dbName]) continue
+  for (const dbName of openedTables.value) {
     for (const item of currentPageItems(dbName)) {
-      // The copy says Flyover filled the field in, so anchor on a
-      // pre-filled pill awaiting review, not on a low-confidence hint.
       const key = `${dbName}_${item}`
-      if (suggestions.isApplied(key) && !suggestions.isTouched(key)) {
-        return { type: 'badge', key }
-      }
-    }
-  }
-  for (const dbName of databaseNames.value) {
-    if (unreviewedCountForDatabase(dbName) > 0) {
-      return { type: 'header', dbName }
+      if (awaitsReview(key)) return key
     }
   }
   return null
 })
 
-function coachmarkHeaderBody(dbName) {
-  const n = unreviewedCountForDatabase(dbName)
-  return `${n} suggested column${n === 1 ? '' : 's'} — expand to review.`
+// "How do suggestions work?": show the callout again. When no open table
+// has a pre-filled pill on its current page, open the first table that
+// has one (opened tables first, then list order) at that pill's page.
+function showCoachmarkAgain() {
+  coachmarkRequested.value = true
+  if (coachmarkTarget.value) return
+  const opened = openedTables.value
+  const order = [...opened, ...databaseNames.value.filter((d) => !opened.includes(d))]
+  for (const dbName of order) {
+    const cols = columnInfoData.value?.[dbName] || []
+    const idx = cols.findIndex((item) => awaitsReview(`${dbName}_${item}`))
+    if (idx === -1) continue
+    expandedDatabases[dbName] = true
+    databasePages[dbName] = Math.floor(idx / PAGE_SIZE) + 1
+    return
+  }
 }
 
 function closeCoachmark() {
@@ -760,7 +775,7 @@ onBeforeUnmount(() => {
       :compute="suggestions.compute"
       :unreviewed-count="unreviewedFieldCount"
       @clear-all="clearAllSuggestions"
-      @show-coachmark="coachmarkRequested = true"
+      @show-coachmark="showCoachmarkAgain"
     />
 
     <form
@@ -778,12 +793,6 @@ onBeforeUnmount(() => {
         >
           <h2 class="database-heading">
             <i class="fas fa-database" /> {{ dbName }}
-            <SuggestionCoachmark
-              v-if="coachmarkTarget?.type === 'header' && coachmarkTarget.dbName === dbName"
-              :title="COACHMARK_HEADER_TITLE"
-              :body="coachmarkHeaderBody(dbName)"
-              @close="closeCoachmark"
-            />
           </h2>
           <button
             type="button"
@@ -844,10 +853,7 @@ onBeforeUnmount(() => {
                     :suggestion="suggestionFor(dbName, item) || {}"
                     :applied="suggestions.isApplied(`${dbName}_${item}`)"
                     :touched="suggestions.isTouched(`${dbName}_${item}`)"
-                    :coachmark="
-                      coachmarkTarget?.type === 'badge' &&
-                        coachmarkTarget.key === `${dbName}_${item}`
-                    "
+                    :coachmark="coachmarkTarget === `${dbName}_${item}`"
                     :coachmark-copy="COACHMARK_COPY"
                     @dismiss="dismissSuggestion(dbName, item)"
                     @accept="acceptSuggestion(dbName, item)"
@@ -1079,11 +1085,6 @@ onBeforeUnmount(() => {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);
-}
-
-.database-heading {
-  position: relative;
-  display: inline-block;
 }
 
 .suggestion-section-button {

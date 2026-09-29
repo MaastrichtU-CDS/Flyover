@@ -9,11 +9,12 @@ import { setActivePinia, createPinia } from 'pinia'
 // mocked) so records arrive through refresh(), the pre-fill watchers
 // fire, and the coachmark targeting logic behaves as in the app.
 //
-// Covered: shows once, anchored to the first unreviewed pill; the header
-// variant with the "expand to review" copy while collapsed; not shown
-// when suggestions are disabled, when there are no suggestions, or once
-// the phase flag is seen; Got it / Escape / accepting a pill close it
-// and persist the flag; the status-bar link reopens it.
+// Covered: nothing while everything is folded; pops up on the first
+// pre-filled pill of the first table / variable the user opens, wherever
+// it sits; not shown when suggestions are disabled, when there are no
+// suggestions, or once the phase flag is seen; Got it / Escape /
+// accepting a pill close it and persist the flag; the status-bar link
+// opens the first section with a pre-filled pill and shows it there.
 // ---------------------------------------------------------------------------
 
 vi.mock('@/services/api', () => ({
@@ -196,30 +197,32 @@ beforeEach(() => {
   db.getData.mockImplementation(idb())
 })
 
+// Open the n-th table (toggle buttons follow the list order).
+async function openTable(wrapper, n = 0) {
+  await wrapper.findAll('.toggle-button')[n].trigger('click')
+  await flushPromises()
+}
+
+function calloutCount(wrapper) {
+  return wrapper.findAllComponents({ name: 'SuggestionCoachmark' }).length
+}
+
 describe('First-visit cue — DescribeVariablesView', () => {
-  it('anchors to the first database header with the expand copy while collapsed', async () => {
+  it('shows nothing while every table is folded', async () => {
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
 
-    const callout = singleCallout(w)
-    // Anchored to the database heading, not to a (hidden) pill.
-    expect(callout.element.closest('.database-heading')).toBeTruthy()
-    expect(callout.text()).toContain('Suggestions to review')
-    expect(callout.text()).toContain('2 suggested columns — expand to review.')
+    expect(calloutCount(w)).toBe(0)
   })
 
-  it('moves to the first unreviewed pill once the database is expanded, with the field copy', async () => {
+  it('pops up on the first pre-filled pill when a table is opened', async () => {
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
-    singleCallout(w) // header variant while collapsed
-
-    await w.find('.toggle-button').trigger('click')
-    await flushPromises()
+    await openTable(w)
 
     const callout = singleCallout(w)
-    expect(callout.element.closest('.database-heading')).toBeFalsy()
     expect(callout.element.closest('.variable-row')).toBeTruthy()
     expect(callout.text()).toContain('Check this suggestion')
     expect(callout.text()).toContain('pre-filled this field')
@@ -227,7 +230,37 @@ describe('First-visit cue — DescribeVariablesView', () => {
     // Anchored to the first pill in display order (morph): the callout
     // lives in the same row as the morph badge.
     const row = callout.element.closest('.variable-row')
-    expect(row.querySelector('.suggestion-badge')).toBeTruthy()
+    expect(row.querySelector('.variable-label').textContent).toContain('morph')
+  })
+
+  it('anchors in the table opened first, wherever it sits in the list', async () => {
+    const twoTables = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    twoTables.records.other_db_gender = {
+      ...twoTables.records.test_db_sex,
+      item: 'gender',
+      database: 'other_db',
+      column: 'gender',
+    }
+    mockApiRoutes([
+      [
+        '/api/v1/describe-variables-state',
+        { data: { column_info: { test_db: ['morph', 'sex'], other_db: ['gender'] } } },
+      ],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: twoTables }],
+    ])
+    const w = mount(DescribeVariablesView)
+    await flushPromises()
+
+    // Open the second table first: the callout goes there...
+    await openTable(w, 1)
+    let row = singleCallout(w).element.closest('.variable-row')
+    expect(row.querySelector('.variable-label').textContent).toContain('gender')
+
+    // ...and stays there when the first table is opened afterwards.
+    await openTable(w, 0)
+    row = singleCallout(w).element.closest('.variable-row')
+    expect(row.querySelector('.variable-label').textContent).toContain('gender')
   })
 
   it('anchors to a pre-filled pill, skipping a low-confidence hint', async () => {
@@ -238,8 +271,7 @@ describe('First-visit cue — DescribeVariablesView', () => {
     variablesRoutes(weak)
     const w = mount(DescribeVariablesView)
     await flushPromises()
-    await w.find('.toggle-button').trigger('click')
-    await flushPromises()
+    await openTable(w)
 
     const row = singleCallout(w).element.closest('.variable-row')
     expect(row.querySelector('.variable-label').textContent).toContain('sex')
@@ -252,8 +284,9 @@ describe('First-visit cue — DescribeVariablesView', () => {
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
+    await openTable(w)
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
   })
 
   it('does not show when suggestions are disabled', async () => {
@@ -268,28 +301,31 @@ describe('First-visit cue — DescribeVariablesView', () => {
 
     const w = mount(DescribeVariablesView)
     await flushPromises()
+    await openTable(w)
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
   })
 
   it('does not show when there are no suggestions', async () => {
     variablesRoutes({ ...VARIABLES_SNAPSHOT, records: {} })
     const w = mount(DescribeVariablesView)
     await flushPromises()
+    await openTable(w)
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
   })
 
   it('"Got it" closes the callout and persists the seen flag', async () => {
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
+    await openTable(w)
     const callout = singleCallout(w)
 
     await callout.vm.$emit('close')
     await flushPromises()
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
     expect(useSuggestionsStore().coachmarkSeen.variables).toBe(true)
 
     const saved = db.saveData.mock.calls.filter(
@@ -304,6 +340,7 @@ describe('First-visit cue — DescribeVariablesView', () => {
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
+    await openTable(w)
     singleCallout(w)
 
     // The callout only listens once visible (~300 ms after mount).
@@ -311,7 +348,7 @@ describe('First-visit cue — DescribeVariablesView', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
     expect(useSuggestionsStore().coachmarkSeen.variables).toBe(true)
   })
 
@@ -319,28 +356,32 @@ describe('First-visit cue — DescribeVariablesView', () => {
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
+    await openTable(w)
     singleCallout(w)
 
     await w.findAllComponents({ name: 'SuggestionBadge' })[0].vm.$emit('accept')
     await flushPromises()
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
     expect(useSuggestionsStore().coachmarkSeen.variables).toBe(true)
   })
 
-  it('the status-bar link reopens the callout after it was seen', async () => {
+  it('the status-bar link opens the first table with a pre-filled pill', async () => {
+    // Seen already and every table folded: the link has nothing to point
+    // at yet, so it opens the table and shows the callout on its pill.
     db.getData.mockImplementation(
       idb({ suggestion_coachmark_seen: { variables: true, values: true } }),
     )
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
 
     await w.find('.suggestion-help-link').trigger('click')
     await flushPromises()
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(1)
+    const row = singleCallout(w).element.closest('.variable-row')
+    expect(row.querySelector('.variable-label').textContent).toContain('morph')
   })
 })
 
@@ -351,24 +392,32 @@ describe('First-visit cue — DescribeVariableDetailsView', () => {
     })
   }
 
-  it('anchors to the database header with the values expand copy while collapsed', async () => {
+  // Open the n-th variable section, first unfolding its database unless
+  // it is already open (the toggle would fold it again).
+  async function openSection(wrapper, n = 0, { openDatabase = true } = {}) {
+    if (openDatabase) {
+      await wrapper.find('.toggle-button').trigger('click')
+      await flushPromises()
+    }
+    await wrapper.findAll('.item-toggle-button')[n].trigger('click')
+    await flushPromises()
+  }
+
+  it('shows nothing while every section is folded', async () => {
     valuesRoutes()
     const w = mountDetails()
     await flushPromises()
+    await w.find('.toggle-button').trigger('click') // database open, variable folded
+    await flushPromises()
 
-    const callout = singleCallout(w)
-    expect(callout.element.closest('.database-heading')).toBeTruthy()
-    expect(callout.text()).toContain('2 suggested values — expand to review.')
+    expect(calloutCount(w)).toBe(0)
   })
 
-  it('moves to the first unreviewed pill once expanded, with the value copy', async () => {
+  it('pops up on the first pre-filled pill when a variable is opened', async () => {
     valuesRoutes()
     const w = mountDetails()
     await flushPromises()
-
-    await w.find('.toggle-button').trigger('click')
-    await w.find('.item-toggle-button').trigger('click')
-    await flushPromises()
+    await openSection(w)
 
     const callout = singleCallout(w)
     expect(callout.element.closest('.category-item')).toBeTruthy()
@@ -376,20 +425,67 @@ describe('First-visit cue — DescribeVariableDetailsView', () => {
     expect(callout.text()).toContain('nothing is saved until you do')
   })
 
+  it('anchors in the variable opened first, wherever it sits on the page', async () => {
+    const state = JSON.parse(JSON.stringify(DETAILS_STATE))
+    state.descriptive_info.patients.smoker = { type: 'categorical' }
+    state.descriptive_info_details.patients.push({
+      Smoker: [{ value: 'yes', count: 10 }, { value: 'no', count: 5 }],
+    })
+    const snapshot = JSON.parse(JSON.stringify(VALUES_SNAPSHOT))
+    for (const value of ['yes', 'no']) {
+      snapshot.records[`patients_smoker_${value}`] = {
+        ...snapshot.records.patients_sex_M,
+        item: value,
+        match: value,
+        column: 'smoker',
+        value,
+      }
+    }
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: state }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: snapshot }],
+    ])
+    const w = mountDetails()
+    await flushPromises()
+
+    // Open the second variable (smoker) first: the callout goes there...
+    await openSection(w, 1)
+    let item = singleCallout(w).element.closest('.category-item')
+    expect(item.querySelector('.category-label').textContent).toContain('yes')
+
+    // ...and stays there when the first variable is opened afterwards.
+    await openSection(w, 0, { openDatabase: false })
+    item = singleCallout(w).element.closest('.category-item')
+    expect(item.querySelector('.category-label').textContent).toContain('yes')
+  })
+
   it('accepting a value closes the callout and persists the seen flag', async () => {
     valuesRoutes()
     const w = mountDetails()
     await flushPromises()
+    await openSection(w)
     singleCallout(w)
-
-    await w.find('.toggle-button').trigger('click')
-    await w.find('.item-toggle-button').trigger('click')
-    await flushPromises()
 
     await w.findAllComponents({ name: 'SuggestionBadge' })[0].vm.$emit('accept')
     await flushPromises()
 
-    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+    expect(calloutCount(w)).toBe(0)
     expect(useSuggestionsStore().coachmarkSeen.values).toBe(true)
+  })
+
+  it('the status-bar link opens the first section with a pre-filled pill', async () => {
+    db.getData.mockImplementation(
+      idb({ suggestion_coachmark_seen: { variables: true, values: true } }),
+    )
+    valuesRoutes()
+    const w = mountDetails()
+    await flushPromises()
+    expect(calloutCount(w)).toBe(0)
+
+    await w.find('.suggestion-help-link').trigger('click')
+    await flushPromises()
+
+    expect(singleCallout(w).element.closest('.category-item')).toBeTruthy()
   })
 })

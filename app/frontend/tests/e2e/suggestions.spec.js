@@ -72,28 +72,32 @@ test.describe('Suggestions on describe pages', () => {
     await page.getByRole('button', { name: /Click here to describe the data/i }).click()
     await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
 
-    // The first visit shows the callout. Databases start collapsed, so the
-    // header variant appears with the "expand to review" copy.
+    // Nothing shows while every table is folded.
     const callout = page.locator('.suggestion-coachmark')
-    await expect(callout.first()).toBeVisible({ timeout: 30_000 })
-    await expect(callout.first()).toContainText(/expand to review/i)
+    await expect(page.locator('.suggestion-status-bar')).toBeVisible({ timeout: 30_000 })
+    await page.waitForTimeout(1_000)
+    await expect(callout).toHaveCount(0)
 
-    // Expanding the database moves the callout to the first pill.
+    // Opening a table pops the callout up on its first pre-filled pill.
     await page.locator('.toggle-button').first().click()
+    await expect(callout.first()).toBeVisible({ timeout: 30_000 })
+    await expect(callout.first()).toContainText(/Check this suggestion/)
     await expect(callout.first()).toContainText(/nothing is saved until you do/i)
 
     // Dismiss it with "Got it".
     await callout.first().getByRole('button', { name: 'Got it' }).click()
     await expect(callout).toHaveCount(0)
 
-    // Reload: the seen flag persisted in IndexedDB, so it must not return.
+    // Reload and open the table again: the seen flag persisted in
+    // IndexedDB, so the callout must not return.
     await page.reload()
     await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
+    await page.locator('.toggle-button').first().click()
     await expect(page.locator('.suggestion-badge').first()).toBeVisible({ timeout: 30_000 })
     // The callout mounts ~300 ms after its target; give it a chance before
     // asserting it stays gone.
     await page.waitForTimeout(1_000)
-    await expect(page.locator('.suggestion-coachmark')).toHaveCount(0)
+    await expect(callout).toHaveCount(0)
 
     expect(errors, 'JS errors during coachmark flow').toEqual([])
   })

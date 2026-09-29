@@ -6,7 +6,6 @@ import * as jsonld from '@/lib/jsonld'
 import { formatToTitleCase } from '@/lib/jsonld'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
-import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const DEFAULT_CATEGORY_OPTIONS = [
@@ -486,9 +485,9 @@ function jumpToNextUnreviewed() {
 }
 
 // ---------------------------------------------------------------------------
-// First-visit cue (WS2): a small non-modal callout on the first unreviewed
-// suggestion pill, shown once per phase. It tells the user the values
-// were pre-filled for them and must be reviewed before they can continue.
+// First-visit cue (WS2): a small non-modal callout on a pre-filled pill,
+// shown once per phase. It pops up when the user first opens a variable
+// section and tells them the values were pre-filled and must be reviewed.
 // The "How do suggestions work?" link in the status bar reopens it.
 // ---------------------------------------------------------------------------
 
@@ -498,7 +497,6 @@ const COACHMARK_COPY = {
   title: 'Check this suggestion',
   body: 'Flyover pre-filled this value. Click the pill to confirm it or × to dismiss it; nothing is saved until you do.',
 }
-const COACHMARK_HEADER_TITLE = 'Suggestions to review'
 
 // True when the user reopened the cue via the status-bar link; bypasses
 // the persisted "seen" flag until closed again.
@@ -513,51 +511,78 @@ const showCoachmark = computed(
       (suggestions.coachmarkSeen.loaded && !suggestions.coachmarkSeen.values)),
 )
 
-function unreviewedCountForDatabase(dbName) {
-  const dbEntry = parsedDatabases.value.find((d) => d.name === dbName)
-  if (!dbEntry) return 0
-  let n = 0
-  for (const variable of dbEntry.variables) {
-    if (variable.type !== 'categorical') continue
-    for (const cat of variable.categories) {
-      if (needsSuggestionReview(cat.key)) n++
+// Variable sections ("db|index") in the order the user opened them; a
+// section counts as open while both its database and the variable itself
+// are unfolded, and drops out when either folds. Watching the open set
+// covers every way a section opens (its toggle, "Go to next", the help
+// link).
+const openedSections = ref([])
+watch(
+  () => {
+    const open = []
+    for (const dbEntry of parsedDatabases.value) {
+      if (!expandedDatabases[dbEntry.name]) continue
+      dbEntry.variables.forEach((_variable, vIdx) => {
+        if (isVariableExpanded(dbEntry.name, vIdx)) open.push(`${dbEntry.name}|${vIdx}`)
+      })
     }
-  }
-  return n
+    return open
+  },
+  (open) => {
+    const kept = openedSections.value.filter((k) => open.includes(k))
+    for (const k of open) if (!kept.includes(k)) kept.push(k)
+    openedSections.value = kept
+  },
+)
+
+function sectionVariable(sectionKey) {
+  const sep = sectionKey.lastIndexOf('|')
+  const dbEntry = parsedDatabases.value.find((d) => d.name === sectionKey.slice(0, sep))
+  return dbEntry?.variables[Number(sectionKey.slice(sep + 1))]
 }
 
-// The callout anchors to the first unreviewed pill in display order.
-// Databases and variables start collapsed, so when no pill is rendered it
-// anchors to the header of the first database that has suggestions;
-// once expanded it moves to the first pill.
+// The copy says Flyover filled the value in, so the callout only anchors
+// on a pre-filled pill awaiting review, never on a low-confidence hint.
+function awaitsReview(key) {
+  return suggestions.isApplied(key) && !suggestions.isTouched(key)
+}
+
+// The callout pops up on the first pre-filled pill of the first variable
+// section the user opens, wherever it sits on the page. While everything
+// is folded there is nothing to point at, so nothing shows.
 const coachmarkTarget = computed(() => {
   if (!showCoachmark.value) return null
-  for (const dbEntry of parsedDatabases.value) {
-    if (!expandedDatabases[dbEntry.name]) continue
-    for (let vIdx = 0; vIdx < dbEntry.variables.length; vIdx++) {
-      const variable = dbEntry.variables[vIdx]
-      if (variable.type !== 'categorical') continue
-      if (!isVariableExpanded(dbEntry.name, vIdx)) continue
-      for (const cat of variable.categories) {
-        // Anchor on a pre-filled pill awaiting review (the copy says
-        // Flyover filled it in), not on a low-confidence hint.
-        if (suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)) {
-          return { type: 'badge', key: cat.key }
-        }
-      }
-    }
-  }
-  for (const dbEntry of parsedDatabases.value) {
-    if (unreviewedCountForDatabase(dbEntry.name) > 0) {
-      return { type: 'header', dbName: dbEntry.name }
-    }
+  for (const sectionKey of openedSections.value) {
+    const variable = sectionVariable(sectionKey)
+    if (variable?.type !== 'categorical') continue
+    const cat = variable.categories.find((c) => awaitsReview(c.key))
+    if (cat) return cat.key
   }
   return null
 })
 
-function coachmarkHeaderBody(dbName) {
-  const n = unreviewedCountForDatabase(dbName)
-  return `${n} suggested value${n === 1 ? '' : 's'} — expand to review.`
+// "How do suggestions work?": show the callout again. When no open section
+// has a pre-filled pill, open the first one that does (opened sections
+// first, then page order).
+function showCoachmarkAgain() {
+  coachmarkRequested.value = true
+  if (coachmarkTarget.value) return
+  const all = []
+  for (const dbEntry of parsedDatabases.value) {
+    dbEntry.variables.forEach((_variable, vIdx) => all.push(`${dbEntry.name}|${vIdx}`))
+  }
+  const opened = openedSections.value
+  for (const sectionKey of [...opened, ...all.filter((k) => !opened.includes(k))]) {
+    const variable = sectionVariable(sectionKey)
+    if (variable?.type !== 'categorical') continue
+    if (!variable.categories.some((c) => awaitsReview(c.key))) continue
+    const sep = sectionKey.lastIndexOf('|')
+    const dbName = sectionKey.slice(0, sep)
+    expandedDatabases[dbName] = true
+    if (!expandedVariables[dbName]) expandedVariables[dbName] = {}
+    expandedVariables[dbName][Number(sectionKey.slice(sep + 1))] = true
+    return
+  }
 }
 
 function closeCoachmark() {
@@ -671,7 +696,7 @@ onBeforeUnmount(() => {
       :unreviewed-count="unreviewedFieldCount"
       item-label="values"
       @clear-all="clearAllSuggestions"
-      @show-coachmark="coachmarkRequested = true"
+      @show-coachmark="showCoachmarkAgain"
     />
 
     <form
@@ -690,12 +715,6 @@ onBeforeUnmount(() => {
         >
           <h2 class="database-heading">
             <i class="fas fa-database" /> {{ dbEntry.name }}
-            <SuggestionCoachmark
-              v-if="coachmarkTarget?.type === 'header' && coachmarkTarget.dbName === dbEntry.name"
-              :title="COACHMARK_HEADER_TITLE"
-              :body="coachmarkHeaderBody(dbEntry.name)"
-              @close="closeCoachmark"
-            />
           </h2>
           <button
             type="button"
@@ -823,7 +842,7 @@ onBeforeUnmount(() => {
                           :suggestion="suggestionFor(cat.key) || {}"
                           :applied="suggestions.isApplied(cat.key)"
                           :touched="suggestions.isTouched(cat.key)"
-                          :coachmark="coachmarkTarget?.type === 'badge' && coachmarkTarget.key === cat.key"
+                          :coachmark="coachmarkTarget === cat.key"
                           :coachmark-copy="COACHMARK_COPY"
                           @dismiss="dismissSuggestion(dbEntry.name, variable, cat)"
                           @accept="acceptSuggestion(dbEntry.name, variable, cat)"
@@ -981,11 +1000,6 @@ onBeforeUnmount(() => {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);
-}
-
-.database-heading {
-  position: relative;
-  display: inline-block;
 }
 
 .suggestion-section-button {
