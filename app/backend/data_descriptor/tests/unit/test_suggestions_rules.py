@@ -393,6 +393,18 @@ class TestAliasMatcherGuards(unittest.TestCase):
             "Alias: column 'morph' in database 'christie' is mapped to this variable.",
         )
 
+    def test_fuzzy_reason_names_the_remembered_column_not_the_item(self):
+        """On a fuzzy hit the item and the remembered column differ: the
+        reason must name christie's 'morph', not claim christie has a
+        column called 'morf'."""
+        mapping = _make_mapping()
+        out = self._run_alias(mapping, ["morf"])
+        self.assertEqual(out[0]["match"], "tumour_morphology_icd_o")
+        self.assertEqual(
+            out[0]["reason"],
+            "Alias: column 'morph' in database 'christie' is mapped to this variable.",
+        )
+
     def test_values_phase_reason_names_the_matched_value(self):
         mapping = _make_mapping()
         ctx = SuggestionContext(

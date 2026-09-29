@@ -277,7 +277,10 @@ def _iter_columns(mapping: Any):
 
 
 class AliasMemory(dict):
-    """``normalise(label) -> (target, source_db)`` memory for the alias matcher.
+    """``normalise(label) -> (target, source_db, source_label)`` alias memory.
+
+    ``source_label`` is the remembered column (or value) as the other site
+    wrote it, so a fuzzy hit's reason can name what it actually matched.
 
     A plain dict, plus a ``conflicts`` side-table: when the same normalised
     label maps to different targets at different sites the label is
@@ -289,10 +292,10 @@ class AliasMemory(dict):
         super().__init__()
         self.conflicts: dict[str, tuple[str, str]] = {}
 
-    def add(self, label: str, target: str, source_db: str) -> None:
+    def add(self, label: str, target: str, source_db: str, source_label: str) -> None:
         existing = self.get(label)
         if existing is None:
-            super().__setitem__(label, (target, source_db))
+            super().__setitem__(label, (target, source_db, source_label))
             return
         if existing[0] != target:
             self.conflicts[label] = (existing[0], target)
@@ -333,7 +336,7 @@ def build_alias_memory(
         var_key = column.get_variable_key()
         if not var_key or not key:
             continue
-        memory.add(key, var_key, db.name or "")
+        memory.add(key, var_key, db.name or "", str(local))
     return memory
 
 
@@ -342,7 +345,7 @@ def build_value_alias_memory(
     described_database: Optional[str],
     name_match: Optional[Callable[[str, str], bool]] = None,
 ) -> AliasMemory:
-    """Build ``normalise(value) -> (term, db)`` memory from localMappings."""
+    """Build ``normalise(value) -> (term, db, value)`` memory from localMappings."""
     memory = AliasMemory()
     match = name_match or _default_name_match
     for db, column in _iter_columns(mapping):
@@ -361,7 +364,7 @@ def build_value_alias_memory(
                     continue
                 key = normalise_label(str(value))
                 if key:
-                    memory.add(key, str(term), db.name or "")
+                    memory.add(key, str(term), db.name or "", str(value))
     return memory
 
 
@@ -456,11 +459,11 @@ class AliasMatcher:
                 continue
 
             exact = memory.get(norm)
-            best: Optional[tuple[str, float, str]] = None
+            best: Optional[tuple[str, float, str, str]] = None
             if exact:
-                target, source_db = exact
+                target, source_db, source_label = exact
                 if not targets or target in targets:
-                    best = (target, 1.0, source_db)
+                    best = (target, 1.0, source_db, source_label)
 
             if best is None:
                 best, abstain_reason = self._fuzzy_best(
@@ -476,10 +479,12 @@ class AliasMatcher:
                     records.append(_no_hit(item, abstain_reason))
                     continue
 
-            target, sim, source_db = best
+            target, sim, source_db, source_label = best
             confidence = 1.0 if sim >= 1.0 else round(0.9 * sim, 4)
+            # Name the remembered column/value that matched, not the item:
+            # on a fuzzy hit they differ ('morf' matched christie's 'morph').
             reason = (
-                f"Alias: {kind} '{item}' in database '{source_db}' "
+                f"Alias: {kind} '{source_label}' in database '{source_db}' "
                 f"is mapped to this {kind_target}."
             )
             records.append(
@@ -501,7 +506,7 @@ class AliasMatcher:
         memory: AliasMemory,
         targets: set[str],
         margin: float,
-    ) -> tuple[Optional[tuple[str, float, str]], Optional[str]]:
+    ) -> tuple[Optional[tuple[str, float, str, str]], Optional[str]]:
         """Best fuzzy near-hit for ``norm`` over the alias keys.
 
         Returns ``(best, None)`` on success or ``(None, reason)`` when the
@@ -511,10 +516,10 @@ class AliasMatcher:
         guard): a near miss against one remembered column is a hint, a
         coin flip between two remembered columns is not.
         """
-        candidates: list[tuple[str, float, str]] = []
+        candidates: list[tuple[str, float, str, str]] = []
         # The bucket already guarantees a shared first character.
         for key in by_first_char.get(norm[0], ()):
-            target, source_db = memory[key]
+            target, source_db, source_label = memory[key]
             if key in memory.conflicts:
                 continue
             if targets and target not in targets:
@@ -538,13 +543,13 @@ class AliasMatcher:
                 continue
             sim = jaro_winkler(norm, key, min_score=self.similarity_floor)
             if sim >= self.similarity_floor:
-                candidates.append((target, sim, source_db))
+                candidates.append((target, sim, source_db, source_label))
         if not candidates:
             return None, None
 
         candidates.sort(key=lambda c: c[1], reverse=True)
         best = candidates[0]
-        for target, sim, _source_db in candidates[1:]:
+        for target, sim, _source_db, _source_label in candidates[1:]:
             if target == best[0]:
                 continue
             if best[1] - sim < margin:
