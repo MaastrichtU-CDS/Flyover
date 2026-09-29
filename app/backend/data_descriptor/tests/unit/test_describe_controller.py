@@ -22,7 +22,6 @@ from flask import Flask
 from controllers import describe_bp
 from loaders import JSONLDMapping
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -110,7 +109,7 @@ class _Cache:
         self.databases = None
         self.descriptive_info = {}
         self.DescriptiveInfoDetails = {
-            "christie": [{"Biological Sex (or \"sex\")": [{"value": "M"}]}]
+            "christie": [{'Biological Sex (or "sex")': [{"value": "M"}]}]
         }
         self.jsonld_mapping = JSONLDMapping.from_dict(mapping_data)
 
@@ -147,9 +146,9 @@ class TestDescribeVariableDetailsState(unittest.TestCase):
         session_cache = _Cache(session_map)
         # get_categories returns a CSV, so the t_stage variable is appended.
         app = _make_app(session_cache)
-        app.config["APP_CONTEXT"]["rdf_store_service"].get_categories.return_value = (
-            "value\n0\n1"
-        )
+        app.config["APP_CONTEXT"][
+            "rdf_store_service"
+        ].get_categories.return_value = "value\n0\n1"
         with app.test_client() as client:
             resp = client.get("/api/v1/describe-variable-details-state")
             self.assertEqual(resp.status_code, 200)
