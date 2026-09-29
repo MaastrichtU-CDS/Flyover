@@ -220,7 +220,9 @@ function needsSuggestionReview(dbName, item) {
   if (suggestions.isDismissed(key)) return false
   if (suggestions.isApplied(key)) return !suggestions.isTouched(key)
   if (!hasSuggestion(dbName, item)) return false
-  return !formStateCache[key]?.description
+  // A column that already has a mapping (picked here or preselected from
+  // the loaded JSON-LD) does not need a suggestion reviewed.
+  return !getDescriptionValue(dbName, item)
 }
 
 function acceptSuggestion(dbName, item, display) {
@@ -305,7 +307,7 @@ function hasUnreviewedForDatabase(dbName) {
     const entry = suggestionFor(dbName, item)
     if (!entry || entry.status !== 'done' || !entry.display) return false
     if (suggestions.isDismissed(key)) return false
-    if (!suggestions.isApplied(key) && !formStateCache[key]?.description) return true
+    if (!suggestions.isApplied(key) && !getDescriptionValue(dbName, item)) return true
     if (suggestions.isApplied(key) && !suggestions.isTouched(key)) return true
     return false
   })
@@ -459,12 +461,6 @@ watch(
       if (entry.status !== 'done' || !entry.display) continue
       if (suggestions.isDismissed(key)) continue
       if (suggestions.isTouched(key)) continue
-      // Re-fill applied keys too: on a hard reload the in-memory form state
-      // is lost but the "applied" mark survives in IndexedDB, so restore the
-      // field from the suggestion. The existing-value guard below keeps user
-      // input safe and dedups repeated watch firings.
-      const existing = formStateCache[key]?.description
-      if (existing) continue
       // Prefer the record's explicit location fields (database names can
       // contain underscores, making prefix matching ambiguous); fall back
       // to prefix matching for records without them.
@@ -473,6 +469,14 @@ watch(
         databaseNames.value.find((d) => key.startsWith(`${d}_`))
       if (!dbName) continue
       const item = entry.column || key.slice(dbName.length + 1)
+      // Re-fill applied keys too: on a hard reload the in-memory form state
+      // is lost but the "applied" mark survives in IndexedDB, so restore the
+      // field from the suggestion. The existing-value guard keeps user input
+      // safe and dedups repeated watch firings. It checks the displayed
+      // value, not just the form state: a column preselected from the
+      // loaded JSON-LD already has a mapping, and a suggestion must never
+      // replace it behind the user's back.
+      if (getDescriptionValue(dbName, item)) continue
       // Check the one-variable-per-database constraint.
       if (isDescriptionDisabled(dbName, item, entry.display)) continue
       ensureCacheEntry(key, dbName)

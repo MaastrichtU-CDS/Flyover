@@ -27,6 +27,10 @@ vi.mock('@/lib/db', () => ({
   getData: vi.fn(async () => null),
 }))
 
+// A test can set `preselection.value` to stand in for mappings the loaded
+// JSON-LD already holds for the described database.
+const preselection = vi.hoisted(() => ({ value: null }))
+
 // Keep the real jsonld implementation (the store and the views use many of
 // its helpers) but spy on the two writers the invariant is about.
 vi.mock('@/lib/jsonld', async (importOriginal) => {
@@ -35,6 +39,8 @@ vi.mock('@/lib/jsonld', async (importOriginal) => {
     ...actual,
     updateMappingFromForm: vi.fn(actual.updateMappingFromForm),
     updateCategoryMapping: vi.fn(actual.updateCategoryMapping),
+    computePreselectionsForDatabases: (...args) =>
+      preselection.value ?? actual.computePreselectionsForDatabases(...args),
   }
 })
 
@@ -150,6 +156,7 @@ beforeEach(() => {
   api.post.mockReset()
   jsonld.updateMappingFromForm.mockClear()
   jsonld.updateCategoryMapping.mockClear()
+  preselection.value = null
 })
 
 describe('DescribeVariablesView — zero writes without explicit review', () => {
@@ -215,6 +222,28 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
 
     // The reviewed value is restored into the form state for display, but
     // a value the user never reviewed in this session is not re-written.
+    expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
+  })
+
+  it('never pre-fills over a mapping the loaded JSON-LD already holds', async () => {
+    // morph is already mapped in the uploaded JSON-LD; the suggestion
+    // disagrees. The existing mapping must stay, unreviewed-free.
+    preselection.value = {
+      preselectedDescriptions: { test_db_morph: 'Year of initial diagnosis' },
+      preselectedDatatypes: {},
+      descriptionToDatatype: {},
+    }
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    expect(store.isApplied('test_db_morph')).toBe(false)
+    // sex has no mapping yet, so it is still pre-filled for review.
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    expect(wrapper.text()).toContain('1 suggestion needs review')
+    // The preselected column is not highlighted as needing review.
+    const morphSelect = wrapper.find('select[name="ncit_comment_test_db_morph"]')
+    expect(morphSelect.classes()).not.toContain('suggestion-highlight')
     expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
   })
 
