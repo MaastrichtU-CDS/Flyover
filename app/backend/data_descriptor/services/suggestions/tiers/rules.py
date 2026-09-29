@@ -14,7 +14,12 @@ Matchers:
     database currently being described (leave-one-site-out). Same for
     values: ``normalise(localValue) -> term`` per variable from
     ``localMappings``. Exact normalised hits score 1.0; near hits use
-    Jaro-Winkler similarity and are scaled by 0.9.
+    Jaro-Winkler similarity and are scaled by 0.9, but only when the two
+    labels do not differ merely in digits and no other alias key with a
+    different target is within ``margin`` of the best hit — ``surv1``
+    must never fuzzy-match another site's ``surv7``. A label that maps
+    to different targets at different sites abstains instead of letting
+    the first site win silently.
 
 (b) :class:`ValueRegexMatcher` (``source: value_regex``) — fires when the
     full distinct-value set (minus missing codes) is covered by one of the
@@ -67,9 +72,16 @@ ALIAS_SIMILARITY_FLOOR = 0.84
 # distinct values costs one RDF-store query per column on every job start,
 # which is too expensive for the air-gapped target. The feature will be
 # re-enabled once categorical columns can be detected without querying the
-# store. Flip this flag and the matching guard in
-# services/suggestions/__init__.py to re-enable it.
+# store. Read the flag through the accessor below (never import it by
+# value) so tests can flip it with a patch and a future toggle cannot
+# diverge from what the matcher sees.
 VALUE_BASED_VARIABLE_SUGGESTIONS = False
+
+
+def value_based_variable_suggestions_enabled() -> bool:
+    """Call-time view of VALUE_BASED_VARIABLE_SUGGESTIONS."""
+    return VALUE_BASED_VARIABLE_SUGGESTIONS
+
 
 _RESOURCES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "resources"
 _RULES_PATH = _RESOURCES_DIR / "suggestion_rules.json"
@@ -216,14 +228,36 @@ def _iter_columns(mapping: Any):
                 yield db, column
 
 
-def build_alias_memory(mapping: Any, described_database: Optional[str]) -> dict:
+class AliasMemory(dict):
+    """``normalise(label) -> (target, source_db)`` memory for the alias matcher.
+
+    A plain dict, plus a ``conflicts`` side-table: when the same normalised
+    label maps to different targets at different sites the label is
+    recorded there (with both targets) and the matcher must abstain for it
+    instead of letting whichever site was iterated first win silently.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.conflicts: dict[str, tuple[str, str]] = {}
+
+    def add(self, label: str, target: str, source_db: str) -> None:
+        existing = self.get(label)
+        if existing is None:
+            super().__setitem__(label, (target, source_db))
+            return
+        if existing[0] != target:
+            self.conflicts[label] = (existing[0], target)
+
+
+def build_alias_memory(mapping: Any, described_database: Optional[str]) -> AliasMemory:
     """Build ``normalise(label) -> target`` memory, excluding ``described_database``.
 
     For the variables phase the target is a variable key; for the values
     phase callers pass a pre-built ``localValue -> term`` memory via
     :func:`build_value_alias_memory`.
     """
-    memory: dict[str, tuple[str, str]] = {}
+    memory = AliasMemory()
     for db, column in _iter_columns(mapping):
         if described_database and RDFStoreService.graph_database_find_name_match(
             db.name, described_database
@@ -236,13 +270,15 @@ def build_alias_memory(mapping: Any, described_database: Optional[str]) -> dict:
         var_key = column.get_variable_key()
         if not var_key or not key:
             continue
-        memory.setdefault(key, (var_key, db.name or ""))
+        memory.add(key, var_key, db.name or "")
     return memory
 
 
-def build_value_alias_memory(mapping: Any, described_database: Optional[str]) -> dict:
+def build_value_alias_memory(
+    mapping: Any, described_database: Optional[str]
+) -> AliasMemory:
     """Build ``normalise(value) -> (term, db)`` memory from localMappings."""
-    memory: dict[str, tuple[str, str]] = {}
+    memory = AliasMemory()
     for db, column in _iter_columns(mapping):
         if described_database and RDFStoreService.graph_database_find_name_match(
             db.name, described_database
@@ -261,7 +297,7 @@ def build_value_alias_memory(mapping: Any, described_database: Optional[str]) ->
                     continue
                 key = normalise_label(str(value))
                 if key:
-                    memory.setdefault(key, (str(term), db.name or ""))
+                    memory.add(key, str(term), db.name or "")
     return memory
 
 
@@ -270,16 +306,31 @@ def build_value_alias_memory(mapping: Any, described_database: Optional[str]) ->
 # ---------------------------------------------------------------------------
 
 
+def _differs_only_in_digits(a: str, b: str) -> bool:
+    """True when two normalised labels differ only in their digits.
+
+    ``surv1`` vs ``surv7`` is the README's own warning case: Jaro-Winkler
+    rates the pair 0.92, but the digits are exactly what distinguishes
+    them, so a fuzzy hit between them must never fire.
+    """
+    a_letters = re.sub(r"\d", "", a)
+    b_letters = re.sub(r"\d", "", b)
+    return bool(a_letters.strip()) and a_letters == b_letters
+
+
 class AliasMatcher:
     """Alias memory matcher (``source: alias``)."""
 
     tier = TIER
     source = SOURCE_ALIAS
 
-    def __init__(self, similarity_floor: Optional[float] = None):
+    def __init__(
+        self, similarity_floor: Optional[float] = None, margin: Optional[float] = None
+    ):
         self.similarity_floor = (
             ALIAS_SIMILARITY_FLOOR if similarity_floor is None else similarity_floor
         )
+        self.margin = margin
 
     def run(
         self,
@@ -288,23 +339,39 @@ class AliasMatcher:
         ctx: SuggestionContext,
     ) -> list[dict]:
         phase = ctx.phase
+        margin = self.margin if self.margin is not None else ctx.margin
         targets = set(schema_slice.get("*", []))
         if phase == "values":
             memory = build_value_alias_memory(ctx.mapping, ctx.described_database)
+            kind = "value"
+            kind_target = "term"
         else:
             memory = build_alias_memory(ctx.mapping, ctx.described_database)
+            kind = "column"
+            kind_target = "variable"
+
+        def _no_hit(item: str, reason: str = "No alias memory hit.") -> dict:
+            return {"item": item, "match": None, "confidence": 0.0, "reason": reason}
 
         records: list[dict] = []
         for item in items:
             norm = normalise_label(item)
             if not norm:
+                records.append(_no_hit(item, "Empty label."))
+                continue
+
+            if norm in memory.conflicts:
+                # The label maps to different targets at different sites;
+                # whichever site won would be arbitrary, so abstain and
+                # name both candidates.
+                target_a, target_b = memory.conflicts[norm]
                 records.append(
-                    {
-                        "item": item,
-                        "match": None,
-                        "confidence": 0.0,
-                        "reason": "Empty label.",
-                    }
+                    _no_hit(
+                        item,
+                        f"Alias conflict: '{item}' is mapped to both "
+                        f"'{target_a}' and '{target_b}' at other sites; "
+                        "cannot choose between them.",
+                    )
                 )
                 continue
 
@@ -316,39 +383,72 @@ class AliasMatcher:
                     best = (target, 1.0, source_db)
 
             if best is None:
-                # Fuzzy near-hit on the alias keys.
-                for key, (target, source_db) in memory.items():
-                    if not targets or target in targets:
-                        sim = jaro_winkler(norm, key)
-                        if sim >= self.similarity_floor:
-                            if best is None or sim > best[1]:
-                                best = (target, sim, source_db)
+                best, abstain_reason = self._fuzzy_best(norm, memory, targets, margin)
+                if best is None:
+                    records.append(_no_hit(item, abstain_reason))
+                    continue
 
-            if best is not None:
-                target, sim, source_db = best
-                confidence = 1.0 if sim >= 1.0 else round(0.9 * sim, 4)
-                reason = (
-                    f"Alias: '{item}' matches column/value from database "
-                    f"'{source_db}' mapped to this {('variable' if phase == 'variables' else 'term')}."
-                )
-                records.append(
-                    {
-                        "item": item,
-                        "match": target,
-                        "confidence": confidence,
-                        "reason": reason,
-                    }
-                )
-            else:
-                records.append(
-                    {
-                        "item": item,
-                        "match": None,
-                        "confidence": 0.0,
-                        "reason": "No alias memory hit.",
-                    }
-                )
+            target, sim, source_db = best
+            confidence = 1.0 if sim >= 1.0 else round(0.9 * sim, 4)
+            reason = (
+                f"Alias: {kind} '{item}' in database '{source_db}' "
+                f"is mapped to this {kind_target}."
+            )
+            records.append(
+                {
+                    "item": item,
+                    "match": target,
+                    "confidence": confidence,
+                    "reason": reason,
+                }
+            )
         return records
+
+    def _fuzzy_best(
+        self,
+        norm: str,
+        memory: AliasMemory,
+        targets: set[str],
+        margin: float,
+    ) -> tuple[Optional[tuple[str, float, str]], Optional[str]]:
+        """Best fuzzy near-hit for ``norm`` over the alias keys.
+
+        Returns ``(best, None)`` on success or ``(None, reason)`` when the
+        matcher must abstain. Rejects candidates whose label differs from
+        ``norm`` only in digits, and abstains when the two best candidates
+        with *distinct* targets are closer than ``margin`` (the sibling
+        guard): a near miss against one remembered column is a hint, a
+        coin flip between two remembered columns is not.
+        """
+        candidates: list[tuple[str, float, str]] = []
+        for key, (target, source_db) in memory.items():
+            if key in memory.conflicts:
+                continue
+            if targets and target not in targets:
+                continue
+            if _differs_only_in_digits(norm, key):
+                continue
+            sim = jaro_winkler(norm, key)
+            if sim >= self.similarity_floor:
+                candidates.append((target, sim, source_db))
+        if not candidates:
+            return None, None
+
+        candidates.sort(key=lambda c: c[1], reverse=True)
+        best = candidates[0]
+        for target, sim, _source_db in candidates[1:]:
+            if target == best[0]:
+                continue
+            if best[1] - sim < margin:
+                # Distinct targets within the margin: abstain. The margin
+                # wording matches the string matcher's so the cascade merge
+                # keeps it as the most informative reason.
+                return None, (
+                    f"Top alias candidates too close (top1={best[1]:.3f}, "
+                    f"top2={sim:.3f}, margin={margin}); abstaining."
+                )
+            break
+        return best, None
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +485,22 @@ def _value_in_any_set(
         if norm in {str(c).strip().lower() for c in cand}:
             return cand
     return None
+
+
+def _column_inside_one_set(values: list[str], candidate_sets: list[list[str]]) -> bool:
+    """True when every value falls inside ONE of the candidate sets.
+
+    A value-set rule describes a whole column's coding scheme, not single
+    values: a column holding ``{ja, y}`` must not get a yes-suggestion for
+    ``ja`` just because ``ja`` is in the Dutch yes/no set.
+    """
+    if not values:
+        return False
+    norm = {str(v).strip().lower() for v in values}
+    for cand in candidate_sets:
+        if norm <= {str(c).strip().lower() for c in cand}:
+            return True
+    return False
 
 
 def _all_match_patterns(values: list[str], patterns: list[str]) -> bool:
@@ -424,7 +540,7 @@ class ValueRegexMatcher:
         rules = ctx.rules or load_rules()
 
         if ctx.phase == "variables":
-            if not VALUE_BASED_VARIABLE_SUGGESTIONS:
+            if not value_based_variable_suggestions_enabled():
                 return [
                     {
                         "item": item,
@@ -527,11 +643,13 @@ class ValueRegexMatcher:
         out: list[dict] = []
         for item in items:
             terms = schema_slice.get(item, [])
-            record = self._match_value_term(item, terms, rules)
+            record = self._match_value_term(item, terms, rules, ctx)
             out.append(record)
         return out
 
-    def _match_value_term(self, item: str, terms: list[str], rules: dict) -> dict:
+    def _match_value_term(
+        self, item: str, terms: list[str], rules: dict, ctx: SuggestionContext
+    ) -> dict:
         """Map a single value to its term using positional correspondence.
 
         Value-sets within a rule are ordered equivalence classes across
@@ -539,11 +657,32 @@ class ValueRegexMatcher:
         value's position in its matched set determines which term it maps to:
         the element at the same position in any set that is also an exact
         schema term is the suggestion.
+
+        A value-set rule only applies when every non-missing distinct value
+        of the column the value belongs to falls inside one of the rule's
+        sets — a rule describes a coding scheme, not individual values.
+        Missing codes are handled by their own rule first: they map to the
+        term that names a missing/unknown/unspecified category.
         """
         value = item
         norm_value = str(value).strip().lower()
+
+        missing_record = self._match_missing_code(value, terms, rules)
+        if missing_record is not None:
+            return missing_record
+
+        # All non-missing distinct values of the column this value belongs
+        # to. Without column context (e.g. matcher used standalone) the
+        # value alone decides, matching the pre-existing behaviour.
+        column_values = (ctx.item_column_values or {}).get(value)
+        if column_values is None:
+            column_values = [value]
+        column_values = _strip_missing(column_values, rules)
+
         for rule in rules.get("value_regexes", []):
             if "value_sets" not in rule:
+                continue
+            if not _column_inside_one_set(column_values, rule["value_sets"]):
                 continue
             # Find the position of value in any value-set.
             position: Optional[int] = None
@@ -590,6 +729,45 @@ class ValueRegexMatcher:
             "match": None,
             "confidence": 0.0,
             "reason": "No value-type pattern matched.",
+        }
+
+    @staticmethod
+    def _match_missing_code(
+        value: str, terms: list[str], rules: dict
+    ) -> Optional[dict]:
+        """Suggest the missing/unknown term for a value that is a missing code.
+
+        Returns None when the value is not a missing code (so the caller
+        falls through to the value-set rules), a record when it is. The
+        target term is chosen by the rule file's ``missing_code_rule``
+        ``term_predicates``; more than one matching term abstains.
+        """
+        if str(value).strip().lower() not in _missing_codes(rules):
+            return None
+        rule = rules.get("missing_code_rule") or {}
+        preds = rule.get("term_predicates") or ["missing", "unknown", "unspecified"]
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for term in terms:
+            if term in seen:
+                continue
+            if any(p in term.lower() for p in preds):
+                candidates.append(term)
+                seen.add(term)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return {
+                "item": value,
+                "match": candidates[0],
+                "confidence": 0.9,
+                "reason": f"Value '{value}' is a missing code.",
+            }
+        return {
+            "item": value,
+            "match": None,
+            "confidence": 0.0,
+            "reason": f"missing code matches {len(candidates)} terms",
         }
 
 

@@ -1,7 +1,11 @@
 {
-  "version": "1.1.0",
-  "description": "Value-type regexes and abbreviation table for tier-1 rule-based mapping suggestions. Not site-specific; nothing here is written into the schema.",
+  "version": "1.2.0",
+  "description": "Value-type regexes and abbreviation table for tier-1 rule-based mapping suggestions. Not site-specific: entries are generic abbreviations and coding conventions, never column names taken from a site. Nothing here is written into the schema.",
   "missing_codes": ["", "999", "-1", "NA", "N/A", "onbekend", "unknown", "missing", "null"],
+  "missing_code_rule": {
+    "comment": "A value that is a missing code maps to the term naming a missing/unknown/unspecified category when exactly one such term exists for the variable.",
+    "term_predicates": ["missing", "unknown", "unspecified", "no_information"]
+  },
   "value_regexes": [
     {
       "name": "yes_no",
@@ -90,14 +94,12 @@
     "id": "identifier",
     "nr": "identifier",
     "nummer": "identifier",
-    "rnnummer": "identifier",
     "dat": "date",
     "datum": "date",
     "geb": "birth",
     "geboorte": "birth",
     "overl": "death",
     "overlijden": "death",
-    "stad": "stage",
     "stadium": "stage",
     "loc": "location",
     "lokatie": "location",

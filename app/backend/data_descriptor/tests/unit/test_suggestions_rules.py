@@ -27,124 +27,170 @@ from services.suggestions.tiers.rules import (
 )
 
 _RULES = load_rules()
+# The production margin (services.suggestions.DEFAULT_MARGIN); tests must
+# run at the settings the app ships with, not a looser one.
+PRODUCTION_MARGIN = 0.05
+
+
+def _mapping_dict() -> dict:
+    """The raw JSON-LD fixture: christie (English headers) and nki (Dutch)."""
+    return {
+        "@context": {
+            "schema": "mapping:schema/",
+            "mapping": "http://example.org/mapping#",
+        },
+        "@id": "mapping:root",
+        "@type": "mapping:SemanticMapping",
+        "schema": {
+            "@id": "schema:root",
+            "@type": "mapping:Schema",
+            "variables": {
+                "biological_sex": {
+                    "@type": "schema:CategoricalVariable",
+                    "dataType": "categorical",
+                    "predicate": "sio:has_sex",
+                    "class": "ncit:C28421",
+                    "valueMapping": {
+                        "terms": {
+                            "male": {"targetClass": "ncit:C20197"},
+                            "female": {"targetClass": "ncit:C16576"},
+                        }
+                    },
+                },
+                "tumour_morphology_icd_o": {
+                    "@type": "schema:StandardisedVariable",
+                    "dataType": "standardised",
+                    "predicate": "sio:has_morphology",
+                    "class": "ncit:C94812",
+                },
+                "tumour_topography_icd_o": {
+                    "@type": "schema:StandardisedVariable",
+                    "dataType": "standardised",
+                    "predicate": "sio:has_topography",
+                    "class": "ncit:C94812",
+                },
+                "year_of_initial_diagnosis": {
+                    "@type": "schema:ContinuousVariable",
+                    "dataType": "continuous",
+                    "predicate": "sio:has_year",
+                    "class": "ncit:C81206",
+                },
+                "year_of_last_followup": {
+                    "@type": "schema:ContinuousVariable",
+                    "dataType": "continuous",
+                    "predicate": "sio:has_year",
+                    "class": "ncit:C81206",
+                },
+                "yes_no_response": {
+                    "@type": "schema:CategoricalVariable",
+                    "dataType": "categorical",
+                    "predicate": "sio:has_response",
+                    "class": "ncit:C25526",
+                    "valueMapping": {
+                        "terms": {
+                            "yes": {"targetClass": "ncit:C25227"},
+                            "no": {"targetClass": "ncit:C25225"},
+                        }
+                    },
+                },
+            },
+        },
+        "databases": {
+            "christie": {
+                "@id": "mapping:database/christie",
+                "@type": "mapping:Database",
+                "name": "christie",
+                "tables": {
+                    "data": {
+                        "@id": "mapping:table/christie/data",
+                        "@type": "mapping:Table",
+                        "sourceFile": "christie",
+                        "columns": {
+                            "morph": {
+                                "mapsTo": "schema:variable/tumour_morphology_icd_o",
+                                "localColumn": "morph",
+                            },
+                            "sex": {
+                                "mapsTo": "schema:variable/biological_sex",
+                                "localColumn": "sex",
+                                "localMappings": {
+                                    "male": ["M"],
+                                    "female": ["F"],
+                                },
+                            },
+                        },
+                    }
+                },
+            },
+            "nki": {
+                "@id": "mapping:database/nki",
+                "@type": "mapping:Database",
+                "name": "nki",
+                "tables": {
+                    "data": {
+                        "@id": "mapping:table/nki/data",
+                        "@type": "mapping:Table",
+                        "sourceFile": "nki",
+                        "columns": {
+                            "geslacht": {
+                                "mapsTo": "schema:variable/biological_sex",
+                                "localColumn": "geslacht",
+                                "localMappings": {
+                                    "male": ["man"],
+                                    "female": ["vrouw"],
+                                },
+                            },
+                        },
+                    }
+                },
+            },
+        },
+    }
 
 
 def _make_mapping() -> JSONLDMapping:
-    """Two databases: christie (English headers) and nki (Dutch)."""
-    return JSONLDMapping.from_dict(
-        {
-            "@context": {
-                "schema": "mapping:schema/",
-                "mapping": "http://example.org/mapping#",
-            },
-            "@id": "mapping:root",
-            "@type": "mapping:SemanticMapping",
-            "schema": {
-                "@id": "schema:root",
-                "@type": "mapping:Schema",
-                "variables": {
-                    "biological_sex": {
-                        "@type": "schema:CategoricalVariable",
-                        "dataType": "categorical",
-                        "predicate": "sio:has_sex",
-                        "class": "ncit:C28421",
-                        "valueMapping": {
-                            "terms": {
-                                "male": {"targetClass": "ncit:C20197"},
-                                "female": {"targetClass": "ncit:C16576"},
-                            }
-                        },
-                    },
-                    "tumour_morphology_icd_o": {
-                        "@type": "schema:StandardisedVariable",
-                        "dataType": "standardised",
-                        "predicate": "sio:has_morphology",
-                        "class": "ncit:C94812",
-                    },
-                    "tumour_topography_icd_o": {
-                        "@type": "schema:StandardisedVariable",
-                        "dataType": "standardised",
-                        "predicate": "sio:has_topography",
-                        "class": "ncit:C94812",
-                    },
-                    "year_of_initial_diagnosis": {
-                        "@type": "schema:ContinuousVariable",
-                        "dataType": "continuous",
-                        "predicate": "sio:has_year",
-                        "class": "ncit:C81206",
-                    },
-                    "year_of_last_followup": {
-                        "@type": "schema:ContinuousVariable",
-                        "dataType": "continuous",
-                        "predicate": "sio:has_year",
-                        "class": "ncit:C81206",
-                    },
-                    "yes_no_response": {
-                        "@type": "schema:CategoricalVariable",
-                        "dataType": "categorical",
-                        "predicate": "sio:has_response",
-                        "class": "ncit:C25526",
-                        "valueMapping": {
-                            "terms": {
-                                "yes": {"targetClass": "ncit:C25227"},
-                                "no": {"targetClass": "ncit:C25225"},
-                            }
-                        },
-                    },
-                },
-            },
-            "databases": {
-                "christie": {
-                    "@id": "mapping:database/christie",
-                    "@type": "mapping:Database",
-                    "name": "christie",
-                    "tables": {
-                        "data": {
-                            "@id": "mapping:table/christie/data",
-                            "@type": "mapping:Table",
-                            "sourceFile": "christie",
-                            "columns": {
-                                "morph": {
-                                    "mapsTo": "schema:variable/tumour_morphology_icd_o",
-                                    "localColumn": "morph",
-                                },
-                                "sex": {
-                                    "mapsTo": "schema:variable/biological_sex",
-                                    "localColumn": "sex",
-                                    "localMappings": {
-                                        "male": ["M"],
-                                        "female": ["F"],
-                                    },
-                                },
-                            },
-                        }
-                    },
-                },
-                "nki": {
-                    "@id": "mapping:database/nki",
-                    "@type": "mapping:Database",
-                    "name": "nki",
-                    "tables": {
-                        "data": {
-                            "@id": "mapping:table/nki/data",
-                            "@type": "mapping:Table",
-                            "sourceFile": "nki",
-                            "columns": {
-                                "geslacht": {
-                                    "mapsTo": "schema:variable/biological_sex",
-                                    "localColumn": "geslacht",
-                                    "localMappings": {
-                                        "male": ["man"],
-                                        "female": ["vrouw"],
-                                    },
-                                },
-                            },
-                        }
-                    },
-                },
-            },
-        }
+    return JSONLDMapping.from_dict(_mapping_dict())
+
+
+def _variable_stub(name: str) -> dict:
+    return {
+        "@type": "schema:ContinuousVariable",
+        "dataType": "continuous",
+        "predicate": f"sio:has_{name}",
+        "class": "ncit:C00000",
+    }
+
+
+def _make_mapping_with_site(site_columns: dict) -> JSONLDMapping:
+    """The standard two-site fixture plus a 'leeds' site.
+
+    ``site_columns`` maps a local column label to the schema variable key
+    it is remembered as at leeds, e.g. ``{"surv7": "eortc_qlq_c30_q6"}``.
+    """
+    data = _mapping_dict()
+    data["schema"]["variables"].update(
+        {key: _variable_stub(key) for key in site_columns.values()}
     )
+    data["databases"]["leeds"] = {
+        "@id": "mapping:database/leeds",
+        "@type": "mapping:Database",
+        "name": "leeds",
+        "tables": {
+            "data": {
+                "@id": "mapping:table/leeds/data",
+                "@type": "mapping:Table",
+                "sourceFile": "leeds",
+                "columns": {
+                    label: {
+                        "mapsTo": f"schema:variable/{var_key}",
+                        "localColumn": label,
+                    }
+                    for label, var_key in site_columns.items()
+                },
+            }
+        },
+    }
+    return JSONLDMapping.from_dict(data)
 
 
 VARIABLE_KEYS = [
@@ -154,6 +200,8 @@ VARIABLE_KEYS = [
     "year_of_initial_diagnosis",
     "year_of_last_followup",
     "yes_no_response",
+    "eortc_qlq_c30_q6",
+    "eortc_qlq_c30_q12",
 ]
 
 
@@ -198,7 +246,7 @@ class TestAliasMatcher(unittest.TestCase):
             described_database="nki",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = AliasMatcher().run(
             ["morph"],
@@ -221,7 +269,7 @@ class TestAliasMatcher(unittest.TestCase):
             described_database="nki",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = AliasMatcher().run(
             ["morf"],
@@ -244,7 +292,7 @@ class TestAliasMatcher(unittest.TestCase):
             described_database="christie",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = AliasMatcher().run(
             ["morf"],
@@ -262,7 +310,7 @@ class TestAliasMatcher(unittest.TestCase):
             described_database="nki",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = AliasMatcher().run(
             ["M"],
@@ -278,6 +326,91 @@ _ENABLE_VALUE_BASED = patch(
 )
 
 
+class TestAliasMatcherGuards(unittest.TestCase):
+    """WS3.1/3.2/3.3: the fuzzy alias matcher must not confidently
+    mis-map, and its reasons must name what they matched."""
+
+    def _run_alias(self, mapping, items, schema_slice=None, phase="variables"):
+        ctx = SuggestionContext(
+            phase=phase,
+            mapping=mapping,
+            described_database="nki",
+            rules=_RULES,
+            threshold=0.8,
+            margin=PRODUCTION_MARGIN,
+        )
+        return AliasMatcher().run(items, schema_slice or {"*": VARIABLE_KEYS}, ctx)
+
+    def test_surv1_does_not_fuzzy_match_surv7(self):
+        """The README's own warning case: Jaro-Winkler('surv1','surv7') is
+        0.93 (confidence 0.84, above the 0.8 threshold), but the digits are
+        exactly what distinguishes the two labels, so the fuzzy hit must be
+        rejected."""
+        mapping = _make_mapping_with_site({"surv7": "eortc_qlq_c30_q6"})
+        out = self._run_alias(mapping, ["surv1"])
+        self.assertIsNone(out[0]["match"])
+        self.assertEqual(out[0]["confidence"], 0.0)
+
+    def test_alg_v7_abstains_between_two_similar_remembered_columns(self):
+        """Two remembered labels near 'alg_v7' but with distinct targets:
+        the best and second-best sit within the margin, so the matcher
+        abstains instead of coin-flipping."""
+        mapping = _make_mapping_with_site(
+            {"alg_v1b": "eortc_qlq_c30_q6", "alg_v2b": "eortc_qlq_c30_q12"}
+        )
+        out = self._run_alias(mapping, ["alg_v7"])
+        self.assertIsNone(out[0]["match"])
+        self.assertEqual(out[0]["confidence"], 0.0)
+        self.assertIn("margin", out[0]["reason"])
+
+    def test_morf_still_matches_morph(self):
+        """The guards must not kill the headline near-miss: 'morf' against
+        a single remembered 'morph' still fuzzy-matches above the 0.84
+        floor and escalates below the threshold."""
+        mapping = _make_mapping()
+        out = self._run_alias(mapping, ["morf"])
+        self.assertEqual(out[0]["match"], "tumour_morphology_icd_o")
+        self.assertGreater(out[0]["confidence"], 0.7)
+
+    def test_conflicting_aliases_abstain_and_name_both(self):
+        """The same normalised label mapped to different variables at two
+        sites must abstain (setdefault used to let the first site win
+        silently) and name both candidates in the reason."""
+        mapping = _make_mapping_with_site({"morph": "eortc_qlq_c30_q6"})
+        out = self._run_alias(mapping, ["morph"])
+        self.assertIsNone(out[0]["match"])
+        self.assertEqual(out[0]["confidence"], 0.0)
+        self.assertIn("tumour_morphology_icd_o", out[0]["reason"])
+        self.assertIn("eortc_qlq_c30_q6", out[0]["reason"])
+
+    def test_reason_names_the_matched_alias(self):
+        """The plan's reason format: name the matched column/value and its
+        database, not just the database."""
+        mapping = _make_mapping()
+        out = self._run_alias(mapping, ["morph"])
+        self.assertEqual(
+            out[0]["reason"],
+            "Alias: column 'morph' in database 'christie' is mapped to this variable.",
+        )
+
+    def test_values_phase_reason_names_the_matched_value(self):
+        mapping = _make_mapping()
+        ctx = SuggestionContext(
+            phase="values",
+            mapping=mapping,
+            described_database="nki",
+            rules=_RULES,
+            threshold=0.8,
+            margin=PRODUCTION_MARGIN,
+        )
+        out = AliasMatcher().run(["M"], {"M": ["male", "female"]}, ctx)
+        self.assertEqual(out[0]["match"], "male")
+        self.assertEqual(
+            out[0]["reason"],
+            "Alias: value 'M' in database 'christie' is mapped to this term.",
+        )
+
+
 class TestValueRegexMatcher(unittest.TestCase):
     def test_variables_phase_abstains_while_disabled(self):
         """Value-based variable suggestions are disabled by default: the
@@ -290,7 +423,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"resp": ["ja", "nee"]}},
         )
         out = ValueRegexMatcher().run(
@@ -311,7 +444,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"resp": ["ja", "nee"]}},
         )
         out = ValueRegexMatcher().run(
@@ -331,7 +464,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"sex": ["M", "V"]}},
         )
         out = ValueRegexMatcher().run(
@@ -353,7 +486,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"morfo": ["8500/3", "8010/3"]}},
         )
         out = ValueRegexMatcher().run(
@@ -372,7 +505,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"topo": ["C50.9", "C18.5"]}},
         )
         out = ValueRegexMatcher().run(
@@ -394,7 +527,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="nki",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={
                 "christie": {"sex": ["M", "F"]},
                 "nki": {"sex": ["abc", "def"]},
@@ -418,7 +551,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"year_col": ["2018", "2019", "2020"]}},
         )
         out = ValueRegexMatcher().run(
@@ -436,7 +569,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = ValueRegexMatcher().run(
             ["ja"],
@@ -444,6 +577,83 @@ class TestValueRegexMatcher(unittest.TestCase):
             ctx,
         )
         self.assertEqual(out[0]["match"], "yes")
+
+    def test_values_phase_value_set_only_fires_for_a_whole_column(self):
+        """WS3.6: a value-set rule describes a coding scheme, not single
+        values. 'ja' in a column whose other value 'y' is outside the
+        yes/no sets must not get a yes-suggestion; in a clean {ja, nee}
+        column it must."""
+        ctx = SuggestionContext(
+            phase="values",
+            mapping=_make_mapping(),
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=PRODUCTION_MARGIN,
+            item_column_values={"ja": ["ja", "y"], "nee": ["ja", "y"]},
+        )
+        out = ValueRegexMatcher().run(
+            ["ja", "nee"],
+            {"ja": ["yes", "no"], "nee": ["yes", "no"]},
+            ctx,
+        )
+        self.assertIsNone(out[0]["match"])
+        self.assertIsNone(out[1]["match"])
+
+        ctx_clean = SuggestionContext(
+            phase="values",
+            mapping=_make_mapping(),
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=PRODUCTION_MARGIN,
+            item_column_values={"ja": ["ja", "nee"], "nee": ["ja", "nee"]},
+        )
+        out = ValueRegexMatcher().run(
+            ["ja", "nee"],
+            {"ja": ["yes", "no"], "nee": ["yes", "no"]},
+            ctx_clean,
+        )
+        self.assertEqual(out[0]["match"], "yes")
+        self.assertEqual(out[1]["match"], "no")
+
+    def test_values_phase_missing_code_maps_to_missing_term(self):
+        """WS3.6: a value that is a missing code maps to the term naming
+        the missing/unknown category, driven by the rules file's
+        missing_code_rule term_predicates."""
+        ctx = SuggestionContext(
+            phase="values",
+            mapping=_make_mapping(),
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=PRODUCTION_MARGIN,
+        )
+        out = ValueRegexMatcher().run(
+            ["999"],
+            {"999": ["missing_or_unspecified", "male", "female"]},
+            ctx,
+        )
+        self.assertEqual(out[0]["match"], "missing_or_unspecified")
+        self.assertEqual(out[0]["confidence"], 0.9)
+        self.assertIn("missing code", out[0]["reason"].lower())
+
+    def test_values_phase_missing_code_abstains_between_matching_terms(self):
+        ctx = SuggestionContext(
+            phase="values",
+            mapping=_make_mapping(),
+            described_database=None,
+            rules=_RULES,
+            threshold=0.8,
+            margin=PRODUCTION_MARGIN,
+        )
+        out = ValueRegexMatcher().run(
+            ["999"],
+            {"999": ["missing", "unknown"]},
+            ctx,
+        )
+        self.assertIsNone(out[0]["match"])
+        self.assertIn("matches 2 terms", out[0]["reason"])
 
     def test_values_phase_maps_one_to_yes_and_zero_to_no(self):
         """The {1, 0} yes/no set is positional; 1 must map to the yes term
@@ -454,7 +664,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = ValueRegexMatcher().run(
             ["1", "0"],
@@ -472,7 +682,7 @@ class TestValueRegexMatcher(unittest.TestCase):
             described_database="db",
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
             column_values={"db": {"col": ["abc", "def"]}},
         )
         out = ValueRegexMatcher().run(
@@ -492,7 +702,7 @@ class TestStringMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.05,
+            margin=PRODUCTION_MARGIN,
         )
         out = StringMatcher().run(
             ["jaar_van_diagnose"],
@@ -512,7 +722,7 @@ class TestStringMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = StringMatcher().run(
             ["surv1"],
@@ -526,6 +736,11 @@ class TestStringMatcher(unittest.TestCase):
         self.assertIn("margin", out[0]["reason"])
 
     def test_alg_v7_abstains(self):
+        """A column 'alg_v7' against numbered sibling variables without an
+        exact key: the siblings sit within the margin of each other, so
+        the string matcher abstains. (When the schema does contain the
+        exact key, the exact match wins — that is correct and covered by
+        the production-margin behaviour.)"""
         mapping = _make_mapping()
         keys = [
             "alg_v1",
@@ -534,7 +749,6 @@ class TestStringMatcher(unittest.TestCase):
             "alg_v4",
             "alg_v5",
             "alg_v6",
-            "alg_v7",
             "alg_v8",
             "alg_v9",
         ]
@@ -544,7 +758,7 @@ class TestStringMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = StringMatcher().run(
             ["alg_v7"],
@@ -561,7 +775,7 @@ class TestStringMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.1,
+            margin=PRODUCTION_MARGIN,
         )
         out = StringMatcher().run([""], {"*": VARIABLE_KEYS}, ctx)
         self.assertIsNone(out[0]["match"])
@@ -578,7 +792,7 @@ class TestStringMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.05,
+            margin=PRODUCTION_MARGIN,
         )
         terms = ["male", "female", "missing_or_unspecified"]
         schema_slice = {
@@ -601,7 +815,7 @@ class TestStringMatcher(unittest.TestCase):
             described_database=None,
             rules=_RULES,
             threshold=0.8,
-            margin=0.05,
+            margin=PRODUCTION_MARGIN,
         )
         out = StringMatcher().run(["unknown"], {}, ctx)
         self.assertIsNone(out[0]["match"])

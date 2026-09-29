@@ -35,6 +35,10 @@ class SuggestionContext:
         rules: Parsed ``suggestion_rules.json`` (versioned, loaded once).
         column_values: ``database -> column -> [distinct values]`` for the
             variables phase value-type regexes.
+        item_column_values: For the values phase, ``value -> [all distinct
+            values of the column the value belongs to]``. Value-set rules
+            only fire when the whole column (minus missing codes) falls
+            inside one of the rule's sets.
         value_targets: For the values phase, ``database -> local_column ->
             (variable_key, [distinct values])`` describing which variable each
             value maps into and the terms available for it.
@@ -49,6 +53,7 @@ class SuggestionContext:
     margin: float = 0.05
     rules: Optional[dict] = None
     column_values: dict = field(default_factory=dict)
+    item_column_values: dict = field(default_factory=dict)
     value_targets: dict = field(default_factory=dict)
     dictionary: Optional[dict] = None
 
