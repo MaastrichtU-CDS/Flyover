@@ -3,9 +3,11 @@ import { onMounted, ref } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { useStatusStore } from '@/stores/status'
+import { useSuggestionsStore } from '@/stores/suggestions'
 import { useNavigation } from '@/composables/useNavigation'
 
 const status = useStatusStore()
+const suggestions = useSuggestionsStore()
 const { refreshDataExists } = useNavigation()
 
 const dataExists = ref(true)
@@ -103,6 +105,9 @@ async function uploadSemanticMap() {
       filename: file.name,
       timestamp: new Date().toISOString(),
     })
+    // A new map resets the describe fields, so earlier suggestion reviews
+    // no longer apply to them.
+    await suggestions.resetMarks()
     
     // If there are warnings, keep the card visible so users can see the warnings in the box
     // If no warnings, hide the card

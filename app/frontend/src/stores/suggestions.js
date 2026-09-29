@@ -169,6 +169,23 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
   }
 
+  // Forget every review mark, in both phases. Uploading a semantic map
+  // starts the describe flow over: the fields are rebuilt from the new map
+  // (even when it is the same file), so a surviving mark would describe a
+  // field that no longer holds what was reviewed ("reviewed" next to an
+  // empty dropdown). The job fingerprint cannot catch this: the same map
+  // over the same data yields the same job.
+  async function resetMarks() {
+    for (const phase of ['variables', 'values']) {
+      const m = marks[phase]
+      for (const bucket of ['applied', 'touched', 'dismissed', 'matches']) {
+        for (const key of Object.keys(m[bucket])) delete m[bucket][key]
+      }
+      m.fingerprint = null
+      await _persistMarks(phase)
+    }
+  }
+
   // Adopt or expire the phase's marks when a job fingerprint arrives.
   // Decision D3: expiry is per key — a new job keeps applied/touched/
   // dismissed marks for keys whose suggestion (match) is unchanged in
@@ -503,6 +520,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     bumpPriority,
     loadCoachmark,
     markCoachmarkSeen,
+    resetMarks,
     markApplied,
     markUserTouched,
     dismiss,

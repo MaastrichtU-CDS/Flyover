@@ -423,6 +423,31 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(saved.dismissed).toContain('db1_leeftijd')
   })
 
+  it('resetMarks forgets every mark in both phases and persists that', async () => {
+    const s = useSuggestionsStore()
+    s.setPhase('variables')
+    s.markApplied('db1_a')
+    s.markUserTouched('db1_a')
+    s.dismiss('db1_b')
+    s.setPhase('values')
+    s.markApplied('db1_c_1')
+
+    await s.resetMarks()
+
+    for (const phase of ['variables', 'values']) {
+      s.setPhase(phase)
+      expect(s.unreviewedKeys()).toEqual([])
+      const saved = db.saveData.mock.calls
+        .map((c) => c[1])
+        .filter((row) => row.key === `suggestion_marks_${phase}`)
+        .at(-1)
+      expect(saved).toMatchObject({ applied: [], touched: [], dismissed: [], fingerprint: null })
+    }
+    s.setPhase('variables')
+    expect(s.isTouched('db1_a')).toBe(false)
+    expect(s.isDismissed('db1_b')).toBe(false)
+  })
+
   it('marks are restored from IndexedDB on init', async () => {
     db.getData.mockResolvedValue({
       key: 'suggestion_marks_variables',
