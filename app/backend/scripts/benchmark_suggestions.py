@@ -93,6 +93,11 @@ AYA_SITES: dict[str, tuple[str, ...]] = {
     "YSRCCYP-Leeds": ("AYA_cancer_schema.jsonld",),
 }
 
+# The variables page pre-fills only records at or above the service
+# threshold; the values page pre-fills every match. The report models
+# what each page actually pre-fills.
+VALUES_PREFILL_THRESHOLD = 0.0
+
 SWEEP_THRESHOLDS = [round(0.60 + 0.05 * i, 2) for i in range(8)]  # 0.60..0.95
 SWEEP_MARGINS = [round(0.02 + 0.01 * i, 2) for i in range(14)]  # 0.02..0.15
 
@@ -318,8 +323,10 @@ def _empty_counts() -> dict[str, int]:
         "total": 0,
         "correct": 0,
         "correct3": 0,
+        "prefilled_correct": 0,
         "abstain": 0,
         "false_accept": 0,
+        "wrong_hint": 0,
         "accepted": 0,
         "alias_matched": 0,
         "value_regex_matched": 0,
@@ -351,9 +358,17 @@ def _update_counts(
     if truth and match == truth:
         counts["correct"] += 1
         counts["correct3"] += 1
+        # The describe views pre-fill only records at or above the
+        # threshold; below it a match is a hint the user must pick.
+        if confidence >= threshold:
+            counts["prefilled_correct"] += 1
         return
     if truth and confidence >= threshold:
         counts["false_accept"] += 1
+    elif truth:
+        # Wrong but below the threshold: shown as a hint pill, never
+        # pre-filled. Not a false accept, but noise the user must ignore.
+        counts["wrong_hint"] += 1
     # recall@3: the truth may sit in the alternatives.
     alts = rec.get("alternatives") or []
     if truth and any(a.get("match") == truth for a in alts):
@@ -383,6 +398,10 @@ def _run_variables(
         name: list(cols) for name, (_key, cols) in _site_columns(site_data).items()
     }
     truth = _column_truth(site_data)
+    if not columns_by_db:
+        # A site whose branch has no mapped databases (IGR-Paris today)
+        # has nothing to evaluate; not a failed job.
+        return _empty_counts(), 0.0
     cache = _FakeSessionCache(JSONLDMapping.from_dict(others))
     rdf = _FakeRdfStore(columns_by_db)
 
@@ -406,6 +425,9 @@ def _run_values(
     service: SuggestionService, values_mapping: dict, site_data: dict
 ) -> tuple[dict[str, int], float]:
     truth, csvs = _value_truth_and_csv(site_data)
+    if not truth:
+        # No categorical localMappings to evaluate for this site.
+        return _empty_counts(), 0.0
     columns_by_db = {}
     for db, col in csvs:
         columns_by_db.setdefault(db, [])
@@ -424,8 +446,11 @@ def _run_values(
 
     counts = _empty_counts()
     for (db, col, value), term in truth.items():
+        # The values page pre-fills every match whatever its confidence
+        # (value scores sit on another scale than column names), so every
+        # match counts as pre-filled: a wrong one is a false accept.
         _update_counts(
-            counts, records.get(f"{db}_{col}_{value}"), term, service.config.threshold
+            counts, records.get(f"{db}_{col}_{value}"), term, VALUES_PREFILL_THRESHOLD
         )
     return counts, elapsed
 
@@ -441,7 +466,8 @@ def _counts_row(label: str, counts: dict[str, int], seconds: float) -> str:
         precision = f"{counts['correct'] / counts['accepted']:.1%}"
     return (
         f"| {label} | {counts['total']} | {_rate(counts, 'correct')} | "
-        f"{_rate(counts, 'correct3')} | {_rate(counts, 'abstain')} | "
+        f"{_rate(counts, 'correct3')} | {_rate(counts, 'prefilled_correct')} | "
+        f"{_rate(counts, 'abstain')} | "
         f"{_rate(counts, 'false_accept')} | {precision} | "
         f"{counts['alias_matched']} / {counts['value_regex_matched']} / {counts['string_matched']} | "
         f"{seconds:.2f}s |"
@@ -449,10 +475,10 @@ def _counts_row(label: str, counts: dict[str, int], seconds: float) -> str:
 
 
 _HEADER = (
-    "| Site | Items | Recall@1 | Recall@3 | Abstain | False-accept | Precision (accepted) | "
-    "alias / value_regex / string | Wall-clock |"
+    "| Site | Items | Recall@1 | Recall@3 | Pre-filled correct | Abstain | False-accept | "
+    "Precision (accepted) | alias / value_regex / string | Wall-clock |"
 )
-_SEP = "|---|---|---|---|---|---|---|---|---|"
+_SEP = "|---|---|---|---|---|---|---|---|---|---|"
 
 
 def main() -> None:
@@ -577,10 +603,22 @@ def main() -> None:
     if args.sweep:
         lines.append("\n## Parameter sweep (variables phase, pooled)\n")
         lines.append(
-            "Scores pooled over all sites: recall@1 minus false-accept (higher is better).\n"
+            "Scored on what the variables page pre-fills (records at or above the "
+            "threshold): correct pre-fills minus wrong pre-fills (false-accept), "
+            "pooled over all sites; higher is better. Recall@1 counts every "
+            "correct match at any confidence, so on its own it cannot be traded "
+            "against false-accept: raising the threshold lowers false-accept "
+            "without costing recall@1. The score does not count wrong hints "
+            "(wrong matches below the threshold, shown as pills but never "
+            "pre-filled): a smaller margin abstains less, which adds correct "
+            "pre-fills but also wrong hints, so read both columns before "
+            "changing DEFAULT_MARGIN.\n"
         )
-        lines.append("| Threshold | Margin | Recall@1 | False-accept | Score |")
-        lines.append("|---|---|---|---|---|")
+        lines.append(
+            "| Threshold | Margin | Recall@1 | Pre-filled correct | False-accept | "
+            "Wrong hints | Score |"
+        )
+        lines.append("|---|---|---|---|---|---|---|")
         best: Optional[tuple[float, float, float]] = None
         sweep_counts: dict[tuple[float, float], dict[str, int]] = {}
         for threshold in SWEEP_THRESHOLDS:
@@ -596,18 +634,22 @@ def main() -> None:
             if not counts["total"]:
                 continue
             recall = counts["correct"] / counts["total"]
+            prefilled = counts["prefilled_correct"] / counts["total"]
             false = counts["false_accept"] / counts["total"]
-            score = recall - false
+            hints = counts["wrong_hint"] / counts["total"]
+            score = prefilled - false
             lines.append(
-                f"| {threshold:.2f} | {margin:.2f} | {recall:.1%} | {false:.1%} | {score:+.3f} |"
+                f"| {threshold:.2f} | {margin:.2f} | {recall:.1%} | {prefilled:.1%} | "
+                f"{false:.1%} | {hints:.1%} | {score:+.3f} |"
             )
             if best is None or score > best[2]:
                 best = (threshold, margin, score)
         if best:
             lines.append(
-                f"\nBest combination: threshold={best[0]:.2f}, margin={best[1]:.2f} "
-                f"(score {best[2]:+.3f}). If it differs from DEFAULT_THRESHOLD/"
-                f"DEFAULT_MARGIN, update services/suggestions/__init__.py and rerun."
+                f"\nBest by score: threshold={best[0]:.2f}, margin={best[1]:.2f} "
+                f"(score {best[2]:+.3f}). The score ignores wrong hints; weigh "
+                f"that column before changing DEFAULT_THRESHOLD/DEFAULT_MARGIN "
+                f"in services/suggestions/__init__.py."
             )
 
     output = "\n".join(lines) + "\n"
