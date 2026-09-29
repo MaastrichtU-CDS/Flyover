@@ -43,11 +43,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections import Counter
 from datetime import date
 from pathlib import Path
-from typing import Any, Optional
-
-from services.rdf_store_service import RDFStoreService
+from typing import Any, Callable, Optional
 
 from . import SuggestionContext
 
@@ -149,8 +148,21 @@ def _variable_label(variable: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
-def jaro_winkler(a: str, b: str, prefix_weight: float = 0.1) -> float:
-    """Return Jaro-Winkler similarity in [0, 1]."""
+def jaro_winkler(
+    a: str, b: str, prefix_weight: float = 0.1, min_score: float = 0.0
+) -> float:
+    """Return Jaro-Winkler similarity in [0, 1].
+
+    ``min_score`` is a hot-loop escape hatch: when the matches seen so far
+    prove the final score cannot reach it, the function bails out and
+    returns 0.0 early instead of finishing the O(len^2) scan. Callers that
+    only compare the result against their floor (the alias matcher) pass
+    the floor; without ``min_score`` the result is exact.
+
+    The match scan uses ``str.find`` (C speed) instead of a per-character
+    Python loop over the match window: on the target profile the fuzzy
+    pass over thousands of remembered labels dominated the job runtime.
+    """
     a = a or ""
     b = b or ""
     if a == b:
@@ -158,29 +170,44 @@ def jaro_winkler(a: str, b: str, prefix_weight: float = 0.1) -> float:
     if not a or not b:
         return 0.0
 
-    match_distance = max(len(a), len(b)) // 2 - 1
+    la, lb = len(a), len(b)
+    match_distance = max(la, lb) // 2 - 1
     if match_distance < 0:
         match_distance = 0
-    a_matches = [False] * len(a)
-    b_matches = [False] * len(b)
+    a_matches = bytearray(la)
+    b_matches = bytearray(lb)
     matches = 0
+    max_prefix_boost = 4 * prefix_weight
+    shares_first_char = a[0] == b[0]
 
     for i, ch in enumerate(a):
         start = max(0, i - match_distance)
-        end = min(i + match_distance + 1, len(b))
-        for j in range(start, end):
-            if not b_matches[j] and ch == b[j]:
-                a_matches[i] = True
-                b_matches[j] = True
-                matches += 1
-                break
+        end = min(i + match_distance + 1, lb)
+        j = b.find(ch, start, end)
+        while j != -1 and b_matches[j]:
+            j = b.find(ch, j + 1, end)
+        if j != -1:
+            a_matches[i] = 1
+            b_matches[j] = 1
+            matches += 1
+        elif min_score:
+            # Even if every remaining character of a matched, could the
+            # final score reach the floor?
+            m_max = matches + la - i - 1
+            if m_max > lb:
+                m_max = lb
+            jaro_max = (m_max / la + m_max / lb + 1.0) / 3.0
+            if jaro_max < 1.0 and shares_first_char:
+                jaro_max = jaro_max + max_prefix_boost * (1.0 - jaro_max)
+            if jaro_max < min_score:
+                return 0.0
 
     if matches == 0:
         return 0.0
 
     transpositions = 0
     k = 0
-    for i in range(len(a)):
+    for i in range(la):
         if not a_matches[i]:
             continue
         while not b_matches[k]:
@@ -190,17 +217,38 @@ def jaro_winkler(a: str, b: str, prefix_weight: float = 0.1) -> float:
         k += 1
     transpositions //= 2
 
-    jaro = (
-        matches / len(a) + matches / len(b) + (matches - transpositions) / matches
-    ) / 3.0
+    jaro = (matches / la + matches / lb + (matches - transpositions) / matches) / 3.0
 
     prefix = 0
-    for i in range(min(4, len(a), len(b))):
+    for i in range(min(4, la, lb)):
         if a[i] == b[i]:
             prefix += 1
         else:
             break
     return jaro + prefix * prefix_weight * (1.0 - jaro)
+
+
+def jaro_winkler_upper_bound(
+    a: str, b: str, a_counts: Counter, b_counts: Counter
+) -> float:
+    """Cheap sound upper bound on :func:`jaro_winkler` for ``a`` vs ``b``.
+
+    The number of matching positions is bounded by the multiset
+    intersection of the two strings' characters, which bounds Jaro, and
+    the Winkler prefix boost adds at most ``0.4 * (1 - jaro)``. Both
+    Counter arguments are pre-computed by the caller; the bound costs a
+    pass over the distinct characters instead of the O(len^2) match
+    scan, so matchers can skip candidates that cannot reach their floor
+    or the running top-2 without computing the real similarity.
+    """
+    la, lb = len(a), len(b)
+    if not la or not lb:
+        return 0.0
+    m = sum(min(n, b_counts.get(c, 0)) for c, n in a_counts.items())
+    jaro_bound = (m / la + m / lb + 1.0) / 3.0
+    if jaro_bound >= 1.0:
+        return 1.0
+    return min(1.0, 0.4 + 0.6 * jaro_bound)
 
 
 def jaccard(a: set[str], b: set[str]) -> float:
@@ -250,7 +298,23 @@ class AliasMemory(dict):
             self.conflicts[label] = (existing[0], target)
 
 
-def build_alias_memory(mapping: Any, described_database: Optional[str]) -> AliasMemory:
+def _default_name_match(mapping_db_name: str, described_database: str) -> bool:
+    """Fallback database-name match when no matcher is injected.
+
+    Mirrors the semantics of RDFStoreService.graph_database_find_name_match
+    for the common case: an unnamed database matches anything, otherwise
+    the names must be equal.
+    """
+    if not mapping_db_name:
+        return True
+    return mapping_db_name == described_database
+
+
+def build_alias_memory(
+    mapping: Any,
+    described_database: Optional[str],
+    name_match: Optional[Callable[[str, str], bool]] = None,
+) -> AliasMemory:
     """Build ``normalise(label) -> target`` memory, excluding ``described_database``.
 
     For the variables phase the target is a variable key; for the values
@@ -258,10 +322,9 @@ def build_alias_memory(mapping: Any, described_database: Optional[str]) -> Alias
     :func:`build_value_alias_memory`.
     """
     memory = AliasMemory()
+    match = name_match or _default_name_match
     for db, column in _iter_columns(mapping):
-        if described_database and RDFStoreService.graph_database_find_name_match(
-            db.name, described_database
-        ):
+        if described_database and match(db.name, described_database):
             continue
         local = column.local_column
         if not local:
@@ -275,14 +338,15 @@ def build_alias_memory(mapping: Any, described_database: Optional[str]) -> Alias
 
 
 def build_value_alias_memory(
-    mapping: Any, described_database: Optional[str]
+    mapping: Any,
+    described_database: Optional[str],
+    name_match: Optional[Callable[[str, str], bool]] = None,
 ) -> AliasMemory:
     """Build ``normalise(value) -> (term, db)`` memory from localMappings."""
     memory = AliasMemory()
+    match = name_match or _default_name_match
     for db, column in _iter_columns(mapping):
-        if described_database and RDFStoreService.graph_database_find_name_match(
-            db.name, described_database
-        ):
+        if described_database and match(db.name, described_database):
             continue
         var_key = column.get_variable_key()
         if not var_key:
@@ -342,13 +406,29 @@ class AliasMatcher:
         margin = self.margin if self.margin is not None else ctx.margin
         targets = set(schema_slice.get("*", []))
         if phase == "values":
-            memory = build_value_alias_memory(ctx.mapping, ctx.described_database)
+            memory = build_value_alias_memory(
+                ctx.mapping, ctx.described_database, ctx.database_name_match
+            )
             kind = "value"
             kind_target = "term"
         else:
-            memory = build_alias_memory(ctx.mapping, ctx.described_database)
+            memory = build_alias_memory(
+                ctx.mapping, ctx.described_database, ctx.database_name_match
+            )
             kind = "column"
             kind_target = "variable"
+
+        # Fuzzy-scan accelerators, computed once per run:
+        # - keys bucketed by first character: the similarity floor (0.84)
+        #   is out of reach in practice without a shared first character,
+        #   so the scan only touches the item's own bucket;
+        # - character counts per key for the cheap sound upper bound that
+        #   replaces the O(len^2) similarity for hopeless candidates.
+        by_first_char: dict[str, list[str]] = {}
+        for key in memory:
+            if key:
+                by_first_char.setdefault(key[0], []).append(key)
+        key_counts = {key: Counter(key) for key in memory}
 
         def _no_hit(item: str, reason: str = "No alias memory hit.") -> dict:
             return {"item": item, "match": None, "confidence": 0.0, "reason": reason}
@@ -383,7 +463,15 @@ class AliasMatcher:
                     best = (target, 1.0, source_db)
 
             if best is None:
-                best, abstain_reason = self._fuzzy_best(norm, memory, targets, margin)
+                best, abstain_reason = self._fuzzy_best(
+                    norm,
+                    Counter(norm),
+                    key_counts,
+                    by_first_char,
+                    memory,
+                    targets,
+                    margin,
+                )
                 if best is None:
                     records.append(_no_hit(item, abstain_reason))
                     continue
@@ -407,6 +495,9 @@ class AliasMatcher:
     def _fuzzy_best(
         self,
         norm: str,
+        norm_counts: Counter,
+        key_counts: dict[str, Counter],
+        by_first_char: dict[str, list[str]],
         memory: AliasMemory,
         targets: set[str],
         margin: float,
@@ -421,14 +512,31 @@ class AliasMatcher:
         coin flip between two remembered columns is not.
         """
         candidates: list[tuple[str, float, str]] = []
-        for key, (target, source_db) in memory.items():
+        # The bucket already guarantees a shared first character.
+        for key in by_first_char.get(norm[0], ()):
+            target, source_db = memory[key]
             if key in memory.conflicts:
                 continue
             if targets and target not in targets:
                 continue
             if _differs_only_in_digits(norm, key):
                 continue
-            sim = jaro_winkler(norm, key)
+            # Cheap blocks before the O(len^2) similarity. With thousands
+            # of remembered labels these cut the real comparisons to a
+            # small fraction:
+            # - sound: a candidate whose Jaro-Winkler upper bound (from
+            #   the multiset char overlap) cannot reach the floor is
+            #   never a hit;
+            # - heuristic: the floor sits at 0.84, which in practice
+            #   needs a length gap under half the longer label.
+            if abs(len(norm) - len(key)) > max(len(norm), len(key)) // 2:
+                continue
+            if (
+                jaro_winkler_upper_bound(norm, key, norm_counts, key_counts[key])
+                < self.similarity_floor
+            ):
+                continue
+            sim = jaro_winkler(norm, key, min_score=self.similarity_floor)
             if sim >= self.similarity_floor:
                 candidates.append((target, sim, source_db))
         if not candidates:
@@ -776,14 +884,17 @@ class ValueRegexMatcher:
 # ---------------------------------------------------------------------------
 
 
-def _score_string(item_tokens: list[str], candidate_label: str, rules: dict) -> float:
-    """Best of Jaro-Winkler on joined tokens and Jaccard on token sets."""
-    cand_tokens = tokenise(candidate_label, rules)
+def _score_tokens(item_tokens: list[str], cand_tokens: list[str]) -> float:
+    """Best of Jaro-Winkler on joined tokens and Jaccard on token sets.
+
+    Both token lists are pre-computed by the caller: tokenising every
+    candidate label for every item used to dominate the runtime on
+    large schemas (600 columns x every variable key re-tokenised the
+    candidate side on each of the 600 passes).
+    """
     if not item_tokens or not cand_tokens:
         return 0.0
-    joined_item = " ".join(item_tokens)
-    joined_cand = " ".join(cand_tokens)
-    jw = jaro_winkler(joined_item, joined_cand)
+    jw = jaro_winkler(" ".join(item_tokens), " ".join(cand_tokens))
     jac = jaccard(set(item_tokens), set(cand_tokens))
     return max(jw, jac)
 
@@ -817,9 +928,10 @@ class StringMatcher:
                     targets.update(terms)
             targets = list(targets)
 
-        # Pre-compute candidate labels (key + label surface).
+        # Pre-compute candidate labels AND their tokens once: scoring one
+        # item must not re-tokenise every candidate (see _score_tokens).
         mapping = ctx.mapping
-        candidates: list[tuple[str, str]] = []
+        candidates: list[tuple[str, list[str]]] = []
         for key in targets:
             label = key.replace("_", " ")
             if mapping is not None:
@@ -827,7 +939,7 @@ class StringMatcher:
                 vlabel = _variable_label(variable)
                 if vlabel:
                     label = vlabel
-            candidates.append((key, label))
+            candidates.append((key, tokenise(label, rules)))
 
         out: list[dict] = []
         for item in items:
@@ -844,8 +956,8 @@ class StringMatcher:
                 continue
 
             scored: list[tuple[str, float]] = []
-            for key, label in candidates:
-                score = _score_string(item_tokens, label, rules)
+            for key, cand_tokens in candidates:
+                score = _score_tokens(item_tokens, cand_tokens)
                 scored.append((key, score))
             scored.sort(key=lambda x: x[1], reverse=True)
 

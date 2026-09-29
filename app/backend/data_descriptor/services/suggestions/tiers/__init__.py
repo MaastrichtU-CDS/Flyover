@@ -18,7 +18,7 @@ issue).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, runtime_checkable
 
 
 @dataclass
@@ -44,6 +44,11 @@ class SuggestionContext:
             value maps into and the terms available for it.
         dictionary: Optional site-provided ``{column: label}`` dictionary hook;
             reserved for a follow-up issue, unused by tier 1.
+        database_name_match: injected matcher deciding whether a mapping
+            database name refers to the described database
+            (``RDFStoreService.graph_database_find_name_match``); tier 1
+            uses it for leave-one-site-out. Injected so rules.py does not
+            import the RDF store service.
     """
 
     phase: str
@@ -55,6 +60,7 @@ class SuggestionContext:
     column_values: dict = field(default_factory=dict)
     item_column_values: dict = field(default_factory=dict)
     value_targets: dict = field(default_factory=dict)
+    database_name_match: Optional[Callable[[str, str], bool]] = None
     dictionary: Optional[dict] = None
 
 
