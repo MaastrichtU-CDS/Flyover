@@ -3,101 +3,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 // ---------------------------------------------------------------------------
-// Zero JSON-LD writes without an explicit accept.
+// Zero JSON-LD writes without an explicit review (WS1).
 //
-// The plan requires: "a Vitest test loads suggestions, asserts
-// jsonld.getMapping() unchanged, accepts one, asserts only that column
-// changed." This test mounts DescribeVariablesView with the suggestions
-// store enabled and arriving suggestions, and asserts that the JSON-LD
-// writer (updateMappingFromForm) is NOT called until the user explicitly
-// accepts a suggestion via the badge.
+// The plan invariant: a suggestion becomes a mapping only through an
+// explicit accept in the UI. The pre-fill watch may set the dropdown for
+// display, but nothing may reach the JSON-LD writers
+// (updateMappingFromForm / updateCategoryMapping) until the user reviews
+// the field — and an accept must change only the accepted column.
+//
+// These tests run against the REAL Pinia suggestions store (only `api`
+// and `db` are mocked) so records arrive through refresh() and the
+// views' pre-fill watchers actually fire. The previous version mocked the
+// whole store as a plain object, which was not reactive: the watcher
+// never ran and the test passed vacuously.
 // ---------------------------------------------------------------------------
-
-// Use vi.hoisted so the mock factory closures can reference these without
-// the "Cannot access X before initialization" hoisting error.
-const { updateMappingFromForm, getMapping, store } = vi.hoisted(() => {
-  const store = {
-    enabled: true,
-    variables: {
-      status: 'done',
-      reason: null,
-      progress: { done: 2, total: 2 },
-      byKey: {
-        test_db_morph: {
-          status: 'done',
-          item: 'morph',
-          match: 'tumour_morphology_icd_o',
-          display: 'Tumour Morphology ICD-O',
-          confidence: 0.92,
-          reason: 'Alias hit from christie',
-          source: 'alias',
-          tier: 1,
-          alternatives: [],
-        },
-        test_db_sex: {
-          status: 'done',
-          item: 'sex',
-          match: 'biological_sex',
-          display: 'Biological Sex',
-          confidence: 0.9,
-          reason: 'Alias hit from christie',
-          source: 'alias',
-          tier: 1,
-          alternatives: [],
-        },
-      },
-    },
-    values: { status: 'idle', byKey: {}, progress: { done: 0, total: 0 } },
-    tiers: { 1: { state: 'active' }, 2: { state: 'inactive', reason: 'not enabled' } },
-    compute: 'host',
-    _applied: {},
-    _touched: {},
-    _dismissed: {},
-    isApplied(key) {
-      return !!this._applied[key]
-    },
-    isTouched(key) {
-      return !!this._touched[key]
-    },
-    isDismissed(key) {
-      return !!this._dismissed[key]
-    },
-    markApplied(key) {
-      this._applied[key] = true
-    },
-    markUserTouched(key) {
-      if (this._applied[key]) this._touched[key] = true
-    },
-    dismiss(key) {
-      this._dismissed[key] = true
-      delete this._applied[key]
-      delete this._touched[key]
-    },
-    clearAllApplied() {
-      const c = Object.keys(this._applied)
-      this._applied = {}
-      this._touched = {}
-      return c
-    },
-    unreviewedKeys() {
-      return Object.keys(this._applied).filter((k) => this._applied[k] && !this._touched[k])
-    },
-    init: vi.fn(async () => {}),
-    refresh: vi.fn(async () => {}),
-    startPolling: vi.fn(),
-    stopPolling: vi.fn(),
-    isPolling: () => false,
-    bumpPriority: vi.fn(async () => {}),
-    setPhase: vi.fn(),
-  }
-  return {
-    updateMappingFromForm: vi.fn(async () => {}),
-    getMapping: vi.fn(() => ({
-      test_db_morph: { description: 'Tumour Morphology ICD-O' },
-    })),
-    store,
-  }
-})
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
@@ -108,81 +27,261 @@ vi.mock('@/lib/db', () => ({
   getData: vi.fn(async () => null),
 }))
 
-vi.mock('@/lib/jsonld', () => ({
-  loadFromIndexedDB: vi.fn(async () => {}),
-  getGlobalVariableNames: vi.fn(() => ['Tumour Morphology ICD-O', 'Biological Sex']),
-  computePreselectionsForDatabases: vi.fn(() => ({
-    preselectedDescriptions: {},
-    preselectedDatatypes: {},
-    descriptionToDatatype: {},
-  })),
-  updateMappingFromForm,
-  getMapping,
-}))
-
-vi.mock('@/stores/suggestions', () => ({
-  useSuggestionsStore: () => store,
-  SOURCE_ICONS: { alias: 'fa-link', value_regex: 'fa-table-list', string: 'fa-text-width' },
-}))
+// Keep the real jsonld implementation (the store and the views use many of
+// its helpers) but spy on the two writers the invariant is about.
+vi.mock('@/lib/jsonld', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    updateMappingFromForm: vi.fn(actual.updateMappingFromForm),
+    updateCategoryMapping: vi.fn(actual.updateCategoryMapping),
+  }
+})
 
 import api from '@/services/api'
+import * as jsonld from '@/lib/jsonld'
+import { useSuggestionsStore } from '@/stores/suggestions'
 import DescribeVariablesView from '@/views/DescribeVariablesView.vue'
+import DescribeVariableDetailsView from '@/views/DescribeVariableDetailsView.vue'
 
-describe('DescribeVariablesView — zero writes without explicit accept', () => {
+const RouterLinkStub = {
+  props: ['to'],
+  template: '<a :href="String(to)"><slot /></a>',
+}
+
+const STATUS = {
+  enabled: true,
+  compute: 'host',
+  tiers: { 1: { state: 'active' } },
+  threshold: 0.8,
+  rules_version: 'test',
+}
+
+const VARIABLES_SNAPSHOT = {
+  status: 'done',
+  fingerprint: 'fp-variables-1',
+  progress: { done: 2, total: 2 },
+  error: null,
+  records: {
+    test_db_morph: {
+      status: 'done',
+      item: 'morph',
+      match: 'tumour_morphology_icd_o',
+      confidence: 0.92,
+      reason: "Alias: column 'morph' in database 'christie'",
+      source: 'alias',
+      tier: 1,
+      database: 'test_db',
+      column: 'morph',
+    },
+    test_db_sex: {
+      status: 'done',
+      item: 'sex',
+      match: 'biological_sex',
+      confidence: 0.9,
+      reason: "Alias: column 'sex' in database 'christie'",
+      source: 'alias',
+      tier: 1,
+      database: 'test_db',
+      column: 'sex',
+    },
+  },
+}
+
+const DETAILS_STATE = {
+  descriptive_info: {
+    patients: { sex: { type: 'categorical' } },
+  },
+  descriptive_info_details: {
+    patients: [{ Sex: [{ value: 'M', count: 80 }, { value: 'F', count: 70 }] }],
+  },
+  preselected_values: {},
+}
+
+const VALUES_SNAPSHOT = {
+  status: 'done',
+  fingerprint: 'fp-values-1',
+  progress: { done: 2, total: 2 },
+  error: null,
+  records: {
+    patients_sex_M: {
+      status: 'done',
+      item: 'M',
+      match: 'male',
+      confidence: 0.95,
+      reason: "Alias: value 'M' in database 'christie'",
+      source: 'alias',
+      tier: 1,
+      database: 'patients',
+      column: 'sex',
+      value: 'M',
+    },
+    patients_sex_F: {
+      status: 'done',
+      item: 'F',
+      match: 'female',
+      confidence: 0.95,
+      reason: "Alias: value 'F' in database 'christie'",
+      source: 'alias',
+      tier: 1,
+      database: 'patients',
+      column: 'sex',
+      value: 'F',
+    },
+  },
+}
+
+// Route api.get by URL so the store's status/poll calls and the views'
+// state calls can coexist in one mock.
+function mockApiRoutes(routes) {
+  api.get.mockImplementation(async (url) => {
+    for (const [prefix, response] of routes) {
+      if (url === prefix) return response
+    }
+    return { data: {} }
+  })
+  api.post.mockResolvedValue({ data: { status: 'started' } })
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  api.get.mockReset()
+  api.post.mockReset()
+  jsonld.updateMappingFromForm.mockClear()
+  jsonld.updateCategoryMapping.mockClear()
+})
+
+describe('DescribeVariablesView — zero writes without explicit review', () => {
   beforeEach(() => {
-    setActivePinia(createPinia())
-    api.get.mockReset()
-    api.post.mockReset()
-    updateMappingFromForm.mockClear()
-    store._applied = {}
-    store._touched = {}
-    store._dismissed = {}
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: VARIABLES_SNAPSHOT }],
+    ])
   })
 
-  it('does not write to JSON-LD when suggestions arrive but are not accepted', async () => {
-    api.get.mockResolvedValue({
-      data: { column_info: { test_db: ['morph', 'sex'] } },
-    })
-
+  it('pre-fills the dropdown for display but never calls updateMappingFromForm', async () => {
     const wrapper = mount(DescribeVariablesView)
     await flushPromises()
 
-    // Suggestions have arrived (store is pre-populated), but the user has not
-    // clicked any badge. The JSON-LD writer must not have been called.
-    expect(updateMappingFromForm).not.toHaveBeenCalled()
+    // The real store landed the records and the pre-fill watch fired: both
+    // fields are applied-but-unreviewed, so the review hint shows.
+    const store = useSuggestionsStore()
+    expect(store.isApplied('test_db_morph')).toBe(true)
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    expect(wrapper.text()).toContain('2 suggestions need review')
 
-    // The suggestion badge should be visible (suggestion is done and has display).
-    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
-    expect(badges.length).toBeGreaterThan(0)
+    // Nothing was written: no user review happened, so the JSON-LD writer
+    // must not have been called at all.
+    expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
   })
 
-  it('writes to JSON-LD only for the accepted column when the user accepts one suggestion', async () => {
-    api.get.mockResolvedValue({
-      data: { column_info: { test_db: ['morph', 'sex'] } },
-    })
-
+  it('persists only the accepted column when the user accepts one suggestion', async () => {
     const wrapper = mount(DescribeVariablesView)
     await flushPromises()
 
-    // Clear any calls from mount lifecycle.
-    updateMappingFromForm.mockClear()
-
-    // Accept the suggestion for 'morph' by triggering the badge accept event.
     const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
     expect(badges.length).toBe(2)
 
-    // The first badge is for 'morph' (first column in the page).
+    // Accept the suggestion for 'morph' (first column in display order).
     await badges[0].vm.$emit('accept')
     await flushPromises()
 
-    // Now updateMappingFromForm should have been called exactly once.
-    expect(updateMappingFromForm).toHaveBeenCalledTimes(1)
+    // Exactly one write, and its payload carries only the reviewed column.
+    expect(jsonld.updateMappingFromForm).toHaveBeenCalledTimes(1)
+    const payload = jsonld.updateMappingFromForm.mock.calls[0][0]
+    expect(payload.test_db_morph?.description).toBeTruthy()
+    expect(payload.test_db_sex).toBeUndefined()
 
-    // The call should include the morph column's form state, not sex's.
-    const callArg = updateMappingFromForm.mock.calls[0][0]
-    expect(callArg['test_db_morph']).toBeDefined()
-    expect(callArg['test_db_morph'].description).toBe('Tumour Morphology ICD-O')
-    // sex should not have a description set by the accept.
-    expect(callArg['test_db_sex']?.description).toBeFalsy()
+    // The explicit accept also marks the field reviewed (WS1.4): it must
+    // no longer count as unreviewed.
+    const store = useSuggestionsStore()
+    expect(store.isTouched('test_db_morph')).toBe(true)
+    expect(store.unreviewedKeys()).toEqual(['test_db_sex'])
+  })
+
+  it('restores an applied suggestion after a reload without writing it', async () => {
+    // Reload scenario: the applied marks survived in IndexedDB, the
+    // in-memory form state did not. Simulate the persisted marks on the
+    // real store before mounting.
+    const store = useSuggestionsStore()
+    store.setPhase('variables')
+    store.markApplied('test_db_morph')
+    store.markUserTouched('test_db_morph')
+
+    mount(DescribeVariablesView)
+    await flushPromises()
+
+    // The reviewed value is restored into the form state for display, but
+    // a value the user never reviewed in this session is not re-written.
+    expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
+  })
+})
+
+describe('DescribeVariableDetailsView — zero writes without explicit review', () => {
+  beforeEach(() => {
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: DETAILS_STATE }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: VALUES_SNAPSHOT }],
+    ])
+  })
+
+  function mountDetails() {
+    return mount(DescribeVariableDetailsView, {
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+  }
+
+  it('pre-fills the category dropdown for display but never calls updateCategoryMapping', async () => {
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    // The real store landed the records and the pre-fill watch fired.
+    const store = useSuggestionsStore()
+    expect(store.isApplied('patients_sex_M')).toBe(true)
+    expect(store.isApplied('patients_sex_F')).toBe(true)
+    expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
+    expect(wrapper.vm.categorySelections.patients_sex_F).toBe('Female')
+
+    // Nothing was written: category selections pre-filled by suggestions
+    // are display-only until reviewed.
+    expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+  })
+
+  it('persists only the accepted value when the user accepts one suggestion', async () => {
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    expect(badges.length).toBe(2)
+
+    await badges[0].vm.$emit('accept')
+    await flushPromises()
+
+    expect(jsonld.updateCategoryMapping).toHaveBeenCalledTimes(1)
+    const args = jsonld.updateCategoryMapping.mock.calls[0]
+    expect(args[3]).toBe('M') // categoryValue
+    expect(args[4]).toBe('Male') // selected option
+
+    // The accepted value is reviewed; the other is still display-only.
+    const store = useSuggestionsStore()
+    expect(store.isTouched('patients_sex_M')).toBe(true)
+    expect(store.unreviewedKeys()).toEqual(['patients_sex_F'])
+  })
+
+  it('does not call updateCategoryMapping when dismissing a never-persisted pre-fill', async () => {
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    await badges[0].vm.$emit('dismiss')
+    await flushPromises()
+
+    // Dismissing a pre-fill that was never written must not invoke the
+    // category writer with a previousOption that was never persisted.
+    expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+    const store = useSuggestionsStore()
+    expect(store.isDismissed('patients_sex_M')).toBe(true)
   })
 })
