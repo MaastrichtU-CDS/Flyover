@@ -89,69 +89,109 @@ const unavailableMessage = computed(() => {
 </script>
 
 <template>
+  <!-- A small grid: icon, status message and actions on the first row,
+       the tier note on its own full-width row underneath. Sharing one
+       flex row made the message and the long tier note wrap into each
+       other on normal widths. -->
   <div
     v-if="phaseState.status !== 'idle'"
     class="suggestion-status-bar"
   >
-    <i class="fas fa-lightbulb" />
-    <span v-if="phaseState.status === 'running'">
-      <i class="fas fa-spinner fa-spin" />
-      Suggestions: {{ progressText }} {{ itemLabel }}
-    </span>
-    <span v-else-if="phaseState.status === 'done'">
-      <template v-if="hasMatches">Suggestions ready — review the highlighted fields</template>
-      <template v-else>No matches found — fill in fields manually</template>
-    </span>
-    <span v-else-if="phaseState.status === 'failed'">
-      Suggestions unavailable — fill in fields manually
-    </span>
-    <span v-else-if="phaseState.status === 'unavailable'">
-      {{ unavailableMessage }}
-    </span>
-    <span class="suggestion-tier-note">{{ tierNote }}</span>
-    <button
-      v-if="hasMatches"
-      type="button"
-      class="btn btn-sm btn-link suggestion-help-link"
-      title="Show the explanation of the suggestion review flow again"
-      @click="$emit('show-coachmark')"
+    <i class="fas fa-lightbulb suggestion-status-icon" />
+    <div class="suggestion-status-message">
+      <template v-if="phaseState.status === 'running'">
+        <i class="fas fa-spinner fa-spin" />
+        Suggestions: {{ progressText }} {{ itemLabel }}
+      </template>
+      <template v-else-if="phaseState.status === 'done'">
+        <template v-if="hasMatches">
+          Suggestions ready — review the highlighted fields
+        </template>
+        <template v-else>
+          No matches found — fill in fields manually
+        </template>
+      </template>
+      <template v-else-if="phaseState.status === 'failed'">
+        Suggestions unavailable — fill in fields manually
+      </template>
+      <template v-else-if="phaseState.status === 'unavailable'">
+        {{ unavailableMessage }}
+      </template>
+    </div>
+    <div class="suggestion-status-actions">
+      <button
+        v-if="hasMatches"
+        type="button"
+        class="btn btn-sm btn-link suggestion-help-link"
+        title="Show the explanation of the suggestion review flow again"
+        @click="$emit('show-coachmark')"
+      >
+        How do suggestions work?
+      </button>
+      <button
+        v-if="unreviewedCount"
+        type="button"
+        class="btn btn-sm btn-outline-secondary suggestion-clear-all"
+        @click="$emit('clear-all')"
+      >
+        Clear all suggestions
+      </button>
+      <slot name="actions" />
+    </div>
+    <div
+      v-if="tierNote"
+      class="suggestion-tier-note"
     >
-      How do suggestions work?
-    </button>
-    <button
-      v-if="unreviewedCount"
-      type="button"
-      class="btn btn-sm btn-outline-secondary suggestion-clear-all"
-      @click="$emit('clear-all')"
-    >
-      Clear all suggestions
-    </button>
-    <slot name="actions" />
+      {{ tierNote }}
+    </div>
   </div>
 </template>
 
 <style scoped>
 .suggestion-status-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  column-gap: 0.75rem;
+  row-gap: 0.15rem;
+  padding: 0.6rem 0.9rem;
   margin-bottom: 0.5rem;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
   background: rgba(118, 75, 162, 0.08);
   border-radius: 4px;
-  font-size: 0.9em;
+  font-size: 0.9rem;
 }
 
+.suggestion-status-icon {
+  color: rgb(118, 75, 162);
+}
+
+.suggestion-status-message {
+  min-width: 0;
+  font-weight: 500;
+}
+
+.suggestion-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+/* Full width under the message (aligned with it, not with the icon). */
 .suggestion-tier-note {
-  color: #777;
-  font-size: 0.85em;
+  grid-column: 2 / -1;
+  color: #6c757d;
+  font-size: 0.8rem;
+}
+
+.suggestion-tier-note::first-letter {
+  text-transform: uppercase;
 }
 
 .suggestion-help-link {
-  margin-left: 0.5rem;
   padding: 0 0.25rem;
-  font-size: 0.85em;
+  font-size: 0.85rem;
   color: #764ba2;
   text-decoration: none;
 }
@@ -160,7 +200,16 @@ const unavailableMessage = computed(() => {
   text-decoration: underline;
 }
 
-.suggestion-clear-all {
-  margin-left: auto;
+/* Narrow screens: the actions drop to their own row under the message. */
+@media (max-width: 767.98px) {
+  .suggestion-status-bar {
+    grid-template-columns: auto 1fr;
+  }
+
+  .suggestion-status-actions {
+    grid-column: 2;
+    flex-wrap: wrap;
+    white-space: normal;
+  }
 }
 </style>
