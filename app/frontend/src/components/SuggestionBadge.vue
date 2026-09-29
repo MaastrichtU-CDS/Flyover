@@ -14,23 +14,32 @@
  *   applied — whether the user has accepted this suggestion.
  *   touched — whether the user subsequently edited the field.
  *   showDismiss — render the × dismiss button (default true).
+ *   coachmark — show the first-visit review callout anchored to this pill.
+ *   coachmarkCopy — { title, body } copy for that callout.
  *
  * Emits:
  *   dismiss — the user clicked ×.
- *   accept — the user clicked the badge body (explicit accept action).
+ *   accept — the user clicked the accept button.
+ *   coachmark-close — the user acknowledged the callout.
  */
 
 import { computed } from 'vue'
 import { SOURCE_ICONS } from '@/stores/suggestions'
+import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 
 const props = defineProps({
   suggestion: { type: Object, required: true },
   applied: { type: Boolean, default: false },
   touched: { type: Boolean, default: false },
   showDismiss: { type: Boolean, default: true },
+  coachmark: { type: Boolean, default: false },
+  coachmarkCopy: {
+    type: Object,
+    default: () => ({ title: '', body: '' }),
+  },
 })
 
-const emit = defineEmits(['dismiss', 'accept'])
+const emit = defineEmits(['dismiss', 'accept', 'coachmark-close'])
 
 const sourceIcon = computed(() => {
   return SOURCE_ICONS[props.suggestion.source] || 'fa-lightbulb'
@@ -114,11 +123,20 @@ const acceptLabel = computed(() => {
     >
       &times;
     </button>
+    <!-- First-visit review cue: anchored under this pill. The root span is
+         position: relative so the callout needs no positioning library. -->
+    <SuggestionCoachmark
+      v-if="coachmark"
+      :title="coachmarkCopy.title"
+      :body="coachmarkCopy.body"
+      @close="emit('coachmark-close')"
+    />
   </span>
 </template>
 
 <style scoped>
 .suggestion-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0;

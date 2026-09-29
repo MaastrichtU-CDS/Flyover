@@ -6,6 +6,7 @@ import * as jsonld from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const status = useStatusStore()
@@ -217,6 +218,7 @@ function acceptSuggestion(dbName, item) {
   suggestions.markApplied(key)
   // Go through the same path as a manual selection.
   onDescriptionChange(dbName, item, { target: { value: entry.display } })
+  maybeCloseCoachmark()
 }
 
 function dismissSuggestion(dbName, item) {
@@ -225,6 +227,7 @@ function dismissSuggestion(dbName, item) {
   // cleared on dismissal; a manually chosen value must survive it.
   const prefilled = suggestions.isApplied(key) && !suggestions.isTouched(key)
   suggestions.dismiss(key)
+  maybeCloseCoachmark()
   if (prefilled && formStateCache[key]?.description) {
     formStateCache[key].description = ''
     autoPopulateDatatype(dbName, item)
@@ -341,6 +344,74 @@ function jumpToNextUnreviewed() {
     })
     return
   }
+}
+
+// ---------------------------------------------------------------------------
+// First-visit cue (WS2): a small non-modal callout on the first unreviewed
+// suggestion pill, shown once per phase. It tells the user the fields were
+// pre-filled for them and must be reviewed before they can continue. The
+// "How do suggestions work?" link in the status bar reopens it.
+// ---------------------------------------------------------------------------
+
+const COACHMARK_COPY = {
+  title: 'Review suggested mappings',
+  body: 'Flyover filled in this field from its mapping suggestions. Nothing is saved until you review it: check the dropdown, then click the pill to confirm, or × to dismiss. You can continue once every suggestion is reviewed.',
+}
+
+// True when the user reopened the cue via the status-bar link; bypasses
+// the persisted "seen" flag until closed again.
+const coachmarkRequested = ref(false)
+
+const showCoachmark = computed(
+  () =>
+    suggestions.enabled &&
+    suggestions.variables.status === 'done' &&
+    unreviewedFieldCount.value > 0 &&
+    (coachmarkRequested.value ||
+      (suggestions.coachmarkSeen.loaded && !suggestions.coachmarkSeen.variables)),
+)
+
+function unreviewedCountForDatabase(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  return cols.filter((item) => needsSuggestionReview(dbName, item)).length
+}
+
+// The callout anchors to the first unreviewed pill in display order on
+// the current page. Databases start collapsed, so when no pill is
+// rendered it anchors to the header of the first database that has
+// suggestions; once expanded it moves to the first pill.
+const coachmarkTarget = computed(() => {
+  if (!showCoachmark.value) return null
+  for (const dbName of databaseNames.value) {
+    if (!expandedDatabases[dbName]) continue
+    for (const item of currentPageItems(dbName)) {
+      if (needsSuggestionReview(dbName, item)) {
+        return { type: 'badge', key: `${dbName}_${item}` }
+      }
+    }
+  }
+  for (const dbName of databaseNames.value) {
+    if (unreviewedCountForDatabase(dbName) > 0) {
+      return { type: 'header', dbName }
+    }
+  }
+  return null
+})
+
+function coachmarkHeaderBody(dbName) {
+  const n = unreviewedCountForDatabase(dbName)
+  return `Suggestions ready for ${n} column${n === 1 ? '' : 's'} — expand to review.`
+}
+
+function closeCoachmark() {
+  coachmarkRequested.value = false
+  suggestions.markCoachmarkSeen('variables')
+}
+
+// Accepting or dismissing a suggestion while the cue is visible counts as
+// having seen it.
+function maybeCloseCoachmark() {
+  if (coachmarkTarget.value) closeCoachmark()
 }
 
 // Pre-fill: when a suggestion arrives for a column that the user hasn't
@@ -635,6 +706,7 @@ onBeforeUnmount(() => {
       :compute="suggestions.compute"
       :unreviewed-count="unreviewedFieldCount"
       @clear-all="clearAllSuggestions"
+      @show-coachmark="coachmarkRequested = true"
     />
 
     <form
@@ -652,6 +724,12 @@ onBeforeUnmount(() => {
         >
           <h2 class="database-heading">
             <i class="fas fa-database" /> {{ dbName }}
+            <SuggestionCoachmark
+              v-if="coachmarkTarget?.type === 'header' && coachmarkTarget.dbName === dbName"
+              :title="COACHMARK_COPY.title"
+              :body="coachmarkHeaderBody(dbName)"
+              @close="closeCoachmark"
+            />
           </h2>
           <button
             type="button"
@@ -708,8 +786,14 @@ onBeforeUnmount(() => {
                     :suggestion="suggestionFor(dbName, item) || {}"
                     :applied="suggestions.isApplied(`${dbName}_${item}`)"
                     :touched="suggestions.isTouched(`${dbName}_${item}`)"
+                    :coachmark="
+                      coachmarkTarget?.type === 'badge' &&
+                        coachmarkTarget.key === `${dbName}_${item}`
+                    "
+                    :coachmark-copy="COACHMARK_COPY"
                     @dismiss="dismissSuggestion(dbName, item)"
                     @accept="acceptSuggestion(dbName, item)"
+                    @coachmark-close="closeCoachmark"
                   />
                 </div>
                 <div class="variable-controls">
@@ -936,6 +1020,11 @@ onBeforeUnmount(() => {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);
+}
+
+.database-heading {
+  position: relative;
+  display: inline-block;
 }
 
 .suggestion-section-button {

@@ -5,6 +5,7 @@ import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const DEFAULT_CATEGORY_OPTIONS = [
@@ -263,6 +264,7 @@ async function acceptSuggestion(database, variable, cat) {
   categorySelections[cat.key] = entry.display
   suggestions.markApplied(cat.key)
   await onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+  maybeCloseCoachmark()
 }
 
 function dismissSuggestion(database, variable, cat) {
@@ -270,6 +272,7 @@ function dismissSuggestion(database, variable, cat) {
   // cleared on dismissal; a manually chosen value must survive it.
   const prefilled = suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)
   suggestions.dismiss(cat.key)
+  maybeCloseCoachmark()
   if (prefilled && categorySelections[cat.key]) {
     if (persistedSelections.has(cat.key)) {
       onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
@@ -465,6 +468,87 @@ function jumpToNextUnreviewed() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// First-visit cue (WS2): a small non-modal callout on the first unreviewed
+// suggestion pill, shown once per phase. It tells the user the values
+// were pre-filled for them and must be reviewed before they can continue.
+// The "How do suggestions work?" link in the status bar reopens it.
+// ---------------------------------------------------------------------------
+
+const COACHMARK_COPY = {
+  title: 'Review suggested mappings',
+  body: 'Flyover filled in this value from its mapping suggestions. Nothing is saved until you review it: check the dropdown, then click the pill to confirm, or × to dismiss. You can continue once every suggestion is reviewed.',
+}
+
+// True when the user reopened the cue via the status-bar link; bypasses
+// the persisted "seen" flag until closed again.
+const coachmarkRequested = ref(false)
+
+const showCoachmark = computed(
+  () =>
+    suggestions.enabled &&
+    suggestions.values.status === 'done' &&
+    unreviewedFieldCount.value > 0 &&
+    (coachmarkRequested.value ||
+      (suggestions.coachmarkSeen.loaded && !suggestions.coachmarkSeen.values)),
+)
+
+function unreviewedCountForDatabase(dbName) {
+  const dbEntry = parsedDatabases.value.find((d) => d.name === dbName)
+  if (!dbEntry) return 0
+  let n = 0
+  for (const variable of dbEntry.variables) {
+    if (variable.type !== 'categorical') continue
+    for (const cat of variable.categories) {
+      if (needsSuggestionReview(cat.key)) n++
+    }
+  }
+  return n
+}
+
+// The callout anchors to the first unreviewed pill in display order.
+// Databases and variables start collapsed, so when no pill is rendered it
+// anchors to the header of the first database that has suggestions;
+// once expanded it moves to the first pill.
+const coachmarkTarget = computed(() => {
+  if (!showCoachmark.value) return null
+  for (const dbEntry of parsedDatabases.value) {
+    if (!expandedDatabases[dbEntry.name]) continue
+    for (let vIdx = 0; vIdx < dbEntry.variables.length; vIdx++) {
+      const variable = dbEntry.variables[vIdx]
+      if (variable.type !== 'categorical') continue
+      if (!isVariableExpanded(dbEntry.name, vIdx)) continue
+      for (const cat of variable.categories) {
+        if (needsSuggestionReview(cat.key)) {
+          return { type: 'badge', key: cat.key }
+        }
+      }
+    }
+  }
+  for (const dbEntry of parsedDatabases.value) {
+    if (unreviewedCountForDatabase(dbEntry.name) > 0) {
+      return { type: 'header', dbName: dbEntry.name }
+    }
+  }
+  return null
+})
+
+function coachmarkHeaderBody(dbName) {
+  const n = unreviewedCountForDatabase(dbName)
+  return `Suggestions ready for ${n} value${n === 1 ? '' : 's'} — expand to review.`
+}
+
+function closeCoachmark() {
+  coachmarkRequested.value = false
+  suggestions.markCoachmarkSeen('values')
+}
+
+// Accepting or dismissing a suggestion while the cue is visible counts as
+// having seen it.
+function maybeCloseCoachmark() {
+  if (coachmarkTarget.value) closeCoachmark()
+}
+
 const loadingIconClass = computed(() =>
   loadingIconIsPen.value ? 'fa-pen' : 'fa-edit'
 )
@@ -564,6 +648,7 @@ onBeforeUnmount(() => {
       :compute="suggestions.compute"
       :unreviewed-count="unreviewedFieldCount"
       @clear-all="clearAllSuggestions"
+      @show-coachmark="coachmarkRequested = true"
     />
 
     <form
@@ -582,6 +667,12 @@ onBeforeUnmount(() => {
         >
           <h2 class="database-heading">
             <i class="fas fa-database" /> {{ dbEntry.name }}
+            <SuggestionCoachmark
+              v-if="coachmarkTarget?.type === 'header' && coachmarkTarget.dbName === dbEntry.name"
+              :title="COACHMARK_COPY.title"
+              :body="coachmarkHeaderBody(dbEntry.name)"
+              @close="closeCoachmark"
+            />
           </h2>
           <button
             type="button"
@@ -709,8 +800,11 @@ onBeforeUnmount(() => {
                           :suggestion="suggestionFor(cat.key) || {}"
                           :applied="suggestions.isApplied(cat.key)"
                           :touched="suggestions.isTouched(cat.key)"
+                          :coachmark="coachmarkTarget?.type === 'badge' && coachmarkTarget.key === cat.key"
+                          :coachmark-copy="COACHMARK_COPY"
                           @dismiss="dismissSuggestion(dbEntry.name, variable, cat)"
                           @accept="acceptSuggestion(dbEntry.name, variable, cat)"
+                          @coachmark-close="closeCoachmark"
                         />
                       </div>
                       <div class="category-controls">
@@ -863,6 +957,11 @@ onBeforeUnmount(() => {
   border-color: rgba(118, 75, 162, 0.7);
   border-style: dashed;
   background-color: rgba(118, 75, 162, 0.04);
+}
+
+.database-heading {
+  position: relative;
+  display: inline-block;
 }
 
 .suggestion-section-button {

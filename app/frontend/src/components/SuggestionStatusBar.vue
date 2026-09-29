@@ -32,7 +32,7 @@ const props = defineProps({
   unreviewedCount: { type: Number, default: 0 },
 })
 
-defineEmits(['clear-all'])
+defineEmits(['clear-all', 'show-coachmark'])
 
 const activeTiers = computed(() => {
   return Object.entries(props.tiers)
@@ -107,6 +107,15 @@ const unavailableMessage = computed(() => {
     </span>
     <span class="suggestion-tier-note">{{ tierNote }}</span>
     <button
+      v-if="hasMatches"
+      type="button"
+      class="btn btn-sm btn-link suggestion-help-link"
+      title="Show the explanation of the suggestion review flow again"
+      @click="$emit('show-coachmark')"
+    >
+      How do suggestions work?
+    </button>
+    <button
       v-if="unreviewedCount"
       type="button"
       class="btn btn-sm btn-outline-secondary suggestion-clear-all"
@@ -134,6 +143,18 @@ const unavailableMessage = computed(() => {
 .suggestion-tier-note {
   color: #777;
   font-size: 0.85em;
+}
+
+.suggestion-help-link {
+  margin-left: 0.5rem;
+  padding: 0 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+}
+
+.suggestion-help-link:hover {
+  text-decoration: underline;
 }
 
 .suggestion-clear-all {
