@@ -187,8 +187,13 @@ function suggestionFor(dbName, item) {
   return suggestions.variables.byKey[`${dbName}_${item}`]
 }
 
+// A live suggestion: arrived, has a match, and was not dismissed. A
+// dismissed suggestion must not render its pill again — dismissal also
+// drops the applied mark, so the badge would fall back to the unreviewed
+// look and invite a second dismissal that does nothing.
 function hasSuggestion(dbName, item) {
   const entry = suggestionFor(dbName, item)
+  if (suggestions.isDismissed(`${dbName}_${item}`)) return false
   return entry && entry.status === 'done' && entry.display
 }
 

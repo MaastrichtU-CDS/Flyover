@@ -317,5 +317,9 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
     const store = useSuggestionsStore()
     expect(store.isDismissed('patients_sex_M')).toBe(true)
+    // The dismissed pill is gone; the other value's pill remains.
+    expect(wrapper.findAllComponents({ name: 'SuggestionBadge' })).toHaveLength(
+      badges.length - 1,
+    )
   })
 })

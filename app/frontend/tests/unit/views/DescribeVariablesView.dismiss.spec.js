@@ -153,6 +153,9 @@ describe('DescribeVariablesView — dismissing a suggestion keeps manual input',
     await flushPromises()
 
     expect(select.element.value).toBe('')
+    // The dismissed pill disappears instead of falling back to the
+    // unreviewed look.
+    expect(w.findComponent(SuggestionBadge).exists()).toBe(false)
   })
 
   it('keeps a manually chosen value when its suggestion is dismissed', async () => {
@@ -176,7 +179,8 @@ describe('DescribeVariablesView — dismissing a suggestion keeps manual input',
     badge.vm.$emit('dismiss')
     await flushPromises()
 
-    // The manual choice survives the dismissal.
+    // The manual choice survives the dismissal; the pill does not.
     expect(select.element.value).toBe('Age')
+    expect(w.findComponent(SuggestionBadge).exists()).toBe(false)
   })
 })

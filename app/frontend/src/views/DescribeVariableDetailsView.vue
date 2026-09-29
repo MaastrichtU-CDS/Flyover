@@ -241,8 +241,11 @@ function suggestionFor(key) {
   return suggestions.values.byKey[key]
 }
 
+// A live suggestion: arrived, has a match, and was not dismissed (a
+// dismissed pill must not come back in the unreviewed look).
 function hasSuggestion(key) {
   const entry = suggestionFor(key)
+  if (suggestions.isDismissed(key)) return false
   return entry && entry.status === 'done' && entry.display
 }
 
