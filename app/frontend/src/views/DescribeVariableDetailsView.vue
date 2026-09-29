@@ -37,6 +37,11 @@ const continuousMissing = reactive({}) // `${db}_${var}` -> missing notation
 const categorySelections = reactive({}) // `${db}_${var}_${value}` -> selected option
 const categoryComments = reactive({}) // `${db}_${var}_${value}` -> comment
 const previousSelections = reactive({}) // tracks the last value for updateCategoryMapping
+// Keys whose selection was actually persisted to the JSON-LD through the
+// change path (accept or manual pick). Suggestion pre-fills are
+// display-only and never enter this set, so dismissing a pre-fill cannot
+// call updateCategoryMapping with a previousOption that was never written.
+const persistedSelections = reactive(new Set())
 
 function buildContinuousVariable(database, displayName, dbIdx, itemIdx) {
   const m = displayName.match(/\(or "([^"]+)"\)/)
@@ -199,6 +204,7 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   const selectedOption = categorySelections[key]
   const previousOption = previousSelections[key]
   previousSelections[key] = selectedOption
+  persistedSelections.add(key)
   suggestions.markUserTouched(key)
   try {
     await jsonld.updateCategoryMapping(
@@ -214,33 +220,19 @@ async function onCategoryChange(database, localVariable, globalVariable, categor
   }
 }
 
-// Persist a category selection to JSON-LD without marking the suggestion
-// as reviewed. Used by the pre-fill watch so auto-filled suggestions stay
-// "unreviewed" until the user explicitly interacts with them.
-async function _persistCategorySelection(database, variable, cat) {
-  const key = cat.key
-  const selectedOption = categorySelections[key]
-  const previousOption = previousSelections[key]
-  previousSelections[key] = selectedOption
-  try {
-    await jsonld.updateCategoryMapping(
-      database,
-      variable.localVariable,
-      variable.globalVarName,
-      String(cat.value),
-      selectedOption,
-      previousOption
-    )
-  } catch (e) {
-    console.error('Failed to update category mapping:', e)
-  }
+// Clear a category selection in memory only. Used when a display-only
+// suggestion pre-fill is dismissed: the pre-fill was never persisted, so
+// there is nothing to remove from the JSON-LD.
+function clearDisplayOnlySelection(key) {
+  categorySelections[key] = ''
 }
 
 // ---------------------------------------------------------------------------
-// Mapping suggestions: pre-highlight (do NOT pre-fill) per the plan. The user
-// explicitly accepts via the badge click, which goes through the same
-// onCategoryChange path a manual selection takes so JSON-LD persistence keeps
-// working unchanged.
+// Mapping suggestions. Per decision D1 of the tier-1 remediation the watcher
+// PRE-FILLS the category dropdown for display, but the pre-filled value is
+// never persisted to the JSON-LD: only an explicit review (accept via the
+// badge, or a manual dropdown change) goes through onCategoryChange and
+// writes the mapping — exactly as a hand-picked value would.
 // ---------------------------------------------------------------------------
 
 function suggestionFor(key) {
@@ -250,6 +242,17 @@ function suggestionFor(key) {
 function hasSuggestion(key) {
   const entry = suggestionFor(key)
   return entry && entry.status === 'done' && entry.display
+}
+
+// True while a suggestion for this value still needs review: either it
+// pre-filled the field (applied, never touched) or it arrived for an empty
+// field the pre-fill watch could not fill. Both keep the dashed highlight
+// until reviewed or dismissed (WS1.3).
+function needsSuggestionReview(key) {
+  if (suggestions.isDismissed(key)) return false
+  if (suggestions.isApplied(key)) return !suggestions.isTouched(key)
+  if (!hasSuggestion(key)) return false
+  return !categorySelections[key]
 }
 
 async function acceptSuggestion(database, variable, cat) {
@@ -268,8 +271,12 @@ function dismissSuggestion(database, variable, cat) {
   const prefilled = suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)
   suggestions.dismiss(cat.key)
   if (prefilled && categorySelections[cat.key]) {
-    categorySelections[cat.key] = ''
-    onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+    if (persistedSelections.has(cat.key)) {
+      onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+    } else {
+      // Display-only pre-fill: nothing was written, so nothing to unwind.
+      clearDisplayOnlySelection(cat.key)
+    }
   }
 }
 
@@ -279,9 +286,11 @@ function clearAllSuggestions() {
     for (const variable of dbEntry.variables) {
       if (variable.type !== 'categorical') continue
       for (const cat of variable.categories) {
-        if (cleared.has(cat.key) && categorySelections[cat.key]) {
-          categorySelections[cat.key] = ''
+        if (!cleared.has(cat.key) || !categorySelections[cat.key]) continue
+        if (persistedSelections.has(cat.key)) {
           onCategoryChange(dbEntry.name, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+        } else {
+          clearDisplayOnlySelection(cat.key)
         }
       }
     }
@@ -313,8 +322,10 @@ const unreviewedFieldCount = computed(
 
 // Pre-fill: when a suggestion arrives for a value that the user hasn't
 // touched yet, auto-set the category dropdown to the suggested term and
-// mark it as "applied" (unreviewed). The user must click the badge or
-// change the dropdown to mark it as "reviewed" before they can submit.
+// mark it as "applied" (unreviewed). The value lives in the selection map
+// only — nothing is persisted to the JSON-LD until the user reviews the
+// field through onCategoryChange. The user must click the badge or change
+// the dropdown to mark it as "reviewed" before they can submit.
 watch(
   () => suggestions.values.byKey,
   (byKey) => {
@@ -336,9 +347,6 @@ watch(
           if (!options.includes(entry.display)) continue
           categorySelections[cat.key] = entry.display
           suggestions.markApplied(cat.key)
-          _persistCategorySelection(
-            dbEntry.name, variable, cat,
-          )
         }
       }
     }
@@ -394,8 +402,11 @@ function dismissAllForVariable(database, variable) {
       suggestions.isApplied(cat.key) && !suggestions.isTouched(cat.key)
     suggestions.dismiss(cat.key)
     if (prefilled && categorySelections[cat.key]) {
-      categorySelections[cat.key] = ''
-      onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+      if (persistedSelections.has(cat.key)) {
+        onCategoryChange(database, variable.localVariable, variable.globalVarName, cat.value, cat.key)
+      } else {
+        clearDisplayOnlySelection(cat.key)
+      }
     }
   }
 }
@@ -707,11 +718,7 @@ onBeforeUnmount(() => {
                           v-model="categorySelections[cat.key]"
                           class="form-control category-select"
                           :class="{
-                            'suggestion-highlight':
-                              hasSuggestion(cat.key) &&
-                              !suggestions.isApplied(cat.key) &&
-                              !suggestions.isDismissed(cat.key) &&
-                              !categorySelections[cat.key],
+                            'suggestion-highlight': needsSuggestionReview(cat.key),
                           }"
                           :name="cat.backendKey"
                           @change="
