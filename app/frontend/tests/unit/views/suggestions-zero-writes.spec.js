@@ -22,9 +22,31 @@ vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
 
+// The browser's semantic map in IndexedDB: suggestions need one with
+// variables, and a suggestion only reaches a dropdown that offers it.
+const { SEMANTIC_MAP } = vi.hoisted(() => ({
+  SEMANTIC_MAP: {
+    '@context': { schema: 'mapping:schema/', mapping: 'http://example.org/mapping#' },
+    '@id': 'mapping:root',
+    '@type': 'mapping:SemanticMapping',
+    schema: {
+      '@id': 'schema:root',
+      '@type': 'mapping:Schema',
+      variables: {
+        tumour_morphology_icd_o: { dataType: 'standardised' },
+        biological_sex: { dataType: 'categorical' },
+        year_of_initial_diagnosis: { dataType: 'continuous' },
+      },
+    },
+    databases: {},
+  },
+}))
+
 vi.mock('@/lib/db', () => ({
   saveData: vi.fn(async () => {}),
-  getData: vi.fn(async () => null),
+  getData: vi.fn(async (_store, key) =>
+    key === 'semantic_map' ? { data: structuredClone(SEMANTIC_MAP) } : null,
+  ),
 }))
 
 // A test can set `preselection.value` to stand in for mappings the loaded
@@ -251,6 +273,30 @@ describe('DescribeVariablesView — zero writes without explicit review', () => 
     const payload = jsonld.updateMappingFromForm.mock.calls.at(-1)[0]
     expect(payload.test_db_morph?.description).toBeTruthy()
     expect(store.isTouched('test_db_morph')).toBe(true)
+  })
+
+  it('ignores a suggestion whose variable the dropdown does not offer', async () => {
+    // A match from another map (the backend fell back to its session's
+    // map) must not pre-fill a dropdown that cannot show it: the field
+    // would look empty yet count as needing review.
+    const foreign = JSON.parse(JSON.stringify(VARIABLES_SNAPSHOT))
+    foreign.records.test_db_morph.match = 'clinical_stage_group'
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/variables', { data: foreign }],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    expect(store.isApplied('test_db_morph')).toBe(false)
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    expect(wrapper.text()).toContain('1 suggestion needs review')
+    // Only sex gets a pill; morph shows neither pill nor highlight.
+    expect(wrapper.findAllComponents({ name: 'SuggestionBadge' })).toHaveLength(1)
+    const morphSelect = wrapper.find('select[name="ncit_comment_test_db_morph"]')
+    expect(morphSelect.classes()).not.toContain('suggestion-highlight')
   })
 
   it('never pre-fills over a mapping the loaded JSON-LD already holds', async () => {

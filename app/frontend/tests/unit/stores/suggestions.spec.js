@@ -22,6 +22,10 @@ import {
 } from '@/stores/suggestions.js'
 import { useStatusStore } from '@/stores/status.js'
 
+// A browser semantic map with variables: without one the store reports
+// no_semantic_map instead of starting a job.
+const MAPPING = { schema: { variables: { age_at_diagnosis: {} } } }
+
 function statusResponse(enabled = true, extra = {}) {
   return {
     data: {
@@ -81,7 +85,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     api.post.mockResolvedValue({ data: { status: 'started' } })
 
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.enabled).toBe(true)
     expect(s.compute).toBe('host')
     expect(s.tiers[1]).toEqual({ state: 'active' })
@@ -93,7 +97,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
   it('init() with the feature disabled renders no suggestion activity', async () => {
     api.get.mockResolvedValueOnce(statusResponse(false))
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.enabled).toBe(false)
     expect(api.post).not.toHaveBeenCalled()
     expect(s.isPolling()).toBe(false)
@@ -130,11 +134,11 @@ describe('Frontend unit: useSuggestionsStore', () => {
     api.post.mockResolvedValue({ data: { status: 'started' } })
 
     const s = useSuggestionsStore()
-    await s.init('variables', { mapping: { some: 'mapping' } })
+    await s.init('variables', { mapping: MAPPING })
 
     // The job runs on the browser's semantic map.
     expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {
-      mapping: { some: 'mapping' },
+      mapping: MAPPING,
     })
     expect(s.enabled).toBe(true)
     expect(s.variables.status).toBe('running')
@@ -156,7 +160,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     api.post.mockResolvedValue({ data: { status: 'started' } })
 
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.isPolling()).toBe(true)
 
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
@@ -171,7 +175,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     api.post.mockResolvedValue({ data: { status: 'started' } })
 
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     await s.refresh('variables')
     await s.refresh('variables')
 
@@ -187,7 +191,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     api.post.mockResolvedValue({ data: { status: 'started' } })
 
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.isPolling()).toBe(true)
 
     await vi.advanceTimersByTimeAsync(POLL_HARD_STOP_MS + POLL_INTERVAL_MS)
@@ -204,7 +208,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
 
     const s = useSuggestionsStore()
     // init already made the first (failing) snapshot poll.
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.variables.gaveUp).toBe(false)
 
     await s.refresh('variables')
@@ -232,12 +236,27 @@ describe('Frontend unit: useSuggestionsStore', () => {
       .mockResolvedValue(snapshot({ status: 'done' }))
 
     const s = useSuggestionsStore()
-    await s.init('variables', { mapping: { some: 'mapping' } })
+    await s.init('variables', { mapping: MAPPING })
 
     expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/start', {
-      mapping: { some: 'mapping' },
+      mapping: MAPPING,
     })
     expect(api.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports no_semantic_map without starting when the browser has no map', async () => {
+    // The dropdowns are built from the browser's map; with none (or one
+    // without variables) suggestions from the backend session's map would
+    // have nowhere to go.
+    api.get.mockResolvedValueOnce(statusResponse())
+    const s = useSuggestionsStore()
+    for (const mapping of [null, { schema: { variables: {} } }]) {
+      await s.init('variables', { mapping })
+      expect(s.variables.status).toBe('unavailable')
+      expect(s.variables.reason).toBe('no_semantic_map')
+    }
+    expect(api.post).not.toHaveBeenCalled()
+    expect(s.isPolling()).toBe(false)
   })
 
   it('the values phase always sends the mapping job-locally', async () => {
@@ -249,10 +268,10 @@ describe('Frontend unit: useSuggestionsStore', () => {
       .mockResolvedValue(snapshot({ status: 'done' }))
 
     const s = useSuggestionsStore()
-    await s.init('values', { mapping: { some: 'mapping' } })
+    await s.init('values', { mapping: MAPPING })
 
     expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/values/start', {
-      mapping: { some: 'mapping' },
+      mapping: MAPPING,
     })
     expect(api.post).toHaveBeenCalledTimes(1)
   })
@@ -329,7 +348,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
       .mockResolvedValueOnce(statusResponse())
       .mockResolvedValue(snapshot({ status: 'done' }))
     api.post.mockResolvedValue({ data: { status: 'started' } })
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.variables.gaveUp).toBe(false)
   })
 
@@ -414,7 +433,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     api.get.mockResolvedValueOnce(statusResponse(false))
 
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.isApplied('db1_a')).toBe(true)
     expect(s.isTouched('db1_a')).toBe(true)
     expect(s.isDismissed('db1_b')).toBe(true)
@@ -514,7 +533,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
       .mockResolvedValue(snapshot({ status: 'done' }))
     api.post.mockResolvedValue({ data: { status: 'started' } })
     const s = useSuggestionsStore()
-    await s.init('variables')
+    await s.init('variables', { mapping: MAPPING })
     expect(s.isConfident({ confidence: 0.7 })).toBe(true)
     expect(s.isConfident({ confidence: 0.69 })).toBe(false)
     expect(s.isConfident({})).toBe(false)

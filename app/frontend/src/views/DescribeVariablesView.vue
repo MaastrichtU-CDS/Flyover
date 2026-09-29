@@ -194,7 +194,16 @@ function suggestionFor(dbName, item) {
 function hasSuggestion(dbName, item) {
   const entry = suggestionFor(dbName, item)
   if (suggestions.isDismissed(`${dbName}_${item}`)) return false
-  return entry && entry.status === 'done' && entry.display
+  return entry && entry.status === 'done' && isOfferedDescription(entry.display)
+}
+
+// A suggestion is only usable when its variable is one of the dropdown's
+// options. The backend computes suggestions on the browser's map, but if
+// that map failed validation it falls back to its session's map; a match
+// from another map must never be pre-filled into a dropdown that cannot
+// show it (the field would look empty yet count as "needs review").
+function isOfferedDescription(display) {
+  return !!display && globalVariableNames.value.includes(display)
 }
 
 // A conflict loser (decision D2): another column of this database won the
@@ -206,7 +215,9 @@ function hasAlternativesOnly(dbName, item) {
   if (suggestions.isDismissed(key)) return false
   const entry = suggestionFor(dbName, item)
   if (!entry || entry.status !== 'done' || entry.display) return false
-  return (entry.alternatives || []).some((alt) => alt?.match)
+  return (entry.alternatives || []).some(
+    (alt) => alt?.match && isOfferedDescription(formatToTitleCase(alt.match)),
+  )
 }
 
 // True while a suggestion for this column still needs review: either it
@@ -228,7 +239,7 @@ function needsSuggestionReview(dbName, item) {
 function acceptSuggestion(dbName, item, display) {
   const entry = suggestionFor(dbName, item)
   const value = display || entry?.display
-  if (!value) return
+  if (!isOfferedDescription(value)) return
   const key = `${dbName}_${item}`
   // Check the one-variable-per-database constraint before applying. A
   // blocked accept must say why: silently doing nothing reads as a broken
@@ -305,7 +316,7 @@ function hasUnreviewedForDatabase(dbName) {
   return cols.some((item) => {
     const key = `${dbName}_${item}`
     const entry = suggestionFor(dbName, item)
-    if (!entry || entry.status !== 'done' || !entry.display) return false
+    if (!entry || entry.status !== 'done' || !isOfferedDescription(entry.display)) return false
     if (suggestions.isDismissed(key)) return false
     if (!suggestions.isApplied(key) && !getDescriptionValue(dbName, item)) return true
     if (suggestions.isApplied(key) && !suggestions.isTouched(key)) return true
@@ -318,7 +329,7 @@ function dismissAllForDatabase(dbName) {
   for (const item of cols) {
     const key = `${dbName}_${item}`
     const entry = suggestionFor(dbName, item)
-    if (!entry || entry.status !== 'done' || !entry.display) continue
+    if (!entry || entry.status !== 'done' || !isOfferedDescription(entry.display)) continue
     if (suggestions.isDismissed(key)) continue
     if (suggestions.isApplied(key) && suggestions.isTouched(key)) continue
     // Only pre-filled, unreviewed fields are cleared; manually chosen
@@ -461,7 +472,7 @@ watch(
   (byKey) => {
     if (!suggestions.enabled) return
     for (const [key, entry] of Object.entries(byKey)) {
-      if (entry.status !== 'done' || !entry.display) continue
+      if (entry.status !== 'done' || !isOfferedDescription(entry.display)) continue
       // Below the threshold a suggestion stays a hint (highlight + pill,
       // accepted by click) instead of a pre-filled answer.
       if (!suggestions.isConfident(entry)) continue

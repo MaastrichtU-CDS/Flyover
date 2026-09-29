@@ -20,6 +20,26 @@ vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
 
+// The browser's semantic map in IndexedDB: suggestions need one with
+// variables, and a suggestion only reaches a dropdown that offers it.
+const { SEMANTIC_MAP } = vi.hoisted(() => ({
+  SEMANTIC_MAP: {
+    '@context': { schema: 'mapping:schema/', mapping: 'http://example.org/mapping#' },
+    '@id': 'mapping:root',
+    '@type': 'mapping:SemanticMapping',
+    schema: {
+      '@id': 'schema:root',
+      '@type': 'mapping:Schema',
+      variables: {
+        tumour_morphology_icd_o: { dataType: 'standardised' },
+        biological_sex: { dataType: 'categorical' },
+        year_of_initial_diagnosis: { dataType: 'continuous' },
+      },
+    },
+    databases: {},
+  },
+}))
+
 vi.mock('@/lib/db', () => ({
   saveData: vi.fn(async () => {}),
   getData: vi.fn(async () => null),
@@ -153,6 +173,14 @@ function valuesRoutes(snapshot = VALUES_SNAPSHOT) {
   ])
 }
 
+// IndexedDB reads: the semantic map plus any extra keys a test needs.
+function idb(extra = {}) {
+  return async (_store, key) => {
+    if (key === 'semantic_map') return { data: structuredClone(SEMANTIC_MAP) }
+    return extra[key] ?? null
+  }
+}
+
 function singleCallout(wrapper) {
   const callouts = wrapper.findAllComponents({ name: 'SuggestionCoachmark' })
   expect(callouts.length).toBe(1)
@@ -165,7 +193,7 @@ beforeEach(() => {
   api.post.mockReset()
   db.saveData.mockClear()
   db.getData.mockReset()
-  db.getData.mockResolvedValue(null)
+  db.getData.mockImplementation(idb())
 })
 
 describe('First-visit cue — DescribeVariablesView', () => {
@@ -217,10 +245,9 @@ describe('First-visit cue — DescribeVariablesView', () => {
   })
 
   it('does not show once the phase flag is seen', async () => {
-    db.getData.mockImplementation(async (_store, key) => {
-      if (key === 'suggestion_coachmark_seen') return { variables: true, values: true }
-      return null
-    })
+    db.getData.mockImplementation(
+      idb({ suggestion_coachmark_seen: { variables: true, values: true } }),
+    )
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()
@@ -301,10 +328,9 @@ describe('First-visit cue — DescribeVariablesView', () => {
   })
 
   it('the status-bar link reopens the callout after it was seen', async () => {
-    db.getData.mockImplementation(async (_store, key) => {
-      if (key === 'suggestion_coachmark_seen') return { variables: true, values: true }
-      return null
-    })
+    db.getData.mockImplementation(
+      idb({ suggestion_coachmark_seen: { variables: true, values: true } }),
+    )
     variablesRoutes()
     const w = mount(DescribeVariablesView)
     await flushPromises()

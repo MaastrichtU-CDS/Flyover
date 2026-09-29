@@ -338,6 +338,17 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     }
     if (!enabled.value) return
 
+    // Suggestions target the variables of the browser's semantic map. With
+    // no map (or one without variables) the dropdowns have nothing to show
+    // them in, and the backend would fall back to whatever map its session
+    // holds, so report "no semantic map" instead of starting a job.
+    if (!Object.keys(mapping?.schema?.variables || {}).length) {
+      const state = _phaseState(phase)
+      state.status = 'unavailable'
+      state.reason = 'no_semantic_map'
+      return
+    }
+
     // Mapping send policy: both phases send the browser's semantic map.
     // The describe pages work on the map in this browser's IndexedDB, and
     // the backend session may hold an older one (the describe-landing
@@ -346,10 +357,9 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     // job-locally and never lets it overwrite the session's mapping.
     let data
     try {
-      ;({ data } = await api.post(
-        `/api/v1/suggestions/${phase}/start`,
-        mapping ? { mapping } : {},
-      ))
+      ;({ data } = await api.post(`/api/v1/suggestions/${phase}/start`, {
+        mapping,
+      }))
     } catch {
       data = null
     }
