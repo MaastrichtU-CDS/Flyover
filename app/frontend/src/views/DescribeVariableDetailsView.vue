@@ -421,6 +421,11 @@ async function acceptAllForVariable(database, variable) {
     if (suggestions.isDismissed(cat.key)) continue
     // If already applied and touched, skip — nothing to do.
     if (suggestions.isApplied(cat.key) && suggestions.isTouched(cat.key)) continue
+    // A value already holding a selection the suggestion did not put there
+    // (pre-filled from the map, or picked by the user) is not the
+    // suggestion's to review: accept-all must not overwrite the selection
+    // or mark the value reviewed. It keeps its own pill.
+    if (!suggestions.isApplied(cat.key) && categorySelections[cat.key]) continue
     const options = categoryOptionsFor(variable)
     if (!options.includes(entry.display)) continue
     // If not yet applied, fill the selection first.
@@ -442,6 +447,9 @@ function dismissAllForVariable(database, variable) {
     if (!entry || !entry.display) continue
     if (suggestions.isDismissed(cat.key)) continue
     if (suggestions.isApplied(cat.key) && suggestions.isTouched(cat.key)) continue
+    // Same as accept-all: a value the map (or the user) already filled in
+    // is not the suggestion's to dismiss — its pill has no × either.
+    if (!suggestions.isApplied(cat.key) && categorySelections[cat.key]) continue
     // Only pre-filled, unreviewed fields are cleared; manually chosen
     // values survive the dismissal.
     const prefilled =

@@ -640,6 +640,65 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     expect(items()[0].find('.suggestion-badge').exists()).toBe(false)
   })
 
+  it('accept-all reviews the suggestions only, not the pre-filled values', async () => {
+    // M is pre-filled from the loaded JSON-LD, F by its suggestion. "Accept
+    // all suggestions" must review F — and leave M's pre-filled selection
+    // and its informational pill alone: overwriting it with the suggested
+    // term and marking it reviewed is not the user's review.
+    const state = JSON.parse(JSON.stringify(DETAILS_STATE))
+    state.preselected_values = { 'patients_sex_category_"M"': 'Male' }
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: state }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: VALUES_SNAPSHOT }],
+    ])
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const acceptAll = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Accept all suggestions'))
+    await acceptAll.trigger('click')
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    // The suggestion pre-fill is reviewed through the normal change path.
+    expect(store.isTouched('patients_sex_F')).toBe(true)
+    // The map pre-fill is untouched: same selection, no marks, no write.
+    expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
+    expect(store.isApplied('patients_sex_M')).toBe(false)
+    expect(store.isTouched('patients_sex_M')).toBe(false)
+    const writtenValues = jsonld.updateCategoryMapping.mock.calls.map((args) => args[3])
+    expect(writtenValues).toEqual(['F'])
+  })
+
+  it('dismiss-all clears the suggestion pre-fills only, not the pre-filled values', async () => {
+    const state = JSON.parse(JSON.stringify(DETAILS_STATE))
+    state.preselected_values = { 'patients_sex_category_"M"': 'Male' }
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: state }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: VALUES_SNAPSHOT }],
+    ])
+    const wrapper = mountDetails()
+    await flushPromises()
+
+    const dismissAll = wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('Dismiss all suggestions'))
+    await dismissAll.trigger('click')
+    await flushPromises()
+
+    const store = useSuggestionsStore()
+    // The suggestion pre-fill is dismissed and cleared (display-only).
+    expect(store.isDismissed('patients_sex_F')).toBe(true)
+    expect(wrapper.vm.categorySelections.patients_sex_F).toBe('')
+    // The map pre-fill keeps its selection — and its suggestion record
+    // stays live: the value was never the suggestion's to dismiss.
+    expect(store.isDismissed('patients_sex_M')).toBe(false)
+    expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
+  })
+
   it('"Go to next" expands the section and scrolls to the first unreviewed value', async () => {
     mockApiRoutes([
       ['/api/v1/describe-variable-details-state', { data: DETAILS_STATE }],
