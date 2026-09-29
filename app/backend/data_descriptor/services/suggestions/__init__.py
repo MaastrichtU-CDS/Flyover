@@ -12,10 +12,14 @@ LLM branch's ``suggestion_service.py`` with the provider dependency dropped.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import os
+import re
 from typing import Any, Optional
+
+from services.rdf_store_service import RDFStoreService
 
 from .contract import sanitise_pairs
 from .tiers import SuggestionContext
@@ -35,6 +39,11 @@ PHASES = (VARIABLES_PHASE, VALUES_PHASE)
 DEFAULT_THRESHOLD = 0.8
 DEFAULT_MARGIN = 0.05
 DEFAULT_COMPUTE = "host"
+
+# Tiers enabled by FLYOVER_SUGGESTION_TIERS but not implemented yet map to
+# the issue file that will add their producer; /status must never claim
+# them active.
+_UNIMPLEMENTED_TIER_ISSUES = {2: "issue 3", 3: "issue 4"}
 
 
 def _env_tiers() -> list[int]:
@@ -84,32 +93,80 @@ class SuggestionConfig:
     def enabled(self) -> bool:
         return bool(self.tiers)
 
-    def tier_state(self, tier: int) -> dict:
-        """Return ``{state, reason}`` for one tier for the ``/status`` endpoint."""
-        if tier in self.tiers:
-            return {"state": "active"}
-        if not self.tiers:
+    def tier_state(self, tier: int, producer_tiers: Optional[set] = None) -> dict:
+        """Return ``{state, reason}`` for one tier for the ``/status`` endpoint.
+
+        The flag only says the user *asked* for a tier; the state is derived
+        from the registered producers, so a tier enabled in
+        ``FLYOVER_SUGGESTION_TIERS`` without an implementation reports
+        ``inactive`` with a "not implemented yet" reason instead of
+        claiming to be active.
+        """
+        if tier not in (1, 2, 3):
+            return {"state": "inactive", "reason": "unknown tier"}
+        if tier not in self.tiers:
             return {
                 "state": "inactive",
                 "reason": "disabled by FLYOVER_SUGGESTION_TIERS",
             }
-        if tier == 2:
-            return {
-                "state": "inactive",
-                "reason": "not enabled in FLYOVER_SUGGESTION_TIERS",
-            }
-        if tier == 3:
-            return {
-                "state": "inactive",
-                "reason": "not enabled in FLYOVER_SUGGESTION_TIERS",
-            }
-        return {"state": "inactive", "reason": "unknown tier"}
+        if producer_tiers is not None and tier not in producer_tiers:
+            issue = _UNIMPLEMENTED_TIER_ISSUES.get(tier, "a later issue")
+            return {"state": "inactive", "reason": f"not implemented yet ({issue})"}
+        return {"state": "active"}
 
 
 def _fingerprint(payload: dict) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode()
     ).hexdigest()
+
+
+def _parse_category_values(categories_csv: Any) -> list[str]:
+    """Parse the RDF store's get_categories CSV into distinct value strings.
+
+    Shared by the column-values collection (variables phase) and the
+    values-phase fallback so both parse categories exactly the same way.
+    """
+    if not categories_csv:
+        return []
+    try:
+        import polars as pl
+
+        df = pl.read_csv(
+            io.StringIO(categories_csv),
+            separator=",",
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
+    except Exception:  # pragma: no cover - defensive
+        return []
+    values: list[str] = []
+    for row in df.to_dicts():
+        v = row.get("value")
+        if v is not None and str(v) not in values:
+            values.append(str(v))
+    return values
+
+
+def _alias_memory_hash(mapping: Any) -> str:
+    """Stable hash of every remembered (database, column, variable) pair.
+
+    A site's own review results must not be reused when any other site's
+    mappings change, so the fingerprint covers the alias memory as a
+    whole, not just this phase's item list.
+    """
+    pairs = sorted(
+        (
+            (
+                db.name or "",
+                str(column.local_column or ""),
+                column.get_variable_key() or "",
+            )
+            for db, column in _iter_columns(mapping)
+        )
+    )
+    return hashlib.sha256(json.dumps(pairs).encode()).hexdigest()[:16]
 
 
 def _merge_records(a: dict, b: dict) -> tuple[dict, Optional[dict]]:
@@ -196,9 +253,11 @@ class SuggestionService:
 
     def status(self) -> dict:
         """Return the ``/status`` payload."""
-        tiers = {}
-        for tier in (1, 2, 3):
-            tiers[tier] = self.config.tier_state(tier)
+        producers = self._producers_for_enabled_tiers()
+        producer_tiers = {getattr(p, "tier", 1) for p in producers}
+        tiers = {
+            tier: self.config.tier_state(tier, producer_tiers) for tier in (1, 2, 3)
+        }
         return {
             "compute": self.config.compute,
             "tiers": tiers,
@@ -218,10 +277,16 @@ class SuggestionService:
         session_cache: Any,
         rdf_store_service: Any,
         force: bool = False,
+        mapping: Any = None,
     ) -> dict:
         """Build (or reuse) the job for ``phase`` and run the enabled tiers.
 
         Returns a status dict (``{"status": ...}``) mirroring the LLM branch.
+
+        ``mapping`` is a validated job-local mapping (the values phase needs
+        the browser's latest variable selections); it is used for this job
+        only and never written back to ``session_cache.jsonld_mapping``.
+        Without it the session's own mapping is used.
         """
         if phase not in PHASES:
             return {"status": "error", "reason": "unknown_phase"}
@@ -231,7 +296,8 @@ class SuggestionService:
         jobs = self._jobs(session_cache)
         existing = jobs.get(phase)
 
-        mapping = getattr(session_cache, "jsonld_mapping", None)
+        if mapping is None:
+            mapping = getattr(session_cache, "jsonld_mapping", None)
         if mapping is None:
             job = SuggestionJob(phase, "")
             job.status = "unavailable"
@@ -280,21 +346,32 @@ class SuggestionService:
             job.error = {"kind": "job_failed", "message": str(exc)}
         return {"status": "started"}
 
-    @staticmethod
-    def _fingerprint_payload(phase: str, payload: dict, mapping: Any) -> dict:
-        """Build a JSON-serialisable subset of the payload for fingerprinting."""
+    def _fingerprint_payload(self, phase: str, payload: dict, mapping: Any) -> dict:
+        """Build a JSON-serialisable subset of the payload for fingerprinting.
+
+        Includes the rules version and a hash of the alias memory (every
+        remembered column/value -> variable pair): a rules bump or any
+        other site's mappings changing must expire a cached job, not just
+        the item list.
+        """
+        base = {
+            "phase": phase,
+            "rules_version": (self._rules or {}).get("version"),
+            "alias_memory": _alias_memory_hash(mapping),
+        }
         if phase == VARIABLES_PHASE:
             return {
-                "phase": phase,
+                **base,
                 "items": sorted(payload["items"]),
                 "variables": sorted(mapping.get_all_variable_keys() if mapping else []),
             }
         groups = payload.get("groups", [])
         return {
-            "phase": phase,
+            **base,
             "groups": [
                 {
-                    "database": g["key_for"]("").rsplit("_", 1)[0],
+                    "database": g["database"],
+                    "column": g["column"],
                     "items": g["items"],
                     "terms": sorted(
                         {t for terms in g["schema_slice"].values() for t in terms}
@@ -376,6 +453,7 @@ class SuggestionService:
                 column_values=payload.get("column_values", {}),
                 value_targets=payload.get("value_targets", {}),
                 item_column_values=payload.get("item_column_values", {}),
+                database_name_match=RDFStoreService.graph_database_find_name_match,
             )
             raw = producer.run(list(to_run), schema_slice, ctx)
             sanitised = sanitise_pairs(
@@ -566,26 +644,7 @@ class SuggestionService:
                     cats = rdf_store_service.get_categories(col, db)
                 except Exception:  # pragma: no cover - defensive
                     cats = None
-                values: list[str] = []
-                if cats:
-                    try:
-                        import polars as pl
-                        from io import StringIO
-
-                        df = pl.read_csv(
-                            StringIO(cats),
-                            separator=",",
-                            infer_schema_length=0,
-                            null_values=[],
-                            try_parse_dates=False,
-                        )
-                        for row in df.to_dicts():
-                            v = row.get("value")
-                            if v is not None and str(v) not in values:
-                                values.append(str(v))
-                    except Exception as exc:  # pragma: no cover - defensive
-                        logger.debug("categories parse failed for %s: %s", col, exc)
-                out[db][col] = values
+                out[db][col] = _parse_category_values(cats)
         return out
 
     def _build_values_payload(
@@ -609,9 +668,7 @@ class SuggestionService:
         all_items: list[str] = []
         groups: list[dict] = []
         value_targets: dict = {}
-        import re as _re
-
-        display_re = _re.compile(r'^(?P<global>.*) \(or "(?P<local>.*)"\)$')
+        display_re = re.compile(r'^(?P<global>.*) \(or "(?P<local>.*)"\)$')
 
         for database, entries in details.items():
             for entry in entries:
@@ -660,6 +717,12 @@ class SuggestionService:
                             "key_for": make_key_for(),
                             "database": database,
                             "column": local_column,
+                            # Leave-one-site-out must exclude THIS database,
+                            # not whichever database the payload happens to
+                            # name first (the value groups used to rely on
+                            # the payload-level fallback and leaked the
+                            # first database into its own alias memory).
+                            "described_database": database,
                         }
                     )
 
@@ -709,11 +772,10 @@ class SuggestionService:
     ) -> tuple[list[dict], list[str], dict, Optional[str]]:
         """Build value groups when DescriptiveInfoDetails is empty.
 
-        Walks the mapping's columns, finds categorical variables with
-        value mappings, and queries the RDF store for distinct values.
+        Walks the RDF store's columns, finds each column's variable in
+        the mapping by (database, local column), and queries the store
+        for the column's distinct values.
         """
-        import io as _io
-
         columns_by_db: dict[str, list[str]] = {}
         try:
             columns_by_db = rdf_store_service.get_column_info_by_database() or {}
@@ -725,14 +787,31 @@ class SuggestionService:
         all_items: list[str] = []
         value_targets: dict = {}
 
+        # Index the mapping's (database, local column) -> variable pairs
+        # once instead of scanning every column for every store column.
+        name_match = RDFStoreService.graph_database_find_name_match
+        column_index: list[tuple[str, str, str]] = [
+            (
+                db.name or "",
+                str(column.local_column or ""),
+                column.get_variable_key() or "",
+            )
+            for db, column in _iter_columns(mapping)
+        ]
+
         for db, cols in columns_by_db.items():
             for col in cols or []:
-                # Find the variable key for this column from the mapping.
-                var_key = None
-                for _db_obj, column in _iter_columns(mapping):
-                    if column.local_column == col:
-                        var_key = column.get_variable_key()
-                        break
+                # Find the variable key for this column of THIS database;
+                # a same-named column in another database may map to an
+                # entirely different variable.
+                var_key = next(
+                    (
+                        vk
+                        for db_name, local, vk in column_index
+                        if local == col and name_match(db_name, db)
+                    ),
+                    None,
+                )
                 if not var_key:
                     continue
                 variable = mapping.get_variable(var_key)
@@ -744,34 +823,16 @@ class SuggestionService:
                 # Query the RDF store for distinct values.
                 try:
                     cat_result = rdf_store_service.get_categories(col, db)
-                    if not cat_result:
-                        continue
-                    import polars as pl
-
-                    df = pl.read_csv(
-                        _io.StringIO(cat_result),
-                        separator=",",
-                        infer_schema_length=0,
-                        null_values=[],
-                        try_parse_dates=False,
-                    )
-                    rows = df.to_dicts()
                 except Exception:
                     continue
-                seen: set[str] = set()
-                group_items: list[str] = []
-                for row in rows:
-                    value = str((row or {}).get("value", "")).strip()
-                    if not value or value in seen:
-                        continue
-                    seen.add(value)
-                    group_items.append(value)
-                    all_items.append(value)
-                    value_targets.setdefault(db, {}).setdefault(var_key, []).append(
-                        value
-                    )
+                # _parse_category_values already dedupes, order-preserving.
+                group_items = [v for v in _parse_category_values(cat_result) if v]
                 if not group_items:
                     continue
+                all_items.extend(group_items)
+                value_targets.setdefault(db, {}).setdefault(var_key, []).extend(
+                    group_items
+                )
 
                 def make_key_for(database=db, column=col):
                     def key_for(value: str) -> str:
@@ -786,6 +847,8 @@ class SuggestionService:
                         "key_for": make_key_for(),
                         "database": db,
                         "column": col,
+                        # Leave-one-site-out must exclude THIS database.
+                        "described_database": db,
                     }
                 )
 
@@ -817,6 +880,37 @@ class SuggestionService:
         if job is None:
             return {"status": "no_job"}
         return {"status": "ok", "moved": 0}
+
+    def ingest(self, phase: str, records: list, source: str) -> list[dict]:
+        """Reserved for issues 2/3: browser-computed or pasted records.
+
+        The signature is reserved now so it cannot drift from the plan.
+        The ``/ingest`` route is not wired yet, so this validates the
+        records through :func:`sanitise_pairs` (the same normalisation
+        every producer output passes: confidence clamped, reason filled,
+        junk dropped) and then raises ``NotImplementedError`` — nothing is
+        stored. The real route will validate against the phase's actual
+        schema targets instead of the records' own matches.
+        """
+        if phase not in PHASES:
+            raise ValueError(f"unknown phase '{phase}'")
+        items = [r.get("item") for r in records or [] if isinstance(r, dict)]
+        targets = {
+            r.get("match")
+            for r in records or []
+            if isinstance(r, dict) and r.get("match")
+        }
+        sanitised = sanitise_pairs(
+            records or [],
+            items=items,
+            valid_targets=targets,
+            source=source,
+            tier=3,
+        )
+        raise NotImplementedError(
+            "suggestions ingest is reserved for issues 2/3; no route is wired yet "
+            f"({len(sanitised)} records validated and discarded)"
+        )
 
     # ------------------------------------------------------------------
     # Internals

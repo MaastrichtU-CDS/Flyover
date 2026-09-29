@@ -16,8 +16,7 @@ The schema is cherry-picked from the LLM branch's ``matching.py``
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from jsonschema import ValidationError, validate
 
@@ -67,51 +66,6 @@ SUGGESTION_RECORD_SCHEMA = {
 }
 
 
-@dataclass
-class SuggestionRecord:
-    """One suggestion about one local item (column or distinct value).
-
-    Attributes match the README contract; ``alternatives`` holds the losing
-    records from the cascade merge so the UI can offer them in a popover.
-    """
-
-    item: str
-    match: Optional[str]
-    confidence: float
-    reason: str
-    source: str
-    tier: int
-    status: str = "done"
-    alternatives: list[dict] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        d = {
-            "item": self.item,
-            "match": self.match,
-            "confidence": self.confidence,
-            "reason": self.reason,
-            "source": self.source,
-            "tier": self.tier,
-            "status": self.status,
-        }
-        if self.alternatives:
-            d["alternatives"] = self.alternatives
-        return d
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "SuggestionRecord":
-        return cls(
-            item=data["item"],
-            match=data.get("match"),
-            confidence=float(data.get("confidence", 0.0)),
-            reason=data.get("reason", ""),
-            source=data.get("source", "manual"),
-            tier=int(data.get("tier", 1)),
-            status=data.get("status", "done"),
-            alternatives=list(data.get("alternatives", []) or []),
-        )
-
-
 def _clamp_confidence(value: Any) -> float:
     """Clamp a confidence value to [0, 1], treating garbage as 0."""
     try:
@@ -153,8 +107,8 @@ def sanitise_pairs(
         status: The status to stamp on every record.
 
     Returns:
-        A list of record dicts (``SuggestionRecord.to_dict`` shape), one per
-        item in ``items`` order.
+        A list of record dicts in the contract's shape, one per item in
+        ``items`` order.
     """
     item_set = set(items)
     target_set = set(valid_targets)

@@ -15,7 +15,6 @@ from jsonschema import ValidationError
 
 from services.suggestions.contract import (
     SUGGESTION_RECORD_SCHEMA,
-    SuggestionRecord,
     is_valid_record,
     sanitise_pairs,
     validate_record,
@@ -186,18 +185,6 @@ class TestSanitisePairs(unittest.TestCase):
             tier=1,
         )
         self.assertEqual(out[0]["confidence"], 0.0)
-
-
-class TestSuggestionRecordDataclass(unittest.TestCase):
-    def test_roundtrip(self):
-        r = SuggestionRecord(
-            item="x", match="v1", confidence=0.5, reason="r", source="alias", tier=1
-        )
-        d = r.to_dict()
-        r2 = SuggestionRecord.from_dict(d)
-        self.assertEqual(r2.item, "x")
-        self.assertEqual(r2.match, "v1")
-        self.assertEqual(r2.source, "alias")
 
 
 if __name__ == "__main__":

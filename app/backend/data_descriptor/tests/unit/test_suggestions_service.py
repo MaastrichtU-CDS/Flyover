@@ -143,6 +143,38 @@ def _make_rdf_store(columns_by_db=None, categories=None):
     return rdf
 
 
+def _add_nki_site(
+    data: dict,
+    sex_local_mappings: dict = None,
+    maps_to: str = "schema:variable/biological_sex",
+) -> dict:
+    """Add an 'nki' site to a mapping dict from _make_mapping().to_dict().
+
+    The base service fixture only has christie; the leave-one-site-out and
+    fallback tests need a second remembered site.
+    """
+    data["databases"]["nki"] = {
+        "@id": "mapping:database/nki",
+        "@type": "mapping:Database",
+        "name": "nki",
+        "tables": {
+            "data": {
+                "@id": "mapping:table/nki/data",
+                "@type": "mapping:Table",
+                "sourceFile": "nki",
+                "columns": {
+                    "sex": {
+                        "mapsTo": maps_to,
+                        "localColumn": "sex",
+                        "localMappings": sex_local_mappings or {},
+                    }
+                },
+            }
+        },
+    }
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Config helpers
 # ---------------------------------------------------------------------------
@@ -167,6 +199,180 @@ VARIABLE_KEYS = [
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+class TestStatusHonesty(unittest.TestCase):
+    """WS4.1: /status must never claim an unimplemented tier is active."""
+
+    def test_enabled_but_unimplemented_tiers_report_inactive(self):
+        svc = SuggestionService(_config(tiers=(1, 2, 3)))
+        status = svc.status()
+        self.assertEqual(status["tiers"][1]["state"], "active")
+        self.assertEqual(status["tiers"][2]["state"], "inactive")
+        self.assertIn("not implemented yet (issue 3)", status["tiers"][2]["reason"])
+        self.assertEqual(status["tiers"][3]["state"], "inactive")
+        self.assertIn("not implemented yet (issue 4)", status["tiers"][3]["reason"])
+
+
+class TestValuesLeaveOneSiteOut(unittest.TestCase):
+    """WS4.3: every value group must exclude ITS OWN database from the
+    alias memory. The groups used to fall back to the payload-level
+    described_database (the FIRST database), so every group excluded the
+    same one and a site could suggest from its own remembered values."""
+
+    def test_two_databases_each_exclude_their_own_values(self):
+        data = _make_mapping().to_dict()
+        # christie remembers 'man_en' -> male; nki remembers 'M' -> male.
+        data["databases"]["christie"]["tables"]["data"]["columns"]["sex"][
+            "localMappings"
+        ] = {"male": ["man_en"], "female": ["vrouw_en"]}
+        _add_nki_site(data, {"male": ["M"], "female": ["F"]})
+        mapping = JSONLDMapping.from_dict(data)
+        cache = _make_session_cache(mapping)
+        cache.DescriptiveInfoDetails = {
+            "christie": [{'Biological Sex (or "sex")': [{"value": "M"}]}],
+            "nki": [{'Biological Sex (or "sex")': [{"value": "M"}]}],
+        }
+        svc = SuggestionService(_config())
+        svc.start(VALUES_PHASE, cache, None)
+        records = svc.get_state(cache, VALUES_PHASE)["records"]
+
+        # christie's group excludes christie, so nki's remembered 'M' ->
+        # male is a legitimate alias hit.
+        christie_rec = records["christie_sex_M"]
+        self.assertEqual(christie_rec["match"], "male")
+        self.assertEqual(christie_rec["source"], "alias")
+
+        # nki's group excludes nki: its own 'M' -> male must not leak back
+        # as an alias suggestion.
+        nki_rec = records["nki_sex_M"]
+        self.assertFalse(
+            nki_rec["source"] == "alias" and nki_rec["match"] == "male",
+            "the nki group saw nki's own remembered M -> male",
+        )
+
+
+class TestValuesFallback(unittest.TestCase):
+    """WS4.4: the values-phase fallback must resolve a column's variable by
+    (database, local column), not by local name across all databases."""
+
+    def test_same_named_column_in_two_databases_maps_to_its_own_variable(self):
+        data = _make_mapping().to_dict()
+        # nki's 'sex' column maps to a different variable than christie's.
+        data["schema"]["variables"]["other_sex"] = {
+            "@type": "schema:CategoricalVariable",
+            "dataType": "categorical",
+            "predicate": "sio:has_sex",
+            "class": "ncit:C28421",
+            "valueMapping": {
+                "terms": {
+                    "man": {"targetClass": "ncit:C20197"},
+                    "vrouw": {"targetClass": "ncit:C16576"},
+                }
+            },
+        }
+        _add_nki_site(
+            data,
+            {"male": ["M"], "female": ["F"]},
+            maps_to="schema:variable/other_sex",
+        )
+        mapping = JSONLDMapping.from_dict(data)
+        cache = _make_session_cache(mapping)
+        cache.DescriptiveInfoDetails = {}
+        rdf = _make_rdf_store(
+            columns_by_db={"christie": ["sex"], "nki": ["sex"]},
+            categories="value,count\nM,80\nF,70\n",
+        )
+        svc = SuggestionService(_config())
+        result = svc.start(VALUES_PHASE, cache, rdf)
+        self.assertEqual(result["status"], "started")
+        records = svc.get_state(cache, VALUES_PHASE)["records"]
+
+        # christie's sex is biological_sex; nki's remembered 'M' -> male
+        # is a valid alias hit for it.
+        self.assertEqual(records["christie_sex_M"]["match"], "male")
+
+        # nki's sex is other_sex (terms man/vrouw). The old local-name
+        # lookup resolved it to christie's biological_sex and suggested
+        # 'male' from nki's own remembered values; now the christie
+        # variable's terms are not valid targets for this group, so the
+        # sanitiser nulls any such hit.
+        self.assertNotEqual(records["nki_sex_M"]["match"], "male")
+
+
+class TestFingerprintExpiry(unittest.TestCase):
+    """WS4.5: the fingerprint covers the rules version and the alias
+    memory, so a rules bump or another site's mapping change expires the
+    cached job instead of serving stale suggestions."""
+
+    def setUp(self):
+        self.cache = _make_session_cache()
+        self.rdf = _make_rdf_store(columns_by_db={"christie": ["morph"]})
+
+    @patch("services.suggestions.tier1_producers")
+    def test_rules_version_change_expires_cached_job(self, mock_producers):
+        mock_producers.return_value = [FakeProducer(1, "alias", {})]
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, self.cache, self.rdf)
+        self.assertEqual(svc.get_state(self.cache, VARIABLES_PHASE)["status"], "done")
+        # Same items and mapping: reused.
+        self.assertEqual(
+            svc.start(VARIABLES_PHASE, self.cache, self.rdf)["status"],
+            "already_done",
+        )
+        # A rules bump changes the fingerprint.
+        svc._rules["version"] = "999.0.0"
+        self.assertEqual(
+            svc.start(VARIABLES_PHASE, self.cache, self.rdf)["status"], "started"
+        )
+
+    @patch("services.suggestions.tier1_producers")
+    def test_alias_memory_change_expires_cached_job(self, mock_producers):
+        mock_producers.return_value = [FakeProducer(1, "alias", {})]
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, self.cache, self.rdf)
+        self.assertEqual(
+            svc.start(VARIABLES_PHASE, self.cache, self.rdf)["status"],
+            "already_done",
+        )
+        # Another site reviews another column: the alias memory hash
+        # changes, so the cached job must not be served.
+        data = _add_nki_site(_make_mapping().to_dict(), {"male": ["M"]})
+        data["databases"]["nki"]["tables"]["data"]["columns"]["extra_col"] = {
+            "mapsTo": "schema:variable/biological_sex",
+            "localColumn": "extra_col",
+        }
+        self.cache.jsonld_mapping = JSONLDMapping.from_dict(data)
+        self.assertEqual(
+            svc.start(VARIABLES_PHASE, self.cache, self.rdf)["status"], "started"
+        )
+
+
+class TestIngestReserved(unittest.TestCase):
+    """WS4.7: ingest() is reserved with the plan's signature; it validates
+    through sanitise_pairs and raises NotImplementedError until issues 2/3
+    wire the /ingest route."""
+
+    def test_unknown_phase_raises_value_error(self):
+        svc = SuggestionService(_config())
+        with self.assertRaises(ValueError):
+            svc.ingest("bogus", [], "pasted_llm")
+
+    def test_stub_validates_then_raises_not_implemented(self):
+        svc = SuggestionService(_config())
+        records = [
+            {
+                "item": "morph",
+                "match": "tumour_morphology_icd_o",
+                "confidence": 9.9,
+                "reason": "",
+            },
+            {"item": "junk", "match": None, "confidence": "high", "reason": ""},
+        ]
+        # The sanitiser normalises (clamps confidence, fills reasons) and
+        # then the stub raises: nothing is stored without a route.
+        with self.assertRaises(NotImplementedError):
+            svc.ingest(VARIABLES_PHASE, records, "pasted_llm")
 
 
 class TestSuggestionStatus(unittest.TestCase):
