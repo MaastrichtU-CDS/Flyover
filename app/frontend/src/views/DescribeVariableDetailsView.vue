@@ -25,6 +25,11 @@ const suggestions = useSuggestionsStore()
 const descriptiveInfo = ref(null)
 const descriptiveInfoDetails = ref(null)
 const preselectedValues = ref({})
+// Value-mapping options per variable display name, from the state response.
+// A browser without a semantic map of its own cannot collect them
+// client-side; the response carries them so the page's variables,
+// preselected values and dropdown options all come from the same map.
+const categoryOptionsByVariable = ref({})
 const expandedDatabases = reactive({})
 const expandedVariables = reactive({})
 const isProcessing = ref(false)
@@ -72,7 +77,17 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
   const isMissing = varName.startsWith('Missing Description')
   const displayLabel = varName.replace(' (or "', '<br>(or "')
 
-  const categoryOptions = jsonld.getCategoryOptionsForVariable(database, globalVarName, localVariable)
+  // The browser's own map is the source for a variable's value-mapping
+  // options; the response's copy covers a browser without one. (An empty
+  // lookup result is not a usable source — an empty array is truthy.)
+  const optionsFromMap = jsonld.getCategoryOptionsForVariable(
+    database,
+    globalVarName,
+    localVariable
+  )
+  const categoryOptions = optionsFromMap.length
+    ? optionsFromMap
+    : categoryOptionsByVariable.value[varName] || []
   const localMappings = jsonld.getLocalMappingsForVariable(
     database,
     localVariable,
@@ -667,6 +682,7 @@ onMounted(async () => {
     descriptiveInfo.value = data.descriptive_info || {}
     descriptiveInfoDetails.value = data.descriptive_info_details || {}
     preselectedValues.value = data.preselected_values || {}
+    categoryOptionsByVariable.value = data.category_options || {}
     await db.saveData('metadata', {
       key: 'descriptive_info',
       data: descriptiveInfo.value,

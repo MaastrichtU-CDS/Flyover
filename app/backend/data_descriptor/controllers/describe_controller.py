@@ -120,6 +120,9 @@ def api_describe_variable_details_state():
             "descriptive_info": descriptive_info,
             "descriptive_info_details": details,
             "preselected_values": preselected_values,
+            "category_options": _category_options_from_mapping(
+                effective_mapping, details
+            ),
         }
     )
 
@@ -203,6 +206,34 @@ def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
                 if local_column in key:
                     return True
     return False
+
+
+def _category_options_from_mapping(mapping: Any, details: dict) -> dict:
+    """Value-mapping options per variable display name, from the mapping the
+    response is rendered on.
+
+    A browser without a semantic map of its own (a fresh or incognito window
+    viewing the session's describe state) cannot collect a variable's value
+    mappings client-side. The response carries them, so the variables, the
+    preselected values and the dropdown options all come from the same map.
+    """
+    if not mapping:
+        return {}
+    options = {}
+    for variables in details.values():
+        for variable in variables:
+            if not isinstance(variable, dict):
+                continue
+            for var_name in variable:
+                if var_name in options:
+                    continue
+                global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
+                var_info = mapping.get_variable(global_var)
+                terms = getattr(var_info, "value_mappings", None) or {}
+                options[var_name] = [
+                    term[0].upper() + term[1:].replace("_", " ") for term in terms
+                ]
+    return options
 
 
 def _populate_details_from_jsonld(

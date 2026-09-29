@@ -158,6 +158,11 @@ class TestDescribeVariableDetailsState(unittest.TestCase):
         self.assertEqual(
             data["preselected_values"].get('christie_sex_category_"M"'), "Male"
         )
+        # The variable's value-mapping options come from the same mapping,
+        # for browsers that have no map of their own.
+        self.assertEqual(
+            data["category_options"].get('Biological Sex (or "sex")'), ["Male"]
+        )
         # The population persists in the session (today's behaviour).
         flat = json.dumps(session_cache.DescriptiveInfoDetails)
         self.assertIn("T Stage", flat)
@@ -188,6 +193,10 @@ class TestDescribeVariableDetailsState(unittest.TestCase):
         # Preselected from the BODY mapping's terms: man -> 'M' -> Man.
         self.assertEqual(
             data["preselected_values"].get('christie_sex_category_"M"'), "Man"
+        )
+        # The value-mapping options follow the body map too.
+        self.assertEqual(
+            data["category_options"].get('Biological Sex (or "sex")'), ["Man"]
         )
         # The body map's variable shows in the response...
         self.assertIn("T Stage", json.dumps(data["descriptive_info_details"]))

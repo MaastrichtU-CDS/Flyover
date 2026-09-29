@@ -67,6 +67,7 @@ vi.mock('@/lib/jsonld', async (importOriginal) => {
 })
 
 import api from '@/services/api'
+import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
@@ -487,6 +488,39 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     expect(store.isApplied('patients_sex_M')).toBe(true)
     expect(wrapper.vm.categorySelections.patients_sex_M).toBe('Male')
     expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+  })
+
+  it('collects a variable\'s value mappings from the state when the browser has no map', async () => {
+    // A fresh or incognito browser views the session\'s describe state but
+    // has no semantic map in IndexedDB, so it cannot collect the value
+    // mappings client-side. The state response carries them (computed from
+    // the same map that produced the page), so the dropdown still offers
+    // the selected variable\'s terms instead of the generic Yes/No list.
+    const state = JSON.parse(JSON.stringify(DETAILS_STATE))
+    state.category_options = { Sex: ['Male', 'Female', 'Missing or unspecified'] }
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: state }],
+      ['/api/v1/suggestions/status', { data: STATUS }],
+      ['/api/v1/suggestions/values', { data: VALUES_SNAPSHOT }],
+    ])
+    const defaultGetData = db.getData.getMockImplementation()
+    db.getData.mockResolvedValue(null)
+    try {
+      const wrapper = mountDetails()
+      await flushPromises()
+
+      const select = wrapper.find('select.category-select')
+      expect(select.exists()).toBe(true)
+      expect([...select.element.options].map((o) => o.value)).toEqual([
+        '',
+        'Male',
+        'Female',
+        'Missing or unspecified',
+        'Other',
+      ])
+    } finally {
+      db.getData.mockImplementation(defaultGetData)
+    }
   })
 
   it('pre-fills the category dropdown for display but never calls updateCategoryMapping', async () => {
