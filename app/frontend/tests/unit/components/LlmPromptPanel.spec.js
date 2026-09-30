@@ -35,6 +35,7 @@ function promptResponse(chunks = 1, itemCount = 3) {
       item_count: itemCount,
       chunk_hint: 40,
       contains: ['variable keys', 'column names'],
+      privacy: 'SERVER PRIVACY NOTE',
       already_mapped: 2,
       answer_schema: {},
     },
@@ -118,6 +119,9 @@ describe('Frontend unit: LlmPromptPanel', () => {
       'variable keys',
       'column names',
     ])
+    // Once generated, the server's privacy note (worded for the options
+    // actually used) replaces the pre-generation one.
+    expect(wrapper.find('.llm-help-privacy').text()).toBe('SERVER PRIVACY NOTE')
     expect(wrapper.findAll('.llm-help-chunk')).toHaveLength(1)
     expect(wrapper.find('.llm-help-preview').exists()).toBe(false)
     await wrapper.find('.llm-help-preview-toggle').trigger('click')
@@ -138,6 +142,19 @@ describe('Frontend unit: LlmPromptPanel', () => {
       chunk: 40,
     })
     expect(wrapper.find('.llm-help-summary').text()).toMatch(/3 values still to map/)
+  })
+
+  it('starts from the site chunk default and offers it when non-standard', async () => {
+    useSuggestionsStore().promptExportChunk = 90
+    api.post.mockResolvedValue(promptResponse())
+    const wrapper = await mountOpen()
+    expect(wrapper.find('.llm-help-chunk-size').element.value).toBe('90')
+    expect(wrapper.findAll('.llm-help-chunk-size option').map((o) => o.element.value)).toEqual([
+      '20', '40', '80', '90', '160', '400',
+    ])
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+    expect(api.post.mock.calls[0][1].chunk).toBe(90)
   })
 
   it('offers one copy and one download button per chunk and copies through the clipboard', async () => {

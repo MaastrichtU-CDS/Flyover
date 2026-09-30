@@ -75,7 +75,9 @@ const status = useStatusStore()
 const open = ref(false)
 const includeValues = ref(true)
 const includeFreeText = ref(false)
-const chunk = ref(40)
+// The site's default (FLYOVER_SUGGESTION_PROMPT_CHUNK via /status), not a
+// hardcoded 40, so an operator's env choice reaches the UI.
+const chunk = ref(suggestions.promptExportChunk || 40)
 const generating = ref(false)
 const generateError = ref('')
 const prompt = ref(null)
@@ -87,11 +89,21 @@ const importResult = ref(null)
 
 const itemLabel = computed(() => (props.phase === 'values' ? 'values' : 'columns'))
 
-const privacyNotice = computed(() =>
-  props.phase === 'values'
+// Offer the site default even when it is not one of the stock sizes.
+const chunkOptions = computed(() => {
+  const d = suggestions.promptExportChunk || 40
+  return CHUNK_OPTIONS.includes(d) ? CHUNK_OPTIONS : [...CHUNK_OPTIONS, d].sort((a, b) => a - b)
+})
+
+// The pre-generation notice describes the default options; once a prompt
+// has been generated the server's notice wins because it is worded for
+// the options actually used (e.g. no sample values when unticked).
+const privacyNotice = computed(() => {
+  if (prompt.value?.privacy) return prompt.value.privacy
+  return props.phase === 'values'
     ? 'The prompt contains variable keys and labels, their term keys, your column names and the distinct values of the categorical columns being mapped. It contains no data rows. Review it before sending it to an external service.'
-    : 'The prompt contains variable keys and labels, your column names and a few distinct values of categorical-looking columns. It contains no data rows. Review it before sending it to an external service.',
-)
+    : 'The prompt contains variable keys and labels, your column names and a few distinct values of categorical-looking columns. It contains no data rows. Review it before sending it to an external service.'
+})
 
 const importSummary = computed(() => {
   const r = importResult.value
@@ -255,7 +267,7 @@ async function importAnswer() {
             title="Smaller parts fit models with a small context window"
           >
             <option
-              v-for="n in CHUNK_OPTIONS"
+              v-for="n in chunkOptions"
               :key="n"
               :value="n"
             >

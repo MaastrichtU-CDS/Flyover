@@ -584,11 +584,14 @@ describe('Frontend unit: useSuggestionsStore', () => {
   // --- Prompt export / paste-back (issue 2) ------------------------------
 
   it('init() reads prompt_export from /status, active even with tiers off', async () => {
-    api.get.mockResolvedValueOnce(statusResponse(false, { prompt_export: { state: 'active' } }))
+    api.get.mockResolvedValueOnce(
+      statusResponse(false, { prompt_export: { state: 'active', chunk: 160 } }),
+    )
     const s = useSuggestionsStore()
     await s.init('variables', { mapping: MAPPING })
     expect(s.enabled).toBe(false)
     expect(s.promptExport).toBe(true)
+    expect(s.promptExportChunk).toBe(160)
   })
 
   it('init() leaves prompt export off when /status does not list it', async () => {
@@ -596,6 +599,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const s = useSuggestionsStore()
     await s.init('variables', { mapping: MAPPING })
     expect(s.promptExport).toBe(false)
+    expect(s.promptExportChunk).toBe(40)
   })
 
   it('fetchPrompt posts the phase, database, mapping and options', async () => {

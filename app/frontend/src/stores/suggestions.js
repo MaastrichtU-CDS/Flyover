@@ -60,6 +60,9 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   // model and no flag, so /status reports it active even when every tier
   // is off; null until /status answered.
   const promptExport = ref(null)
+  // The site's "Items per prompt" default (FLYOVER_SUGGESTION_PROMPT_CHUNK,
+  // clamped server-side) so the panel offers it instead of hardcoding 40.
+  const promptExportChunk = ref(40)
   // Summary of the last successful ingest ({accepted, nulled, rejected,
   // skipped, messages, phase, database}); the panel and tests read it.
   const lastIngestResult = ref(null)
@@ -367,6 +370,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
         threshold.value = data.threshold ?? 0.8
         rulesVersion.value = data.rules_version || null
         promptExport.value = data.prompt_export?.state === 'active'
+        promptExportChunk.value = data.prompt_export?.chunk || 40
       } catch {
         enabled.value = false
         promptExport.value = false
@@ -596,6 +600,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     threshold,
     rulesVersion,
     promptExport,
+    promptExportChunk,
     lastIngestResult,
     variables,
     values,
