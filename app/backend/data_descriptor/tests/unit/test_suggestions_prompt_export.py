@@ -252,6 +252,10 @@ class TestVariablesPrompt(unittest.TestCase):
         self.assertIn("column names", result["contains"])
         self.assertIn("variable keys", result["contains"])
         self.assertIn("no data rows", result["privacy"])
+        # Without sample values the notice may not claim values leave.
+        bare = _export(include_values=False).build()
+        self.assertNotIn("distinct values", bare["privacy"])
+        self.assertFalse(any("distinct values" in c for c in bare["contains"]))
 
 
 class TestValuesPrompt(unittest.TestCase):
@@ -282,6 +286,9 @@ class TestValuesPrompt(unittest.TestCase):
         self.assertEqual([s["column"] for s in default["skipped"]], ["opmerking"])
         self.assertTrue(any("opmerking" in c for c in default["contains"]))
         self.assertNotIn(FREE_TEXT[0], default["prompt"])
+        # Excluded: the notice claims categorical columns only.
+        self.assertIn("categorical columns", default["privacy"])
+        self.assertNotIn("free-text", default["privacy"])
 
         included = PromptExport(
             "values", "nki", mapping, exclude_free_text=False, **kwargs
@@ -289,6 +296,14 @@ class TestValuesPrompt(unittest.TestCase):
         self.assertEqual(included["skipped"], [])
         all_prompts = "\n".join(c["prompt"] for c in included["chunks"])
         self.assertIn(FREE_TEXT[0], all_prompts)
+        # Included: contains and the privacy note name the free-text column,
+        # so the user sees exactly what leaves the browser.
+        self.assertIn(
+            "distinct values of the mapped columns, including the "
+            "free-text column(s): opmerking",
+            included["contains"],
+        )
+        self.assertIn("free-text column(s) opmerking", included["privacy"])
 
     def test_values_chunks_keep_whole_columns(self):
         data = _with_free_text_mapped()
