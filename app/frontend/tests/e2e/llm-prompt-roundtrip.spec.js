@@ -5,6 +5,7 @@ import {
   dismissCoachmarkIfPresent,
   expandAllDatabases,
   otherSiteMapping,
+  suggestionsEnabled,
   uploadSemanticMapAndContinue,
 } from './helpers/suggestions.js'
 
@@ -73,8 +74,12 @@ async function importAnswer(panel, answer) {
 test.describe('LLM prompt export round trip', () => {
   test.setTimeout(240_000)
 
-  test('variables: copy prompt, paste answer, accept the imported suggestion', async ({ page }) => {
+  test('variables: copy prompt, paste answer, accept the imported suggestion', async ({
+    page,
+    request,
+  }) => {
     const errors = watchConsoleErrors(page)
+    const { enabled: tiersOn } = await suggestionsEnabled(request)
     await runIngestFlow(page)
 
     // The other-site map remembers every column by name, which would give
@@ -98,7 +103,9 @@ test.describe('LLM prompt export round trip', () => {
     expect(promptText).toContain('"databases"')
     expect(promptText).toContain(`"${DB}"`)
     expect(promptText).toContain('- clin_t')
-    expect(promptText).toMatch(/hint: /)
+    // Hints come from the tier-1 job, so only a stack with tiers on has them.
+    if (tiersOn) expect(promptText).toMatch(/hint: /)
+    else expect(promptText).not.toMatch(/hint: /)
     expect(promptText).toContain('biological_sex (categorical, 2 distinct: male, female)')
     expect(promptText).toMatch(/- id \(\w[\w ]*, 150 distinct values\)/)
     expect(promptText).not.toContain('P0001')
@@ -150,8 +157,12 @@ test.describe('LLM prompt export round trip', () => {
     expect(errors, 'JS errors during the variables round trip').toEqual([])
   })
 
-  test('values: copy prompt, paste answer, accept the imported suggestion', async ({ page }) => {
+  test('values: copy prompt, paste answer, accept the imported suggestion', async ({
+    page,
+    request,
+  }) => {
     const errors = watchConsoleErrors(page)
+    const { enabled: tiersOn } = await suggestionsEnabled(request)
     await runIngestFlow(page)
 
     // The example map of this very database, with its value mappings
@@ -170,12 +181,14 @@ test.describe('LLM prompt export round trip', () => {
     // map. Tier 1 may still pre-fill columns of databases the local store
     // kept from earlier runs (alias memory from this map); clear those so
     // the review gate opens, then submit to the details page.
-    await expect(page.locator('.suggestion-status-bar')).toBeVisible({ timeout: 30_000 })
-    await expandAllDatabases(page)
-    await dismissCoachmarkIfPresent(page)
-    const clearAll = page.locator('.suggestion-clear-all')
-    if (await clearAll.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await clearAll.click()
+    if (tiersOn) {
+      await expect(page.locator('.suggestion-status-bar')).toBeVisible({ timeout: 30_000 })
+      await expandAllDatabases(page)
+      await dismissCoachmarkIfPresent(page)
+      const clearAll = page.locator('.suggestion-clear-all')
+      if (await clearAll.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        await clearAll.click()
+      }
     }
     const submit = page.getByRole('button', { name: /^Submit$/ })
     await expect(submit).toBeEnabled({ timeout: 60_000 })
