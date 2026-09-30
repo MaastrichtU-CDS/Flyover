@@ -7,10 +7,11 @@ Tests cover ``/status``, ``/<phase>/start``, ``GET /<phase>``,
 """
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -518,6 +519,10 @@ class TestPromptRoute(unittest.TestCase):
             data = client.get("/api/v1/suggestions/status").get_json()
             self.assertFalse(data["enabled"])
             self.assertEqual(data["prompt_export"]["state"], "active")
+            # The site's chunk default reaches the panel through /status.
+            with patch.dict(os.environ, {"FLYOVER_SUGGESTION_PROMPT_CHUNK": "160"}):
+                data = client.get("/api/v1/suggestions/status").get_json()
+            self.assertEqual(data["prompt_export"]["chunk"], 160)
         with _make_app(None).test_client() as client:
             data = client.get("/api/v1/suggestions/status").get_json()
             self.assertEqual(data["prompt_export"]["state"], "inactive")

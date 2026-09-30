@@ -16,6 +16,7 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from services.suggestions import SuggestionRequestError
+from services.suggestions.prompt_export import chunk_size_from_env
 from utils.mapping_request import parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
@@ -98,8 +99,9 @@ def suggestions_status():
                 "threshold": service.config.threshold if service else 0.8,
                 # The copy-prompt / paste-answer round trip has no model
                 # and no flag: it is available whenever the service is.
+                # The chunk default matches the enabled branch.
                 "prompt_export": (
-                    {"state": "active"}
+                    {"state": "active", "chunk": chunk_size_from_env()}
                     if service is not None
                     else {"state": "inactive", "reason": "no suggestion service"}
                 ),

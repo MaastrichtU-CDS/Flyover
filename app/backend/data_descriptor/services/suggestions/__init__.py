@@ -28,6 +28,7 @@ from .prompt_export import (
     PASTED_SOURCE,
     PASTED_TIER,
     PromptExport,
+    chunk_size_from_env,
     local_mappings,
     mapped_columns,
 )
@@ -301,8 +302,13 @@ class SuggestionService:
                 (self._rules or {}).get("version") if self._rules else None
             ),
             # The copy-prompt / paste-answer round trip needs no model and
-            # no flag: it is available whenever the service is.
-            "prompt_export": {"state": "active"},
+            # no flag: it is available whenever the service is. The chunk
+            # default is the env's clamped value so the panel can offer the
+            # site's chosen default (FLYOVER_SUGGESTION_PROMPT_CHUNK).
+            "prompt_export": {
+                "state": "active",
+                "chunk": chunk_size_from_env(),
+            },
         }
 
     # ------------------------------------------------------------------
