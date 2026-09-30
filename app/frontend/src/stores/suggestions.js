@@ -39,6 +39,16 @@ export const SOURCE_ICONS = {
   manual: 'fa-hand',
 }
 
+// One-line toast for an ingest result, e.g. "3 suggestions imported, 1 had
+// an invalid key, 2 already mapped". Exported so the tests can assert on it.
+export function ingestSummary({ accepted = 0, nulled = 0, rejected = 0, skipped = 0 } = {}) {
+  const parts = [`${accepted} ${accepted === 1 ? 'suggestion' : 'suggestions'} imported`]
+  if (nulled) parts.push(`${nulled} had an invalid key`)
+  if (rejected) parts.push(`${rejected} ignored (unknown column or value)`)
+  if (skipped) parts.push(`${skipped} already mapped`)
+  return parts.join(', ')
+}
+
 export const useSuggestionsStore = defineStore('suggestions', () => {
   // null = not yet checked; false = feature off (render zero suggestion UI)
   const enabled = ref(null)
@@ -46,6 +56,13 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   const tiers = ref({})
   const threshold = ref(0.8)
   const rulesVersion = ref(null)
+  // The copy-prompt / paste-answer round trip (issue 2). It needs no
+  // model and no flag, so /status reports it active even when every tier
+  // is off; null until /status answered.
+  const promptExport = ref(null)
+  // Summary of the last successful ingest ({accepted, nulled, rejected,
+  // skipped, messages, phase, database}); the panel and tests read it.
+  const lastIngestResult = ref(null)
 
   const variables = reactive({
     status: 'idle',
@@ -349,8 +366,10 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
         tiers.value = data.tiers || {}
         threshold.value = data.threshold ?? 0.8
         rulesVersion.value = data.rules_version || null
+        promptExport.value = data.prompt_export?.state === 'active'
       } catch {
         enabled.value = false
+        promptExport.value = false
       }
     }
     if (!enabled.value) return
@@ -411,6 +430,71 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       }
       if (!isPolling()) startPolling(phase)
     }
+  }
+
+  // Compose the prompt for one database and phase on the server. The
+  // browser's semantic map goes along (the describe pages work on it) so
+  // the "already mapped" context and the candidate list match what the
+  // user sees. Returns the response payload; throws on failure with a
+  // readable message on error.message.
+  async function fetchPrompt(phase, database, { mapping, includeValues, excludeFreeText, chunk } = {}) {
+    const body = { phase, database, mapping }
+    if (includeValues !== undefined) body.include_values = !!includeValues
+    if (excludeFreeText !== undefined) body.exclude_free_text = !!excludeFreeText
+    if (chunk) body.chunk = chunk
+    try {
+      const { data } = await api.post('/api/v1/suggestions/prompt', body)
+      return data
+    } catch (err) {
+      throw new Error(_apiMessage(err, 'Could not generate the prompt.'))
+    }
+  }
+
+  // Send the pasted LLM answer to the server, which validates it and
+  // merges it into the phase's job as pasted_llm suggestions. Nothing
+  // touches the JSON-LD or the review marks: the merged snapshot arrives
+  // through the same path as a poll. Returns the ingest summary; throws
+  // with a readable message when the paste is unusable.
+  async function ingest(phase, database, { answer, records, mapping } = {}) {
+    const body = { database, source: 'pasted_llm', mapping }
+    if (answer !== undefined) body.answer = answer
+    if (records !== undefined) body.records = records
+    let data
+    try {
+      ;({ data } = await api.post(`/api/v1/suggestions/${phase}/ingest`, body))
+    } catch (err) {
+      throw new Error(_apiMessage(err, 'Could not import the answer.'))
+    }
+    // A paste makes the suggestion UI relevant even on a stack with every
+    // tier off: the pills must render the imported records.
+    enabled.value = true
+    if (data.job) {
+      const state = _phaseState(phase)
+      state.status = data.job.status || 'done'
+      state.reason = null
+      state.progress = {
+        done: data.job.progress?.done ?? 0,
+        total: data.job.progress?.total ?? 0,
+      }
+      _ingestRecords(phase, data.job)
+    }
+    lastIngestResult.value = {
+      phase,
+      database,
+      accepted: data.accepted ?? 0,
+      nulled: data.nulled ?? 0,
+      rejected: data.rejected ?? 0,
+      skipped: data.skipped ?? 0,
+      messages: data.messages || [],
+    }
+    useStatusStore().success(ingestSummary(lastIngestResult.value))
+    return lastIngestResult.value
+  }
+
+  function _apiMessage(err, fallback) {
+    const body = err?.response?.data
+    if (body && typeof body.error === 'string' && body.error) return body.error
+    return fallback
   }
 
   function _currentMarks() {
@@ -511,11 +595,15 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     tiers,
     threshold,
     rulesVersion,
+    promptExport,
+    lastIngestResult,
     variables,
     values,
     marks,
     coachmarkSeen,
     init,
+    fetchPrompt,
+    ingest,
     refresh,
     startPolling,
     stopPolling,

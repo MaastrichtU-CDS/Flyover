@@ -19,6 +19,7 @@ import {
   POLL_INTERVAL_MS,
   POLL_HARD_STOP_MS,
   SOURCE_ICONS,
+  ingestSummary,
 } from '@/stores/suggestions.js'
 import { useStatusStore } from '@/stores/status.js'
 
@@ -578,5 +579,126 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(SOURCE_ICONS.alias).toBeDefined()
     expect(SOURCE_ICONS.value_regex).toBeDefined()
     expect(SOURCE_ICONS.string).toBeDefined()
+  })
+
+  // --- Prompt export / paste-back (issue 2) ------------------------------
+
+  it('init() reads prompt_export from /status, active even with tiers off', async () => {
+    api.get.mockResolvedValueOnce(statusResponse(false, { prompt_export: { state: 'active' } }))
+    const s = useSuggestionsStore()
+    await s.init('variables', { mapping: MAPPING })
+    expect(s.enabled).toBe(false)
+    expect(s.promptExport).toBe(true)
+  })
+
+  it('init() leaves prompt export off when /status does not list it', async () => {
+    api.get.mockResolvedValueOnce(statusResponse(false))
+    const s = useSuggestionsStore()
+    await s.init('variables', { mapping: MAPPING })
+    expect(s.promptExport).toBe(false)
+  })
+
+  it('fetchPrompt posts the phase, database, mapping and options', async () => {
+    api.post.mockResolvedValue({
+      data: { prompt: 'P', chunks: [{ index: 1, prompt: 'P', items: ['a'] }], item_count: 1 },
+    })
+    const s = useSuggestionsStore()
+    const result = await s.fetchPrompt('variables', 'nki', {
+      mapping: MAPPING,
+      includeValues: false,
+      excludeFreeText: true,
+      chunk: 20,
+    })
+    expect(result.prompt).toBe('P')
+    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/prompt', {
+      phase: 'variables',
+      database: 'nki',
+      mapping: MAPPING,
+      include_values: false,
+      exclude_free_text: true,
+      chunk: 20,
+    })
+  })
+
+  it('fetchPrompt surfaces the server message on failure', async () => {
+    api.post.mockRejectedValue({ response: { data: { error: "unknown database 'x'" } } })
+    const s = useSuggestionsStore()
+    await expect(s.fetchPrompt('variables', 'x', { mapping: MAPPING })).rejects.toThrow(
+      "unknown database 'x'",
+    )
+    api.post.mockRejectedValue(new Error('network'))
+    await expect(s.fetchPrompt('variables', 'x', { mapping: MAPPING })).rejects.toThrow(
+      'Could not generate the prompt.',
+    )
+  })
+
+  it('ingest posts the pasted answer, enables the UI and merges the snapshot', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        accepted: 2,
+        nulled: 1,
+        rejected: 0,
+        skipped: 1,
+        messages: ["'sex' is already mapped"],
+        job: {
+          status: 'done',
+          fingerprint: 'fp+abc',
+          progress: { done: 3, total: 3 },
+          records: {
+            nki_taal: {
+              status: 'done',
+              item: 'taal',
+              match: 'administered_prom_language',
+              confidence: 0.9,
+              reason: "Dutch 'taal' = language.",
+              source: 'pasted_llm',
+              tier: 3,
+              database: 'nki',
+              column: 'taal',
+            },
+          },
+        },
+      },
+    })
+    const s = useSuggestionsStore()
+    expect(s.enabled).toBe(null)
+    const pasted = '```json\n{}\n```'
+    const result = await s.ingest('variables', 'nki', { answer: pasted, mapping: MAPPING })
+    expect(api.post).toHaveBeenCalledWith('/api/v1/suggestions/variables/ingest', {
+      database: 'nki',
+      source: 'pasted_llm',
+      mapping: MAPPING,
+      answer: pasted,
+    })
+    expect(s.enabled).toBe(true)
+    expect(s.variables.status).toBe('done')
+    expect(s.variables.byKey.nki_taal.source).toBe('pasted_llm')
+    expect(s.variables.byKey.nki_taal.display).toBe('Administered Prom Language')
+    expect(s.marks.variables.fingerprint).toBe('fp+abc')
+    expect(result).toEqual(s.lastIngestResult)
+    expect(s.lastIngestResult.accepted).toBe(2)
+    const toast = useStatusStore().messages.at(-1)
+    expect(toast.level).toBe('success')
+    expect(toast.text).toBe('2 suggestions imported, 1 had an invalid key, 1 already mapped')
+  })
+
+  it('ingest rejects with the server message and leaves state alone', async () => {
+    api.post.mockRejectedValue({
+      response: { status: 400, data: { error: 'Could not find valid JSON in the pasted text.' } },
+    })
+    const s = useSuggestionsStore()
+    await expect(s.ingest('values', 'nki', { answer: 'nope', mapping: MAPPING })).rejects.toThrow(
+      'Could not find valid JSON',
+    )
+    expect(s.enabled).toBe(null)
+    expect(s.lastIngestResult).toBe(null)
+    expect(useStatusStore().messages).toEqual([])
+  })
+
+  it('ingestSummary words the toast', () => {
+    expect(ingestSummary({ accepted: 1 })).toBe('1 suggestion imported')
+    expect(ingestSummary({ accepted: 0, rejected: 2 })).toBe(
+      '0 suggestions imported, 2 ignored (unknown column or value)',
+    )
   })
 })
