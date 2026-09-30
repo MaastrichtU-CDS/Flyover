@@ -1,6 +1,42 @@
-import { expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import fs from 'node:fs/promises'
 import { DEFAULT_MAPPING_JSONLD, runIngestFlow } from './ingest.js'
+
+/**
+ * Whether the running stack has mapping suggestions on, straight from the
+ * backend. The suggestion specs use it to skip the flows that do not apply
+ * to the stack they are pointed at (see `skipUnlessSuggestions`).
+ */
+export async function suggestionsEnabled(request) {
+  const response = await request.get('/api/v1/suggestions/status')
+  expect(response.ok(), `/api/v1/suggestions/status answered ${response.status()}`).toBe(true)
+  const status = await response.json()
+  return { enabled: status.enabled !== false, status }
+}
+
+/**
+ * Skip the current test unless the stack's suggestion feature is in the
+ * wanted state. With `E2E_SUGGESTIONS_DISABLED=1` set (the CI job that
+ * starts the stack with `FLYOVER_SUGGESTION_TIERS=` empty) a stack that
+ * still reports the feature enabled is a failure, not a skip: the whole
+ * point of that job is that the empty flag reaches the container.
+ */
+export async function skipUnlessSuggestions(request, wanted) {
+  const { enabled } = await suggestionsEnabled(request)
+  if (wanted === false && process.env.E2E_SUGGESTIONS_DISABLED) {
+    expect(
+      enabled,
+      'E2E_SUGGESTIONS_DISABLED is set but the stack reports suggestions enabled: ' +
+        'was it started with FLYOVER_SUGGESTION_TIERS= (empty)?',
+    ).toBe(false)
+  }
+  test.skip(
+    enabled !== wanted,
+    wanted
+      ? 'the stack runs with suggestions disabled; start it with FLYOVER_SUGGESTION_TIERS=1'
+      : 'the stack runs with suggestions enabled; start it with FLYOVER_SUGGESTION_TIERS= (empty) to run this spec',
+  )
+}
 
 /**
  * The example semantic map, re-labelled as if it came from another site.
@@ -62,15 +98,19 @@ export async function goToDescribeVariablesWithSuggestions(page) {
   await expect(page.locator('h1').first()).toContainText(/Describe your data/)
 }
 
-/** Open every collapsed database section on the variables page. */
+/**
+ * Open every collapsed database section on the variables page. The
+ * sections render once the describe state has loaded, so wait for the
+ * first toggle before counting, and keep clicking the first remaining
+ * "Show more" until none is left (each click flips one into "Show less").
+ */
 export async function expandAllDatabases(page) {
-  const toggles = page.locator('.toggle-button', { hasText: /Show more/ })
-  const count = await toggles.count()
-  for (let i = 0; i < count; i++) {
-    // Each click flips one "Show more" into "Show less", so always take
-    // the first remaining one.
-    await page.locator('.toggle-button', { hasText: /Show more/ }).first().click()
+  await expect(page.locator('.toggle-button').first()).toBeVisible({ timeout: 30_000 })
+  const collapsed = page.locator('.toggle-button', { hasText: /Show more/ })
+  for (let i = 0; i < 50 && (await collapsed.count()) > 0; i++) {
+    await collapsed.first().click()
   }
+  await expect(collapsed).toHaveCount(0)
 }
 
 /**
@@ -132,6 +172,43 @@ export async function readMetadata(page, key) {
       }),
     key,
   )
+}
+
+/** Collect every request the page makes to the suggestions API. */
+export function watchSuggestionRequests(page) {
+  const urls = []
+  page.on('request', (req) => {
+    if (/\/api\/v1\/suggestions\//.test(req.url())) urls.push(req.url())
+  })
+  return urls
+}
+
+/**
+ * The variables page with the feature off must look and behave exactly as
+ * it did before suggestions existed: no status bar, pills, callout or
+ * pre-fill, no suggestions request beyond `/status`, and only the old "at
+ * least one description" rule between the user and Submit. Shared by the
+ * mocked-status flow and the real empty-flag run.
+ */
+export async function expectDescribeWithoutSuggestions(page, { errors, suggestionRequests }) {
+  await expandAllDatabases(page)
+  const firstSelect = page.locator('.description-select').first()
+  await expect(firstSelect).toBeVisible()
+
+  await page.waitForTimeout(1_500)
+  await expect(page.locator('.suggestion-status-bar')).toHaveCount(0)
+  await expect(page.locator('.suggestion-badge')).toHaveCount(0)
+  await expect(page.locator('.suggestion-coachmark')).toHaveCount(0)
+  await expect(page.locator('.suggestion-highlight')).toHaveCount(0)
+  await expect(firstSelect).toHaveValue('')
+  expect(suggestionRequests.filter((u) => !/\/status(?:\?|$)/.test(u))).toEqual([])
+
+  const submit = page.getByRole('button', { name: /^Submit$/ })
+  await expect(submit).toBeDisabled()
+  await firstSelect.selectOption({ index: 1 })
+  await expect(submit).toBeEnabled()
+
+  expect(errors, 'JS errors with suggestions disabled').toEqual([])
 }
 
 /**

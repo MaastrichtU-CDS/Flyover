@@ -4,8 +4,11 @@ import {
   disableSuggestionsViaStatus,
   dismissCoachmarkIfPresent,
   expandAllDatabases,
+  expectDescribeWithoutSuggestions,
   goToDescribeVariablesWithSuggestions,
   readMetadata,
+  skipUnlessSuggestions,
+  watchSuggestionRequests,
 } from './helpers/suggestions.js'
 
 // ---------------------------------------------------------------------------
@@ -21,10 +24,12 @@ import {
 // Pill states (SuggestionBadge): `.applied` = pre-filled, awaiting review;
 // `.confirmed` = reviewed (accepted); a dismissed suggestion has no pill.
 //
-// The disabled flow does not restart the stack with FLYOVER_SUGGESTION_TIERS=
-// (empty): it answers the `/status` call the way the backend does when the
-// flag is empty, which is the only input the store uses for that decision.
-// The backend side of the flag is covered by the controller unit tests.
+// The disabled flow here does not restart the stack with
+// FLYOVER_SUGGESTION_TIERS= (empty): it answers the `/status` call the way the
+// backend does when the flag is empty, which is the only input the store uses
+// for that decision. The real empty-flag run is `suggestions-disabled.spec.js`.
+//
+// Against a stack that has suggestions off, these flows skip themselves.
 // ---------------------------------------------------------------------------
 
 /** The `.variable-row` that holds the given description `<select>` id. */
@@ -34,6 +39,10 @@ function rowForSelectId(page, id) {
 
 test.describe('Suggestions on describe pages', () => {
   test.setTimeout(180_000)
+
+  test.beforeEach(async ({ request }) => {
+    await skipUnlessSuggestions(request, true)
+  })
 
   test('pre-filled suggestions can be accepted and dismissed, and the review survives a reload', async ({
     page,
@@ -158,34 +167,10 @@ test.describe('Suggestions on describe pages', () => {
     page,
   }) => {
     const errors = watchConsoleErrors(page)
-    const suggestionRequests = []
-    page.on('request', (req) => {
-      if (/\/api\/v1\/suggestions\//.test(req.url())) suggestionRequests.push(req.url())
-    })
+    const suggestionRequests = watchSuggestionRequests(page)
     await disableSuggestionsViaStatus(page)
     // Upload a map all the same, so the flag is the only reason nothing shows.
     await goToDescribeVariablesWithSuggestions(page)
-    await expandAllDatabases(page)
-    const firstSelect = page.locator('.description-select').first()
-    await expect(firstSelect).toBeVisible()
-
-    // Exactly as today: no status bar, no pills, no callout, no pre-fill,
-    // and no job started.
-    await page.waitForTimeout(1_500)
-    await expect(page.locator('.suggestion-status-bar')).toHaveCount(0)
-    await expect(page.locator('.suggestion-badge')).toHaveCount(0)
-    await expect(page.locator('.suggestion-coachmark')).toHaveCount(0)
-    await expect(page.locator('.suggestion-highlight')).toHaveCount(0)
-    await expect(firstSelect).toHaveValue('')
-    expect(suggestionRequests.filter((u) => !/\/status(?:\?|$)/.test(u))).toEqual([])
-
-    // The review gate must not hold the form: the existing rule (at least
-    // one description) is the only thing between the user and Submit.
-    const submit = page.getByRole('button', { name: /^Submit$/ })
-    await expect(submit).toBeDisabled()
-    await firstSelect.selectOption({ index: 1 })
-    await expect(submit).toBeEnabled()
-
-    expect(errors, 'JS errors with suggestions disabled').toEqual([])
+    await expectDescribeWithoutSuggestions(page, { errors, suggestionRequests })
   })
 })
