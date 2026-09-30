@@ -193,6 +193,8 @@ async function importAnswer() {
   <div
     class="llm-help-panel"
     :class="{ open }"
+    :data-phase="phase"
+    :data-database="database"
   >
     <button
       type="button"
