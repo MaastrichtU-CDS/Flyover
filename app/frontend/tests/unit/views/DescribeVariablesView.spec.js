@@ -20,6 +20,38 @@ vi.mock('@/lib/jsonld', () => ({
     descriptionToDatatype: {},
   })),
   updateMappingFromForm: vi.fn(async () => {}),
+  getMapping: vi.fn(() => ({})),
+}))
+
+vi.mock('@/stores/suggestions', () => ({
+  useSuggestionsStore: () => ({
+    enabled: false,
+    variables: { status: 'idle', byKey: {}, progress: { done: 0, total: 0 } },
+    values: { status: 'idle', byKey: {}, progress: { done: 0, total: 0 } },
+    tiers: {},
+    compute: 'host',
+    isApplied: () => false,
+    isTouched: () => false,
+    isDismissed: () => false,
+    isConfident: (r) => (r?.confidence ?? 0) >= 0.8,
+    markApplied: vi.fn(),
+    markUserTouched: vi.fn(),
+    dismiss: vi.fn(),
+    clearAllApplied: () => [],
+    unreviewedKeys: () => [],
+    init: vi.fn(async () => {}),
+    refresh: vi.fn(async () => {}),
+    startPolling: vi.fn(),
+    stopPolling: vi.fn(),
+    isPolling: () => false,
+    bumpPriority: vi.fn(async () => {}),
+    setPhase: vi.fn(),
+
+    coachmarkSeen: { loaded: true, variables: true, values: true },
+
+    markCoachmarkSeen: vi.fn(async () => {}),
+  }),
+  SOURCE_ICONS: { alias: 'fa-link', value_regex: 'fa-table-list', string: 'fa-text-width' },
 }))
 
 import api from '@/services/api'

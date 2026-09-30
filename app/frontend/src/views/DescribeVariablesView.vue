@@ -1,11 +1,16 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import * as jsonld from '@/lib/jsonld'
+import { formatToTitleCase } from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
+import { useSuggestionsStore } from '@/stores/suggestions'
+import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
 
 const status = useStatusStore()
+const suggestions = useSuggestionsStore()
 
 const PAGE_SIZE = 10
 const AUTO_FILL_FEEDBACK_MS = 3000
@@ -138,6 +143,9 @@ function onDescriptionChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   const value = e.target.value
   formStateCache[key].description = value
+  // The user set this field themselves in this session: not "already
+  // filled in", so the informational pill stays off it.
+  manuallyEdited.add(key)
   // Deselecting must fully clear the preselected hint too; otherwise the stale
   // value leaks back via preselectedHiddenEntries and reappears in the details
   // view as a ghost "none" row.
@@ -146,6 +154,7 @@ function onDescriptionChange(dbName, item, e) {
     delete preselectedDatatypes.value[key]
   }
   autoPopulateDatatype(dbName, item)
+  suggestions.markUserTouched(key)
   syncToIndexedDB()
 }
 
@@ -154,6 +163,8 @@ function onDatatypeChange(dbName, item, e) {
   ensureCacheEntry(key, dbName)
   formStateCache[key].datatype = e.target.value
   if (autoFilledFields.has(key)) manualOverrides.add(key)
+  // Deliberately no markUserTouched here: changing the datatype is not a
+  // review of the description the suggestion pre-filled (WS1.6).
   syncToIndexedDB()
 }
 
@@ -164,9 +175,387 @@ function onCommentChange(dbName, item, e) {
   syncToIndexedDB()
 }
 
+// ---------------------------------------------------------------------------
+// Mapping suggestions. Per decision D1 of the tier-1 remediation the watcher
+// PRE-FILLS the dropdown for display, but a pre-filled value is never
+// persisted to the JSON-LD: syncToIndexedDB drops applied-but-unreviewed
+// keys, and only an explicit review (accept via the badge, or a manual
+// dropdown change) writes the mapping — exactly as a hand-picked value
+// would. The user must click the badge or change the dropdown to mark it
+// as "reviewed" before they can submit.
+// ---------------------------------------------------------------------------
+
+function suggestionFor(dbName, item) {
+  return suggestions.variables.byKey[`${dbName}_${item}`]
+}
+
+// A live suggestion: arrived, has a match, and was not dismissed. A
+// dismissed suggestion must not render its pill again — dismissal also
+// drops the applied mark, so the badge would fall back to the unreviewed
+// look and invite a second dismissal that does nothing.
+function hasSuggestion(dbName, item) {
+  const entry = suggestionFor(dbName, item)
+  if (suggestions.isDismissed(`${dbName}_${item}`)) return false
+  return entry && entry.status === 'done' && isOfferedDescription(entry.display)
+}
+
+// A suggestion is only usable when its variable is one of the dropdown's
+// options. The backend computes suggestions on the browser's map, but if
+// that map failed validation it falls back to its session's map; a match
+// from another map must never be pre-filled into a dropdown that cannot
+// show it (the field would look empty yet count as "needs review").
+function isOfferedDescription(display) {
+  return !!display && globalVariableNames.value.includes(display)
+}
+
+// A conflict loser (decision D2): another column of this database won the
+// variable, so the backend nulled this record's match but kept the
+// contested variable in its alternatives. It renders an alternatives-only
+// pill so the user can still pick it (after changing the winner).
+function hasAlternativesOnly(dbName, item) {
+  const key = `${dbName}_${item}`
+  if (suggestions.isDismissed(key)) return false
+  const entry = suggestionFor(dbName, item)
+  if (!entry || entry.status !== 'done' || entry.display) return false
+  return (entry.alternatives || []).some(
+    (alt) => alt?.match && isOfferedDescription(formatToTitleCase(alt.match)),
+  )
+}
+
+// True while a suggestion for this column still needs review: either it
+// pre-filled the field (applied, never touched) or it arrived for an
+// empty field the pre-fill watch could not fill (e.g. the
+// one-variable-per-database constraint blocked it). Reviewed and
+// dismissed suggestions lose the highlight — reviewed fields turn green
+// via the badge instead (WS1.3).
+function needsSuggestionReview(dbName, item) {
+  const key = `${dbName}_${item}`
+  if (suggestions.isDismissed(key)) return false
+  if (suggestions.isApplied(key)) return !suggestions.isTouched(key)
+  if (!hasSuggestion(dbName, item)) return false
+  // A column that already has a mapping (picked here or preselected from
+  // the loaded JSON-LD) does not need a suggestion reviewed.
+  return !getDescriptionValue(dbName, item)
+}
+
+// A column the loaded JSON-LD already mapped — whether or not a suggestion
+// also exists for it. The field is filled in, so nothing needs reviewing,
+// and the badge shows a quiet "already filled in" pill instead of the
+// accept/dismiss one, which read as if the column still needed a suggestion
+// review. A column the user changed in THIS session is not "already"
+// filled in; after a reload the value returns from the map and the pill
+// returns with it.
+const manuallyEdited = reactive(new Set())
+
+function isAlreadyMapped(dbName, item) {
+  const key = `${dbName}_${item}`
+  if (suggestions.isApplied(key)) return false
+  if (manuallyEdited.has(key)) return false
+  return !!getDescriptionValue(dbName, item)
+}
+
+function acceptSuggestion(dbName, item, display) {
+  const entry = suggestionFor(dbName, item)
+  const value = display || entry?.display
+  if (!isOfferedDescription(value)) return
+  const key = `${dbName}_${item}`
+  // Check the one-variable-per-database constraint before applying. A
+  // blocked accept must say why: silently doing nothing reads as a broken
+  // button, and for a conflict loser's alternative it is the normal case.
+  if (isDescriptionDisabled(dbName, item, value)) {
+    const holder = selectedDescriptionsByDb.value[dbName]?.[value] || ''
+    const holderColumn = holder.startsWith(`${dbName}_`)
+      ? holder.slice(dbName.length + 1)
+      : holder
+    status.warning(
+      `'${value}' is already used by column '${holderColumn}' in ${dbName}; change that column first to map '${item}' to it.`
+    )
+    return
+  }
+  // Mark applied first: the explicit accept is a review, so the
+  // markUserTouched inside onDescriptionChange must find the applied mark
+  // and mark the field reviewed (WS1.4 — an explicit accept must never
+  // leave the field in the "needs review" state).
+  suggestions.markApplied(key)
+  // Go through the same path as a manual selection.
+  onDescriptionChange(dbName, item, { target: { value } })
+  maybeCloseCoachmark()
+}
+
+// Applying an alternative from the badge popover goes through the same
+// accept path as the suggestion itself; the alternative only differs in
+// which value it puts in the dropdown.
+function applyAlternative(dbName, item, alt) {
+  if (!alt?.match) return
+  acceptSuggestion(dbName, item, formatToTitleCase(alt.match))
+}
+
+function dismissSuggestion(dbName, item) {
+  const key = `${dbName}_${item}`
+  // Only a field the suggestion pre-filled (applied and never reviewed) is
+  // cleared on dismissal; a manually chosen value must survive it.
+  const prefilled = suggestions.isApplied(key) && !suggestions.isTouched(key)
+  suggestions.dismiss(key)
+  maybeCloseCoachmark()
+  if (prefilled && formStateCache[key]?.description) {
+    formStateCache[key].description = ''
+    autoPopulateDatatype(dbName, item)
+    syncToIndexedDB()
+  }
+}
+
+function clearAllSuggestions() {
+  for (const key of suggestions.clearAllApplied()) {
+    const entry = suggestions.variables.byKey[key]
+    // Prefer the record's explicit location fields; fall back to prefix
+    // matching for records without them (fallback groups).
+    const dbName =
+      entry?.database || databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    const item = entry?.column || (dbName ? key.slice(dbName.length + 1) : null)
+    if (!dbName || !item) continue
+    if (formStateCache[key]?.description) {
+      formStateCache[key].description = ''
+      autoPopulateDatatype(dbName, item)
+    }
+  }
+  syncToIndexedDB()
+}
+
+function pendingColumnsFor(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  return cols.filter((item) => {
+    const entry = suggestionFor(dbName, item)
+    return !entry || entry.status === 'pending'
+  })
+}
+
+function hasUnreviewedForDatabase(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  return cols.some((item) => {
+    const key = `${dbName}_${item}`
+    const entry = suggestionFor(dbName, item)
+    if (!entry || entry.status !== 'done' || !isOfferedDescription(entry.display)) return false
+    if (suggestions.isDismissed(key)) return false
+    if (!suggestions.isApplied(key) && !getDescriptionValue(dbName, item)) return true
+    if (suggestions.isApplied(key) && !suggestions.isTouched(key)) return true
+    return false
+  })
+}
+
+function dismissAllForDatabase(dbName) {
+  const cols = columnInfoData.value?.[dbName] || []
+  for (const item of cols) {
+    const key = `${dbName}_${item}`
+    const entry = suggestionFor(dbName, item)
+    if (!entry || entry.status !== 'done' || !isOfferedDescription(entry.display)) continue
+    if (suggestions.isDismissed(key)) continue
+    if (suggestions.isApplied(key) && suggestions.isTouched(key)) continue
+    // Only pre-filled, unreviewed fields are cleared; manually chosen
+    // values survive the dismissal.
+    const prefilled = suggestions.isApplied(key) && !suggestions.isTouched(key)
+    suggestions.dismiss(key)
+    if (prefilled && formStateCache[key]?.description) {
+      formStateCache[key].description = ''
+      autoPopulateDatatype(dbName, item)
+    }
+  }
+  syncToIndexedDB()
+}
+
+function requestSectionFirst(dbName) {
+  const pending = pendingColumnsFor(dbName)
+  if (pending.length) {
+    const keys = pending.map((c) => `${dbName}_${c}`)
+    suggestions.bumpPriority('variables', keys)
+  }
+}
+
+const unreviewedFieldCount = computed(
+  () =>
+    suggestions
+      .unreviewedKeys()
+      .filter((key) => formStateCache[key]?.description).length
+)
+
+function jumpToNextUnreviewed() {
+  const keys = suggestions.unreviewedKeys().filter((key) => formStateCache[key]?.description)
+  if (!keys.length) return
+  // Find the first unreviewed key and locate its database + column,
+  // preferring the record's explicit location fields.
+  for (const key of keys) {
+    const entry = suggestions.variables.byKey[key]
+    const dbName =
+      entry?.database || databaseNames.value.find((d) => key.startsWith(`${d}_`))
+    if (!dbName) continue
+    const item = entry?.column || key.slice(dbName.length + 1)
+    const cols = columnInfoData.value?.[dbName] || []
+    const itemIdx = cols.indexOf(item)
+    if (itemIdx === -1) continue
+    // Expand the database and navigate to the right page.
+    if (!expandedDatabases[dbName]) expandedDatabases[dbName] = true
+    const page = Math.floor(itemIdx / PAGE_SIZE) + 1
+    databasePages[dbName] = page
+    // Scroll to the row after Vue updates the DOM.
+    nextTick(() => {
+      const el = document.getElementById(`ncit_comment_${dbName}_${item}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.focus({ preventScroll: true })
+      }
+    })
+    return
+  }
+}
+
+// ---------------------------------------------------------------------------
+// First-visit cue (WS2): a small non-modal callout on a pre-filled pill,
+// shown once per phase. It pops up when the user first opens a table and
+// tells them the fields were pre-filled and must be reviewed. The "How do
+// suggestions work?" link in the status bar reopens it.
+// ---------------------------------------------------------------------------
+
+// Kept to two short sentences: the callout sits next to a pill in a
+// narrow column, and the submit hint already explains the review gate.
+const COACHMARK_COPY = {
+  title: 'Check this suggestion',
+  body: 'Flyover pre-filled this field. Click the pill to confirm it or × to dismiss it; nothing is saved until you do.',
+}
+
+// True when the user reopened the cue via the status-bar link; bypasses
+// the persisted "seen" flag until closed again.
+const coachmarkRequested = ref(false)
+
+const showCoachmark = computed(
+  () =>
+    suggestions.enabled &&
+    suggestions.variables.status === 'done' &&
+    unreviewedFieldCount.value > 0 &&
+    (coachmarkRequested.value ||
+      (suggestions.coachmarkSeen.loaded && !suggestions.coachmarkSeen.variables)),
+)
+
+// Tables in the order the user opened them; a closed table drops out.
+// Watching the expanded set covers every way a table opens (its toggle,
+// "Go to next", the help link).
+const openedTables = ref([])
+watch(
+  () => databaseNames.value.filter((d) => expandedDatabases[d]),
+  (open) => {
+    const kept = openedTables.value.filter((d) => open.includes(d))
+    for (const d of open) if (!kept.includes(d)) kept.push(d)
+    openedTables.value = kept
+  },
+)
+
+// The copy says Flyover filled the field in, so the callout only anchors
+// on a pre-filled pill awaiting review, never on a low-confidence hint.
+function awaitsReview(key) {
+  return suggestions.isApplied(key) && !suggestions.isTouched(key)
+}
+
+// The callout pops up on the first pre-filled pill (on the current page)
+// of the first table the user opens, wherever that table sits in the
+// list. While every table is folded there is nothing to point at, so
+// nothing shows.
+const coachmarkTarget = computed(() => {
+  if (!showCoachmark.value) return null
+  for (const dbName of openedTables.value) {
+    for (const item of currentPageItems(dbName)) {
+      const key = `${dbName}_${item}`
+      if (awaitsReview(key)) return key
+    }
+  }
+  return null
+})
+
+// "How do suggestions work?": show the callout again. When no open table
+// has a pre-filled pill on its current page, open the first table that
+// has one (opened tables first, then list order) at that pill's page.
+function showCoachmarkAgain() {
+  coachmarkRequested.value = true
+  if (coachmarkTarget.value) return
+  const opened = openedTables.value
+  const order = [...opened, ...databaseNames.value.filter((d) => !opened.includes(d))]
+  for (const dbName of order) {
+    const cols = columnInfoData.value?.[dbName] || []
+    const idx = cols.findIndex((item) => awaitsReview(`${dbName}_${item}`))
+    if (idx === -1) continue
+    expandedDatabases[dbName] = true
+    databasePages[dbName] = Math.floor(idx / PAGE_SIZE) + 1
+    return
+  }
+}
+
+function closeCoachmark() {
+  coachmarkRequested.value = false
+  suggestions.markCoachmarkSeen('variables')
+}
+
+// Accepting or dismissing a suggestion while the cue is visible counts as
+// having seen it.
+function maybeCloseCoachmark() {
+  if (coachmarkTarget.value) closeCoachmark()
+}
+
+// Pre-fill: when a suggestion arrives for a column that the user hasn't
+// touched yet, auto-set the description dropdown to the suggested value
+// and mark it as "applied" (unreviewed). The value lives in the form
+// state only — syncToIndexedDB strips applied-but-unreviewed keys, so
+// nothing reaches the JSON-LD until the user reviews the field. The user
+// must click the badge or change the dropdown to mark it as "reviewed"
+// before they can submit.
+watch(
+  () => suggestions.variables.byKey,
+  (byKey) => {
+    if (!suggestions.enabled) return
+    for (const [key, entry] of Object.entries(byKey)) {
+      if (entry.status !== 'done' || !isOfferedDescription(entry.display)) continue
+      // Below the threshold a suggestion stays a hint (highlight + pill,
+      // accepted by click) instead of a pre-filled answer.
+      if (!suggestions.isConfident(entry)) continue
+      if (suggestions.isDismissed(key)) continue
+      if (suggestions.isTouched(key)) continue
+      // Prefer the record's explicit location fields (database names can
+      // contain underscores, making prefix matching ambiguous); fall back
+      // to prefix matching for records without them.
+      const dbName =
+        entry.database ||
+        databaseNames.value.find((d) => key.startsWith(`${d}_`))
+      if (!dbName) continue
+      const item = entry.column || key.slice(dbName.length + 1)
+      // Re-fill applied keys too: on a hard reload the in-memory form state
+      // is lost but the "applied" mark survives in IndexedDB, so restore the
+      // field from the suggestion. The existing-value guard keeps user input
+      // safe and dedups repeated watch firings. It checks the displayed
+      // value, not just the form state: a column preselected from the
+      // loaded JSON-LD already has a mapping, and a suggestion must never
+      // replace it behind the user's back.
+      if (getDescriptionValue(dbName, item)) continue
+      // Check the one-variable-per-database constraint.
+      if (isDescriptionDisabled(dbName, item, entry.display)) continue
+      ensureCacheEntry(key, dbName)
+      formStateCache[key].description = entry.display
+      autoPopulateDatatype(dbName, item)
+      suggestions.markApplied(key)
+    }
+    // No syncToIndexedDB here: a pre-fill is display-only until reviewed.
+  },
+  { deep: true },
+)
+
 async function syncToIndexedDB() {
+  // Applied-but-unreviewed pre-fills are display-only (WS1.1): leave their
+  // columns out of the payload so updateMappingFromForm — which groups by
+  // the keys it receives — never writes or tombstones them. Absent keys
+  // are untouched by its passes, so the JSON-LD keeps whatever the user
+  // last reviewed.
+  const payload = {}
+  for (const [key, cached] of Object.entries(formStateCache)) {
+    if (suggestions.isApplied(key) && !suggestions.isTouched(key)) continue
+    payload[key] = cached
+  }
   try {
-    await jsonld.updateMappingFromForm({ ...formStateCache })
+    await jsonld.updateMappingFromForm(payload)
   } catch (err) {
     console.error('Failed to sync to IndexedDB:', err)
   }
@@ -174,6 +563,11 @@ async function syncToIndexedDB() {
 
 function toggleDatabase(dbName) {
   expandedDatabases[dbName] = !expandedDatabases[dbName]
+  if (expandedDatabases[dbName]) {
+    // Hint the visible columns to the suggestion job when expanded.
+    const visible = currentPageItems(dbName).map((c) => `${dbName}_${c}`)
+    if (visible.length) suggestions.bumpPriority('variables', visible)
+  }
 }
 
 function changePage(dbName, direction) {
@@ -190,6 +584,37 @@ const hasAnyDescription = computed(() => {
     if (v) return true
   }
   return false
+})
+
+// True while suggestions are still expected (job pending/running, or no
+// snapshot yet) AND the store has not given up on them. The submit gate
+// deliberately fails open when waiting can no longer make progress: a
+// broken poll or a stalled job must never block the core flow.
+const waitingForSuggestions = computed(
+  () =>
+    suggestions.enabled &&
+    !suggestions.variables.gaveUp &&
+    ['idle', 'pending', 'running'].includes(suggestions.variables.status)
+)
+
+const canSubmit = computed(() => {
+  if (!hasAnyDescription.value || isSubmitting.value) return false
+  // Block submission while suggestions are still loading and we have
+  // unreviewed pre-filled fields. Also block while the suggestion job
+  // is still running (status is 'idle' or 'running') and suggestions
+  // are enabled, to prevent submitting before pre-fill arrives.
+  if (unreviewedFieldCount.value > 0) return false
+  if (waitingForSuggestions.value) return false
+  return true
+})
+
+const submitTooltip = computed(() => {
+  if (!hasAnyDescription.value) return 'Fill in at least one description first'
+  if (waitingForSuggestions.value)
+    return 'Waiting for mapping suggestions to arrive...'
+  if (unreviewedFieldCount.value > 0)
+    return `${unreviewedFieldCount.value} ${unreviewedFieldCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
+  return ''
 })
 
 const hiddenFieldEntries = computed(() => {
@@ -248,7 +673,11 @@ function onPageShow(e) {
   if (e.persisted) resetSubmitState()
 }
 
-function onFormSubmit() {
+function onFormSubmit(e) {
+  if (!canSubmit.value) {
+    e.preventDefault()
+    return
+  }
   startLoadingAnimation()
   // native form POSTs to /units → redirects to /describe/variable-details
 }
@@ -298,6 +727,11 @@ onMounted(async () => {
   preselectedDatatypes.value = ps.preselectedDatatypes || {}
   descriptionToDatatype.value = ps.descriptionToDatatype || {}
   dropOrphanPreselections()
+
+  // Idempotent start (the backend usually began at ingest); the mapping is
+  // included in case it only survives in this browser's IndexedDB.
+  suggestions.setPhase('variables')
+  await suggestions.init('variables', { mapping: jsonld.getMapping() })
 })
 
 function dropOrphanPreselections() {
@@ -339,6 +773,7 @@ function dropOrphanPreselections() {
 onBeforeUnmount(() => {
   window.removeEventListener('pageshow', onPageShow)
   if (_loadingInterval) clearInterval(_loadingInterval)
+  suggestions.stopPolling()
 })
 </script>
 
@@ -351,6 +786,16 @@ onBeforeUnmount(() => {
       For every database that you would like to describe, please select the type and
       description of your columns from the drop-down menu.
     </p>
+
+    <SuggestionStatusBar
+      v-if="suggestions.enabled"
+      :phase-state="suggestions.variables"
+      :tiers="suggestions.tiers"
+      :compute="suggestions.compute"
+      :unreviewed-count="unreviewedFieldCount"
+      @clear-all="clearAllSuggestions"
+      @show-coachmark="showCoachmarkAgain"
+    />
 
     <form
       class="form-horizontal"
@@ -384,6 +829,24 @@ onBeforeUnmount(() => {
               "
             />
           </button>
+          <button
+            v-if="suggestions.enabled && suggestions.variables.status === 'running' && pendingColumnsFor(dbName).length"
+            type="button"
+            class="btn btn-sm btn-outline-secondary suggestion-section-button"
+            title="Move this database to the front of the suggestion queue"
+            @click="requestSectionFirst(dbName)"
+          >
+            <i class="fas fa-lightbulb" /> Suggest this section first
+          </button>
+          <button
+            v-if="suggestions.enabled && hasUnreviewedForDatabase(dbName)"
+            type="button"
+            class="btn btn-sm btn-outline-secondary suggestion-section-button"
+            title="Dismiss all suggestions for this database and clear the fields"
+            @click="dismissAllForDatabase(dbName)"
+          >
+            <i class="fas fa-times" /> Dismiss all suggestions
+          </button>
 
           <div
             class="content"
@@ -400,12 +863,33 @@ onBeforeUnmount(() => {
               >
                 <div class="variable-label">
                   {{ item }}
+                  <SuggestionBadge
+                    v-if="
+                      suggestions.isApplied(`${dbName}_${item}`) ||
+                        hasSuggestion(dbName, item) ||
+                        hasAlternativesOnly(dbName, item) ||
+                        isAlreadyMapped(dbName, item)
+                    "
+                    :suggestion="suggestionFor(dbName, item) || {}"
+                    :applied="suggestions.isApplied(`${dbName}_${item}`)"
+                    :touched="suggestions.isTouched(`${dbName}_${item}`)"
+                    :already-filled="isAlreadyMapped(dbName, item)"
+                    :coachmark="coachmarkTarget === `${dbName}_${item}`"
+                    :coachmark-copy="COACHMARK_COPY"
+                    @dismiss="dismissSuggestion(dbName, item)"
+                    @accept="acceptSuggestion(dbName, item)"
+                    @apply-alternative="applyAlternative(dbName, item, $event)"
+                    @coachmark-close="closeCoachmark"
+                  />
                 </div>
                 <div class="variable-controls">
                   <select
                     :id="`ncit_comment_${dbName}_${item}`"
                     :name="`ncit_comment_${dbName}_${item}`"
                     class="form-control description-select"
+                    :class="{
+                      'suggestion-highlight': needsSuggestionReview(dbName, item),
+                    }"
                     :value="getDescriptionValue(dbName, item)"
                     @change="onDescriptionChange(dbName, item, $event)"
                   >
@@ -546,7 +1030,8 @@ onBeforeUnmount(() => {
         <button
           type="submit"
           class="btn btn-primary"
-          :disabled="!hasAnyDescription || isSubmitting"
+          :disabled="!canSubmit"
+          :title="submitTooltip"
           :class="{ processing: isSubmitting }"
         >
           <template v-if="!isSubmitting">
@@ -560,6 +1045,28 @@ onBeforeUnmount(() => {
             Processing descriptions...
           </template>
         </button>
+        <span
+          v-if="waitingForSuggestions"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-hourglass-half" />
+          Waiting for suggestions...
+        </span>
+        <span
+          v-else-if="unreviewedFieldCount > 0"
+          class="submit-review-hint"
+        >
+          <i class="fas fa-exclamation-circle" />
+          {{ unreviewedFieldCount }} {{ unreviewedFieldCount === 1 ? 'suggestion needs' : 'suggestions need' }} review
+          <button
+            type="button"
+            class="btn btn-sm btn-link jump-to-unreviewed"
+            title="Jump to the next unreviewed suggestion"
+            @click="jumpToNextUnreviewed"
+          >
+            <i class="fas fa-arrow-down" /> Go to next
+          </button>
+        </span>
       </p>
     </form>
 
@@ -595,6 +1102,17 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.suggestion-highlight {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
+.suggestion-section-button {
+  margin-left: 0.75rem;
+  font-size: 0.8em;
+}
+
 .info-purple {
   font-size: 0.85em;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
@@ -604,5 +1122,26 @@ onBeforeUnmount(() => {
     rgba(118, 75, 162, 0.75) 100%
   );
   color: white;
+}
+
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
+}
+
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
 }
 </style>

@@ -1,0 +1,136 @@
+# LLM prompt export + paste-back round-trip
+
+Part of #35, implements #139. Shared design (contract, API, cascade, invariants): [`docs/mapping-suggestions/README.md`](README.md). Builds on the infrastructure from issue 1 (tier 1).
+
+## Context & motivation
+
+Many sites cannot run a model next to Flyover (4-core/8 GB VM, air-gapped network, no GPU) but *do* have an LLM they are allowed to use elsewhere — an institutional ChatGPT/Copilot licence, an internal Ollama box, a national research LLM. The cheapest way to give them LLM help is to generate the prompt for them and let them paste the answer back.
+
+This is deliberately provider-agnostic and needs zero configuration. It is also a **permanent** feature: when the integrated LLM (issue 4) lands, prompt export stays as the fallback for restricted shops and as the `browser` compute mode for tier 3.
+
+Without the paste-back half, a prompt is a nice-to-have. With it, the LLM's answer becomes ordinary suggestion records (`source: pasted_llm`) that render in the same `SuggestionBadge`, obey the same cascade/merge rules and require the same explicit accept.
+
+## Goal
+
+- A "Copy prompt" action per database and phase (variables / values) on both describe views that produces a self-contained prompt with the schema slice, the local column names or distinct values, tier-1 candidates as hints, and a strict JSON answer format.
+- A "Paste LLM answer" action that validates the pasted JSON server-side and merges it as suggestions.
+- Clear privacy messaging: the prompt never contains data rows and the user sees exactly what leaves the browser.
+
+## Non-goals
+
+- Calling any LLM from Flyover (issue 4).
+- Free-form chat inside Flyover; the conversation happens in the user's own LLM client.
+- Automatically applying the pasted answer to the JSON-LD.
+
+## Design
+
+### Backend
+
+New route in `flyover/backend/data_descriptor/controllers/suggestions_controller.py`:
+
+```
+GET /api/v1/suggestions/prompt?phase=variables|values&database=<db>[&columns=a,b,c][&exclude_free_text=true]
+→ { "prompt": "<text>", "answer_schema": {...}, "item_count": 87, "chunk_hint": 40, "contains": ["variable keys", "labels", "column names"] }
+```
+
+New module `flyover/backend/data_descriptor/services/suggestions/prompt_export.py`:
+
+- `build_prompt(phase, database, ctx)` composes, in order:
+  1. Task framing (one paragraph, English) and the schema/data separation rule: the answer may only use keys from the provided list.
+  2. **Schema slice** — variables phase: `key`, `label`, `description` (truncated), datatype for every `schema.variables` entry; values phase: for each column already mapped, the variable key and its `valueMapping.terms` keys + labels.
+  3. **Local side** — variables phase: column names from `column_info` (optionally with datatype and up to 5 distinct values for categoricals); values phase: the distinct values per column from `rdf_store_service.get_categories`. **Never data rows.**
+  4. **Hints** — tier-1 records for these items (`match`, `confidence`, `source`) so the LLM can confirm or overrule instead of starting blind; abstains are listed as "no candidate".
+  5. Constraints and the answer format: a JSON array of `{item, match, confidence, reason}`; `match` must be an exact key or `null`; one object per item; wording lifted from the branch's `matching.py` system prompt (`build_user_prompt`, the "EXACT string from list_b" rules).
+- `answer_schema` is `contract.MATCH_OUTPUT_SCHEMA` minus `source`/`tier`/`status` (the server fills those in).
+- Chunking: if `item_count > chunk_hint` (default 40, env `FLYOVER_SUGGESTION_PROMPT_CHUNK`), the response includes `chunks: [{columns: [...], prompt: "..."}]` so the UI can offer "Copy chunk 1/3".
+- Free-text columns (datatype string with high cardinality per `column_info`) are excluded by default from the values phase and flagged in `contains`.
+
+Paste-back uses the `/ingest` route reserved in issue 1:
+
+```
+POST /api/v1/suggestions/{variables|values}/ingest
+body: { "source": "pasted_llm", "database": "<db>", "records": [ {item, match, confidence, reason}, ... ] }
+→ { "accepted": 85, "nulled": 2, "rejected": 0, "job": <snapshot> }
+```
+
+`SuggestionService.ingest()`:
+
+- Parses tolerant JSON (strips code fences, trailing prose) then validates with `answer_schema`.
+- Runs `contract.sanitise_pairs`: unknown `item` → rejected; `match` not an exact schema key → nulled with `reason` prefixed `"[invalid key from LLM] "`; `confidence` clamped to [0, 1]; duplicates → highest confidence kept.
+- Stamps `source: pasted_llm`, `tier: 3`, `status: done` and merges via the README cascade rules (highest confidence wins, user marks untouched).
+
+### Frontend
+
+Both `DescribeVariablesView.vue` and `DescribeVariableDetailsView.vue` get a small "LLM help" panel per database (collapsed by default):
+
+- **Copy prompt** — calls `/prompt`, shows the `contains` list and a privacy notice ("This prompt contains variable keys/labels, your column names and distinct values. It contains no data rows. Review before sending it to an external service."), copies to clipboard; for chunked responses shows one button per chunk. Checkbox "include free-text columns" (off).
+- **Paste answer** — textarea + "Import" button → `POST /ingest`; result toast via `useStatusStore()` (`85 suggestions imported, 2 had invalid keys`). Imported records appear through the normal store poll with a `pasted_llm` badge.
+- Store additions in `flyover/frontend/src/stores/suggestions.js`: `fetchPrompt(phase, db, opts)`, `ingest(phase, db, records)`; no new state beyond `lastIngestResult`.
+
+Reuse the branch's `frontend/src/stores/suggestions.js` polling; nothing in `jsonld.js` changes.
+
+### Worked example (AYA NKI-Amsterdam slice, variables phase, excerpt)
+
+Prompt excerpt:
+
+```
+Schema variables (use these EXACT keys):
+- identifier: "Identifier" — pseudonymised patient id
+- administered_prom_language: "Administered PROM language" — language of the questionnaire
+- age_at_initial_diagnosis: "Age at initial diagnosis" (integer, years)
+- year_of_initial_diagnosis: "Year of initial diagnosis" (integer)
+...
+Local columns to map (database "nki"):
+- Rnnummer (string, 566 distinct)
+- taal (categorical: nl_NL, en_GB)
+- leeft (integer)
+- jaar_van_diagnose (integer)        hint: year_of_initial_diagnosis (0.86, string)
+- surv70 (categorical: 1,2,3,4)      hint: no candidate
+Answer with a JSON array [{"item","match","confidence","reason"}] ...
+```
+
+Canned answer (used verbatim as the round-trip test fixture):
+
+```json
+[
+  {"item": "taal", "match": "administered_prom_language", "confidence": 0.9, "reason": "Dutch 'taal' = language; values are locale codes."},
+  {"item": "leeft", "match": "age_at_initial_diagnosis", "confidence": 0.85, "reason": "'leeft' abbreviates 'leeftijd' (age)."},
+  {"item": "Rnnummer", "match": "identifier", "confidence": 0.7, "reason": "Looks like a registration number."},
+  {"item": "surv70", "match": "eortc_qlq_c30_question_6", "confidence": 0.4, "reason": "Guessing a questionnaire item."}
+]
+```
+
+Expected ingest result: `taal`, `leeft`, `Rnnummer` accepted as `pasted_llm`; `surv70` **nulled** because `eortc_qlq_c30_question_6` is not an exact schema key (the real key is `eortc_qlq_c30_q6`), reason prefixed `[invalid key from LLM]` — the item stays with the human.
+
+## Acceptance criteria
+
+- [ ] `GET /api/v1/suggestions/prompt?phase=variables&database=nki` returns `prompt`, `answer_schema`, `item_count`, `contains`; 400 for unknown phase/database.
+- [ ] The prompt contains every `schema.variables` key for the variables phase and only the mapped variables' `valueMapping.terms` for the values phase.
+- [ ] The prompt contains **no data rows**: a unit test builds a prompt from a fixture with known cell values (non-categorical) and asserts none appear.
+- [ ] Free-text columns are excluded unless `exclude_free_text=false`; `contains` reflects that.
+- [ ] Prompts over `FLYOVER_SUGGESTION_PROMPT_CHUNK` items are chunked; each chunk is self-contained (repeats the schema slice).
+- [ ] Tier-1 hints appear for items that have a tier-1 record, and abstains are listed as "no candidate".
+- [ ] `POST /api/v1/suggestions/variables/ingest` with the canned answer above yields `accepted: 3, nulled: 1`, records tagged `source: pasted_llm, tier: 3`.
+- [ ] Ingest tolerates code fences and leading/trailing prose around the JSON; malformed JSON returns 400 with a readable message.
+- [ ] Ingested records never overwrite `applied` / `touched` / `dismissed` marks and never write to the JSON-LD (Vitest: `jsonld.getMapping()` unchanged after import).
+- [ ] Both describe views show the Copy prompt / Paste answer panel with the privacy notice; Playwright flow: copy → paste canned answer → badge appears → accept one.
+- [ ] `/api/v1/suggestions/status` lists `prompt_export: active` regardless of `FLYOVER_SUGGESTION_TIERS` (it has no runtime dependency).
+
+## Test plan
+
+- `tests/unit/test_suggestions_prompt_export.py` — composition order, schema slice completeness, no-row guarantee, chunking, free-text exclusion, hint rendering.
+- `tests/unit/test_suggestions_service.py` (extend) — `ingest()` round-trip with the canned answer; nulling of invalid keys; clamping; dedupe; marks immutable.
+- `tests/unit/test_suggestions_controller.py` (extend) — `/prompt` and `/ingest` routes, error codes.
+- Vitest `stores/suggestions.spec.js` (extend) — `fetchPrompt`, `ingest`, toast content; component test for the panel.
+- Playwright — one end-to-end round trip per phase using the canned answer.
+
+## Open questions
+
+- Should the prompt include the site's *other* databases' mappings as few-shot examples? Cheap and helpful, but lengthens the prompt; proposal: include up to 10 alias pairs when available.
+- Persist the pasted raw text for audit (who suggested what)? Proposal: keep only records; raw text stays in the user's LLM client.
+- Language of the prompt: English only for now; schema labels are already English.
+
+## Depends on / blocks
+
+- Depends on: #TBD (issue 1 — tier 1 + shared infrastructure).
+- Blocks: #TBD (issue 3 — tier 2 embedding model).

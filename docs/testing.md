@@ -64,6 +64,17 @@ npm run test:e2e
 docker compose -f ../../docker-compose.yml -f ../../docker-compose.test.yml down -v
 ```
 
+Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases.
+
+The suggestion flows (`tests/e2e/suggestions.spec.js`) need the default `FLYOVER_SUGGESTION_TIERS=1` and upload their own semantic map; their "disabled" flow mocks `/api/v1/suggestions/status`. The real feature-off run is `tests/e2e/suggestions-disabled.spec.js`: start the stack with the flag empty and set `E2E_SUGGESTIONS_DISABLED=1` so an enabled stack fails instead of skipping. Each suggestion spec skips itself against a stack in the other state, so `npm run test:e2e` passes on either.
+
+```bash
+FLYOVER_SUGGESTION_TIERS= ./../../scripts/start-test-stack.sh
+E2E_SUGGESTIONS_DISABLED=1 npx playwright test tests/e2e/suggestions-disabled.spec.js --reporter=line
+```
+
+The full e2e workflow runs both as a matrix: the whole suite on the default stack, and the disabled spec on a stack started with the empty flag.
+
 On failure, Playwright drops a `playwright-report/` HTML report and a `test-results/` dir with traces and screenshots. Open the report with `npx playwright show-report`.
 
 ## The Docker test stack

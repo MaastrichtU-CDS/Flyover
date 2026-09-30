@@ -5,6 +5,7 @@ This module handles HTTP requests related to describing
 data variables, including type specification and categorisation.
 """
 
+import copy
 import json
 import logging
 from io import StringIO
@@ -15,6 +16,7 @@ from flask import Blueprint, jsonify, redirect, request
 from typing import Any
 
 from services import DescribeService
+from utils.mapping_request import parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +55,20 @@ def api_describe_variables_state():
     return jsonify({"column_info": columns_by_database})
 
 
-@describe_bp.route("/api/v1/describe-variable-details-state", methods=["GET"])
+@describe_bp.route("/api/v1/describe-variable-details-state", methods=["GET", "POST"])
 def api_describe_variable_details_state():
-    """Return descriptive info, descriptive details, and preselected values."""
+    """Return descriptive info, descriptive details, and preselected values.
+
+    The describe pages work on the semantic map in the browser's IndexedDB,
+    which may differ from the session's adopted map (the describe-landing
+    upload never reaches the session, and another browser's map may have been
+    the one that was adopted). A POST body may therefore carry the browser's
+    map: it is used for THIS response only — for the details population and
+    the preselected values — so the page's variables, dropdown options and
+    pre-filled values all derive from the one map the user is looking at.
+    It is never written to the session. Without a body mapping the session's
+    own mapping is used (the previous behaviour).
+    """
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
@@ -64,23 +77,52 @@ def api_describe_variable_details_state():
     if not session_cache.databases:
         session_cache.databases = rdf_store_service.get_databases()
 
-    if session_cache.jsonld_mapping:
-        _populate_details_from_jsonld(session_cache, rdf_store_service, name_matcher)
+    if session_cache.descriptive_info is None:
+        session_cache.descriptive_info = {}
+    if session_cache.DescriptiveInfoDetails is None:
+        session_cache.DescriptiveInfoDetails = {}
+
+    body = request.get_json(silent=True) or {}
+    body_mapping = parse_and_validate_mapping(body.get("mapping"))
+    effective_mapping = body_mapping or session_cache.jsonld_mapping
+
+    # A browser-supplied map renders this response only: work on copies so
+    # one browser's map can never leak into the shared session state. The
+    # session's dicts are populated from the session's own mapping alone.
+    if body_mapping is not None:
+        descriptive_info = copy.deepcopy(session_cache.descriptive_info)
+        details = copy.deepcopy(session_cache.DescriptiveInfoDetails)
+    else:
+        descriptive_info = session_cache.descriptive_info
+        details = session_cache.DescriptiveInfoDetails
+
+    if effective_mapping:
+        _populate_details_from_jsonld(
+            effective_mapping,
+            descriptive_info,
+            details,
+            session_cache.databases,
+            rdf_store_service,
+            name_matcher,
+        )
 
     preselected_values = {}
-    if session_cache.jsonld_mapping and session_cache.DescriptiveInfoDetails:
+    if effective_mapping and details:
         preselected_values = DescribeService.get_preselected_values(
-            session_cache.jsonld_mapping,
-            session_cache.DescriptiveInfoDetails,
+            effective_mapping,
+            details,
             session_cache.databases,
             name_matcher,
         )
 
     return jsonify(
         {
-            "descriptive_info": session_cache.descriptive_info or {},
-            "descriptive_info_details": session_cache.DescriptiveInfoDetails or {},
+            "descriptive_info": descriptive_info,
+            "descriptive_info_details": details,
             "preselected_values": preselected_values,
+            "category_options": _category_options_from_mapping(
+                effective_mapping, details
+            ),
         }
     )
 
@@ -166,18 +208,50 @@ def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
     return False
 
 
-def _populate_details_from_jsonld(
-    session_cache: Any, rdf_store_service: Any, name_matcher: Any
-) -> None:
-    """Populate DescriptiveInfoDetails from JSON-LD mapping."""
-    mapping = session_cache.jsonld_mapping
-    if not mapping or not session_cache.databases:
-        return
+def _category_options_from_mapping(mapping: Any, details: dict) -> dict:
+    """Value-mapping options per variable display name, from the mapping the
+    response is rendered on.
 
-    if not session_cache.descriptive_info:
-        session_cache.descriptive_info = {}
-    if not session_cache.DescriptiveInfoDetails:
-        session_cache.DescriptiveInfoDetails = {}
+    A browser without a semantic map of its own (a fresh or incognito window
+    viewing the session's describe state) cannot collect a variable's value
+    mappings client-side. The response carries them, so the variables, the
+    preselected values and the dropdown options all come from the same map.
+    """
+    if not mapping:
+        return {}
+    options = {}
+    for variables in details.values():
+        for variable in variables:
+            if not isinstance(variable, dict):
+                continue
+            for var_name in variable:
+                if var_name in options:
+                    continue
+                global_var = var_name.split(" (or")[0].lower().replace(" ", "_")
+                var_info = mapping.get_variable(global_var)
+                terms = getattr(var_info, "value_mappings", None) or {}
+                options[var_name] = [
+                    term[0].upper() + term[1:].replace("_", " ") for term in terms
+                ]
+    return options
+
+
+def _populate_details_from_jsonld(
+    mapping: Any,
+    descriptive_info: dict,
+    details: dict,
+    databases: list,
+    rdf_store_service: Any,
+    name_matcher: Any,
+) -> None:
+    """Populate the details dicts from a JSON-LD mapping (mutates them).
+
+    ``descriptive_info`` and ``details`` are the caller's dicts: the session's
+    own when no body mapping was supplied (so the population persists, as it
+    always has), or request-local copies when the browser's map was sent.
+    """
+    if not mapping or not databases:
+        return
 
     map_db_name = mapping.get_first_database_name()
     if not map_db_name:
@@ -192,16 +266,16 @@ def _populate_details_from_jsonld(
     # /describe/variables.
     columns_by_database = rdf_store_service.get_column_info_by_database() or {}
 
-    for database in session_cache.databases:
+    for database in databases:
         if not database:
             continue
         if not name_matcher(map_db_name, database):
             continue
 
-        if database not in session_cache.DescriptiveInfoDetails:
-            session_cache.DescriptiveInfoDetails[database] = []
-        if database not in session_cache.descriptive_info:
-            session_cache.descriptive_info[database] = {}
+        if database not in details:
+            details[database] = []
+        if database not in descriptive_info:
+            descriptive_info[database] = {}
 
         actual_columns = set(columns_by_database.get(database, []))
 
@@ -221,13 +295,11 @@ def _populate_details_from_jsonld(
 
             display_name = f'{var_key.replace("_", " ").title()} (or "{local_column}")'
 
-            if _variable_exists_in_details(
-                session_cache.DescriptiveInfoDetails[database], local_column
-            ):
+            if _variable_exists_in_details(details[database], local_column):
                 continue
 
-            if local_column not in session_cache.descriptive_info[database]:
-                session_cache.descriptive_info[database][local_column] = {
+            if local_column not in descriptive_info[database]:
+                descriptive_info[database][local_column] = {
                     "type": f"Variable type: {data_type}",
                     "description": f"Variable description: {var_key.replace('_', ' ').title()}",
                     "comments": "Variable comment: No comment provided",
@@ -244,18 +316,16 @@ def _populate_details_from_jsonld(
                             null_values=[],
                             try_parse_dates=False,
                         )
-                        session_cache.DescriptiveInfoDetails[database].append(
-                            {display_name: df.to_dicts()}
-                        )
+                        details[database].append({display_name: df.to_dicts()})
                     except Exception as e:
                         logger.warning(
                             f"Failed to parse categories for {local_column}: {e}"
                         )
             elif data_type == "continuous":
-                session_cache.DescriptiveInfoDetails[database].append(display_name)
+                details[database].append(display_name)
 
-        if not session_cache.DescriptiveInfoDetails[database]:
-            del session_cache.DescriptiveInfoDetails[database]
+        if not details[database]:
+            del details[database]
 
 
 @describe_bp.route("/end", methods=["GET", "POST"])

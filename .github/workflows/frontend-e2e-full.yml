@@ -10,13 +10,35 @@ on:
 
 jobs:
   e2e-full:
-    name: Full Playwright suite against tmpfs stack
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The whole suite against the default stack (tier 1 on).
+          - name: Full Playwright suite against tmpfs stack
+            key: full
+            suggestion_tiers: '1'
+            spec: ''
+            expect_disabled: ''
+          # The same stack started with FLYOVER_SUGGESTION_TIERS= (empty):
+          # the describe pages must render exactly as before suggestions
+          # existed. Only the disabled spec runs; E2E_SUGGESTIONS_DISABLED
+          # makes it fail (instead of skip) if the flag did not reach the
+          # container.
+          - name: Suggestions disabled (FLYOVER_SUGGESTION_TIERS empty)
+            key: suggestions-disabled
+            suggestion_tiers: ''
+            spec: tests/e2e/suggestions-disabled.spec.js
+            expect_disabled: '1'
     # The CI test stack always runs against GraphDB; activate its profile for
     # every step so build, up, logs and teardown all target the right service.
     env:
       COMPOSE_PROFILES: graphdb
+      FLYOVER_SUGGESTION_TIERS: ${{ matrix.suggestion_tiers }}
+      E2E_SUGGESTIONS_DISABLED: ${{ matrix.expect_disabled }}
     # Only run on PRs if the run-full-e2e label is present. Always run on the
     # other triggers (schedule, dispatch).
     if: >
@@ -55,9 +77,9 @@ jobs:
       - name: Start stack (tmpfs)
         run: ./scripts/start-test-stack.sh
 
-      - name: Run full E2E suite
+      - name: Run E2E suite
         working-directory: app/frontend
-        run: npx playwright test --reporter=line
+        run: npx playwright test ${{ matrix.spec }} --reporter=line
 
       - name: Capture docker logs on failure
         if: failure()
@@ -69,7 +91,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-full-${{ github.run_id }}
+          name: e2e-${{ matrix.key }}-${{ github.run_id }}
           path: |
             app/frontend/playwright-report/
             app/frontend/test-results/
