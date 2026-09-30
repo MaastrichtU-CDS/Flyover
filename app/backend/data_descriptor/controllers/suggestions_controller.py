@@ -45,6 +45,18 @@ def _request_error(exc: SuggestionRequestError):
     return jsonify({"error": exc.message, "kind": exc.kind}), 400
 
 
+def _json_body() -> dict:
+    """The request body when it is a JSON object, else ``{}``.
+
+    A body that parses to a list, a string or a number is a caller
+    mistake, not a server error: it is treated as empty so the route's
+    own required-field checks answer with a readable 400 instead of an
+    unhandled ``AttributeError`` (a 500).
+    """
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
+
+
 def _maybe_adopt_mapping(session_cache, mapping) -> None:
     """Adopt a body mapping into the session — only when the session has none.
 
@@ -205,7 +217,7 @@ def suggestions_prompt():
             503,
         )
 
-    body = (request.get_json(silent=True) or {}) if request.method == "POST" else {}
+    body = _json_body() if request.method == "POST" else {}
     params = {
         **request.args.to_dict(),
         **{k: v for k, v in body.items() if k != "mapping"},
@@ -275,7 +287,8 @@ def ingest_suggestions(phase: str):
             503,
         )
 
-    body = request.get_json(silent=True) or {}
+    body = _json_body()
+
     database = body.get("database")
     if not database:
         return (

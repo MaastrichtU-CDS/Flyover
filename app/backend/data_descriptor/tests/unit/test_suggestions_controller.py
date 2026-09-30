@@ -499,6 +499,15 @@ class TestPromptRoute(unittest.TestCase):
             self.assertEqual(resp.status_code, 400)
             self.assertEqual(resp.get_json()["kind"], "unknown_database")
             self.assertIn("nope", resp.get_json()["error"])
+            # A body that parses to a JSON array is a caller mistake: a
+            # readable 400, not an unhandled AttributeError (a 500).
+            resp = client.post(
+                "/api/v1/suggestions/prompt",
+                data=json.dumps(["not", "a", "dict"]),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_phase")
         with _make_app(None).test_client() as client:
             resp = client.get("/api/v1/suggestions/prompt?phase=variables&database=nki")
             self.assertEqual(resp.status_code, 503)
@@ -593,6 +602,15 @@ class TestIngestRoute(unittest.TestCase):
             )
             self.assertEqual(resp.status_code, 400)
             self.assertEqual(resp.get_json()["kind"], "bad_answer")
+            # A body that parses to a JSON array is a caller mistake: a
+            # readable 400, not an unhandled AttributeError (a 500).
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(["not", "a", "dict"]),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_database")
             svc.ingest.side_effect = SuggestionRequestError(
                 "bad_answer", "Could not find valid JSON in the pasted text."
             )
