@@ -392,6 +392,9 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   }
 
   async function bumpPriority(phase, items, { retry = false } = {}) {
+    // With the feature off there is no job to steer: the describe pages
+    // must not talk to the suggestions API at all (beyond /status).
+    if (enabled.value === false) return
     try {
       await api.post(`/api/v1/suggestions/${phase}/priority`, {
         items,

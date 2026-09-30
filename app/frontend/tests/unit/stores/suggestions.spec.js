@@ -411,6 +411,16 @@ describe('Frontend unit: useSuggestionsStore', () => {
     })
   })
 
+  it('bumpPriority does not call the API while suggestions are disabled', async () => {
+    api.get.mockResolvedValueOnce(statusResponse(false))
+    const s = useSuggestionsStore()
+    await s.init('variables', { mapping: MAPPING })
+    expect(s.enabled).toBe(false)
+
+    await s.bumpPriority('variables', ['db1_a'])
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
   it('dismissed keys are tracked and persisted', async () => {
     const s = useSuggestionsStore()
     s.setPhase('variables')
