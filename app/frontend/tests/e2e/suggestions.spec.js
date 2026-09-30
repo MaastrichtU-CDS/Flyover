@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { watchConsoleErrors } from './helpers/ingest.js'
 import {
+  disableSuggestionsViaStatus,
   dismissCoachmarkIfPresent,
   expandAllDatabases,
   goToDescribeVariablesWithSuggestions,
@@ -19,6 +20,11 @@ import {
 //
 // Pill states (SuggestionBadge): `.applied` = pre-filled, awaiting review;
 // `.confirmed` = reviewed (accepted); a dismissed suggestion has no pill.
+//
+// The disabled flow does not restart the stack with FLYOVER_SUGGESTION_TIERS=
+// (empty): it answers the `/status` call the way the backend does when the
+// flag is empty, which is the only input the store uses for that decision.
+// The backend side of the flag is covered by the controller unit tests.
 // ---------------------------------------------------------------------------
 
 /** The `.variable-row` that holds the given description `<select>` id. */
@@ -146,5 +152,40 @@ test.describe('Suggestions on describe pages', () => {
     await expect(callout).toHaveCount(0)
 
     expect(errors, 'JS errors during coachmark flow').toEqual([])
+  })
+
+  test('with suggestions disabled the describe page renders as before, with no pills or gate', async ({
+    page,
+  }) => {
+    const errors = watchConsoleErrors(page)
+    const suggestionRequests = []
+    page.on('request', (req) => {
+      if (/\/api\/v1\/suggestions\//.test(req.url())) suggestionRequests.push(req.url())
+    })
+    await disableSuggestionsViaStatus(page)
+    // Upload a map all the same, so the flag is the only reason nothing shows.
+    await goToDescribeVariablesWithSuggestions(page)
+    await expandAllDatabases(page)
+    const firstSelect = page.locator('.description-select').first()
+    await expect(firstSelect).toBeVisible()
+
+    // Exactly as today: no status bar, no pills, no callout, no pre-fill,
+    // and no job started.
+    await page.waitForTimeout(1_500)
+    await expect(page.locator('.suggestion-status-bar')).toHaveCount(0)
+    await expect(page.locator('.suggestion-badge')).toHaveCount(0)
+    await expect(page.locator('.suggestion-coachmark')).toHaveCount(0)
+    await expect(page.locator('.suggestion-highlight')).toHaveCount(0)
+    await expect(firstSelect).toHaveValue('')
+    expect(suggestionRequests.filter((u) => !/\/status(?:\?|$)/.test(u))).toEqual([])
+
+    // The review gate must not hold the form: the existing rule (at least
+    // one description) is the only thing between the user and Submit.
+    const submit = page.getByRole('button', { name: /^Submit$/ })
+    await expect(submit).toBeDisabled()
+    await firstSelect.selectOption({ index: 1 })
+    await expect(submit).toBeEnabled()
+
+    expect(errors, 'JS errors with suggestions disabled').toEqual([])
   })
 })
