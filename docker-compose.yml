@@ -43,7 +43,7 @@ services:
       # Mapping suggestions: comma list of enabled tiers (1 rule-based,
       # 2 embedding, 3 LLM). Empty disables the feature so the describe
       # pages render exactly as today.
-      - FLYOVER_SUGGESTION_TIERS=${FLYOVER_SUGGESTION_TIERS:-1}
+      - FLYOVER_SUGGESTION_TIERS=${FLYOVER_SUGGESTION_TIERS-1}
       # Where model inference runs. "host" is the only mode wired so far;
       # "browser" is parsed and reported but a no-op for tier 1.
       - FLYOVER_SUGGESTION_COMPUTE=${FLYOVER_SUGGESTION_COMPUTE:-host}
