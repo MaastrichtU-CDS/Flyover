@@ -136,7 +136,7 @@ test.describe('LLM prompt export round trip', () => {
       },
     }, null, 2)}\n\`\`\`\nLet me know if you need anything else.`
     const result = await importAnswer(panel, answer)
-    await expect(result).toContainText(/1 imported, 1 with an invalid key/)
+    await expect(result).toContainText(/1 imported, 1 left for you to decide/)
 
     // The imported record shows as a pasted_llm pill on the clin_t row
     // (confident, so pre-filled for review); accepting it reviews the field.

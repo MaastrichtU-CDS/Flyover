@@ -109,7 +109,7 @@ const importSummary = computed(() => {
   const r = importResult.value
   if (!r) return ''
   const parts = [`${r.accepted} imported`]
-  if (r.nulled) parts.push(`${r.nulled} with an invalid key (kept for you to decide)`)
+  if (r.nulled) parts.push(`${r.nulled} left for you to decide (invalid key or already mapped)`)
   if (r.rejected) parts.push(`${r.rejected} ignored`)
   if (r.skipped) parts.push(`${r.skipped} already mapped`)
   return `${parts.join(', ')}. Review the imported suggestions in the table.`

@@ -683,7 +683,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(s.lastIngestResult.accepted).toBe(2)
     const toast = useStatusStore().messages.at(-1)
     expect(toast.level).toBe('success')
-    expect(toast.text).toBe('2 suggestions imported, 1 had an invalid key, 1 already mapped')
+    expect(toast.text).toBe('2 suggestions imported, 1 left for you to decide, 1 already mapped')
   })
 
   it('ingest rejects with the server message and leaves state alone', async () => {

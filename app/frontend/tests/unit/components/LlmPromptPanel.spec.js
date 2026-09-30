@@ -229,7 +229,7 @@ describe('Frontend unit: LlmPromptPanel', () => {
     const store = useSuggestionsStore()
     expect(store.variables.byKey.nki_taal.source).toBe('pasted_llm')
     expect(wrapper.emitted('ingested')[0][0].accepted).toBe(1)
-    expect(wrapper.find('.llm-help-import-result').text()).toMatch(/1 imported, 1 with an invalid key/)
+    expect(wrapper.find('.llm-help-import-result').text()).toMatch(/1 imported, 1 left for you to decide/)
     expect(wrapper.find('.llm-help-answer').element.value).toBe('')
   })
 

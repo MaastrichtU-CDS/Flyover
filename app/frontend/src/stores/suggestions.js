@@ -39,11 +39,14 @@ export const SOURCE_ICONS = {
   manual: 'fa-hand',
 }
 
-// One-line toast for an ingest result, e.g. "3 suggestions imported, 1 had
-// an invalid key, 2 already mapped". Exported so the tests can assert on it.
+// One-line toast for an ingest result, e.g. "3 suggestions imported, 1
+// left for you to decide, 2 already mapped". A nulled record is one whose
+// match the server rejected (invalid key, or a variable already mapped
+// in this database); the item stays with the human, hence the wording.
+// Exported so the tests can assert on it.
 export function ingestSummary({ accepted = 0, nulled = 0, rejected = 0, skipped = 0 } = {}) {
   const parts = [`${accepted} ${accepted === 1 ? 'suggestion' : 'suggestions'} imported`]
-  if (nulled) parts.push(`${nulled} had an invalid key`)
+  if (nulled) parts.push(`${nulled} left for you to decide`)
   if (rejected) parts.push(`${rejected} ignored (unknown column or value)`)
   if (skipped) parts.push(`${skipped} already mapped`)
   return parts.join(', ')
