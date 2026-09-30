@@ -64,6 +64,10 @@ npm run test:e2e
 docker compose -f ../../docker-compose.yml -f ../../docker-compose.test.yml down -v
 ```
 
+Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases.
+
+The suggestion flows (`tests/e2e/suggestions.spec.js`) need the default `FLYOVER_SUGGESTION_TIERS=1` and upload their own semantic map; the "disabled" flow mocks `/api/v1/suggestions/status` instead of restarting the stack with an empty flag.
+
 On failure, Playwright drops a `playwright-report/` HTML report and a `test-results/` dir with traces and screenshots. Open the report with `npx playwright show-report`.
 
 ## The Docker test stack

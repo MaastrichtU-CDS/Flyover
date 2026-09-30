@@ -197,7 +197,7 @@ Still open, for the team to decide:
 - [ ] Margin: `0.05` stays; `0.02` trades +6.4 pp correct pre-fills for +4.2 pp wrong hint pills (see `benchmark-results.md`).
 - [ ] Whether the values page gets its own threshold (`0.60`–`0.65` measured best).
 - [x] `mapping_plan.md` stays out of the repo on purpose; the plan lives in the GitHub issues.
-- [ ] The Playwright suggestion flows have not been run against a live stack in this pass.
+- [x] The Playwright suggestion flows ran against the branch's stack on 2026-09-30 (the three suggestion flows and the full suite, 25 tests). The flows had never run against a live stack: they skipped the semantic-map upload, which since the "no map, no suggestions" fix means no suggestions, and still used the pre-WS1.3 pill states. Rewritten in `69b4f4d`; the map is uploaded re-labelled as another site so alias memory has something to remember. The new suggestions-disabled flow found that the variables page still posted priority bumps with the feature off, fixed in `f120bb4`.
 
 ## Third pass: browser testing
 
