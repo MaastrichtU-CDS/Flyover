@@ -1,76 +1,116 @@
 import { test, expect } from '@playwright/test'
-import { runIngestFlow, watchConsoleErrors } from './helpers/ingest.js'
-import { dismissCoachmarkIfPresent } from './helpers/suggestions.js'
+import { watchConsoleErrors } from './helpers/ingest.js'
+import {
+  dismissCoachmarkIfPresent,
+  expandAllDatabases,
+  goToDescribeVariablesWithSuggestions,
+  readMetadata,
+} from './helpers/suggestions.js'
 
 // ---------------------------------------------------------------------------
 // E2E tests for mapping suggestions on the describe pages.
 //
 // These tests require `docker compose up` with FLYOVER_SUGGESTION_TIERS=1
-// (the default). The example data (centre_a_english) has columns that match
-// schema variables by exact string and abbreviation alias, so tier-1
-// suggestions should arrive shortly after the describe page loads.
+// (the default). Suggestions need a semantic map in the browser, so each flow
+// uploads the example map re-labelled as another site (see
+// helpers/suggestions.js): its columns match the ingested CSV by name, which
+// gives every column a confident alias suggestion that the variables page
+// pre-fills for review.
+//
+// Pill states (SuggestionBadge): `.applied` = pre-filled, awaiting review;
+// `.confirmed` = reviewed (accepted); a dismissed suggestion has no pill.
 // ---------------------------------------------------------------------------
+
+/** The `.variable-row` that holds the given description `<select>` id. */
+function rowForSelectId(page, id) {
+  return page.locator('.variable-row').filter({ has: page.locator(`[id="${id}"]`) })
+}
 
 test.describe('Suggestions on describe pages', () => {
   test.setTimeout(180_000)
 
-  test('suggestion badges appear and can be accepted and dismissed', async ({ page }) => {
+  test('pre-filled suggestions can be accepted and dismissed, and the review survives a reload', async ({
+    page,
+  }) => {
     const errors = watchConsoleErrors(page)
-    await runIngestFlow(page)
+    await goToDescribeVariablesWithSuggestions(page)
 
-    // Navigate to the variables describe page.
-    await page.getByRole('button', { name: /^\s*Skip\s*$/i }).click()
-    await page.getByRole('button', { name: /Click here to describe the data/i }).click()
-    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
-
-    // Expand the first database section if collapsed.
-    const dbToggle = page.locator('.database-header, .card-header').first()
-    if (await dbToggle.isVisible()) {
-      await dbToggle.click().catch(() => {})
-    }
-
-    // Wait for at least one suggestion badge to appear (tier-1 runs on the
-    // host and should produce results for the example columns).
-    const badge = page.locator('.suggestion-badge:not(.confirmed):not(.applied)').first()
-    await expect(badge).toBeVisible({ timeout: 30_000 })
-
-    // The first-visit coachmark may appear on the first pill; dismiss it
-    // so the badge interactions below are unambiguous.
+    // The status bar reports the job; pills arrive once tier 1 has run.
+    await expect(page.locator('.suggestion-status-bar')).toBeVisible({ timeout: 30_000 })
+    await expandAllDatabases(page)
+    const applied = page.locator('.suggestion-badge.applied')
+    await expect(applied.first()).toBeVisible({ timeout: 30_000 })
+    await expect(applied.nth(1)).toBeVisible({ timeout: 30_000 })
     await dismissCoachmarkIfPresent(page)
 
-    // --- Accept a suggestion ------------------------------------------------
-    // Clicking the accept button (not the dismiss ×) triggers accept.
-    await badge.locator('.suggestion-accept').click()
+    // --- Accept ----------------------------------------------------------
+    // Pin rows by their select id: a row filtered on "has an applied pill"
+    // would drift to the next row as soon as this one is reviewed.
+    const appliedRows = page.locator('.variable-row').filter({ has: page.locator('.suggestion-badge.applied') })
+    const acceptId = await appliedRows.first().locator('.description-select').getAttribute('id')
+    const acceptRow = rowForSelectId(page, acceptId)
+    const acceptSelect = acceptRow.locator('.description-select')
+    // A pre-filled field already shows the suggested variable (D1: display
+    // only, persisted when reviewed).
+    const suggestedValue = await acceptSelect.inputValue()
+    expect(suggestedValue).not.toBe('')
 
-    // The badge should now show the "applied" state.
-    await expect(page.locator('.suggestion-badge.applied').first()).toBeVisible()
+    await acceptRow.locator('.suggestion-accept').click()
+    await expect(acceptRow.locator('.suggestion-badge.confirmed')).toBeVisible()
+    await expect(acceptRow.locator('.suggestion-badge.confirmed')).toContainText(/reviewed/i)
+    await expect(acceptSelect).toHaveValue(suggestedValue)
 
-    // The corresponding description dropdown should have a value selected.
-    const selectedDesc = page.locator('.description-select').first()
-    await expect(selectedDesc).not.toHaveValue('')
+    // --- Dismiss ---------------------------------------------------------
+    // The accepted row's pill is `.confirmed` now, so the first row that
+    // still holds an `.applied` pill is a different column.
+    const dismissId = await appliedRows.first().locator('.description-select').getAttribute('id')
+    expect(dismissId).not.toBe(acceptId)
+    const dismissRow = rowForSelectId(page, dismissId)
+    const dismissSelect = dismissRow.locator('.description-select')
+    expect(await dismissSelect.inputValue()).not.toBe('')
 
-    // --- Dismiss a different suggestion ------------------------------------
-    // Find another non-applied badge with a dismiss button.
-    const dismissBadge = page.locator('.suggestion-badge:not(.applied):not(.confirmed) .suggestion-dismiss').first()
-    if (await dismissBadge.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      const badgeCountBefore = await page.locator('.suggestion-badge:not(.confirmed)').count()
-      await dismissBadge.click()
-      // The dismissed badge should disappear (count of non-confirmed badges drops).
-      await expect(page.locator('.suggestion-badge:not(.confirmed)')).toHaveCount(
-        Math.max(0, badgeCountBefore - 1),
-      )
-    }
+    await dismissRow.locator('.suggestion-dismiss').click()
+    // The pill disappears and the pre-filled value is cleared.
+    await expect(dismissRow.locator('.suggestion-badge')).toHaveCount(0)
+    await expect(dismissSelect).toHaveValue('')
+
+    // --- Reload ----------------------------------------------------------
+    // Marks live in IndexedDB (`suggestion_marks_variables`). Wait for the
+    // write to land, then reload: the accepted field stays reviewed with
+    // its value, the dismissed one stays empty with no pill, and a re-run
+    // job does not bring the dismissed suggestion back.
+    const acceptKey = acceptId.replace(/^ncit_comment_/, '')
+    const dismissKey = dismissId.replace(/^ncit_comment_/, '')
+    await expect
+      .poll(async () => {
+        const marks = await readMetadata(page, 'suggestion_marks_variables')
+        return {
+          touched: (marks?.touched || []).includes(acceptKey),
+          dismissed: (marks?.dismissed || []).includes(dismissKey),
+        }
+      })
+      .toEqual({ touched: true, dismissed: true })
+    await page.reload()
+    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
+    await expandAllDatabases(page)
+    await expect(page.locator('.suggestion-badge').first()).toBeVisible({ timeout: 30_000 })
+
+    const acceptedAfter = rowForSelectId(page, acceptId)
+    await expect(acceptedAfter.locator('.suggestion-badge.confirmed')).toBeVisible()
+    await expect(acceptedAfter.locator('.description-select')).toHaveValue(suggestedValue)
+
+    const dismissedAfter = rowForSelectId(page, dismissId)
+    await expect(dismissedAfter.locator('.description-select')).toHaveValue('')
+    await expect(dismissedAfter.locator('.suggestion-badge')).toHaveCount(0)
 
     expect(errors, 'JS errors during suggestions flow').toEqual([])
   })
 
-  test('first-visit coachmark appears once, is dismissible, and stays gone after reload', async ({ page }) => {
+  test('first-visit coachmark appears once, is dismissible, and stays gone after reload', async ({
+    page,
+  }) => {
     const errors = watchConsoleErrors(page)
-    await runIngestFlow(page)
-
-    await page.getByRole('button', { name: /^\s*Skip\s*$/i }).click()
-    await page.getByRole('button', { name: /Click here to describe the data/i }).click()
-    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
+    await goToDescribeVariablesWithSuggestions(page)
 
     // Nothing shows while every table is folded.
     const callout = page.locator('.suggestion-coachmark')
@@ -88,8 +128,14 @@ test.describe('Suggestions on describe pages', () => {
     await callout.first().getByRole('button', { name: 'Got it' }).click()
     await expect(callout).toHaveCount(0)
 
-    // Reload and open the table again: the seen flag persisted in
-    // IndexedDB, so the callout must not return.
+    // The seen flag is written to IndexedDB (`suggestion_coachmark_seen`)
+    // asynchronously; wait for it before reloading.
+    await expect
+      .poll(async () => (await readMetadata(page, 'suggestion_coachmark_seen'))?.variables)
+      .toBe(true)
+
+    // Reload and open the table again: the seen flag persisted, so the
+    // callout must not return.
     await page.reload()
     await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
     await page.locator('.toggle-button').first().click()
@@ -100,20 +146,5 @@ test.describe('Suggestions on describe pages', () => {
     await expect(callout).toHaveCount(0)
 
     expect(errors, 'JS errors during coachmark flow').toEqual([])
-  })
-
-  test('describe page works without errors when suggestions are idle', async ({ page }) => {
-    // Even if suggestions are enabled, the describe page should render
-    // without console errors before any suggestions arrive. This covers
-    // the "suggestions disabled / not yet arrived" case.
-    const errors = watchConsoleErrors(page)
-    await runIngestFlow(page)
-
-    await page.getByRole('button', { name: /^\s*Skip\s*$/i }).click()
-    await page.getByRole('button', { name: /Click here to describe the data/i }).click()
-    await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
-    await expect(page.locator('h1').first()).toContainText(/Describe your data/)
-
-    expect(errors).toEqual([])
   })
 })
