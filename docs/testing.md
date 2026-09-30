@@ -73,6 +73,8 @@ FLYOVER_SUGGESTION_TIERS= ./../../scripts/start-test-stack.sh
 E2E_SUGGESTIONS_DISABLED=1 npx playwright test tests/e2e/suggestions-disabled.spec.js --reporter=line
 ```
 
+The LLM round-trip flows (`tests/e2e/llm-prompt-roundtrip.spec.js`) need no tier: they generate the prompt for the ingested database, paste a canned answer and accept an imported pill, and run against either stack.
+
 The full e2e workflow runs both as a matrix: the whole suite on the default stack, and the disabled spec on a stack started with the empty flag.
 
 On failure, Playwright drops a `playwright-report/` HTML report and a `test-results/` dir with traces and screenshots. Open the report with `npx playwright show-report`.

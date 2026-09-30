@@ -104,25 +104,38 @@ Expected ingest result: `taal`, `leeft`, `Rnnummer` accepted as `pasted_llm`; `s
 
 ## Acceptance criteria
 
-- [ ] `GET /api/v1/suggestions/prompt?phase=variables&database=nki` returns `prompt`, `answer_schema`, `item_count`, `contains`; 400 for unknown phase/database.
-- [ ] The prompt contains every `schema.variables` key for the variables phase and only the mapped variables' `valueMapping.terms` for the values phase.
-- [ ] The prompt contains **no data rows**: a unit test builds a prompt from a fixture with known cell values (non-categorical) and asserts none appear.
-- [ ] Free-text columns are excluded unless `exclude_free_text=false`; `contains` reflects that.
-- [ ] Prompts over `FLYOVER_SUGGESTION_PROMPT_CHUNK` items are chunked; each chunk is self-contained (repeats the schema slice).
-- [ ] Tier-1 hints appear for items that have a tier-1 record, and abstains are listed as "no candidate".
-- [ ] `POST /api/v1/suggestions/variables/ingest` with the canned answer above yields `accepted: 3, nulled: 1`, records tagged `source: pasted_llm, tier: 3`.
-- [ ] Ingest tolerates code fences and leading/trailing prose around the JSON; malformed JSON returns 400 with a readable message.
-- [ ] Ingested records never overwrite `applied` / `touched` / `dismissed` marks and never write to the JSON-LD (Vitest: `jsonld.getMapping()` unchanged after import).
-- [ ] Both describe views show the Copy prompt / Paste answer panel with the privacy notice; Playwright flow: copy → paste canned answer → badge appears → accept one.
-- [ ] `/api/v1/suggestions/status` lists `prompt_export: active` regardless of `FLYOVER_SUGGESTION_TIERS` (it has no runtime dependency).
+- [x] `GET /api/v1/suggestions/prompt?phase=variables&database=nki` returns `prompt`, `answer_schema`, `item_count`, `contains`; 400 for unknown phase/database.
+- [x] The prompt contains every `schema.variables` key not already used by this database for the variables phase (the used ones appear in the context section) and only the mapped variables' `valueMapping.terms` for the values phase.
+- [x] The prompt contains **no data rows**: a unit test builds a prompt from a fixture with known cell values (non-categorical) and asserts none appear.
+- [x] Free-text columns are excluded unless `exclude_free_text=false`; `contains` reflects that.
+- [x] Prompts over `FLYOVER_SUGGESTION_PROMPT_CHUNK` items are chunked; each chunk is self-contained (repeats the schema slice).
+- [x] Tier-1 hints appear for items that have a tier-1 record, and abstains are listed as "no candidate".
+- [x] `POST /api/v1/suggestions/variables/ingest` with the canned answer above yields `accepted: 3, nulled: 1`, records tagged `source: pasted_llm, tier: 3`.
+- [x] Ingest tolerates code fences and leading/trailing prose around the JSON; malformed JSON returns 400 with a readable message.
+- [x] Ingested records never overwrite `applied` / `touched` / `dismissed` marks and never write to the JSON-LD (Vitest: `jsonld.getMapping()` unchanged after import).
+- [x] Both describe views show the Copy prompt / Paste answer panel with the privacy notice; Playwright flow: copy → paste canned answer → badge appears → accept one.
+- [x] `/api/v1/suggestions/status` lists `prompt_export: active` regardless of `FLYOVER_SUGGESTION_TIERS` (it has no runtime dependency).
 
 ## Test plan
 
 - `tests/unit/test_suggestions_prompt_export.py` — composition order, schema slice completeness, no-row guarantee, chunking, free-text exclusion, hint rendering.
+- `tests/unit/test_suggestions_pasted_answer.py` — fences, prose, trailing commas, nested/bare/flat answer shapes, `valueNotes`, dedupe.
 - `tests/unit/test_suggestions_service.py` (extend) — `ingest()` round-trip with the canned answer; nulling of invalid keys; clamping; dedupe; marks immutable.
 - `tests/unit/test_suggestions_controller.py` (extend) — `/prompt` and `/ingest` routes, error codes.
 - Vitest `stores/suggestions.spec.js` (extend) — `fetchPrompt`, `ingest`, toast content; component test for the panel.
-- Playwright — one end-to-end round trip per phase using the canned answer.
+- Playwright `tests/e2e/llm-prompt-roundtrip.spec.js` — one end-to-end round trip per phase (generate → check prompt → paste → pill → accept); runs with the tiers flag set or empty.
+
+## Implementation notes (as built)
+
+Branch `feature/llm-prompt-export-roundtrip`. Where the build deviates from the design above, this section is authoritative.
+
+- **The answer is a JSON-LD section, not a record array.** The prompt asks the LLM for the `databases.<db>.tables.<table>.columns` object Flyover itself writes when something is mapped (`mapsTo` + `localColumn`; `localMappings` in the values phase), so the reply is a valid slice of the semantic map that concatenates with the entries already there. Optional `confidence` / `reason` per column entry and `valueNotes` per value carry the reviewer hints; the server strips them into the record fields. The flat `[{item, match, confidence, reason}]` form above is still accepted by `/ingest`, and so are code fences, surrounding prose, trailing commas, a bare `columns` object or an echoed full document (`services/suggestions/pasted_answer.py`).
+- **Only what still needs a decision.** The prompt lists the unmapped columns (variables phase) or the unmapped distinct values of the mapped categorical columns (values phase). The existing mappings are shown as context in their JSON-LD form and their variables are withheld from the candidate list; `/ingest` skips items the JSON-LD already maps and nulls a reuse of an already-mapped variable (`[already mapped] ...`).
+- **Any model, any client.** Plain text, no system prompt, no JSON mode, no tool use; a worked answer skeleton; `Items per prompt` is the user's choice in the panel (20–400, default `FLYOVER_SUGGESTION_PROMPT_CHUNK` = 40) and every part repeats the schema slice and the existing section so it is self-contained. Copying tries the async clipboard API and falls back to the legacy copy command, then to an on-page preview and a `.txt` download, so it works on plain-http hosts.
+- **No data rows.** Variables phase: a column gets up to five sample values only when it has at most 20 distinct values; identifier-like and free-text columns are described by their distinct count. Values phase: columns with more than 50 distinct values are excluded unless the panel's "include free-text columns" is ticked.
+- **`/prompt` also accepts POST** with the browser's semantic map in the body (the describe pages work on the map in IndexedDB, which the session may not hold); GET without a body falls back to the session's map.
+- **Tiers off.** `prompt_export` is `active` in `/status` regardless of `FLYOVER_SUGGESTION_TIERS`; the panel renders whenever it is, and a phase snapshot reports `enabled: true` as soon as a paste created a job, so the pills render on a stack with every tier off.
+- **Pasted records survive a rebuild.** They are kept on the session and re-applied after a reload or forced re-run; the public job fingerprint gains an ingest hash so the browser expires marks per key (D3) without the tier job being rebuilt.
 
 ## Open questions
 
