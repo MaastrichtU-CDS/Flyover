@@ -19,7 +19,7 @@
  *     "values"); the details page describes values, not variables.
  */
 
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const TIER_DESCRIPTIONS = {
   1: 'regex and string matching (tier 1)',
@@ -35,7 +35,18 @@ const props = defineProps({
   itemLabel: { type: String, default: 'variables' },
 })
 
-defineEmits(['clear-all', 'show-coachmark'])
+const emit = defineEmits(['clear-all', 'show-coachmark'])
+
+// The tier note ("regex and string matching (tier 1) enabled · …") is
+// noise until asked for: it stays hidden until the user opens it with
+// the help link, on both describe pages. Opening it also re-triggers
+// the review callout.
+const helpOpen = ref(false)
+
+function toggleHelp() {
+  helpOpen.value = !helpOpen.value
+  if (helpOpen.value) emit('show-coachmark')
+}
 
 const activeTiers = computed(() => {
   return Object.entries(props.tiers)
@@ -123,10 +134,11 @@ const unavailableMessage = computed(() => {
         v-if="hasMatches"
         type="button"
         class="btn btn-sm btn-link suggestion-help-link"
+        :aria-expanded="helpOpen ? 'true' : 'false'"
         title="Show the explanation of the suggestion review flow again"
-        @click="$emit('show-coachmark')"
+        @click="toggleHelp"
       >
-        How do suggestions work?
+        {{ helpOpen ? 'Hide' : 'How do suggestions work?' }}
       </button>
       <button
         v-if="unreviewedCount"
@@ -139,7 +151,7 @@ const unavailableMessage = computed(() => {
       <slot name="actions" />
     </div>
     <div
-      v-if="tierNote"
+      v-if="helpOpen && tierNote"
       class="suggestion-tier-note"
     >
       {{ tierNote }}
