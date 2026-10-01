@@ -223,14 +223,16 @@ async function importAnswer() {
       class="llm-help-body"
     >
       <p class="llm-help-intro">
-        No language model is currently running inside Flyover.<br>
-        You can generate a prompt below and copy this into an LLM that you are allowed to use within your institution.<br>
-        The LLM's answer should help with your mapping.<br>
-        Carefully review its suggestions; nothing is saved until you accept.
+        No language model is currently running inside Flyover.
+        You can generate a prompt below and copy this into an LLM that you are allowed to use within your institution.
       </p>
       <p class="llm-help-privacy">
         <i class="fas fa-shield-halved" />
         {{ privacyNotice }} Review it before sending.
+      </p>
+      <p class="llm-help-intro llm-help-answer-note">
+        The LLM's answer should help with your mapping.
+        Carefully review its suggestions; nothing is saved until you accept.
       </p>
 
 
@@ -409,6 +411,11 @@ async function importAnswer() {
 
 .llm-help-intro {
   margin-bottom: 0.4rem;
+}
+
+/* A full empty line between the privacy note and the answer hint. */
+.llm-help-answer-note {
+  margin-top: 1.5rem;
 }
 
 .llm-help-privacy {
