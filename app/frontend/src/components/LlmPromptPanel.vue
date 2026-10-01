@@ -73,7 +73,6 @@ const suggestions = useSuggestionsStore()
 const status = useStatusStore()
 
 const open = ref(false)
-const includeValues = ref(true)
 const includeFreeText = ref(false)
 // The site's default (FLYOVER_SUGGESTION_PROMPT_CHUNK via /status), not a
 // hardcoded 40, so an operator's env choice reaches the UI.
@@ -97,12 +96,13 @@ const chunkOptions = computed(() => {
 
 // The pre-generation notice describes the default options; once a prompt
 // has been generated the server's notice wins because it is worded for
-// the options actually used (e.g. no sample values when unticked).
+// the options actually used (the variables prompt shares no values; the
+// values one names the free-text columns when included).
 const privacyNotice = computed(() => {
   if (prompt.value?.privacy) return prompt.value.privacy
   return props.phase === 'values'
-    ? 'The prompt contains variable keys and labels, their term keys, your column names and the distinct values of the categorical columns being mapped. It contains no data rows. Review it before sending it to an external service.'
-    : 'The prompt contains variable keys and labels, your column names and a few distinct values of categorical-looking columns. It contains no data rows. Review it before sending it to an external service.'
+    ? 'The prompt contains variable keys and labels, their term keys, your column names and the distinct values being mapped. It contains no data rows.'
+    : 'The prompt contains variable keys and labels and your column names. It contains no data rows.'
 })
 
 const importSummary = computed(() => {
@@ -136,7 +136,6 @@ async function generate() {
   try {
     prompt.value = await suggestions.fetchPrompt(props.phase, props.database, {
       mapping: jsonld.getMapping(),
-      includeValues: props.phase === 'variables' ? includeValues.value : undefined,
       excludeFreeText: props.phase === 'values' ? !includeFreeText.value : undefined,
       chunk: chunk.value,
     })
@@ -227,29 +226,17 @@ async function importAnswer() {
       class="llm-help-body"
     >
       <p class="llm-help-intro">
-        No model runs inside Flyover. Copy the prompt into any LLM you are allowed to use
-        (an institutional ChatGPT or Copilot, a local Ollama, …), paste its answer back here,
-        and review the imported suggestions like any other: nothing is saved until you accept it.
+        No model runs inside Flyover. Copy the prompt into an LLM you are allowed to use,
+        paste its answer back, and review the suggestions here; nothing is saved until you accept.
       </p>
       <p class="llm-help-privacy">
         <i class="fas fa-shield-halved" />
-        {{ privacyNotice }}
+        {{ privacyNotice }} Review it before sending.
       </p>
 
       <div class="llm-help-options">
         <label
-          v-if="phase === 'variables'"
-          class="llm-help-option"
-        >
-          <input
-            v-model="includeValues"
-            type="checkbox"
-            class="llm-help-include-values"
-          >
-          Include up to five distinct values per categorical-looking column (more accurate; one query per column)
-        </label>
-        <label
-          v-else
+          v-if="phase === 'values'"
           class="llm-help-option"
         >
           <input
@@ -257,7 +244,7 @@ async function importAnswer() {
             type="checkbox"
             class="llm-help-include-free-text"
           >
-          Include free-text columns (more than 50 distinct values; long prompts)
+          Include free-text columns (much longer prompts)
         </label>
         <label class="llm-help-option">
           Items per prompt
@@ -407,14 +394,19 @@ async function importAnswer() {
 </template>
 
 <style scoped>
+/* display:contents unwraps the root: the toggle button joins the
+   per-database button row (next to "Dismiss all suggestions"), and the
+   open body drops in below that row. */
 .llm-help-panel {
-  margin: 0.25rem 0 0.5rem;
+  display: contents;
 }
 
 .llm-help-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  margin-left: 0.75rem;
+  font-size: 0.8em;
 }
 
 .llm-help-body {

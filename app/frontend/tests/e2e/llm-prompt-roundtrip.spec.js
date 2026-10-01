@@ -98,16 +98,17 @@ test.describe('LLM prompt export round trip', () => {
     const { panel, promptText } = await openAndGenerate(page, 'variables')
     await expect(panel.locator('.llm-help-summary')).toContainText(/columns still to map/)
     // The prompt: JSON-LD answer skeleton, the unmapped column, a hint from
-    // tier 1, categorical samples — and no data rows (the id column has one
-    // value per row and is described by its distinct count only).
+    // tier 1 — and no values at all: the variables phase shares only the
+    // column names.
     expect(promptText).toContain('"databases"')
     expect(promptText).toContain(`"${DB}"`)
     expect(promptText).toContain('- clin_t')
     // Hints come from the tier-1 job, so only a stack with tiers on has them.
     if (tiersOn) expect(promptText).toMatch(/hint: /)
     else expect(promptText).not.toMatch(/hint: /)
-    expect(promptText).toContain('biological_sex (categorical, 2 distinct: male, female)')
-    expect(promptText).toMatch(/- id \(\w[\w ]*, 150 distinct values\)/)
+    expect(promptText).toMatch(/^- id( {4}hint: .*)?$/m)
+    expect(promptText).not.toContain('male, female')
+    expect(promptText).not.toContain('distinct')
     expect(promptText).not.toContain('P0001')
     expect(promptText).not.toContain('P0002')
 

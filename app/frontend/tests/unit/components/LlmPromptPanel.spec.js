@@ -101,7 +101,6 @@ describe('Frontend unit: LlmPromptPanel', () => {
   it('generates the prompt with the chosen options and lists what leaves the browser', async () => {
     api.post.mockResolvedValue(promptResponse())
     const wrapper = await mountOpen()
-    await wrapper.find('.llm-help-include-values').setValue(false)
     await wrapper.find('.llm-help-chunk-size').setValue('80')
     await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
@@ -110,7 +109,6 @@ describe('Frontend unit: LlmPromptPanel', () => {
       phase: 'variables',
       database: 'nki',
       mapping: MAPPING,
-      include_values: false,
       chunk: 80,
     })
     expect(wrapper.find('.llm-help-summary').text()).toMatch(/3 columns still to map/)
@@ -120,8 +118,11 @@ describe('Frontend unit: LlmPromptPanel', () => {
       'column names',
     ])
     // Once generated, the server's privacy note (worded for the options
-    // actually used) replaces the pre-generation one.
-    expect(wrapper.find('.llm-help-privacy').text()).toBe('SERVER PRIVACY NOTE')
+    // actually used) replaces the pre-generation one; the short review
+    // reminder is appended once.
+    expect(wrapper.find('.llm-help-privacy').text()).toBe(
+      'SERVER PRIVACY NOTE Review it before sending.',
+    )
     expect(wrapper.findAll('.llm-help-chunk')).toHaveLength(1)
     expect(wrapper.find('.llm-help-preview').exists()).toBe(false)
     await wrapper.find('.llm-help-preview-toggle').trigger('click')
