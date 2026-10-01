@@ -223,6 +223,7 @@ describe('Frontend unit: LlmPromptPanel', () => {
       database: 'nki',
       source: 'pasted_llm',
       mapping: MAPPING,
+      dismissed: [],
       answer: '```json\n{"databases": {}}\n```',
     })
     const store = useSuggestionsStore()

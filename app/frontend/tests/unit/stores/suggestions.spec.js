@@ -668,6 +668,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
       database: 'nki',
       source: 'pasted_llm',
       mapping: MAPPING,
+      dismissed: [],
       answer: pasted,
     })
     expect(s.enabled).toBe(true)
@@ -680,6 +681,58 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const toast = useStatusStore().messages.at(-1)
     expect(toast.level).toBe('success')
     expect(toast.text).toBe('2 suggestions imported, 1 left for you to decide, 1 already mapped')
+  })
+
+  it('ingest sends the dismissed keys and drops the marks the server re-opened', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        accepted: 1,
+        nulled: 0,
+        rejected: 0,
+        skipped: 0,
+        reopened: ['nki_taal'],
+        messages: [],
+        job: {
+          status: 'done',
+          fingerprint: 'fp+abc',
+          progress: { done: 2, total: 2 },
+          records: {
+            nki_taal: {
+              status: 'done',
+              item: 'taal',
+              match: 'administered_prom_language',
+              confidence: 0.7,
+              reason: 'r',
+              source: 'pasted_llm',
+              tier: 3,
+              reopens: true,
+            },
+          },
+        },
+      },
+    })
+    const s = useSuggestionsStore()
+    s.setPhase('variables')
+    // The user dismissed tier 1's proposals for two keys; one stays.
+    s.variables.byKey.nki_taal = { match: 'identifier' }
+    s.variables.byKey.nki_leeft = { match: 'identifier' }
+    s.dismiss('nki_taal')
+    s.dismiss('nki_leeft')
+    db.saveData.mockClear()
+
+    const result = await s.ingest('variables', 'nki', { answer: '{}', mapping: MAPPING })
+    expect(api.post.mock.calls[0][1].dismissed).toEqual(['nki_taal', 'nki_leeft'])
+    expect(s.isDismissed('nki_taal')).toBe(false)
+    expect(s.marks.variables.matches).not.toHaveProperty('nki_taal')
+    expect(s.isDismissed('nki_leeft')).toBe(true)
+    expect(s.variables.byKey.nki_taal.source).toBe('pasted_llm')
+    expect(result.reopened).toBe(1)
+    expect(useStatusStore().messages.at(-1).text).toBe(
+      '1 suggestion imported, 1 shown again after a dismissal',
+    )
+    // The cleared dismissal is persisted.
+    const saved = db.saveData.mock.calls.map(([, record]) => record).find((r) => r.key === 'suggestion_marks_variables')
+    expect(saved.dismissed).toEqual(['nki_leeft'])
   })
 
   it('ingest rejects with the server message and leaves state alone', async () => {

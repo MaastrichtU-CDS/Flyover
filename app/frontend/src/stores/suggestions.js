@@ -44,8 +44,15 @@ export const SOURCE_ICONS = {
 // match the server rejected (invalid key, or a variable already mapped
 // in this database); the item stays with the human, hence the wording.
 // Exported so the tests can assert on it.
-export function ingestSummary({ accepted = 0, nulled = 0, rejected = 0, skipped = 0 } = {}) {
+export function ingestSummary({
+  accepted = 0,
+  nulled = 0,
+  rejected = 0,
+  skipped = 0,
+  reopened = 0,
+} = {}) {
   const parts = [`${accepted} ${accepted === 1 ? 'suggestion' : 'suggestions'} imported`]
+  if (reopened) parts.push(`${reopened} shown again after a dismissal`)
   if (nulled) parts.push(`${nulled} left for you to decide`)
   if (rejected) parts.push(`${rejected} ignored (unknown column or value)`)
   if (skipped) parts.push(`${skipped} already mapped`)
@@ -461,7 +468,11 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   // through the same path as a poll. Returns the ingest summary; throws
   // with a readable message when the paste is unusable.
   async function ingest(phase, database, { answer, records, mapping } = {}) {
-    const body = { database, source: 'pasted_llm', mapping }
+    // A dismissal judges one suggestion, not the field: pasting an answer
+    // asks for a new one, so the dismissed keys go along and the server
+    // lets the paste take those fields (it answers which it re-opened).
+    const dismissed = Object.keys(marks[phase].dismissed).filter((k) => marks[phase].dismissed[k])
+    const body = { database, source: 'pasted_llm', mapping, dismissed }
     if (answer !== undefined) body.answer = answer
     if (records !== undefined) body.records = records
     let data
@@ -473,6 +484,18 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     // A paste makes the suggestion UI relevant even on a stack with every
     // tier off: the pills must render the imported records.
     enabled.value = true
+    // Drop the dismissals the server re-opened before the records land, so
+    // the pre-fill watchers treat those fields as fresh. Applied/touched
+    // marks are not touched here: a reviewed field is not re-opened.
+    const reopened = Array.isArray(data.reopened) ? data.reopened : []
+    if (reopened.length) {
+      const m = marks[phase]
+      for (const key of reopened) {
+        delete m.dismissed[key]
+        delete m.matches[key]
+      }
+      _persistMarks(phase)
+    }
     if (data.job) {
       const state = _phaseState(phase)
       state.status = data.job.status || 'done'
@@ -490,6 +513,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       nulled: data.nulled ?? 0,
       rejected: data.rejected ?? 0,
       skipped: data.skipped ?? 0,
+      reopened: reopened.length,
       messages: data.messages || [],
     }
     useStatusStore().success(ingestSummary(lastIngestResult.value))
