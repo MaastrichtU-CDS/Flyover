@@ -223,15 +223,14 @@ async function importAnswer() {
       class="llm-help-body"
     >
       <p class="llm-help-intro">
-        No language model is currently running inside Flyover.
+        No language model is currently running inside Flyover.<br>
         You can generate a prompt below and copy this into an LLM that you are allowed to use within your institution.<br>
-        <p class="llm-help-privacy">
-          <i class="fas fa-shield-halved" />
-          {{ privacyNotice }} Review it before sending.
-        </p>
-
-        The LLM's answer should help with your mapping.
+        The LLM's answer should help with your mapping.<br>
         Carefully review its suggestions; nothing is saved until you accept.
+      </p>
+      <p class="llm-help-privacy">
+        <i class="fas fa-shield-halved" />
+        {{ privacyNotice }} Review it before sending.
       </p>
 
 
