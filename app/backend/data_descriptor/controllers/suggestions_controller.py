@@ -297,6 +297,10 @@ def ingest_suggestions(phase: str):
             400,
         )
     mapping = parse_and_validate_mapping(body.get("mapping"))
+    # Keys whose suggestion the user dismissed in the browser: a paste
+    # re-opens them (see SuggestionService.ingest).
+    dismissed = body.get("dismissed")
+    dismissed = [str(k) for k in dismissed] if isinstance(dismissed, list) else []
     try:
         result = service.ingest(
             phase,
@@ -307,6 +311,7 @@ def ingest_suggestions(phase: str):
             records=records if answer is None else None,
             mapping=mapping,
             source=body.get("source") or "pasted_llm",
+            dismissed=dismissed,
         )
     except SuggestionRequestError as exc:
         return _request_error(exc)

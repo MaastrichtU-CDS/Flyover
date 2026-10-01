@@ -234,6 +234,33 @@ def _merge_records(a: dict, b: dict) -> tuple[dict, Optional[dict]]:
     return winner, loser_copy
 
 
+def _replace_record(prev: dict, record: dict) -> dict:
+    """``record`` takes the key; ``prev`` is kept as an alternative.
+
+    Used when the user dismissed ``prev`` and pasted an answer: unlike
+    :func:`_merge_records` the confidences do not decide. ``prev`` only
+    becomes an alternative when it proposes a different non-null match
+    (an abstain or the same proposal is noise), and ``prev``'s own
+    alternatives are carried over minus any duplicate of the new match.
+    """
+    winner = dict(record)
+    alts = [
+        alt
+        for alt in prev.get("alternatives", [])
+        if alt.get("match") and alt.get("match") != winner.get("match")
+    ]
+    prev_copy = {k: v for k, v in prev.items() if k != "alternatives"}
+    if prev_copy.get("match") and prev_copy["match"] != winner.get("match"):
+        alts.insert(0, prev_copy)
+    if alts:
+        winner["alternatives"] = alts + [
+            alt
+            for alt in winner.get("alternatives", [])
+            if alt.get("match") and alt not in alts
+        ]
+    return winner
+
+
 class SuggestionJob:
     """State of one suggestion job, polled by the frontend.
 
@@ -1007,6 +1034,7 @@ class SuggestionService:
         records: Optional[list] = None,
         mapping: Any = None,
         source: str = PASTED_SOURCE,
+        dismissed: Optional[list] = None,
     ) -> dict:
         """Merge a pasted LLM answer into the phase's job as suggestions.
 
@@ -1023,7 +1051,18 @@ class SuggestionService:
         touched; the public fingerprint changes so stale marks expire per
         key.
 
-        Returns ``{accepted, nulled, rejected, skipped, messages, job}``.
+        ``dismissed`` lists the job keys (``<db>_<column>`` /
+        ``<db>_<column>_<value>``) whose current suggestion the user
+        dismissed in the browser. A dismissal judges one suggestion, not
+        the field: pasting an answer is the user's explicit request for a
+        new one, so for those keys a pasted record with a match replaces
+        the dismissed record outright instead of competing with it on
+        confidence (the dismissed record is kept as an alternative). Those
+        keys come back as ``reopened`` so the browser can drop the marks.
+        Fields the JSON-LD already maps are skipped before this applies.
+
+        Returns ``{accepted, nulled, rejected, skipped, reopened,
+        messages, job}``.
         """
         if phase not in PHASES:
             raise SuggestionRequestError("unknown_phase", f"unknown phase '{phase}'")
@@ -1095,14 +1134,25 @@ class SuggestionService:
                 record.update(group["location"](record["item"]))
                 record["database"] = database
                 sanitised[group["key_for"](record["item"])] = record
-        for record in sanitised.values():
+        dismissed_keys = {str(k) for k in (dismissed or [])}
+        reopened: list[str] = []
+        for key, record in sanitised.items():
             if record["match"] is not None:
                 counts["accepted"] += 1
+                full_key = f"{database}_{key}"
+                if full_key in dismissed_keys:
+                    record["reopens"] = True
+                    reopened.append(full_key)
             else:
                 counts["nulled"] += 1
 
         job = self._merge_ingested(session_cache, phase, sanitised)
-        return {**counts, "messages": messages, "job": job.to_public_dict()}
+        return {
+            **counts,
+            "reopened": reopened,
+            "messages": messages,
+            "job": job.to_public_dict(),
+        }
 
     # -- ingest helpers -------------------------------------------------------
 
@@ -1304,6 +1354,12 @@ class SuggestionService:
             prev = job.records.get(full_key)
             if prev is None:
                 job.records[full_key] = record
+            elif record.get("reopens"):
+                # The user dismissed ``prev`` and asked an LLM instead: the
+                # paste takes the field whatever the confidences, and the
+                # dismissed candidate stays one click away. The flag lives
+                # on the stored record, so a rebuild repeats this.
+                job.records[full_key] = _replace_record(prev, record)
             else:
                 merged, _loser = _merge_records(prev, record)
                 job.records[full_key] = merged

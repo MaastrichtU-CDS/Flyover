@@ -634,6 +634,132 @@ class TestIngest(unittest.TestCase):
         self.assertEqual(rebuilt["records"]["christie_yr"]["source"], "pasted_llm")
         self.assertEqual(rebuilt["fingerprint"], after["fingerprint"])
 
+    @patch("services.suggestions.tier1_producers")
+    def test_paste_reopens_a_dismissed_field_and_survives_rebuild(self, mock_producers):
+        """A dismissal judges one suggestion, not the field: for a key the
+        browser dismissed, the pasted record takes the field whatever the
+        confidences, the dismissed candidate stays an alternative, and the
+        key is reported as reopened. A nulled paste reopens nothing, and a
+        key that was not dismissed still follows the cascade rule."""
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "yr": {
+                        "match": "year_of_initial_diagnosis",
+                        "confidence": 1.0,
+                        "reason": "Alias hit (poor).",
+                    },
+                    "free": {
+                        "match": "year_of_initial_diagnosis",
+                        "confidence": 0.95,
+                        "reason": "Alias hit.",
+                    },
+                },
+            )
+        ]
+        cache = self._cache_with_free_variable()
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, cache, self.rdf)
+        # D2 left 'free' a conflict loser; the user dismissed 'yr'.
+        result = svc.ingest(
+            VARIABLES_PHASE,
+            cache,
+            self.rdf,
+            database="christie",
+            records=[
+                {"item": "yr", "match": "age_at_diagnosis", "confidence": 0.7},
+                {
+                    "item": "free",
+                    "match": "year_of_initial_diagnosis",
+                    "confidence": 0.6,
+                },
+            ],
+            dismissed=["christie_yr", "christie_free"],
+        )
+        self.assertEqual(result["reopened"], ["christie_yr", "christie_free"])
+        records = result["job"]["records"]
+        yr = records["christie_yr"]
+        self.assertEqual(
+            (yr["match"], yr["source"], yr["confidence"]),
+            ("age_at_diagnosis", "pasted_llm", 0.7),
+        )
+        self.assertTrue(yr.get("reopens"))
+        self.assertEqual(yr["alternatives"][0]["match"], "year_of_initial_diagnosis")
+        self.assertEqual(yr["alternatives"][0]["source"], "alias")
+        # 'free' now holds year_of_initial_diagnosis unopposed: the paste
+        # took the dismissed loser's place and the conflict is gone.
+        self.assertEqual(records["christie_free"]["match"], "year_of_initial_diagnosis")
+        self.assertEqual(records["christie_free"]["source"], "pasted_llm")
+
+        # A forced re-run rebuilds tier 1 (yr -> year at 1.0 again) and the
+        # stored paste still takes the dismissed field.
+        svc.start(VARIABLES_PHASE, cache, self.rdf, force=True)
+        rebuilt = svc.get_state(cache, VARIABLES_PHASE)["records"]
+        self.assertEqual(rebuilt["christie_yr"]["match"], "age_at_diagnosis")
+        self.assertEqual(rebuilt["christie_yr"]["source"], "pasted_llm")
+
+    @staticmethod
+    def _cache_with_free_variable():
+        """The base mapping plus one variable no column uses yet."""
+        data = _make_mapping().to_dict()
+        data["schema"]["variables"]["age_at_diagnosis"] = {
+            "@type": "schema:ContinuousVariable",
+            "dataType": "continuous",
+            "predicate": "sio:has_age",
+            "class": "ncit:C25150",
+        }
+        return _make_session_cache(JSONLDMapping.from_dict(data))
+
+    @patch("services.suggestions.tier1_producers")
+    def test_paste_without_dismissal_or_match_keeps_the_cascade(self, mock_producers):
+        mock_producers.return_value = [
+            FakeProducer(
+                1,
+                "alias",
+                {
+                    "yr": {
+                        "match": "year_of_initial_diagnosis",
+                        "confidence": 1.0,
+                        "reason": "x",
+                    }
+                },
+            )
+        ]
+        cache = self._cache_with_free_variable()
+        svc = SuggestionService(_config())
+        svc.start(VARIABLES_PHASE, cache, self.rdf)
+        # Not dismissed: the stronger tier-1 record keeps the field.
+        result = svc.ingest(
+            VARIABLES_PHASE,
+            cache,
+            self.rdf,
+            database="christie",
+            records=[{"item": "yr", "match": "age_at_diagnosis", "confidence": 0.7}],
+        )
+        self.assertEqual(result["reopened"], [])
+        yr = result["job"]["records"]["christie_yr"]
+        self.assertEqual(
+            (yr["match"], yr["source"]), ("year_of_initial_diagnosis", "alias")
+        )
+        self.assertEqual(yr["alternatives"][0]["match"], "age_at_diagnosis")
+        # Dismissed, but the paste was nulled: nothing to show, not reopened.
+        result = svc.ingest(
+            VARIABLES_PHASE,
+            cache,
+            self.rdf,
+            database="christie",
+            records=[{"item": "yr", "match": "no_such_variable", "confidence": 0.9}],
+            dismissed=["christie_yr"],
+        )
+        self.assertEqual(result["reopened"], [])
+        self.assertEqual(result["nulled"], 1)
+        yr = result["job"]["records"]["christie_yr"]
+        self.assertEqual(
+            (yr["match"], yr["source"]), ("year_of_initial_diagnosis", "alias")
+        )
+
     def test_two_pasted_columns_same_variable_keep_the_stronger(self):
         svc = SuggestionService(_config(tiers=()))
         result = svc.ingest(

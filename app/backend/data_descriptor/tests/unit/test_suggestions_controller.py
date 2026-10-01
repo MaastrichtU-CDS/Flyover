@@ -562,6 +562,29 @@ class TestIngestRoute(unittest.TestCase):
         self.assertIsNone(kwargs["records"])
         self.assertEqual(kwargs["source"], "pasted_llm")
         self.assertIsNotNone(kwargs["mapping"])
+        self.assertEqual(kwargs["dismissed"], [])
+
+    def test_ingest_passes_dismissed_keys(self):
+        svc = self._service()
+        with _make_app(svc).test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(
+                    {"database": "nki", "answer": "{}", "dismissed": ["nki_taal", 7]}
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+        self.assertEqual(svc.ingest.call_args.kwargs["dismissed"], ["nki_taal", "7"])
+        with _make_app(svc).test_client() as client:
+            client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(
+                    {"database": "nki", "answer": "{}", "dismissed": "nope"}
+                ),
+                content_type="application/json",
+            )
+        self.assertEqual(svc.ingest.call_args.kwargs["dismissed"], [])
 
     def test_ingest_records_list(self):
         svc = self._service()
