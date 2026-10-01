@@ -13,7 +13,7 @@ import {
 // LLM prompt export + paste-back round trip (issue 2), one flow per phase.
 //
 // Both flows ingest the example CSV and upload a semantic map, open the
-// "Use an external LLM" panel of the ingested database, generate the prompt
+// "Use an LLM" panel of the ingested database, generate the prompt
 // (and check it names the unmapped items, carries hints and no data rows),
 // paste a canned answer, and accept one of the imported suggestions.
 //

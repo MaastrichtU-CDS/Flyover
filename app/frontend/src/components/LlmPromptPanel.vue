@@ -211,10 +211,10 @@ async function importAnswer() {
       type="button"
       class="btn btn-sm btn-outline-secondary llm-help-toggle"
       :aria-expanded="open ? 'true' : 'false'"
-      title="Generate a prompt for an external LLM and paste its answer back as suggestions"
+      title="Generate a prompt for an LLM and paste its answer back as suggestions"
       @click="open = !open"
     >
-      <i class="fas fa-robot" /> Use an external LLM
+      <i class="fas fa-robot" /> Use an LLM
       <i
         class="fas"
         :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"
@@ -226,8 +226,10 @@ async function importAnswer() {
       class="llm-help-body"
     >
       <p class="llm-help-intro">
-        No model runs inside Flyover. Copy the prompt into an LLM you are allowed to use,
-        paste its answer back, and review the suggestions here; nothing is saved until you accept.
+        No language model is currently running inside Flyover.<br>
+        You can generate and copy a prompt below into an LLM you are allowed to use within your institution.<br>
+        Its answer should help with your mapping.<br>
+        Review the suggestions; nothing is saved until you accept.
       </p>
       <p class="llm-help-privacy">
         <i class="fas fa-shield-halved" />

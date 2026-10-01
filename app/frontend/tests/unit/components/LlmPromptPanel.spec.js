@@ -91,7 +91,7 @@ describe('Frontend unit: LlmPromptPanel', () => {
   it('is collapsed by default and makes no request until the user acts', async () => {
     const wrapper = mount(LlmPromptPanel, { props: { phase: 'variables', database: 'nki' } })
     expect(wrapper.find('.llm-help-body').exists()).toBe(false)
-    expect(wrapper.find('.llm-help-toggle').text()).toMatch(/Use an external LLM/)
+    expect(wrapper.find('.llm-help-toggle').text()).toMatch(/Use an LLM/)
     await wrapper.find('.llm-help-toggle').trigger('click')
     expect(wrapper.find('.llm-help-body').exists()).toBe(true)
     expect(wrapper.find('.llm-help-privacy').text()).toMatch(/contains no data rows/i)
