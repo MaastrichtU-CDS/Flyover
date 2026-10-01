@@ -779,3 +779,298 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// Paste-back round trip (issue 2): an imported LLM answer becomes ordinary
+// pasted_llm records. It must render as pills (even on a stack with every
+// tier off), never write to the JSON-LD, and never touch review marks.
+// ---------------------------------------------------------------------------
+
+const STATUS_TIERS_OFF = {
+  enabled: false,
+  compute: 'host',
+  tiers: { 1: { state: 'inactive', reason: 'disabled by FLYOVER_SUGGESTION_TIERS' } },
+  threshold: 0.8,
+  rules_version: null,
+  prompt_export: { state: 'active' },
+}
+
+const IDLE_SNAPSHOT = {
+  enabled: false,
+  status: 'idle',
+  progress: { done: 0, total: 0 },
+  error: null,
+  records: {},
+}
+
+function pastedVariablesIngest() {
+  return {
+    data: {
+      accepted: 1,
+      nulled: 1,
+      rejected: 0,
+      skipped: 0,
+      messages: [],
+      job: {
+        status: 'done',
+        fingerprint: '+pasted-1',
+        progress: { done: 2, total: 2 },
+        records: {
+          test_db_morph: {
+            status: 'done',
+            item: 'morph',
+            match: 'tumour_morphology_icd_o',
+            confidence: 0.7,
+            reason: 'Looks like a morphology code.',
+            source: 'pasted_llm',
+            tier: 3,
+            database: 'test_db',
+            column: 'morph',
+          },
+          test_db_sex: {
+            status: 'done',
+            item: 'sex',
+            match: null,
+            confidence: 0,
+            reason: "[invalid key from LLM] 'gender' is not a schema variable",
+            source: 'pasted_llm',
+            tier: 3,
+            database: 'test_db',
+            column: 'sex',
+          },
+        },
+      },
+    },
+  }
+}
+
+function pastedValuesIngest() {
+  return {
+    data: {
+      accepted: 1,
+      nulled: 0,
+      rejected: 0,
+      skipped: 1,
+      messages: ["'sex' = 'M' is already mapped; left unchanged."],
+      job: {
+        status: 'done',
+        fingerprint: 'fp-values-1+pasted-1',
+        progress: { done: 2, total: 2 },
+        records: {
+          ...VALUES_SNAPSHOT.records,
+          patients_sex_F: {
+            status: 'done',
+            item: 'F',
+            match: 'female',
+            confidence: 0.95,
+            reason: 'F = female',
+            source: 'pasted_llm',
+            tier: 3,
+            database: 'patients',
+            column: 'sex',
+            value: 'F',
+          },
+        },
+      },
+    },
+  }
+}
+
+async function importThroughPanel(wrapper, answer = '{"databases": {}}') {
+  const panel = wrapper.findComponent({ name: 'LlmPromptPanel' })
+  await panel.find('.llm-help-toggle').trigger('click')
+  await panel.find('.llm-help-answer').setValue(answer)
+  await panel.find('.llm-help-import').trigger('click')
+  await flushPromises()
+  return panel
+}
+
+describe('DescribeVariablesView — pasted LLM answer', () => {
+  it('imports the answer as pasted_llm pills without writing the JSON-LD, with every tier off', async () => {
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: STATUS_TIERS_OFF }],
+      ['/api/v1/suggestions/variables', { data: IDLE_SNAPSHOT }],
+      ['/api/v1/suggestions/variables/ingest', pastedVariablesIngest()],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+
+    // Tiers off: no suggestion UI, but the panel is there.
+    const store = useSuggestionsStore()
+    expect(store.enabled).toBe(false)
+    expect(wrapper.findComponent({ name: 'SuggestionStatusBar' }).exists()).toBe(false)
+    expect(wrapper.findAllComponents({ name: 'SuggestionBadge' })).toHaveLength(0)
+    expect(wrapper.findAllComponents({ name: 'LlmPromptPanel' })).toHaveLength(1)
+
+    await importThroughPanel(wrapper)
+
+    // The store posted the paste with the browser's map and flipped the UI on.
+    const ingestCall = api.post.mock.calls.find(([url]) => url.endsWith('/variables/ingest'))
+    expect(ingestCall[1]).toMatchObject({
+      database: 'test_db',
+      source: 'pasted_llm',
+      answer: '{"databases": {}}',
+    })
+    expect(ingestCall[1].mapping.schema.variables).toHaveProperty('biological_sex')
+    expect(store.enabled).toBe(true)
+    expect(wrapper.findComponent({ name: 'SuggestionStatusBar' }).exists()).toBe(true)
+
+    // One pill for the accepted record (a below-threshold hint, so not
+    // pre-filled); the nulled one has no match and no pill.
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    expect(badges).toHaveLength(1)
+    expect(badges[0].props('suggestion').source).toBe('pasted_llm')
+    expect(badges[0].find('.fa-clipboard').exists()).toBe(true)
+    expect(store.isApplied('test_db_morph')).toBe(false)
+    expect(wrapper.find('select.description-select').element.value).toBe('')
+
+    // Nothing reached the JSON-LD writer.
+    expect(jsonld.updateMappingFromForm).not.toHaveBeenCalled()
+    expect(jsonld.getMapping().databases).toEqual({})
+
+    // Accepting the pasted suggestion goes through the normal review path.
+    await badges[0].vm.$emit('accept')
+    await flushPromises()
+    expect(jsonld.updateMappingFromForm).toHaveBeenCalledTimes(1)
+    expect(Object.keys(jsonld.updateMappingFromForm.mock.calls[0][0])).toEqual(['test_db_morph'])
+    expect(store.isTouched('test_db_morph')).toBe(true)
+  })
+
+  it('keeps existing marks when a paste arrives and merges into a running job', async () => {
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
+      ['/api/v1/suggestions/variables', { data: VARIABLES_SNAPSHOT }],
+      ['/api/v1/suggestions/variables/ingest', pastedVariablesIngest()],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+    const store = useSuggestionsStore()
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    // The user dismisses the tier-1 suggestion for 'sex'.
+    const sexBadge = wrapper
+      .findAllComponents({ name: 'SuggestionBadge' })
+      .find((b) => b.props('suggestion').item === 'sex')
+    await sexBadge.vm.$emit('dismiss')
+    await flushPromises()
+    expect(store.isDismissed('test_db_sex')).toBe(true)
+    // Dismissing a pre-fill clears the field through the form path; count
+    // those writes so the paste can be shown to add none.
+    const writesBefore = jsonld.updateMappingFromForm.mock.calls.length
+
+    await importThroughPanel(wrapper)
+
+    // The paste replaced morph's record and nulled sex's: 'sex' shows no
+    // pill (nothing to accept) and the import wrote nothing.
+    expect(store.variables.byKey.test_db_morph.source).toBe('pasted_llm')
+    expect(wrapper.findAllComponents({ name: 'SuggestionBadge' }).map((b) => b.props('suggestion').item)).toEqual(['morph'])
+    expect(jsonld.updateMappingFromForm).toHaveBeenCalledTimes(writesBefore)
+  })
+})
+
+describe('DescribeVariablesView — pasted answer re-opens a dismissed field', () => {
+  it('shows the pasted suggestion on a field whose tier-1 suggestion was dismissed', async () => {
+    // The paste for 'sex' replaces the dismissed alias record (the server
+    // reports the key as reopened); 'morph', reviewed by the user, is
+    // already in the JSON-LD and the server skipped it.
+    const ingest = pastedVariablesIngest()
+    ingest.data.accepted = 1
+    ingest.data.nulled = 0
+    ingest.data.skipped = 1
+    ingest.data.reopened = ['test_db_sex']
+    ingest.data.job.records = {
+      test_db_morph: VARIABLES_SNAPSHOT.records.test_db_morph,
+      test_db_sex: {
+        status: 'done',
+        item: 'sex',
+        match: 'year_of_initial_diagnosis',
+        confidence: 0.9,
+        reason: 'The LLM read it as a year.',
+        source: 'pasted_llm',
+        tier: 3,
+        database: 'test_db',
+        column: 'sex',
+        reopens: true,
+        alternatives: [VARIABLES_SNAPSHOT.records.test_db_sex],
+      },
+    }
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
+      ['/api/v1/suggestions/variables', { data: VARIABLES_SNAPSHOT }],
+      ['/api/v1/suggestions/variables/ingest', ingest],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+    const store = useSuggestionsStore()
+    const badgeFor = (item) =>
+      wrapper.findAllComponents({ name: 'SuggestionBadge' }).find((b) => b.props('suggestion').item === item)
+
+    // The user accepts 'morph' (reviewed, written) and dismisses 'sex'.
+    await badgeFor('morph').vm.$emit('accept')
+    await badgeFor('sex').vm.$emit('dismiss')
+    await flushPromises()
+    expect(store.isTouched('test_db_morph')).toBe(true)
+    expect(store.isDismissed('test_db_sex')).toBe(true)
+    expect(badgeFor('sex')).toBeUndefined()
+    const sexSelect = wrapper.find('[id="ncit_comment_test_db_sex"]')
+    expect(sexSelect.element.value).toBe('')
+    const writesBefore = jsonld.updateMappingFromForm.mock.calls.length
+
+    await importThroughPanel(wrapper)
+
+    // The dismissed keys went along, the dismissal is gone, and the pasted
+    // suggestion is pre-filled for review (confident) with a pasted pill.
+    const ingestCall = api.post.mock.calls.find(([url]) => url.endsWith('/variables/ingest'))
+    expect(ingestCall[1].dismissed).toEqual(['test_db_sex'])
+    expect(store.isDismissed('test_db_sex')).toBe(false)
+    expect(store.variables.byKey.test_db_sex.source).toBe('pasted_llm')
+    const sexBadge = badgeFor('sex')
+    expect(sexBadge).toBeDefined()
+    expect(sexBadge.props('suggestion').match).toBe('year_of_initial_diagnosis')
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    expect(store.isTouched('test_db_sex')).toBe(false)
+    expect(sexSelect.element.value).toBe('Year of initial diagnosis')
+    expect(wrapper.text()).toContain('1 suggestion needs review')
+
+    // The reviewed field is untouched: still reviewed, still its value,
+    // and the paste itself wrote nothing.
+    expect(store.isTouched('test_db_morph')).toBe(true)
+    expect(wrapper.find('[id="ncit_comment_test_db_morph"]').element.value).toBe('Tumour morphology icd o')
+    expect(jsonld.updateMappingFromForm).toHaveBeenCalledTimes(writesBefore)
+  })
+})
+
+describe('DescribeVariableDetailsView — pasted LLM answer', () => {
+  it('imports value suggestions as pills without calling updateCategoryMapping', async () => {
+    mockApiRoutes([
+      ['/api/v1/describe-variable-details-state', { data: DETAILS_STATE }],
+      ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
+      ['/api/v1/suggestions/values', { data: { ...VALUES_SNAPSHOT, records: { patients_sex_M: VALUES_SNAPSHOT.records.patients_sex_M } } }],
+      ['/api/v1/suggestions/values/ingest', pastedValuesIngest()],
+    ])
+    const wrapper = mount(DescribeVariableDetailsView, {
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+    await flushPromises()
+    expect(wrapper.findAllComponents({ name: 'LlmPromptPanel' })).toHaveLength(1)
+    expect(wrapper.findAllComponents({ name: 'SuggestionBadge' })).toHaveLength(1)
+
+    const panel = await importThroughPanel(wrapper)
+    expect(api.post.mock.calls.find(([url]) => url.endsWith('/values/ingest'))[1].database).toBe('patients')
+    expect(panel.find('.llm-help-import-result').text()).toMatch(/1 imported, 1 already mapped/)
+    expect(panel.text()).toContain("'sex' = 'M' is already mapped")
+
+    const badges = wrapper.findAllComponents({ name: 'SuggestionBadge' })
+    expect(badges).toHaveLength(2)
+    const pasted = badges.find((b) => b.props('suggestion').source === 'pasted_llm')
+    expect(pasted.props('suggestion').match).toBe('female')
+    // The values page pre-fills for display (no confidence gate), but the
+    // JSON-LD writer is untouched until the user reviews the field.
+    const store = useSuggestionsStore()
+    expect(store.isApplied('patients_sex_F')).toBe(true)
+    expect(wrapper.vm.categorySelections.patients_sex_F).toBe('Female')
+    expect(jsonld.updateCategoryMapping).not.toHaveBeenCalled()
+  })
+})

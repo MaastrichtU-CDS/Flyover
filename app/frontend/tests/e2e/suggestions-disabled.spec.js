@@ -42,6 +42,11 @@ test.describe('Suggestions disabled by FLYOVER_SUGGESTION_TIERS', () => {
     }
 
     for (const phase of ['variables', 'values']) {
+      // A pasted LLM answer (llm-prompt-roundtrip.spec.js) may already have
+      // created a job on a shared local stack — that round trip needs no
+      // tier. What /start must not do is create or change one.
+      const before = await (await request.get(`/api/v1/suggestions/${phase}`)).json()
+
       const start = await request.post(`/api/v1/suggestions/${phase}/start`, {
         data: { mapping: await otherSiteMapping() },
       })
@@ -51,8 +56,11 @@ test.describe('Suggestions disabled by FLYOVER_SUGGESTION_TIERS', () => {
       const snapshot = await request.get(`/api/v1/suggestions/${phase}`)
       expect(snapshot.ok()).toBe(true)
       const body = await snapshot.json()
-      expect(body.enabled, `${phase} snapshot`).toBe(false)
-      expect(body.records ?? {}, `${phase} records`).toEqual({})
+      expect(body, `${phase} snapshot unchanged by /start`).toEqual(before)
+      if (before.status === 'idle') {
+        expect(body.enabled, `${phase} snapshot`).toBe(false)
+        expect(body.records ?? {}, `${phase} records`).toEqual({})
+      }
     }
   })
 
