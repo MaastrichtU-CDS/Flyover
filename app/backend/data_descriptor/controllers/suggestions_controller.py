@@ -33,15 +33,6 @@ def get_app_context() -> dict:
     return current_app.config.get("APP_CONTEXT", {})
 
 
-def _flag(value, default: bool) -> bool:
-    """Parse a query/body boolean (``true``/``false``/``1``/``0``)."""
-    if value is None or value == "":
-        return default
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("1", "true", "yes", "on")
-
-
 def _request_error(exc: SuggestionRequestError):
     return jsonify({"error": exc.message, "kind": exc.kind}), 400
 
@@ -204,9 +195,8 @@ def suggestions_prompt():
 
     ``phase`` and ``database`` come from the query string or the JSON
     body; a POST body may also carry the browser's semantic map (the map
-    the describe pages work on), used for this response only. Options:
-    ``exclude_free_text`` (default true; values phase), ``chunk`` (items
-    per prompt).
+    the describe pages work on), used for this response only. Option:
+    ``chunk`` (items per prompt).
     """
     ctx = get_app_context()
     service = ctx.get("suggestion_service")
@@ -255,7 +245,6 @@ def suggestions_prompt():
             database=database,
             mapping=mapping,
             mapping_data=mapping_data,
-            exclude_free_text=_flag(params.get("exclude_free_text"), True),
             chunk=chunk,
         )
     except SuggestionRequestError as exc:

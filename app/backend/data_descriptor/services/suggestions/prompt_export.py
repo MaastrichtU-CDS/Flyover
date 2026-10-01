@@ -23,7 +23,9 @@ Privacy: the prompt never contains data rows. The variables phase shares
 only the column names — no distinct values at all; if a user wants an
 LLM to reason over the values, the values-phase prompt is the place. In
 the values phase the distinct values of a categorical column are the
-very things being mapped; free-text columns are excluded by default.
+very things being mapped; a mapped column is categorical by definition
+(it may hold string values, but it is never treated as free text), so
+every mapped column with terms is asked.
 """
 
 from __future__ import annotations
@@ -42,10 +44,6 @@ PASTED_TIER = 3
 DEFAULT_CHUNK = 40
 MIN_CHUNK = 5
 MAX_CHUNK = 1000
-
-# Values phase: a categorical column with more distinct values than this is
-# treated as free text and left out unless the caller asks for it.
-FREE_TEXT_DISTINCT = 50
 
 # Confidence stamped on a pasted record that carries none of its own. Kept
 # under the default 0.8 threshold so the variables page shows it as a hint
@@ -188,17 +186,6 @@ def existing_section(
 
 
 # ---------------------------------------------------------------------------
-# Data side: column profiles and distinct values (never data rows)
-# ---------------------------------------------------------------------------
-
-
-def is_free_text(values: Optional[list[str]]) -> bool:
-    """Values-phase rule: too many distinct values to be a coded column."""
-    if values is None:
-        return False
-    return (
-        len([v for v in values if v is not None and str(v) != ""]) > FREE_TEXT_DISTINCT
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -281,28 +268,22 @@ def _header(phase: str, database: str) -> str:
     )
 
 
-def _privacy_note(phase: str, free_text_columns: tuple[str, ...] = ()) -> str:
-    """What the prompt carries, worded to match the chosen options.
+def _privacy_note(phase: str) -> str:
+    """What the prompt carries, worded per phase.
 
     The user must see exactly what leaves the browser (the issue's
-    privacy goal): the variables phase shares no values at all, and the
-    note must name the free-text columns whose values were included on
-    the caller's explicit request.
+    privacy goal): the variables phase shares no values at all, the
+    values phase shares the distinct values being mapped.
     """
     if phase == "variables":
         return (
             "This prompt contains variable keys and labels and the local "
             "column names. It contains no values and no data rows."
         )
-    included = (
-        f", including the free-text column(s) {', '.join(free_text_columns)}"
-        if free_text_columns
-        else ""
-    )
     return (
         "This prompt contains variable keys, their term keys, the local column "
-        f"names and the distinct values of the mapped categorical columns"
-        f"{included}. It contains no data rows."
+        "names and the distinct values of the mapped categorical columns. "
+        "It contains no data rows."
     )
 
 
@@ -319,7 +300,6 @@ class PromptExport:
         distinct_values: Optional[ValueSource] = None,
         records: Optional[dict] = None,
         mapping_data: Optional[dict] = None,
-        exclude_free_text: bool = True,
         chunk_size: Optional[int] = None,
         name_match: NameMatch = default_name_match,
     ) -> None:
@@ -332,7 +312,6 @@ class PromptExport:
         self.columns = list(columns or [])
         self.distinct_values = distinct_values
         self.records = records or {}
-        self.exclude_free_text = exclude_free_text
         self.chunk_size = (
             clamp_chunk(chunk_size) if chunk_size else chunk_size_from_env()
         )
@@ -378,17 +357,15 @@ class PromptExport:
             )
         return items
 
-    def value_groups(self) -> tuple[list[dict], list[dict], list[dict]]:
+    def value_groups(self) -> list[dict]:
         """Per mapped categorical column: the values still to map.
 
-        Returns ``(groups, skipped, included_free_text)`` where ``skipped``
-        lists the free-text columns left out (``{"column", "distinct"}``) and
-        ``included_free_text`` the ones the caller explicitly asked to include
-        (same shape), so the privacy note can name them.
+        A mapped column's variable defines its terms, so a column here is
+        categorical by definition; it may hold string values, but it is
+        never treated as free text — every mapped column with terms is
+        asked (there is no free-text exclusion to configure).
         """
         groups: list[dict] = []
-        skipped: list[dict] = []
-        included_free_text: list[dict] = []
         for column in self.columns:
             var_key = self.mapped.get(column)
             if not var_key:
@@ -400,11 +377,6 @@ class PromptExport:
             values = self._values(column)
             if not values:
                 continue
-            if is_free_text(values):
-                if self.exclude_free_text:
-                    skipped.append({"column": column, "distinct": len(values)})
-                    continue
-                included_free_text.append({"column": column, "distinct": len(values)})
             already = local_mappings(
                 self.mapping, self.database, column, self.name_match
             )
@@ -430,7 +402,7 @@ class PromptExport:
                     ],
                 }
             )
-        return groups, skipped, included_free_text
+        return groups
 
     # -- chunking ------------------------------------------------------------
 
@@ -633,8 +605,6 @@ class PromptExport:
             "column names",
             "existing mappings",
         ]
-        skipped: list[dict] = []
-        included_free_text: list[dict] = []
         if self.phase == "variables":
             items = self.variable_items()
             item_count = len(items)
@@ -649,24 +619,10 @@ class PromptExport:
                 for i, part in enumerate(parts)
             ]
         else:
-            groups, skipped, included_free_text = self.value_groups()
+            groups = self.value_groups()
             item_count = sum(len(g["values"]) for g in groups)
             contains.append("term keys")
-            if included_free_text:
-                contains.append(
-                    "distinct values of the mapped columns, including the "
-                    "free-text column(s): "
-                    + ", ".join(s["column"] for s in included_free_text)
-                )
-            else:
-                contains.append(
-                    "distinct values of the categorical columns being mapped"
-                )
-            if skipped:
-                contains.append(
-                    f"{len(skipped)} free-text column(s) excluded: "
-                    + ", ".join(s["column"] for s in skipped)
-                )
+            contains.append("distinct values of the categorical columns being mapped")
             parts = self._chunk_values(groups, self.chunk_size)
             chunks = [
                 {
@@ -687,15 +643,7 @@ class PromptExport:
             "item_count": item_count,
             "chunk_hint": self.chunk_size,
             "contains": contains,
-            "privacy": _privacy_note(
-                self.phase,
-                free_text_columns=(
-                    tuple(s["column"] for s in included_free_text)
-                    if self.phase == "values"
-                    else ()
-                ),
-            ),
-            "skipped": skipped,
+            "privacy": _privacy_note(self.phase),
             "already_mapped": len(self.mapped),
             "answer_schema": answer_schema(self.phase),
         }

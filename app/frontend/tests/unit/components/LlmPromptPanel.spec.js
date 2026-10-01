@@ -129,17 +129,15 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(wrapper.find('.llm-help-preview').element.value).toBe('PROMPT 1')
   })
 
-  it('the values phase sends exclude_free_text instead of include_values', async () => {
+  it('the values phase posts the same options as the variables phase', async () => {
     api.post.mockResolvedValue(promptResponse())
     const wrapper = await mountOpen({ phase: 'values' })
-    await wrapper.find('.llm-help-include-free-text').setValue(true)
     await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
     expect(api.post.mock.calls[0][1]).toEqual({
       phase: 'values',
       database: 'nki',
       mapping: MAPPING,
-      exclude_free_text: false,
       chunk: 40,
     })
     expect(wrapper.find('.llm-help-summary').text()).toMatch(/3 values still to map/)

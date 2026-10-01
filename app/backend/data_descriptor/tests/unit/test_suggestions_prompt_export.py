@@ -2,8 +2,8 @@
 Unit tests for :mod:`services.suggestions.prompt_export`.
 
 Covers composition order, schema-slice completeness, the no-data-rows
-guarantee, chunking, free-text exclusion, hint rendering and the values
-phase's "only the mapped variables' terms" rule.
+guarantee, chunking, every mapped column being asked, hint rendering and
+the values phase's "only the mapped variables' terms" rule.
 """
 
 import sys
@@ -270,39 +270,26 @@ class TestValuesPrompt(unittest.TestCase):
         self.assertIn('"localMappings": {', prompt)
         self.assertIn("term keys", result["contains"])
 
-    def test_free_text_columns_excluded_by_default(self):
-        data = _with_free_text_mapped()
+    def test_every_mapped_column_is_asked_no_free_text_exclusion(self):
+        # A mapped categorical column may hold many string values, but it
+        # is never treated as free text: all of them are asked.
+        data = _with_wide_column_mapped()
         mapping = JSONLDMapping.from_dict(data)
         kwargs = dict(
             columns=COLUMNS,
             distinct_values=lambda c: VALUES.get(c, []),
             mapping_data=data,
         )
-        default = PromptExport("values", "nki", mapping, **kwargs).build()
-        self.assertEqual([s["column"] for s in default["skipped"]], ["opmerking"])
-        self.assertTrue(any("opmerking" in c for c in default["contains"]))
-        self.assertNotIn(FREE_TEXT[0], default["prompt"])
-        # Excluded: the notice claims categorical columns only.
-        self.assertIn("categorical columns", default["privacy"])
-        self.assertNotIn("free-text", default["privacy"])
-
-        included = PromptExport(
-            "values", "nki", mapping, exclude_free_text=False, **kwargs
-        ).build()
-        self.assertEqual(included["skipped"], [])
-        all_prompts = "\n".join(c["prompt"] for c in included["chunks"])
+        result = PromptExport("values", "nki", mapping, **kwargs).build()
+        all_prompts = "\n".join(c["prompt"] for c in result["chunks"])
         self.assertIn(FREE_TEXT[0], all_prompts)
-        # Included: contains and the privacy note name the free-text column,
-        # so the user sees exactly what leaves the browser.
-        self.assertIn(
-            "distinct values of the mapped columns, including the "
-            "free-text column(s): opmerking",
-            included["contains"],
-        )
-        self.assertIn("free-text column(s) opmerking", included["privacy"])
+        self.assertIn('Column "opmerking"', all_prompts)
+        self.assertNotIn("free-text", " ".join(result["contains"]))
+        self.assertNotIn("free-text", result["privacy"])
+        self.assertIn("categorical columns", result["privacy"])
 
     def test_values_chunks_keep_whole_columns(self):
-        data = _with_free_text_mapped()
+        data = _with_wide_column_mapped()
         mapping = JSONLDMapping.from_dict(data)
         result = PromptExport(
             "values",
@@ -310,7 +297,6 @@ class TestValuesPrompt(unittest.TestCase):
             mapping,
             columns=COLUMNS,
             distinct_values=lambda c: VALUES.get(c, []),
-            exclude_free_text=False,
             chunk_size=10,
         ).build()
         # geslacht (2 values) fits a chunk; opmerking (65) exceeds the size
@@ -321,7 +307,7 @@ class TestValuesPrompt(unittest.TestCase):
         self.assertEqual(result["chunks"][1]["item_count"], 65)
 
 
-def _with_free_text_mapped():
+def _with_wide_column_mapped():
     import copy
 
     data = copy.deepcopy(MAPPING_DATA)

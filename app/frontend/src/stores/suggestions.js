@@ -444,9 +444,8 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   // the "already mapped" context and the candidate list match what the
   // user sees. Returns the response payload; throws on failure with a
   // readable message on error.message.
-  async function fetchPrompt(phase, database, { mapping, excludeFreeText, chunk } = {}) {
+  async function fetchPrompt(phase, database, { mapping, chunk } = {}) {
     const body = { phase, database, mapping }
-    if (excludeFreeText !== undefined) body.exclude_free_text = !!excludeFreeText
     if (chunk) body.chunk = chunk
     try {
       const { data } = await api.post('/api/v1/suggestions/prompt', body)

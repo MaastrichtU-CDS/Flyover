@@ -609,7 +609,6 @@ describe('Frontend unit: useSuggestionsStore', () => {
     const s = useSuggestionsStore()
     const result = await s.fetchPrompt('variables', 'nki', {
       mapping: MAPPING,
-      excludeFreeText: true,
       chunk: 20,
     })
     expect(result.prompt).toBe('P')
@@ -617,7 +616,6 @@ describe('Frontend unit: useSuggestionsStore', () => {
       phase: 'variables',
       database: 'nki',
       mapping: MAPPING,
-      exclude_free_text: true,
       chunk: 20,
     })
   })

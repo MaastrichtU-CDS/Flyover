@@ -950,7 +950,6 @@ class SuggestionService:
         database: str,
         mapping: Any = None,
         mapping_data: Optional[dict] = None,
-        exclude_free_text: bool = True,
         chunk: Optional[int] = None,
     ) -> dict:
         """Compose the copy-prompt payload for one database and phase.
@@ -992,7 +991,6 @@ class SuggestionService:
             distinct_values=distinct_values if rdf_store_service is not None else None,
             records=records,
             mapping_data=mapping_data,
-            exclude_free_text=exclude_free_text,
             chunk_size=chunk,
             name_match=RDFStoreService.graph_database_find_name_match,
         )

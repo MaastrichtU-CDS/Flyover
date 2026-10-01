@@ -449,7 +449,6 @@ class TestPromptRoute(unittest.TestCase):
             self.assertIn("contains", data)
         kwargs = svc.build_prompt.call_args.kwargs
         self.assertEqual(kwargs["database"], "nki")
-        self.assertTrue(kwargs["exclude_free_text"])
         self.assertIsNone(kwargs["chunk"])
         self.assertIsNone(kwargs["mapping"])
 
@@ -463,7 +462,6 @@ class TestPromptRoute(unittest.TestCase):
                     {
                         "phase": "values",
                         "database": "christie",
-                        "exclude_free_text": "false",
                         "chunk": "20",
                         "mapping": _VALID_MAPPING,
                     }
@@ -473,7 +471,6 @@ class TestPromptRoute(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
         args, kwargs = svc.build_prompt.call_args
         self.assertEqual(args[0], "values")
-        self.assertFalse(kwargs["exclude_free_text"])
         self.assertEqual(kwargs["chunk"], 20)
         self.assertIsNotNone(kwargs["mapping"])
         self.assertEqual(kwargs["mapping_data"], _VALID_MAPPING)

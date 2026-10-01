@@ -73,7 +73,6 @@ const suggestions = useSuggestionsStore()
 const status = useStatusStore()
 
 const open = ref(false)
-const includeFreeText = ref(false)
 // The site's default (FLYOVER_SUGGESTION_PROMPT_CHUNK via /status), not a
 // hardcoded 40, so an operator's env choice reaches the UI.
 const chunk = ref(suggestions.promptExportChunk || 40)
@@ -94,10 +93,9 @@ const chunkOptions = computed(() => {
   return CHUNK_OPTIONS.includes(d) ? CHUNK_OPTIONS : [...CHUNK_OPTIONS, d].sort((a, b) => a - b)
 })
 
-// The pre-generation notice describes the default options; once a prompt
-// has been generated the server's notice wins because it is worded for
-// the options actually used (the variables prompt shares no values; the
-// values one names the free-text columns when included).
+// The pre-generation notice describes the phase; once a prompt has been
+// generated the server's notice wins (the variables prompt shares no
+// values; the values one shares the distinct values being mapped).
 const privacyNotice = computed(() => {
   if (prompt.value?.privacy) return prompt.value.privacy
   return props.phase === 'values'
@@ -136,7 +134,6 @@ async function generate() {
   try {
     prompt.value = await suggestions.fetchPrompt(props.phase, props.database, {
       mapping: jsonld.getMapping(),
-      excludeFreeText: props.phase === 'values' ? !includeFreeText.value : undefined,
       chunk: chunk.value,
     })
   } catch (err) {
@@ -239,17 +236,6 @@ async function importAnswer() {
 
 
       <div class="llm-help-options">
-        <label
-          v-if="phase === 'values'"
-          class="llm-help-option"
-        >
-          <input
-            v-model="includeFreeText"
-            type="checkbox"
-            class="llm-help-include-free-text"
-          >
-          Include free-text columns (much longer prompts)
-        </label>
         <label class="llm-help-option">
           Adjust the items per prompt to the limits of the LLM available to you; items per prompt
           <select
