@@ -205,7 +205,6 @@ def suggestions_prompt():
     ``phase`` and ``database`` come from the query string or the JSON
     body; a POST body may also carry the browser's semantic map (the map
     the describe pages work on), used for this response only. Options:
-    ``include_values`` (default true; variables phase sample values),
     ``exclude_free_text`` (default true; values phase), ``chunk`` (items
     per prompt).
     """
@@ -256,7 +255,6 @@ def suggestions_prompt():
             database=database,
             mapping=mapping,
             mapping_data=mapping_data,
-            include_values=_flag(params.get("include_values"), True),
             exclude_free_text=_flag(params.get("exclude_free_text"), True),
             chunk=chunk,
         )

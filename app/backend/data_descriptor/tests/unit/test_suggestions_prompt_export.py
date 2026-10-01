@@ -19,7 +19,6 @@ from services.suggestions.prompt_export import (
     answer_schema,
     chunk_size_from_env,
     clamp_chunk,
-    profile_column,
 )
 
 MAPPING_DATA = {
@@ -196,24 +195,17 @@ class TestVariablesPrompt(unittest.TestCase):
             self.assertNotIn(cell, prompt)
         for cell in FREE_TEXT:
             self.assertNotIn(cell, prompt)
-        # Identifier-like and free-text columns are described, not quoted.
-        self.assertIn("Rnnummer (string, 150 distinct values)", prompt)
-        self.assertIn("opmerking (free text, 65 distinct values)", prompt)
-        # Categorical-looking columns do get their (few) distinct values.
-        self.assertIn("taal (categorical, 2 distinct: en_GB, nl_NL)", prompt)
-
-    def test_include_values_false_lists_names_only(self):
-        prompt = _export(include_values=False).build()["prompt"]
-        self.assertIn("- taal\n", prompt + "\n")
+        # The variables phase shares column names only — never a value.
+        self.assertIn("- Rnnummer\n", prompt + "\n")
         self.assertNotIn("nl_NL", prompt)
+        self.assertNotIn("en_GB", prompt)
+        self.assertNotIn("150 distinct", prompt)
 
     def test_hints_render_matches_and_abstains(self):
         prompt = _export().build()["prompt"]
         self.assertIn("jaar_van_diagnose", prompt)
         self.assertIn("hint: age_at_initial_diagnosis (0.86, string)", prompt)
-        self.assertIn(
-            "surv70 (categorical, 4 distinct: 1, 2, 3, 4)    hint: no candidate", prompt
-        )
+        self.assertIn("- surv70    hint: no candidate", prompt)
 
     def test_answer_format_is_the_jsonld_section(self):
         result = _export().build()
@@ -252,10 +244,14 @@ class TestVariablesPrompt(unittest.TestCase):
         self.assertIn("column names", result["contains"])
         self.assertIn("variable keys", result["contains"])
         self.assertIn("no data rows", result["privacy"])
-        # Without sample values the notice may not claim values leave.
-        bare = _export(include_values=False).build()
-        self.assertNotIn("distinct values", bare["privacy"])
-        self.assertFalse(any("distinct values" in c for c in bare["contains"]))
+        # The variables phase shares no values at all: neither the contains
+        # list nor the notice may claim any.
+        self.assertFalse(any("distinct values" in c for c in result["contains"]))
+        self.assertNotIn("distinct values", result["privacy"])
+        # The values phase does share values (that is its purpose).
+        values = _export("values").build()
+        self.assertTrue(any("distinct values" in c for c in values["contains"]))
+        self.assertIn("distinct values", values["privacy"])
 
 
 class TestValuesPrompt(unittest.TestCase):
@@ -342,18 +338,6 @@ def _with_free_text_mapped():
 
 
 class TestHelpers(unittest.TestCase):
-    def test_profile_column(self):
-        self.assertEqual(profile_column(["1", "2", ""])["kind"], "categorical")
-        self.assertEqual(
-            profile_column([str(n) for n in range(100)])["kind"], "numeric"
-        )
-        self.assertEqual(profile_column(FREE_TEXT)["kind"], "free text")
-        self.assertEqual(profile_column([])["kind"], "empty")
-        self.assertEqual(profile_column(None)["kind"], "unknown")
-        self.assertEqual(
-            profile_column(["b", "a", "c", "aa"])["samples"], ["a", "b", "c", "aa"]
-        )
-
     def test_chunk_size_clamped(self):
         self.assertEqual(clamp_chunk(1), 5)
         self.assertEqual(clamp_chunk(10_000), 1000)

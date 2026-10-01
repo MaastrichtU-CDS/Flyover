@@ -807,7 +807,7 @@ class TestBuildPrompt(unittest.TestCase):
         )
         self.assertEqual(result["item_count"], 1)
         self.assertIn(
-            "yr (categorical, 2 distinct: 2019, 2020)    hint: year_of_initial_diagnosis (0.86, string)",
+            "- yr    hint: year_of_initial_diagnosis (0.86, string)",
             result["prompt"],
         )
         self.assertIn('"localColumn": "morph"', result["prompt"])
@@ -821,10 +821,10 @@ class TestBuildPrompt(unittest.TestCase):
             self.rdf,
             database="christie",
             chunk=7,
-            include_values=False,
         )
         self.assertEqual(result["chunk_hint"], 7)
         self.assertIn("- yr", result["prompt"])
+        # The variables phase shares no values and queries none.
         self.assertNotIn("2019", result["prompt"])
         self.rdf.get_categories.assert_not_called()
 

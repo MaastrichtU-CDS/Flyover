@@ -19,12 +19,11 @@ no tool use, a worked answer skeleton, and chunking for small context
 windows. Each chunk repeats the schema slice and the existing mappings so
 it can be sent on its own.
 
-Privacy: the prompt never contains data rows. In the variables phase a
-column only gets sample values when it looks categorical (few distinct
-values); identifier-like and free-text columns are described by their
-distinct count alone. In the values phase the distinct values of a
-categorical column are the very things being mapped; free-text columns are
-excluded by default.
+Privacy: the prompt never contains data rows. The variables phase shares
+only the column names — no distinct values at all; if a user wants an
+LLM to reason over the values, the values-phase prompt is the place. In
+the values phase the distinct values of a categorical column are the
+very things being mapped; free-text columns are excluded by default.
 """
 
 from __future__ import annotations
@@ -43,12 +42,6 @@ PASTED_TIER = 3
 DEFAULT_CHUNK = 40
 MIN_CHUNK = 5
 MAX_CHUNK = 1000
-
-# Variables phase: a column gets sample values in the prompt only while
-# its distinct count is at most this (it then looks categorical, not like
-# free text or an identifier).
-MAX_DISTINCT_FOR_SAMPLES = 20
-SAMPLE_VALUES = 5
 
 # Values phase: a categorical column with more distinct values than this is
 # treated as free text and left out unless the caller asks for it.
@@ -199,39 +192,6 @@ def existing_section(
 # ---------------------------------------------------------------------------
 
 
-def _is_number(value: str) -> bool:
-    try:
-        float(value)
-        return True
-    except (TypeError, ValueError):
-        return False
-
-
-def profile_column(values: Optional[list[str]]) -> dict:
-    """Describe a column from its distinct values without quoting rows.
-
-    Returns ``{"distinct": n, "kind": ..., "samples": [...]}`` where
-    ``samples`` is non-empty only for a categorical-looking column
-    (at most ``MAX_DISTINCT_FOR_SAMPLES`` distinct values).
-    """
-    if values is None:
-        return {"distinct": None, "kind": "unknown", "samples": []}
-    non_empty = [v for v in values if v is not None and str(v) != ""]
-    n = len(non_empty)
-    numeric = bool(non_empty) and all(_is_number(v) for v in non_empty)
-    if n == 0:
-        return {"distinct": 0, "kind": "empty", "samples": []}
-    if n <= MAX_DISTINCT_FOR_SAMPLES:
-        kind = "categorical"
-        samples = sorted(non_empty, key=lambda v: (len(v), v))[:SAMPLE_VALUES]
-        return {"distinct": n, "kind": kind, "samples": samples}
-    if numeric:
-        return {"distinct": n, "kind": "numeric", "samples": []}
-    avg_len = sum(len(v) for v in non_empty) / n
-    kind = "free text" if avg_len > 15 else "string"
-    return {"distinct": n, "kind": kind, "samples": []}
-
-
 def is_free_text(values: Optional[list[str]]) -> bool:
     """Values-phase rule: too many distinct values to be a coded column."""
     if values is None:
@@ -321,28 +281,18 @@ def _header(phase: str, database: str) -> str:
     )
 
 
-def _privacy_note(
-    phase: str,
-    include_values: bool = True,
-    free_text_columns: tuple[str, ...] = (),
-) -> str:
+def _privacy_note(phase: str, free_text_columns: tuple[str, ...] = ()) -> str:
     """What the prompt carries, worded to match the chosen options.
 
     The user must see exactly what leaves the browser (the issue's
-    privacy goal), so the note may not claim sample values when
-    ``include_values`` is off, and must name the free-text columns whose
-    values were included on the caller's explicit request.
+    privacy goal): the variables phase shares no values at all, and the
+    note must name the free-text columns whose values were included on
+    the caller's explicit request.
     """
     if phase == "variables":
-        if not include_values:
-            return (
-                "This prompt contains variable keys and labels and the local "
-                "column names. It contains no data rows."
-            )
         return (
-            "This prompt contains variable keys and labels, the local column "
-            "names and, for categorical-looking columns, up to five distinct "
-            "values. It contains no data rows."
+            "This prompt contains variable keys and labels and the local "
+            "column names. It contains no values and no data rows."
         )
     included = (
         f", including the free-text column(s) {', '.join(free_text_columns)}"
@@ -369,7 +319,6 @@ class PromptExport:
         distinct_values: Optional[ValueSource] = None,
         records: Optional[dict] = None,
         mapping_data: Optional[dict] = None,
-        include_values: bool = True,
         exclude_free_text: bool = True,
         chunk_size: Optional[int] = None,
         name_match: NameMatch = default_name_match,
@@ -383,7 +332,6 @@ class PromptExport:
         self.columns = list(columns or [])
         self.distinct_values = distinct_values
         self.records = records or {}
-        self.include_values = include_values
         self.exclude_free_text = exclude_free_text
         self.chunk_size = (
             clamp_chunk(chunk_size) if chunk_size else chunk_size_from_env()
@@ -411,21 +359,20 @@ class PromptExport:
     # -- item collection ---------------------------------------------------
 
     def variable_items(self) -> list[dict]:
-        """Unmapped columns of the database, with profile and hint."""
+        """Unmapped columns of the database, with hint.
+
+        Names only: the variables phase shares no distinct values (the
+        values-phase prompt is where values are mapped), so building the
+        prompt costs no per-column store query either.
+        """
         items = []
         for column in self.columns:
             if column in self.mapped:
                 continue
-            profile = (
-                profile_column(self._values(column))
-                if self.include_values
-                else {"distinct": None, "kind": "unknown", "samples": []}
-            )
             items.append(
                 {
                     "column": column,
                     "key": f"{self.database}_{column}",
-                    "profile": profile,
                     "hint": hint_for(self.records, f"{self.database}_{column}"),
                 }
             )
@@ -563,23 +510,10 @@ class PromptExport:
         )
         item_lines = []
         for item in items:
-            p = item["profile"]
-            desc = item["column"]
-            if p["kind"] == "categorical":
-                shown = ", ".join(p["samples"])
-                more = (
-                    f", +{p['distinct'] - len(p['samples'])} more"
-                    if p["distinct"] > len(p["samples"])
-                    else ""
-                )
-                desc += f" (categorical, {p['distinct']} distinct: {shown}{more})"
-            elif p["kind"] in ("numeric", "string", "free text"):
-                desc += f" ({p['kind']}, {p['distinct']} distinct values)"
-            elif p["kind"] == "empty":
-                desc += " (no values)"
+            line = f"- {item['column']}"
             if item["hint"]:
-                desc += f"    hint: {item['hint']}"
-            item_lines.append(f"- {desc}")
+                line += f"    hint: {item['hint']}"
+            item_lines.append(line)
         lines.append(
             "\n## 3. Local columns still to map (map these; names are exact)\n"
             + ("\n".join(item_lines) if item_lines else "(none)")
@@ -704,10 +638,6 @@ class PromptExport:
         if self.phase == "variables":
             items = self.variable_items()
             item_count = len(items)
-            if self.include_values:
-                contains.append(
-                    "distinct values of categorical-looking columns (max 5 each)"
-                )
             parts = self._chunk_variables(items, self.chunk_size)
             chunks = [
                 {
@@ -759,7 +689,6 @@ class PromptExport:
             "contains": contains,
             "privacy": _privacy_note(
                 self.phase,
-                include_values=self.include_values,
                 free_text_columns=(
                     tuple(s["column"] for s in included_free_text)
                     if self.phase == "values"
