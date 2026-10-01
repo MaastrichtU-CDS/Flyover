@@ -82,18 +82,20 @@ test.describe('LLM prompt export round trip', () => {
     const { enabled: tiersOn } = await suggestionsEnabled(request)
     await runIngestFlow(page)
 
-    // The other-site map remembers every column by name, which would give
-    // tier 1 a 1.0 alias hit for each. Rename the remembered column of
-    // t_stage so 'clin_t' has no alias and the pasted answer can win it.
-    const mapping = await otherSiteMapping()
-    for (const db of Object.values(mapping.databases)) {
-      for (const table of Object.values(db.tables)) {
-        table.columns.t_stage.localColumn = 'cT_category'
-      }
-    }
-    await uploadSemanticMapAndContinue(page, mapping)
+    // The other-site map remembers every column by name, so tier 1 gives
+    // each a 1.0 alias hit. The user's scenario: that suggestion is poor,
+    // they dismiss it for clin_t and ask an LLM instead — the paste must
+    // then take the field although the dismissed record scored higher.
+    await uploadSemanticMapAndContinue(page, await otherSiteMapping())
     await expandAllDatabases(page)
     await dismissCoachmarkIfPresent(page)
+    if (tiersOn) {
+      const clinT = rowFor(page, 'clin_t')
+      await expect(clinT.locator('.suggestion-badge.applied')).toBeVisible({ timeout: 30_000 })
+      await clinT.locator('.suggestion-dismiss').click()
+      await expect(clinT.locator('.suggestion-badge')).toHaveCount(0)
+      await expect(clinT.locator('.description-select')).toHaveValue('')
+    }
 
     const { panel, promptText } = await openAndGenerate(page, 'variables')
     await expect(panel.locator('.llm-help-summary')).toContainText(/columns still to map/)
@@ -140,7 +142,8 @@ test.describe('LLM prompt export round trip', () => {
     await expect(result).toContainText(/1 imported, 1 left for you to decide/)
 
     // The imported record shows as a pasted_llm pill on the clin_t row
-    // (confident, so pre-filled for review); accepting it reviews the field.
+    // (confident, so pre-filled for review) although the user dismissed
+    // tier 1's suggestion there; accepting it reviews the field.
     const row = rowFor(page, 'clin_t')
     const badge = row.locator('.suggestion-badge').filter({ has: page.locator('.fa-clipboard') })
     await expect(badge).toBeVisible({ timeout: 30_000 })

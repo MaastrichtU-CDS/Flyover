@@ -969,6 +969,79 @@ describe('DescribeVariablesView — pasted LLM answer', () => {
   })
 })
 
+describe('DescribeVariablesView — pasted answer re-opens a dismissed field', () => {
+  it('shows the pasted suggestion on a field whose tier-1 suggestion was dismissed', async () => {
+    // The paste for 'sex' replaces the dismissed alias record (the server
+    // reports the key as reopened); 'morph', reviewed by the user, is
+    // already in the JSON-LD and the server skipped it.
+    const ingest = pastedVariablesIngest()
+    ingest.data.accepted = 1
+    ingest.data.nulled = 0
+    ingest.data.skipped = 1
+    ingest.data.reopened = ['test_db_sex']
+    ingest.data.job.records = {
+      test_db_morph: VARIABLES_SNAPSHOT.records.test_db_morph,
+      test_db_sex: {
+        status: 'done',
+        item: 'sex',
+        match: 'year_of_initial_diagnosis',
+        confidence: 0.9,
+        reason: 'The LLM read it as a year.',
+        source: 'pasted_llm',
+        tier: 3,
+        database: 'test_db',
+        column: 'sex',
+        reopens: true,
+        alternatives: [VARIABLES_SNAPSHOT.records.test_db_sex],
+      },
+    }
+    mockApiRoutes([
+      ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
+      ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
+      ['/api/v1/suggestions/variables', { data: VARIABLES_SNAPSHOT }],
+      ['/api/v1/suggestions/variables/ingest', ingest],
+    ])
+    const wrapper = mount(DescribeVariablesView)
+    await flushPromises()
+    const store = useSuggestionsStore()
+    const badgeFor = (item) =>
+      wrapper.findAllComponents({ name: 'SuggestionBadge' }).find((b) => b.props('suggestion').item === item)
+
+    // The user accepts 'morph' (reviewed, written) and dismisses 'sex'.
+    await badgeFor('morph').vm.$emit('accept')
+    await badgeFor('sex').vm.$emit('dismiss')
+    await flushPromises()
+    expect(store.isTouched('test_db_morph')).toBe(true)
+    expect(store.isDismissed('test_db_sex')).toBe(true)
+    expect(badgeFor('sex')).toBeUndefined()
+    const sexSelect = wrapper.find('[id="ncit_comment_test_db_sex"]')
+    expect(sexSelect.element.value).toBe('')
+    const writesBefore = jsonld.updateMappingFromForm.mock.calls.length
+
+    await importThroughPanel(wrapper)
+
+    // The dismissed keys went along, the dismissal is gone, and the pasted
+    // suggestion is pre-filled for review (confident) with a pasted pill.
+    const ingestCall = api.post.mock.calls.find(([url]) => url.endsWith('/variables/ingest'))
+    expect(ingestCall[1].dismissed).toEqual(['test_db_sex'])
+    expect(store.isDismissed('test_db_sex')).toBe(false)
+    expect(store.variables.byKey.test_db_sex.source).toBe('pasted_llm')
+    const sexBadge = badgeFor('sex')
+    expect(sexBadge).toBeDefined()
+    expect(sexBadge.props('suggestion').match).toBe('year_of_initial_diagnosis')
+    expect(store.isApplied('test_db_sex')).toBe(true)
+    expect(store.isTouched('test_db_sex')).toBe(false)
+    expect(sexSelect.element.value).toBe('Year of initial diagnosis')
+    expect(wrapper.text()).toContain('1 suggestion needs review')
+
+    // The reviewed field is untouched: still reviewed, still its value,
+    // and the paste itself wrote nothing.
+    expect(store.isTouched('test_db_morph')).toBe(true)
+    expect(wrapper.find('[id="ncit_comment_test_db_morph"]').element.value).toBe('Tumour morphology icd o')
+    expect(jsonld.updateMappingFromForm).toHaveBeenCalledTimes(writesBefore)
+  })
+})
+
 describe('DescribeVariableDetailsView — pasted LLM answer', () => {
   it('imports value suggestions as pills without calling updateCategoryMapping', async () => {
     mockApiRoutes([
