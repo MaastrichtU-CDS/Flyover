@@ -33,12 +33,19 @@ describe('Frontend unit: SuggestionStatusBar', () => {
     const wrapper = mountBar()
     expect(wrapper.text()).toContain('Suggestions ready')
     expect(wrapper.find('.suggestion-tier-note').exists()).toBe(false)
+    // The tooltip explains what the link does; once the note is open the
+    // button reads "Hide" and carries no tooltip.
+    const help = wrapper.find('.suggestion-help-link')
+    expect(help.attributes('title')).toBe(
+      'Show the explanation of the suggestion review flow again',
+    )
 
-    await wrapper.find('.suggestion-help-link').trigger('click')
+    await help.trigger('click')
     expect(wrapper.find('.suggestion-tier-note').text()).toContain(
       'regex and string matching (tier 1) enabled',
     )
     expect(wrapper.emitted('show-coachmark')).toHaveLength(1)
+    expect(wrapper.find('.suggestion-help-link').attributes('title')).toBeUndefined()
   })
 
   it('clicking the link again hides the note and does not re-fire the callout', async () => {

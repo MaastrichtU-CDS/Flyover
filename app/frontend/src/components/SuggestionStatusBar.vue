@@ -135,7 +135,7 @@ const unavailableMessage = computed(() => {
         type="button"
         class="btn btn-sm btn-link suggestion-help-link"
         :aria-expanded="helpOpen ? 'true' : 'false'"
-        title="Show the explanation of the suggestion review flow again"
+        :title="helpOpen ? null : 'Show the explanation of the suggestion review flow again'"
         @click="toggleHelp"
       >
         {{ helpOpen ? 'Hide' : 'How do suggestions work?' }}
