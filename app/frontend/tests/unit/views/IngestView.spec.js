@@ -1393,6 +1393,42 @@ describe('IngestView — PK/FK', () => {
     expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
   })
 
+  it('renders the inferred FK with its own source, 90% for an exact name match and no tier', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    const badge = w.find('.suggestion-badge')
+    expect(badge.find('.fa-project-diagram').exists()).toBe(true)
+    expect(badge.find('.fa-link').exists()).toBe(false)
+    expect(badge.text()).toContain('90%')
+    expect(badge.text()).not.toContain('tier')
+    const accept = badge.find('.suggestion-accept')
+    expect(accept.attributes('title')).toBe("Column name equals primary key 'patient_id' of patients.csv — click to confirm or change the dropdown")
+    expect(accept.attributes('aria-label')).toContain("map 'visits.csv.patient_id' to 'patients.csv.patient_id' (90%)")
+  })
+
+  it('reports 60% when the FK column name only resembles the primary key', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,fk_patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('fk_patient_id')
+    const badge = w.find('.suggestion-badge')
+    expect(badge.text()).toContain('60%')
+    expect(badge.find('.suggestion-accept').attributes('title')).toContain('resembles primary key')
+  })
+
   it('does not show a suggestion badge when no FK is auto-suggested', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()

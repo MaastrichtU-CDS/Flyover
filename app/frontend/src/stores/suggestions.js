@@ -37,6 +37,9 @@ export const SOURCE_ICONS = {
   llm: 'fa-robot',
   pasted_llm: 'fa-clipboard',
   manual: 'fa-hand',
+  // Frontend-only: the ingest page's inferred foreign keys (never sent
+  // by the suggestions API).
+  foreign_key: 'fa-project-diagram',
 }
 
 // One-line toast for an ingest result, e.g. "3 suggestions imported, 1

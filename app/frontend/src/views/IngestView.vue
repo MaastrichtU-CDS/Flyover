@@ -420,7 +420,9 @@ function autoSuggestFk(pkIndex) {
     fkSelections[i] = s.fk
     fkTableSelections[i] = s.fkTable
     fkColumnSelections[i] = s.fkColumn
-    inferredFk[i] = true
+    // Truthy marker for "inferred, not yet reviewed"; keeps how the column
+    // was matched so the badge can report an honest confidence.
+    inferredFk[i] = { exact: s.exact }
   }
 }
 
@@ -484,18 +486,30 @@ function hasUnreviewedFk(tableIndex) {
 // Count unreviewed inferred FKs across all tables.
 const unreviewedFkCount = computed(() => Object.keys(inferredFk).length)
 
-// Build a SuggestionBadge-compatible record for an inferred FK. Uses the
-// 'alias' source (column-name matching) with full confidence, matching the
-// describe-page suggestion shape so the same badge component renders identically.
+// Confidence reported for an inferred FK, by how the column was matched.
+// An exact name match with the referenced primary key is strong but not
+// certain (two tables can share an 'id'); a partial match, where one name
+// merely contains the other, is a hint the user should look at.
+const FK_CONFIDENCE = { exact: 0.9, partial: 0.6 }
+
+// Build a SuggestionBadge-compatible record for an inferred FK, in the
+// describe-page suggestion shape so the same component renders it. The
+// record has its own source, 'foreign_key': the ingest page never talks
+// to the suggestions API, and this is not a tier of that feature, so it
+// carries no tier label and no alias source at full confidence.
 function fkSuggestionRecord(index) {
   const refTable = fkTableSelections[index] || ''
+  const refColumn = fkColumnSelections[index] || ''
+  const exact = inferredFk[index]?.exact !== false
   return {
-    source: 'alias',
-    tier: 1,
-    confidence: 1.0,
-    reason: `Column name matches the primary key of ${refTable}`,
+    source: 'foreign_key',
+    confidence: exact ? FK_CONFIDENCE.exact : FK_CONFIDENCE.partial,
+    reason: exact
+      ? `Column name equals primary key '${refColumn}' of ${refTable}`
+      : `Column name resembles primary key '${refColumn}' of ${refTable}`,
     alternatives: [],
-    match: fkColumnSelections[index] || '',
+    item: `${pkFkTables.value[index]}.${fkSelections[index] || ''}`,
+    match: `${refTable}.${refColumn}`,
   }
 }
 
