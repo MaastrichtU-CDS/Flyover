@@ -30,7 +30,7 @@ const { dataExists: graphExists, refreshDataExists } = useNavigation()
 
 const FILE_TYPE_EXTENSIONS = {
   CSV: ['.csv'],
-  Excel: ['.xlsx', '.xls'],
+  Excel: ['.xlsx', '.xls', '.ods'],
 }
 
 // --- Reactive state ---
@@ -41,7 +41,7 @@ const csvColumns = reactive({})
 const csvPath = ref('')
 
 // Unified list of "tables" for PK/FK. For CSV, each file is a table.
-// For Excel, each sheet is a table (name: "filename_sheetname").
+// For Excel (.xlsx/.xls/.ods), each sheet is a table (name: "filename_sheetname").
 const pkFkTables = ref([])
 const detectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
 const csvSeparatorSign = ref(detectedDecimal === ',' ? ';' : ',')
@@ -267,14 +267,15 @@ async function processFiles(files) {
 }
 
 async function processExcelFiles(files) {
-  // For Excel, each sheet is a table. Read sheet info from the xlsx zip.
+  // For Excel, each sheet is a table. Read sheet info from the workbook
+  // zip (.xlsx or .ods; .xls is binary and falls back to one table).
   const allSheetInfo = await Promise.all(
     Array.from(files).map((f) => readExcelSheetInfo(f))
   )
   const tables = []
   allSheetInfo.forEach((sheets, fi) => {
     const file = files[fi]
-    const base = file.name.replace(/\.(xlsx|xls)$/i, '')
+    const base = file.name.replace(/\.(xlsx|xls|ods)$/i, '')
     if (sheets.length === 0) {
       // Could not read sheets — treat the file as a single table
       tables.push(base)
@@ -336,7 +337,7 @@ async function onTileDrop(type, e) {
   pageDragActive.value = false
   const dropped = filterByExtension(e.dataTransfer.files, FILE_TYPE_EXTENSIONS[type])
   if (!dropped.length) {
-    const exts = type === 'Excel' ? '.xlsx or .xls' : '.csv'
+    const exts = type === 'Excel' ? '.xlsx, .xls or .ods' : '.csv'
     dropError.value = `Please drop only ${exts} files on the ${type} tile.`
     return
   }
@@ -372,7 +373,7 @@ async function onPageDrop(e) {
   const detected = detectFileType(allFiles, FILE_TYPE_EXTENSIONS)
   if (!detected) {
     const names = allFiles.map((f) => f.name).join(', ')
-    dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, or .xls files.`
+    dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, .xls or .ods files.`
     return
   }
   fileType.value = detected
@@ -482,7 +483,7 @@ onMounted(async () => {
             Drop files anywhere to upload
           </h5>
           <p class="text-muted small mb-0">
-            CSV and Excel files will be auto-detected
+            CSV and spreadsheet files (.xlsx, .xls, .ods) will be auto-detected
           </p>
         </div>
       </div>
@@ -577,7 +578,7 @@ onMounted(async () => {
                 >
                   <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
                   <strong>Excel Files</strong>
-                  <small class="d-block text-muted">Upload Excel files, or drag &amp; drop here</small>
+                  <small class="d-block text-muted">Upload .xlsx, .xls or .ods files, or drag &amp; drop here</small>
                 </label>
               </div>
             </div>
@@ -744,7 +745,7 @@ onMounted(async () => {
               name="csvFile"
               style="display: none"
               multiple
-              :accept="fileType === 'Excel' ? '.xlsx,.xls' : '.csv'"
+              :accept="fileType === 'Excel' ? '.xlsx,.xls,.ods' : '.csv'"
               @change="handleFileChange"
             >
             <small class="form-text text-muted mt-2 d-block">
@@ -752,7 +753,7 @@ onMounted(async () => {
                 Supports multiple CSV files. Each file will be treated as a separate table.
               </span>
               <span v-else-if="fileType === 'Excel'">
-                Supports Excel files (.xlsx, .xls). Each sheet will be treated as a separate table.
+                Supports Excel and OpenDocument spreadsheets (.xlsx, .xls, .ods). Each sheet will be treated as a separate table.
               </span>
             </small>
           </div>

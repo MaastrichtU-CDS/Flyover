@@ -612,7 +612,7 @@ describe('IngestView', () => {
 
     await dropOnTile(w, 'Excel', [csvFile('data.csv')])
     expect(w.find('#csvPath').element.value).toBe('')
-    expect(w.text()).toContain('Please drop only .xlsx or .xls files')
+    expect(w.text()).toContain('Please drop only .xlsx, .xls or .ods files')
   })
 
   it('shows the drag-over highlight while dragging over the CSV tile', async () => {
@@ -665,6 +665,35 @@ describe('IngestView', () => {
     const excelTile = findTile(w, 'Excel')
     expect(excelTile.classList.contains('selected-source')).toBe(true)
     expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  it('accepts .ods files dropped on the Excel tile', async () => {
+    const w = mountIngest()
+    await flushPromises()
+    const submit = w.find('button[type="submit"]')
+
+    await dropOnTile(w, 'Excel', [csvFile('report.ods')])
+    expect(w.find('#csvPath').element.value).toBe('report.ods')
+    expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  it('auto-detects .ods as Excel when dropped anywhere on the page', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await dropOnPage(w, [csvFile('report.ods')])
+    expect(w.find('#csvPath').element.value).toBe('report.ods')
+    expect(findTile(w, 'Excel').classList.contains('selected-source')).toBe(true)
+  })
+
+  it('treats mixed .xlsx and .ods drops as one Excel upload', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await dropOnPage(w, [csvFile('a.xlsx'), csvFile('b.ods')])
+    expect(w.find('#csvPath').element.value).toBe('a.xlsx, b.ods')
+    expect(findTile(w, 'Excel').classList.contains('selected-source')).toBe(true)
+    expect(w.text()).not.toContain('Unsupported file type')
   })
 
   it('shows an error when unsupported files are dropped on the page', async () => {
@@ -817,6 +846,28 @@ ${sheetNames.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml
   })
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   return new File([blob], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+}
+
+// Build a minimal .ods blob: sheets live in content.xml as <table:table>
+// elements and the header row is the first <table:table-row>.
+async function odsFile(name, sheetNames, header = 'col1,col2,col3') {
+  const headers = header.split(',')
+  const row = headers
+    .map((h) => `<table:table-cell office:value-type="string"><text:p>${h}</text:p></table:table-cell>`)
+    .join('')
+  const tables = sheetNames
+    .map((s) => `<table:table table:name="${s}"><table:table-row>${row}</table:table-row></table:table>`)
+    .join('')
+  const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3">
+<office:body><office:spreadsheet>${tables}</office:spreadsheet></office:body></office:document-content>`
+
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  zip.file('mimetype', 'application/vnd.oasis.opendocument.spreadsheet', { compression: 'STORE' })
+  zip.file('content.xml', contentXml)
+  const blob = await zip.generateAsync({ type: 'blob' })
+  return new File([blob], name, { type: 'application/vnd.oasis.opendocument.spreadsheet' })
 }
 
 describe('IngestView — PK/FK', () => {
@@ -1134,6 +1185,31 @@ describe('IngestView — PK/FK', () => {
     expect(patientsEntry).toBeDefined()
     expect(patientsEntry.fileName).toContain('Patients')
     expect(patientsEntry.primaryKey).toBe('col1')
+  })
+
+  // -- ODS: same behaviour as xlsx ------------------------------------------
+
+  it('hides PK/FK section for a single .ods file with one sheet', async () => {
+    const f = await odsFile('data.ods', ['Sheet1'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    expect(findPkFkSection(w).style.display).toBe('none')
+  })
+
+  it('renders one PK/FK card per .ods sheet with its detected columns', async () => {
+    const f = await odsFile('data.ods', ['Patients', 'Visits'], 'patient_id,name')
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    expect(findPkFkSection(w).style.display).not.toBe('none')
+    expect(w.findAll('.card.mb-3').length).toBe(2)
+    expect(w.text()).toContain('data_Patients')
+    expect(w.text()).toContain('data_Visits')
+    expect(w.find('#pk_0').element.innerHTML).toContain('patient_id')
+    expect(w.find('#pk_1').element.innerHTML).toContain('name')
   })
 
   // -- Section title -------------------------------------------------------
