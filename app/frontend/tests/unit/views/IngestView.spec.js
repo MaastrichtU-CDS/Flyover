@@ -1091,7 +1091,8 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     // Auto-suggest infers an FK on visits.csv — must review before submit
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
-    w.find('.suggestion-badge').trigger('click')
+    // The pill's accept control is a button of its own (keyboard reachable)
+    await w.find('.suggestion-badge .suggestion-accept').trigger('click')
     await flushPromises()
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
