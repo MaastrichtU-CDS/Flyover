@@ -201,9 +201,16 @@ Decisions taken during the tier-1 remediation review
 - **D3 — Marks on a new fingerprint.** Marks expire per key, not
   wholesale: a mark survives while the suggestion it was made against is
   unchanged in the new job.
-- **D4 — IngestView FK review gate.** Moved to its own branch/PR; it was
-  never part of the tier-1 plan and rendered outside
-  `FLYOVER_SUGGESTION_TIERS`.
+- **D4 — IngestView FK review gate.** Moved to its own branch/PR
+  (`feature/ingest-fk-review-gate`); it was never part of the tier-1 plan
+  and rendered outside `FLYOVER_SUGGESTION_TIERS`. Decisions taken there:
+  the gate stays **independent of the flag**, because the ingest page
+  auto-fills foreign keys whether or not suggestions are enabled and the
+  gate only asks the user to confirm what was auto-filled; the FK record
+  uses a **frontend-only source `foreign_key`** (not part of the API
+  `source` enum above, never emitted by the service) with no tier label,
+  at 90 % for an exact column-name match with the referenced primary key
+  and 60 % when one name merely contains the other.
 - **D5 — Value-based variable suggestions.** Stay disabled (collecting
   distinct values costs one store query per column); the
   `{M,V} → biological_sex` and year-abstain criteria moved to a

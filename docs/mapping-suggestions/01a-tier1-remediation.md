@@ -137,7 +137,7 @@ These change what the workstreams build, so settle them before starting.
 
 ## WS7 — Scope and repo hygiene (P1)
 
-- **D4:** move the IngestView FK changes (`16e8f3f`, `bcd10c1`, `f6dede1`, `cd11601`, `7cef964`, `4db0db8`, and the IngestView parts of `1b37119` / `5639fc0` / `95f92bc`) to their own branch. There, give the FK record its own source instead of `source: 'alias'` at 100 %, and decide whether the gate follows the feature flag.
+- **D4:** move the IngestView FK changes (`16e8f3f`, `bcd10c1`, `f6dede1`, `cd11601`, `7cef964`, `4db0db8`, and the IngestView parts of `1b37119` / `5639fc0` / `95f92bc`) to their own branch. There, give the FK record its own source instead of `source: 'alias'` at 100 %, and decide whether the gate follows the feature flag. _Done on `feature/ingest-fk-review-gate`: source `foreign_key` at 90 % / 60 % by match strength, and the gate stays independent of the flag (see the README's D4 entry)._
 - **Docs.**
   - Commit `docs/mapping-suggestions/README.md` and 02–04: the committed 01 links to the README.
   - Update 01's paths (`flyover/backend/...` → `app/backend/...`, `scripts/` → `app/backend/scripts/`) and record decisions D1–D5.
