@@ -603,7 +603,7 @@ describe('IngestView', () => {
 
     await dropOnTile(w, 'CSV', [csvFile('notes.txt')])
     expect(w.find('#csvPath').element.value).toBe('')
-    expect(w.text()).toContain('Please drop only .csv files')
+    expect(w.text()).toContain('Please drop only .csv files on the CSV tile')
   })
 
   it('shows an error when CSV files are dropped on the Excel tile', async () => {
@@ -612,7 +612,7 @@ describe('IngestView', () => {
 
     await dropOnTile(w, 'Excel', [csvFile('data.csv')])
     expect(w.find('#csvPath').element.value).toBe('')
-    expect(w.text()).toContain('Please drop only .xlsx, .xls or .ods files')
+    expect(w.text()).toContain('Please drop only .xlsx, .xls or .ods files on the Spreadsheet tile')
   })
 
   it('shows the drag-over highlight while dragging over the CSV tile', async () => {
@@ -665,6 +665,15 @@ describe('IngestView', () => {
     const excelTile = findTile(w, 'Excel')
     expect(excelTile.classList.contains('selected-source')).toBe(true)
     expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  it('labels the Excel source as Spreadsheet Files while keeping the Excel key', async () => {
+    const w = mountIngest()
+    await flushPromises()
+    const tile = findTile(w, 'Excel')
+    expect(tile.textContent).toContain('Spreadsheet Files')
+    expect(tile.textContent).not.toContain('Excel Files')
+    expect(w.find('#Excel').element.value).toBe('Excel')
   })
 
   it('accepts .ods files dropped on the Excel tile', async () => {

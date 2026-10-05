@@ -33,6 +33,12 @@ const FILE_TYPE_EXTENSIONS = {
   Excel: ['.xlsx', '.xls', '.ods'],
 }
 
+// Labels shown to the user; the keys above stay the API's file_type values.
+const FILE_TYPE_LABELS = {
+  CSV: 'CSV',
+  Excel: 'Spreadsheet',
+}
+
 // --- Reactive state ---
 
 const fileType = ref('')
@@ -338,7 +344,7 @@ async function onTileDrop(type, e) {
   const dropped = filterByExtension(e.dataTransfer.files, FILE_TYPE_EXTENSIONS[type])
   if (!dropped.length) {
     const exts = type === 'Excel' ? '.xlsx, .xls or .ods' : '.csv'
-    dropError.value = `Please drop only ${exts} files on the ${type} tile.`
+    dropError.value = `Please drop only ${exts} files on the ${FILE_TYPE_LABELS[type]} tile.`
     return
   }
   fileType.value = type
@@ -576,8 +582,8 @@ onMounted(async () => {
                   for="Excel"
                   class="form-check-label d-block"
                 >
-                  <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
-                  <strong>Excel Files</strong>
+                  <i class="fas fa-table fa-2x mb-2 d-block text-success" />
+                  <strong>Spreadsheet Files</strong>
                   <small class="d-block text-muted">Upload .xlsx, .xls or .ods files, or drag &amp; drop here</small>
                 </label>
               </div>
