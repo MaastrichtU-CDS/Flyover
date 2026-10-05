@@ -63,7 +63,7 @@ class IngestService:
     for triplification.
     """
 
-    ALLOWED_EXTENSIONS = {"csv", "jsonld", "xlsx", "xls"}
+    ALLOWED_EXTENSIONS = {"csv", "jsonld", "xlsx", "xls", "ods"}
 
     @staticmethod
     def allowed_file(filename: str, allowed_extensions: Optional[set] = None) -> bool:
@@ -174,7 +174,7 @@ class IngestService:
     @staticmethod
     def validate_excel_files(files: List[Any]) -> Tuple[bool, Optional[str]]:
         """
-        Validate uploaded Excel files.
+        Validate uploaded spreadsheet files (Excel .xlsx/.xls or OpenDocument .ods).
 
         Args:
             files: List of uploaded file objects.
@@ -188,14 +188,16 @@ class IngestService:
         if not any(f.filename for f in files):
             return (
                 False,
-                "If opting to submit an Excel data source, please upload it as a '.xlsx' or '.xls' file.",
+                "If opting to submit an Excel data source, please upload it as a '.xlsx', '.xls' or '.ods' file.",
             )
 
         for excel_file in files:
-            if not IngestService.allowed_file(excel_file.filename, {"xlsx", "xls"}):
+            if not IngestService.allowed_file(
+                excel_file.filename, {"xlsx", "xls", "ods"}
+            ):
                 return (
                     False,
-                    "If opting to submit an Excel data source, please upload it as a '.xlsx' or '.xls' file.",
+                    "If opting to submit an Excel data source, please upload it as a '.xlsx', '.xls' or '.ods' file.",
                 )
 
         return True, None
@@ -205,8 +207,11 @@ class IngestService:
         files: List[Any],
     ) -> Tuple[List[pl.DataFrame], List[str], Optional[str]]:
         """
-        Parse uploaded Excel files into DataFrames.
-        Each sheet in an Excel file is treated as a separate table.
+        Parse uploaded spreadsheet files into DataFrames.
+        Each sheet in a workbook is treated as a separate table. Accepts
+        Excel (.xlsx/.xls) and OpenDocument (.ods) workbooks; fastexcel
+        (calamine) sniffs the format from the bytes, so both go through
+        the same reader.
 
         Args:
             files: List of uploaded file objects.
