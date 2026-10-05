@@ -1,8 +1,14 @@
-// Excel .xlsx parsing utilities.
+// Spreadsheet parsing utilities (.xlsx and .ods).
 //
-// Reads sheet names and column headers from an .xlsx file using JSZip.
-// Handles both shared strings (t="s" + <v>index</v>) and inline strings
-// (t="inlineStr" + <is><t>text</t></is>).
+// Reads sheet names and column headers from a workbook using JSZip. Both
+// formats are zip containers:
+//   - .xlsx keeps the sheet list in xl/workbook.xml and one XML part per
+//     sheet, with shared strings (t="s" + <v>index</v>) and inline strings
+//     (t="inlineStr" + <is><t>text</t></is>).
+//   - .ods keeps every sheet in a single content.xml as <table:table>
+//     elements whose cells carry their text in <text:p>.
+// readExcelSheetInfo picks the right reader from the zip's contents, so the
+// ingest view treats both as one "Excel" source.
 
 import JSZip from 'jszip'
 
@@ -139,17 +145,96 @@ export function parseSheetHeaderColumns(sheetXml, sharedStrings) {
   return cols
 }
 
+// --- OpenDocument (.ods) helpers ---
+
+/** Decode the XML character entities that may appear in ODS text and names. */
+function decodeXmlEntities(text) {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&amp;/g, '&')
+}
+
+/**
+ * Extract the plain text of an ODS cell from its inner XML. Each paragraph
+ * (<text:p>) becomes a line; <text:s/> is a run of spaces and <text:span>
+ * or other inline markup is stripped.
+ */
+function extractOdsCellText(cellContent) {
+  const paragraphs = []
+  const pRegex = /<text:p\b[^>]*>([\s\S]*?)<\/text:p>/g
+  let m
+  while ((m = pRegex.exec(cellContent)) !== null) {
+    const text = m[1]
+      .replace(/<text:s\b[^>]*?text:c="(\d+)"[^>]*\/>/g, (_, n) => ' '.repeat(Number(n)))
+      .replace(/<text:s\b[^>]*\/>/g, ' ')
+      .replace(/<text:(?:line-break|tab)\b[^>]*\/>/g, ' ')
+      .replace(/<[^>]*>/g, '')
+    paragraphs.push(decodeXmlEntities(text))
+  }
+  return paragraphs.join(' ')
+}
+
+/**
+ * Extract column headers from the first row of an ODS <table:table> body.
+ * Honours table:number-columns-repeated so a header repeated across cells
+ * yields one column per cell, the way the backend reader sees it.
+ */
+export function parseOdsHeaderColumns(tableXml) {
+  const rowMatch = tableXml.match(/<table:table-row\b[^>]*>([\s\S]*?)<\/table:table-row>/)
+  if (!rowMatch) return []
+
+  const cellRegex =
+    /<table:(?:covered-)?table-cell\b([^>]*)\/>|<table:(?:covered-)?table-cell\b([^>]*)>([\s\S]*?)<\/table:(?:covered-)?table-cell>/g
+  const cols = []
+  let cellMatch
+  while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+    const attrs = cellMatch[1] ?? cellMatch[2] ?? ''
+    const content = cellMatch[3] ?? ''
+    const value = extractOdsCellText(content).trim()
+    if (!value) continue
+    const repeatMatch = attrs.match(/table:number-columns-repeated="(\d+)"/)
+    const repeat = repeatMatch ? Math.max(1, Number(repeatMatch[1])) : 1
+    for (let i = 0; i < repeat; i++) cols.push(value)
+  }
+  return cols
+}
+
+/** Read every sheet ({ name, columns }) from an ODS content.xml document. */
+export function parseOdsSheetInfo(contentXml) {
+  const result = []
+  const tableRegex = /<table:table\s([^>]*)>([\s\S]*?)<\/table:table>/g
+  let m
+  while ((m = tableRegex.exec(contentXml)) !== null) {
+    const nameMatch = m[1].match(/table:name="([^"]*)"/)
+    if (!nameMatch) continue
+    result.push({
+      name: decodeXmlEntities(nameMatch[1]),
+      columns: parseOdsHeaderColumns(m[2]),
+    })
+  }
+  return result
+}
+
 // --- High-level API ---
 
 /**
- * Read sheet names and column headers from an .xlsx file.
- * Returns a list of { name, columns } entries, one per sheet.
+ * Read sheet names and column headers from an .xlsx or .ods file.
+ * Returns a list of { name, columns } entries, one per sheet, or an empty
+ * list when the file is not a workbook this reader understands.
  */
 export async function readExcelSheetInfo(file) {
   try {
     const zip = await JSZip.loadAsync(file)
+
     const workbookXml = await zip.file('xl/workbook.xml')?.async('string')
-    if (!workbookXml) return []
+    if (!workbookXml) {
+      const contentXml = await zip.file('content.xml')?.async('string')
+      return contentXml ? parseOdsSheetInfo(contentXml) : []
+    }
 
     const sheetNames = parseSheetNames(workbookXml)
     if (!sheetNames.length) return []
