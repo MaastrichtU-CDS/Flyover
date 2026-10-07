@@ -188,7 +188,7 @@ class IngestService:
         if not any(f.filename for f in files):
             return (
                 False,
-                "If opting to submit an Excel data source, please upload it as a '.xlsx', '.xls' or '.ods' file.",
+                "If opting to submit a spreadsheet data source, please upload it as a '.xlsx', '.xls' or '.ods' file.",
             )
 
         for excel_file in files:
@@ -197,7 +197,7 @@ class IngestService:
             ):
                 return (
                     False,
-                    "If opting to submit an Excel data source, please upload it as a '.xlsx', '.xls' or '.ods' file.",
+                    "If opting to submit a spreadsheet data source, please upload it as a '.xlsx', '.xls' or '.ods' file.",
                 )
 
         return True, None
