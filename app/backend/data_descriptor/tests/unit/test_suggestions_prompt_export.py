@@ -294,7 +294,14 @@ class TestValuesPrompt(unittest.TestCase):
         # Only the short, few-valued column is asked; the summary names it.
         self.assertEqual(
             result["asked"],
-            [{"column": "geslacht", "variable": "biological_sex", "values": 2}],
+            [
+                {
+                    "column": "geslacht",
+                    "variable": "biological_sex",
+                    "values": 2,
+                    "sample": ["F", "U"],
+                }
+            ],
         )
         self.assertEqual(result["item_count"], 2)
         self.assertIn("free text, dates or identifiers", result["privacy"])

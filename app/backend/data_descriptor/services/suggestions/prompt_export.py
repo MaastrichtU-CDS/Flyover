@@ -64,6 +64,10 @@ NameMatch = Callable[[str, str], bool]
 MAX_VALUES_PER_COLUMN = 50
 MAX_MEAN_VALUE_LENGTH = 30
 
+# How many of an asked column's values the response quotes, so the UI can
+# show the user what leaves the browser instead of a count.
+SAMPLE_VALUES = 8
+
 
 def looks_like_free_text(values: list[str]) -> Optional[str]:
     """Why ``values`` do not look categorical, or None when they do."""
@@ -695,6 +699,7 @@ class PromptExport:
                     "column": g["column"],
                     "variable": g["variable"],
                     "values": len(g["values"]),
+                    "sample": [v["value"] for v in g["values"][:SAMPLE_VALUES]],
                 }
                 for g in groups
             ]
