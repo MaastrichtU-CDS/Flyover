@@ -451,6 +451,7 @@ class TestPromptRoute(unittest.TestCase):
         self.assertEqual(kwargs["database"], "nki")
         self.assertIsNone(kwargs["chunk"])
         self.assertIsNone(kwargs["mapping"])
+        self.assertEqual(kwargs["include"], [])
 
     def test_post_prompt_with_options_and_mapping(self):
         svc = self._service()
@@ -463,6 +464,7 @@ class TestPromptRoute(unittest.TestCase):
                         "phase": "values",
                         "database": "christie",
                         "chunk": "20",
+                        "include": ["opmerking", ""],
                         "mapping": _VALID_MAPPING,
                     }
                 ),
@@ -472,8 +474,22 @@ class TestPromptRoute(unittest.TestCase):
         args, kwargs = svc.build_prompt.call_args
         self.assertEqual(args[0], "values")
         self.assertEqual(kwargs["chunk"], 20)
+        self.assertEqual(kwargs["include"], ["opmerking"])
         self.assertIsNotNone(kwargs["mapping"])
         self.assertEqual(kwargs["mapping_data"], _VALID_MAPPING)
+
+    def test_get_prompt_include_is_comma_separated(self):
+        svc = self._service()
+        app = _make_app(svc)
+        with app.test_client() as client:
+            resp = client.get(
+                "/api/v1/suggestions/prompt?phase=values&database=nki"
+                "&include=opmerking,%20notes,"
+            )
+            self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            svc.build_prompt.call_args.kwargs["include"], ["opmerking", "notes"]
+        )
 
     def test_prompt_errors(self):
         svc = self._service()

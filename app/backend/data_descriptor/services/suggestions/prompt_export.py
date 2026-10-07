@@ -23,9 +23,11 @@ Privacy: the prompt never contains data rows. The variables phase shares
 only the column names — no distinct values at all; if a user wants an
 LLM to reason over the values, the values-phase prompt is the place. In
 the values phase the distinct values of a categorical column are the
-very things being mapped; a mapped column is categorical by definition
-(it may hold string values, but it is never treated as free text), so
-every mapped column with terms is asked.
+very things being mapped, so every mapped column with terms is asked —
+unless its values look like free text, dates or identifiers (many
+distinct values, or long ones), which a mis-mapping on the variables
+page would otherwise send out in full. Such a column is held back and
+named in the response; the user can include it explicitly.
 """
 
 from __future__ import annotations
@@ -52,6 +54,31 @@ DEFAULT_PASTED_CONFIDENCE = 0.7
 
 ValueSource = Callable[[str], list[str]]
 NameMatch = Callable[[str, str], bool]
+
+# Guard for the values phase. A column mapped to a categorical variable
+# should hold a handful of short codes; one with more distinct values
+# than this, or values this long on average, more likely holds free
+# text, dates or identifiers and is held back unless the user includes
+# it. The limits are generous for real categoricals (ICD chapters,
+# ECOG, stages) and tight for a notes or id column.
+MAX_VALUES_PER_COLUMN = 50
+MAX_MEAN_VALUE_LENGTH = 30
+
+
+def looks_like_free_text(values: list[str]) -> Optional[str]:
+    """Why ``values`` do not look categorical, or None when they do."""
+    n = len(values)
+    if n == 0:
+        return None
+    if n > MAX_VALUES_PER_COLUMN:
+        return f"{n} distinct values (more than {MAX_VALUES_PER_COLUMN})"
+    mean = sum(len(v) for v in values) / n
+    if mean > MAX_MEAN_VALUE_LENGTH:
+        return (
+            f"values average {mean:.0f} characters "
+            f"(more than {MAX_MEAN_VALUE_LENGTH})"
+        )
+    return None
 
 
 def chunk_size_from_env() -> int:
@@ -282,8 +309,10 @@ def _privacy_note(phase: str) -> str:
         )
     return (
         "This prompt contains variable keys, their term keys, the local column "
-        "names and the distinct values of the mapped categorical columns. "
-        "It contains no data rows."
+        "names and the distinct values of the mapped categorical columns "
+        "listed in the summary. It contains no data rows, but a distinct value "
+        "can still identify someone: check that none of these columns holds "
+        "free text, dates or identifiers before sending."
     )
 
 
@@ -301,6 +330,7 @@ class PromptExport:
         records: Optional[dict] = None,
         mapping_data: Optional[dict] = None,
         chunk_size: Optional[int] = None,
+        include: Optional[list[str]] = None,
         name_match: NameMatch = default_name_match,
     ) -> None:
         if phase not in ("variables", "values"):
@@ -316,6 +346,11 @@ class PromptExport:
             clamp_chunk(chunk_size) if chunk_size else chunk_size_from_env()
         )
         self.name_match = name_match
+        # Columns the user asked for although their values look like free
+        # text (values phase); bypasses the guard for exactly these.
+        self.include = {str(c) for c in (include or [])}
+        # Columns the guard held back in the last build, with the reason.
+        self.held_back: list[dict] = []
         self.db_key, _, self.table_key, _ = find_database(mapping, database, name_match)
         self.mapped = mapped_columns(mapping, database, name_match)
         self._value_cache: dict[str, Optional[list[str]]] = {}
@@ -360,12 +395,14 @@ class PromptExport:
     def value_groups(self) -> list[dict]:
         """Per mapped categorical column: the values still to map.
 
-        A mapped column's variable defines its terms, so a column here is
-        categorical by definition; it may hold string values, but it is
-        never treated as free text — every mapped column with terms is
-        asked (there is no free-text exclusion to configure).
+        A mapped column's variable defines its terms, so a column here
+        should be categorical; when its values look like free text, dates
+        or identifiers instead (:func:`looks_like_free_text`), the column
+        is held back and listed in ``self.held_back`` unless it is in
+        ``include``. Every other mapped column with terms is asked.
         """
         groups: list[dict] = []
+        self.held_back = []
         for column in self.columns:
             var_key = self.mapped.get(column)
             if not var_key:
@@ -376,6 +413,17 @@ class PromptExport:
                 continue
             values = self._values(column)
             if not values:
+                continue
+            reason = looks_like_free_text(values)
+            if reason and column not in self.include:
+                self.held_back.append(
+                    {
+                        "column": column,
+                        "variable": var_key,
+                        "distinct": len(values),
+                        "reason": reason,
+                    }
+                )
                 continue
             already = local_mappings(
                 self.mapping, self.database, column, self.name_match
@@ -637,6 +685,19 @@ class PromptExport:
             ]
         if item_count == 0:
             chunks = []
+        # What the prompt asks about, per column, so the UI can show the
+        # user how many values of which column leave the browser.
+        if self.phase == "variables":
+            asked = [{"column": it["column"]} for it in items]
+        else:
+            asked = [
+                {
+                    "column": g["column"],
+                    "variable": g["variable"],
+                    "values": len(g["values"]),
+                }
+                for g in groups
+            ]
         return {
             "phase": self.phase,
             "database": self.database,
@@ -647,6 +708,8 @@ class PromptExport:
             "contains": contains,
             "privacy": _privacy_note(self.phase),
             "already_mapped": len(self.mapped),
+            "asked": asked,
+            "held_back": list(self.held_back),
             "answer_schema": answer_schema(self.phase),
         }
 

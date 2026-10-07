@@ -978,13 +978,16 @@ class SuggestionService:
         mapping: Any = None,
         mapping_data: Optional[dict] = None,
         chunk: Optional[int] = None,
+        include: Optional[list[str]] = None,
     ) -> dict:
         """Compose the copy-prompt payload for one database and phase.
 
         Works whether or not any tier is enabled: the prompt needs the
         semantic map, the store's column names and (values phase) distinct
         values, and (when a job exists) the job's records as hints. The
-        variables phase shares no distinct values at all. Raises
+        variables phase shares no distinct values at all; in the values
+        phase a column whose values look like free text is held back
+        unless named in ``include``. Raises
         :class:`SuggestionRequestError` for an unknown phase or database
         or a missing semantic map.
         """
@@ -1019,6 +1022,7 @@ class SuggestionService:
             records=records,
             mapping_data=mapping_data,
             chunk_size=chunk,
+            include=include,
             name_match=RDFStoreService.graph_database_find_name_match,
         )
         return export.build()
