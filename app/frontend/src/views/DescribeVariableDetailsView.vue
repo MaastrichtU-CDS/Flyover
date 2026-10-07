@@ -788,8 +788,8 @@ onBeforeUnmount(() => {
               "
             />
           </button>
-          <!-- Copy-prompt / paste-answer round trip with an external LLM
-               (issue 2): asks only about the values still unmapped. -->
+          <!-- Copy-prompt / paste-answer round trip with an external LLM:
+               asks only about the values still unmapped. -->
           <LlmPromptPanel
             v-if="suggestions.promptExport"
             phase="values"

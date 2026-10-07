@@ -94,12 +94,15 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(wrapper.find('.llm-help-toggle').text()).toMatch(/Use an LLM/)
     await wrapper.find('.llm-help-toggle').trigger('click')
     expect(wrapper.find('.llm-help-body').exists()).toBe(true)
-    expect(wrapper.find('.llm-help-privacy').text()).toMatch(/contains no data rows/i)
+    expect(wrapper.find('.llm-help-intro').text()).toMatch(/nothing is saved until you accept/)
+    expect(wrapper.find('.llm-prompt-modal').exists()).toBe(false)
     expect(api.post).not.toHaveBeenCalled()
   })
 
-  it('generates the prompt with the chosen options and lists what leaves the browser', async () => {
-    api.post.mockResolvedValue(promptResponse())
+  it('generates the prompt with the chosen options and opens it in the modal', async () => {
+    const response = promptResponse()
+    response.data.chunks[0].prompt = 'HEAD\n## 1. Schema\n- a\n## 3. Local columns\n- clin_t\n## 4. Answer\nTAIL'
+    api.post.mockResolvedValue(response)
     const wrapper = await mountOpen()
     await wrapper.find('.llm-help-chunk-size').setValue('80')
     await wrapper.find('.llm-help-generate').trigger('click')
@@ -111,22 +114,21 @@ describe('Frontend unit: LlmPromptPanel', () => {
       mapping: MAPPING,
       chunk: 80,
     })
-    expect(wrapper.find('.llm-help-summary').text()).toMatch(/3 columns still to map/)
-    expect(wrapper.find('.llm-help-summary').text()).toMatch(/2 columns already mapped/)
-    expect(wrapper.findAll('.llm-help-contains li').map((li) => li.text())).toEqual([
-      'variable keys',
-      'column names',
-    ])
-    // Once generated, the server's privacy note (worded for the options
-    // actually used) replaces the pre-generation one; the short review
-    // reminder is appended once.
-    expect(wrapper.find('.llm-help-privacy').text()).toBe(
-      'SERVER PRIVACY NOTE Review it before sending.',
-    )
-    expect(wrapper.findAll('.llm-help-chunk')).toHaveLength(1)
-    expect(wrapper.find('.llm-help-preview').exists()).toBe(false)
-    await wrapper.find('.llm-help-preview-toggle').trigger('click')
-    expect(wrapper.find('.llm-help-preview').element.value).toBe('PROMPT 1')
+    expect(wrapper.find('.llm-help-summary').text()).toBe('3 columns still to map')
+    const modal = wrapper.find('.llm-prompt-modal')
+    expect(modal.exists()).toBe(true)
+    // Section 3, the user's own names, is what the modal shows first.
+    expect(modal.find('.llm-prompt-modal-heading').text()).toMatch(/Column names that leave the browser/)
+    expect(modal.find('.llm-prompt-modal-data').text()).toBe('## 3. Local columns\n- clin_t')
+    expect(modal.find('.llm-prompt-modal-privacy').text()).toBe('SERVER PRIVACY NOTE')
+    expect(modal.find('.llm-help-preview').element.value).toBe(response.data.chunks[0].prompt)
+    expect(modal.find('.llm-prompt-parts').exists()).toBe(false)
+
+    // Closing hides it; "Show prompt" brings it back.
+    await modal.find('.llm-prompt-modal-close').trigger('click')
+    expect(wrapper.find('.llm-prompt-modal').exists()).toBe(false)
+    await wrapper.find('.llm-help-show').trigger('click')
+    expect(wrapper.find('.llm-prompt-modal').exists()).toBe(true)
   })
 
   it('the values phase posts the same options as the variables phase', async () => {
@@ -141,6 +143,7 @@ describe('Frontend unit: LlmPromptPanel', () => {
       chunk: 40,
     })
     expect(wrapper.find('.llm-help-summary').text()).toMatch(/3 values still to map/)
+    expect(wrapper.find('.llm-prompt-modal-heading').text()).toMatch(/Values that leave the browser/)
   })
 
   it('starts from the site chunk default and offers it when non-standard', async () => {
@@ -156,7 +159,7 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(api.post.mock.calls[0][1].chunk).toBe(90)
   })
 
-  it('offers one copy and one download button per chunk and copies through the clipboard', async () => {
+  it('gates copy and download on the acknowledgement, then copies the selected part', async () => {
     api.post.mockResolvedValue(promptResponse(3))
     const writeText = vi.fn().mockResolvedValue()
     vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText })
@@ -164,18 +167,30 @@ describe('Frontend unit: LlmPromptPanel', () => {
     await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
 
-    const chunks = wrapper.findAll('.llm-help-chunk')
-    expect(chunks).toHaveLength(3)
-    expect(chunks[1].find('.llm-help-chunk-label').text()).toMatch(/Part 2 of 3/)
-    expect(wrapper.find('.llm-help-summary').text()).toMatch(/split into 3 parts/)
-    await chunks[1].find('.llm-help-copy').trigger('click')
+    const modal = wrapper.find('.llm-prompt-modal')
+    expect(wrapper.find('.llm-help-summary').text()).toMatch(/3 parts of at most 40/)
+    expect(modal.findAll('.llm-prompt-part')).toHaveLength(3)
+    expect(modal.find('.llm-help-copy').attributes('disabled')).toBeDefined()
+    expect(modal.find('.llm-help-download').attributes('disabled')).toBeDefined()
+    await modal.find('.llm-help-copy').trigger('click')
+    expect(writeText).not.toHaveBeenCalled()
+
+    await modal.find('.llm-prompt-ack-input').setValue(true)
+    expect(modal.find('.llm-help-copy').attributes('disabled')).toBeUndefined()
+    await modal.findAll('.llm-prompt-part')[1].trigger('click')
+    expect(modal.find('.llm-prompt-modal-heading').text()).toMatch(/in part 2/)
+    await modal.find('.llm-help-copy').trigger('click')
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith('PROMPT 2')
     expect(useStatusStore().messages.at(-1).text).toMatch(/Part 2 of 3 copied/)
-    expect(chunks[1].find('.llm-help-download').exists()).toBe(true)
+
+    // Reopening asks again.
+    await modal.find('.llm-prompt-modal-close').trigger('click')
+    await wrapper.find('.llm-help-show').trigger('click')
+    expect(wrapper.find('.llm-help-copy').attributes('disabled')).toBeDefined()
   })
 
-  it('falls back to the legacy copy command and, failing that, opens the preview', async () => {
+  it('falls back to the legacy copy command and, failing that, unfolds the full prompt', async () => {
     vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue(undefined)
     document.execCommand = vi.fn().mockReturnValue(true)
     expect(await copyText('x')).toBe(true)
@@ -186,19 +201,42 @@ describe('Frontend unit: LlmPromptPanel', () => {
     const wrapper = await mountOpen()
     await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
+    await wrapper.find('.llm-prompt-ack-input').setValue(true)
     await wrapper.find('.llm-help-copy').trigger('click')
     await flushPromises()
     expect(useStatusStore().messages.at(-1).level).toBe('warning')
-    expect(wrapper.find('.llm-help-preview').exists()).toBe(true)
+    expect(wrapper.find('.llm-prompt-modal-full').attributes('open')).toBeDefined()
   })
 
-  it('says so when there is nothing left to map', async () => {
+  it('names the held-back columns and the rare values left out', async () => {
+    const response = promptResponse()
+    response.data.phase = 'values'
+    response.data.held_back = [
+      { column: 'opmerking', variable: 'survival_status', distinct: 65, reason: '65 distinct values (more than 50)' },
+    ]
+    response.data.suppressed = 7
+    response.data.min_value_count = 10
+    api.post.mockResolvedValue(response)
+    const wrapper = await mountOpen({ phase: 'values' })
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.llm-help-summary').text()).toBe(
+      '3 values still to map · 1 column held back · 7 rare values left out',
+    )
+    expect(wrapper.find('.llm-prompt-modal-left-out').text()).toBe(
+      'Left out: opmerking held back (65 distinct values (more than 50)) · 7 rare values left out (seen fewer than 10 times)',
+    )
+  })
+
+  it('says so when there is nothing left to map and opens no modal', async () => {
     api.post.mockResolvedValue({ data: { ...promptResponse().data, item_count: 0, chunks: [] } })
     const wrapper = await mountOpen()
     await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
     expect(wrapper.find('.llm-help-summary').text()).toMatch(/nothing to ask an LLM/)
-    expect(wrapper.findAll('.llm-help-chunk')).toHaveLength(0)
+    expect(wrapper.find('.llm-prompt-modal').exists()).toBe(false)
+    expect(wrapper.find('.llm-help-show').exists()).toBe(false)
   })
 
   it('shows the server message when the prompt cannot be generated', async () => {

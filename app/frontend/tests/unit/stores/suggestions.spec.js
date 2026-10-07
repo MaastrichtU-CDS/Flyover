@@ -581,7 +581,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(SOURCE_ICONS.string).toBeDefined()
   })
 
-  // --- Prompt export / paste-back (issue 2) ------------------------------
+  // --- Prompt export / paste-back ----------------------------------------
 
   it('init() reads prompt_export from /status, active even with tiers off', async () => {
     api.get.mockResolvedValueOnce(
@@ -618,6 +618,11 @@ describe('Frontend unit: useSuggestionsStore', () => {
       mapping: MAPPING,
       chunk: 20,
     })
+    // Included columns go along only when there are any.
+    await s.fetchPrompt('values', 'nki', { mapping: MAPPING, include: [] })
+    expect(api.post.mock.calls[1][1]).not.toHaveProperty('include')
+    await s.fetchPrompt('values', 'nki', { mapping: MAPPING, include: ['notes'] })
+    expect(api.post.mock.calls[2][1].include).toEqual(['notes'])
   })
 
   it('fetchPrompt surfaces the server message on failure', async () => {

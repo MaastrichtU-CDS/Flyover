@@ -16,7 +16,10 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from services.suggestions import SuggestionRequestError
-from services.suggestions.prompt_export import chunk_size_from_env
+from services.suggestions.prompt_export import (
+    chunk_size_from_env,
+    min_value_count_from_env,
+)
 from utils.mapping_request import parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
@@ -90,9 +93,12 @@ def suggestions_status():
                 "threshold": service.config.threshold if service else 0.8,
                 # The copy-prompt / paste-answer round trip has no model
                 # and no flag: it is available whenever the service is.
-                # The chunk default matches the enabled branch.
                 "prompt_export": (
-                    {"state": "active", "chunk": chunk_size_from_env()}
+                    {
+                        "state": "active",
+                        "chunk": chunk_size_from_env(),
+                        "min_value_count": min_value_count_from_env(),
+                    }
                     if service is not None
                     else {"state": "inactive", "reason": "no suggestion service"}
                 ),
@@ -195,8 +201,10 @@ def suggestions_prompt():
 
     ``phase`` and ``database`` come from the query string or the JSON
     body; a POST body may also carry the browser's semantic map (the map
-    the describe pages work on), used for this response only. Option:
-    ``chunk`` (items per prompt).
+    the describe pages work on), used for this response only. Options:
+    ``chunk`` (items per prompt) and ``include`` (values phase: columns
+    to ask about although their values look like free text; a list in
+    the body or comma-separated in the query string).
     """
     ctx = get_app_context()
     service = ctx.get("suggestion_service")
@@ -237,6 +245,13 @@ def suggestions_prompt():
         chunk = int(chunk) if chunk not in (None, "") else None
     except (TypeError, ValueError):
         chunk = None
+    include = params.get("include")
+    if isinstance(include, str):
+        include = [c.strip() for c in include.split(",") if c.strip()]
+    elif isinstance(include, list):
+        include = [str(c) for c in include if c]
+    else:
+        include = []
     try:
         result = service.build_prompt(
             phase,
@@ -246,6 +261,7 @@ def suggestions_prompt():
             mapping=mapping,
             mapping_data=mapping_data,
             chunk=chunk,
+            include=include,
         )
     except SuggestionRequestError as exc:
         return _request_error(exc)

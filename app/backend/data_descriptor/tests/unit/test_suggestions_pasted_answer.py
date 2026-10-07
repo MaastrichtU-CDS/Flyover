@@ -3,7 +3,7 @@ Unit tests for :mod:`services.suggestions.pasted_answer`.
 
 The parser must accept what real LLM clients hand back: fenced JSON,
 surrounding prose, trailing commas, the ``databases`` wrapper dropped or
-the whole document echoed, and the flat record array from the design doc.
+the whole document echoed, and the flat ``[{item, match, ...}]`` record array.
 """
 
 import sys

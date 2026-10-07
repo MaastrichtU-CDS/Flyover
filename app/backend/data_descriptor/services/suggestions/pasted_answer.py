@@ -8,8 +8,9 @@ followed by caveats, sometimes with the ``databases`` wrapper dropped or
 the whole document echoed. :func:`parse_answer_text` finds the JSON, and
 :func:`extract_column_entries` finds the column entries wherever they are
 nested, so a reply only has to be *recognisable* to be usable. The flat
-``[{"item", "match", "confidence", "reason"}]`` form from the design
-document is accepted too.
+``[{"item", "match", "confidence", "reason"}]`` form from
+``docs/mapping-suggestions/02-llm-prompt-export-roundtrip.md`` is
+accepted too.
 
 Nothing here validates keys against the schema: that is
 ``SuggestionService.ingest``, which runs the raw records through
@@ -132,7 +133,7 @@ def extract_column_entries(data: Any) -> list[tuple[Optional[str], dict]]:
 
 
 def is_flat_records(data: Any) -> bool:
-    """The design document's ``[{item, match, ...}]`` form."""
+    """The flat ``[{item, match, ...}]`` record form (see the module docstring)."""
     if isinstance(data, dict) and isinstance(data.get("records"), list):
         data = data["records"]
     return (
