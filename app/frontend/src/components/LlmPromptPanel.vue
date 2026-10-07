@@ -57,7 +57,7 @@ export async function copyText(text) {
  *   ingested — after a successful import; payload is the ingest summary.
  */
 
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import * as jsonld from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
@@ -84,6 +84,10 @@ const previewOpen = reactive({})
 // like free text, dates or identifiers, which the user ticked to include
 // anyway (column name -> true). Sent with the next generate.
 const include = reactive({})
+// Values phase: per asked column, whether the user confirmed that its
+// values are category codes. Copy and download stay disabled until every
+// column is confirmed; a regenerate clears the confirmations.
+const confirmed = reactive({})
 const answer = ref('')
 const importing = ref(false)
 const importError = ref('')
@@ -140,16 +144,55 @@ const askedValues = computed(() =>
 
 const includedColumns = computed(() => Object.keys(include).filter((c) => include[c]))
 
+const unconfirmedCount = computed(
+  () => askedValues.value.filter((a) => !confirmed[a.column]).length,
+)
+
+// The variables prompt carries column names only, so nothing to confirm.
+const copyReady = computed(() => props.phase !== 'values' || unconfirmedCount.value === 0)
+
+const copyBlockedTitle = computed(() =>
+  copyReady.value
+    ? ''
+    : `Confirm the values of ${unconfirmedCount.value} more column${unconfirmedCount.value === 1 ? '' : 's'} above first`,
+)
+
+function sampleText(entry) {
+  const sample = entry.sample || []
+  const more = entry.values - sample.length
+  return more > 0 ? `${sample.join(', ')} and ${more} more` : sample.join(', ')
+}
+
+// Split a prompt into the text before, inside and after section 3 (the
+// local names or values), so the preview can highlight what is the
+// user's own data rather than schema.
+function promptParts(text) {
+  const start = text.indexOf('\n## 3.')
+  const end = text.indexOf('\n## 4.')
+  if (start < 0) return { before: text, data: '', after: '' }
+  const stop = end > start ? end : text.length
+  return { before: text.slice(0, start), data: text.slice(start, stop), after: text.slice(stop) }
+}
+
 async function generate() {
   generating.value = true
   generateError.value = ''
   prompt.value = null
+  for (const k of Object.keys(confirmed)) delete confirmed[k]
+  for (const k of Object.keys(previewOpen)) delete previewOpen[k]
   try {
     prompt.value = await suggestions.fetchPrompt(props.phase, props.database, {
       mapping: jsonld.getMapping(),
       chunk: chunk.value,
       include: includedColumns.value,
     })
+    // The values prompt carries the user's data: show it, do not hide it
+    // behind a toggle. The variables prompt (names only) stays collapsed.
+    if (props.phase === 'values') {
+      for (const item of prompt.value?.chunks || []) previewOpen[item.index] = true
+      await nextTick()
+      for (const item of prompt.value?.chunks || []) scrollToData(item.index)
+    }
   } catch (err) {
     generateError.value = err?.message || 'Could not generate the prompt.'
   } finally {
@@ -158,6 +201,7 @@ async function generate() {
 }
 
 async function copyChunk(item) {
+  if (!copyReady.value) return
   const ok = await copyText(item.prompt)
   if (ok) {
     status.success(
@@ -172,6 +216,7 @@ async function copyChunk(item) {
 }
 
 function downloadChunk(item) {
+  if (!copyReady.value) return
   const name = `flyover-prompt-${props.phase}-${props.database}${
     prompt.value.chunks.length > 1 ? `-part${item.index}` : ''
   }.txt`
@@ -186,8 +231,27 @@ function downloadChunk(item) {
   URL.revokeObjectURL(url)
 }
 
-function togglePreview(index) {
+// Preview elements by part index, so an opened preview can be scrolled
+// to its highlighted section 3 instead of the generic header.
+const previewEls = reactive({})
+
+function setPreviewEl(index, el) {
+  if (el) previewEls[index] = el
+  else delete previewEls[index]
+}
+
+function scrollToData(index) {
+  const pre = previewEls[index]
+  const mark = pre?.querySelector?.('.llm-help-data-section')
+  if (pre && mark) pre.scrollTop = Math.max(0, mark.offsetTop - pre.offsetTop - 8)
+}
+
+async function togglePreview(index) {
   previewOpen[index] = !previewOpen[index]
+  if (previewOpen[index]) {
+    await nextTick()
+    scrollToData(index)
+  }
 }
 
 async function importAnswer() {
@@ -310,18 +374,33 @@ async function importAnswer() {
               {{ entry }}
             </li>
           </ul>
-          <ul
-            v-if="askedValues.length"
-            class="llm-help-asked"
-          >
+        </details>
+        <div
+          v-if="askedValues.length"
+          class="llm-help-asked"
+        >
+          <p class="llm-help-asked-intro">
+            These values leave the browser. Confirm each column: its values are category
+            codes, not free text, dates or identifiers.
+          </p>
+          <ul>
             <li
               v-for="entry in askedValues"
               :key="entry.column"
             >
-              {{ entry.column }}: {{ entry.values }} {{ entry.values === 1 ? 'value' : 'values' }}
+              <label class="llm-help-asked-option">
+                <input
+                  v-model="confirmed[entry.column]"
+                  type="checkbox"
+                >
+                <span>
+                  <strong>{{ entry.column }}</strong> ({{ entry.values }} {{ entry.values === 1 ? 'value' : 'values' }}):
+                  {{ sampleText(entry) }}
+                </span>
+              </label>
             </li>
           </ul>
-        </details>
+        </div>
         <div
           v-if="prompt.held_back?.length"
           class="llm-help-held-back"
@@ -351,38 +430,53 @@ async function importAnswer() {
           :key="item.index"
           class="llm-help-chunk"
         >
-          <span class="llm-help-chunk-label">
-            <template v-if="prompt.chunks.length > 1">Part {{ item.index }} of {{ prompt.chunks.length }} · </template>
-            {{ item.item_count }} {{ itemLabel }}
-          </span>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary llm-help-copy"
-            @click="copyChunk(item)"
-          >
-            <i class="fas fa-copy" /> Copy prompt
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-secondary llm-help-download"
-            @click="downloadChunk(item)"
-          >
-            <i class="fas fa-download" /> Download .txt
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-link llm-help-preview-toggle"
-            @click="togglePreview(item.index)"
-          >
-            {{ previewOpen[item.index] ? 'Hide' : 'Show' }} prompt
-          </button>
-          <textarea
+          <div class="llm-help-chunk-head">
+            <span class="llm-help-chunk-label">
+              <template v-if="prompt.chunks.length > 1">Part {{ item.index }} of {{ prompt.chunks.length }} · </template>
+              {{ item.item_count }} {{ itemLabel }}
+            </span>
+            <button
+              type="button"
+              class="btn btn-sm btn-link llm-help-preview-toggle"
+              @click="togglePreview(item.index)"
+            >
+              {{ previewOpen[item.index] ? 'Hide' : 'Show' }} prompt
+            </button>
+          </div>
+          <!-- A <pre> rather than a textarea so section 3, the user's own
+               names or values, can be highlighted inside the prompt. -->
+          <pre
             v-if="previewOpen[item.index]"
-            class="form-control llm-help-preview"
-            readonly
-            rows="12"
-            :value="item.prompt"
-          />
+            :ref="(el) => setPreviewEl(item.index, el)"
+            class="llm-help-preview"
+          >{{ promptParts(item.prompt).before }}<mark
+            v-if="promptParts(item.prompt).data"
+            class="llm-help-data-section"
+          >{{ promptParts(item.prompt).data }}</mark>{{ promptParts(item.prompt).after }}</pre>
+          <div class="llm-help-chunk-actions">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary llm-help-copy"
+              :disabled="!copyReady"
+              :title="copyBlockedTitle || null"
+              @click="copyChunk(item)"
+            >
+              <i class="fas fa-copy" /> Copy prompt
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary llm-help-download"
+              :disabled="!copyReady"
+              :title="copyBlockedTitle || null"
+              @click="downloadChunk(item)"
+            >
+              <i class="fas fa-download" /> Download .txt
+            </button>
+            <span
+              v-if="!copyReady"
+              class="llm-help-copy-blocked"
+            >{{ copyBlockedTitle }}</span>
+          </div>
         </div>
       </div>
 
@@ -553,21 +647,83 @@ async function importAnswer() {
 }
 
 .llm-help-chunk {
+  margin: 0.5rem 0;
+}
+
+.llm-help-chunk-head,
+.llm-help-chunk-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin: 0.35rem 0;
 }
 
 .llm-help-chunk-label {
   min-width: 9rem;
+  font-weight: 500;
 }
 
 .llm-help-preview {
   width: 100%;
+  max-height: 24rem;
+  overflow: auto;
+  margin: 0.25rem 0 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: #fff;
   font-family: monospace;
   font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Section 3 is the user's own names or values: the part to read. */
+.llm-help-data-section {
+  display: block;
+  padding: 0.25rem 0.4rem;
+  border-left: 4px solid #764ba2;
+  background: rgba(118, 75, 162, 0.12);
+  color: inherit;
+}
+
+.llm-help-copy-blocked {
+  color: #842029;
+  font-size: 0.85rem;
+}
+
+.llm-help-asked {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid rgba(118, 75, 162, 0.75);
+  background: #fff;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.llm-help-asked-intro {
+  margin-bottom: 0.35rem;
+  font-weight: 500;
+}
+
+.llm-help-asked ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.llm-help-asked-option {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0.15rem 0;
+}
+
+.llm-help-asked-option input {
+  margin: 0;
+  flex: none;
+  position: relative;
+  top: 0.1rem;
 }
 
 .llm-help-paste {

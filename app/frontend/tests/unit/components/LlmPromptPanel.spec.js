@@ -126,7 +126,9 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(wrapper.findAll('.llm-help-chunk')).toHaveLength(1)
     expect(wrapper.find('.llm-help-preview').exists()).toBe(false)
     await wrapper.find('.llm-help-preview-toggle').trigger('click')
-    expect(wrapper.find('.llm-help-preview').element.value).toBe('PROMPT 1')
+    expect(wrapper.find('.llm-help-preview').text()).toBe('PROMPT 1')
+    // Names only: nothing to confirm, copy is ready at once.
+    expect(wrapper.find('.llm-help-copy').attributes('disabled')).toBeUndefined()
   })
 
   it('the values phase posts the same options as the variables phase', async () => {
@@ -195,7 +197,9 @@ describe('Frontend unit: LlmPromptPanel', () => {
   it('lists the values per column and lets the user include a held-back column', async () => {
     const response = promptResponse()
     response.data.phase = 'values'
-    response.data.asked = [{ column: 'geslacht', variable: 'biological_sex', values: 2 }]
+    response.data.asked = [
+      { column: 'geslacht', variable: 'biological_sex', values: 2, sample: ['F', 'U'] },
+    ]
     response.data.held_back = [
       { column: 'opmerking', variable: 'survival_status', distinct: 65, reason: '65 distinct values (more than 50)' },
     ]
@@ -206,7 +210,9 @@ describe('Frontend unit: LlmPromptPanel', () => {
 
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('include')
     expect(wrapper.find('.llm-help-summary').text()).toMatch(/1 column held back/)
-    expect(wrapper.findAll('.llm-help-asked li').map((li) => li.text())).toEqual(['geslacht: 2 values'])
+    expect(wrapper.findAll('.llm-help-asked li').map((li) => li.text())).toEqual([
+      'geslacht (2 values): F, U',
+    ])
     const held = wrapper.find('.llm-help-held-back')
     expect(held.text()).toMatch(/One column was held back/)
     expect(held.text()).toContain('opmerking')
@@ -217,6 +223,53 @@ describe('Frontend unit: LlmPromptPanel', () => {
     await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
     expect(api.post.mock.calls[1][1].include).toEqual(['opmerking'])
+  })
+
+  it('values phase: shows the prompt with its data highlighted and gates copy on per-column confirmation', async () => {
+    const response = promptResponse(2)
+    response.data.phase = 'values'
+    response.data.chunks[0].prompt = 'HEAD\n## 3. Local values\n- "a"\n## 4. Answer\nTAIL'
+    response.data.asked = [
+      { column: 'sex', variable: 'biological_sex', values: 2, sample: ['M', 'F'] },
+      { column: 'stage', variable: 't_stage', values: 10, sample: ['T1', 'T2', 'T3', 'T4', 'Tx', 'T0', 'Tis', 'T1a'] },
+    ]
+    const writeText = vi.fn().mockResolvedValue()
+    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText })
+    api.post.mockResolvedValue(response)
+    const wrapper = await mountOpen({ phase: 'values' })
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+
+    // Every part is shown at once; section 3 is the highlighted block.
+    expect(wrapper.findAll('.llm-help-preview')).toHaveLength(2)
+    expect(wrapper.find('.llm-help-data-section').text()).toBe('## 3. Local values\n- "a"')
+    expect(wrapper.find('.llm-help-preview').text()).toBe(response.data.chunks[0].prompt)
+    // The values are quoted, with the remainder counted.
+    const options = wrapper.findAll('.llm-help-asked-option')
+    expect(options[0].text()).toBe('sex (2 values): M, F')
+    expect(options[1].text()).toBe('stage (10 values): T1, T2, T3, T4, Tx, T0, Tis, T1a and 2 more')
+    expect(wrapper.find('.llm-help-asked-intro').text()).toMatch(/category codes, not free text, dates or identifiers/)
+
+    // Copy and download stay disabled until every column is confirmed.
+    const copy = wrapper.find('.llm-help-copy')
+    expect(copy.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.llm-help-download').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.llm-help-copy-blocked').text()).toMatch(/2 more columns/)
+    await copy.trigger('click')
+    expect(writeText).not.toHaveBeenCalled()
+    await options[0].find('input').setValue(true)
+    expect(wrapper.find('.llm-help-copy-blocked').text()).toMatch(/1 more column /)
+    await options[1].find('input').setValue(true)
+    expect(wrapper.find('.llm-help-copy-blocked').exists()).toBe(false)
+    expect(copy.attributes('disabled')).toBeUndefined()
+    await copy.trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(response.data.chunks[0].prompt)
+
+    // A regenerate asks again.
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.llm-help-copy').attributes('disabled')).toBeDefined()
   })
 
   it('says so when there is nothing left to map', async () => {
