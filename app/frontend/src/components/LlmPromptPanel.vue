@@ -40,16 +40,18 @@ export async function copyText(text) {
  *
  * Collapsed by default. Open, it generates a prompt for one database and
  * phase on the server (the browser's semantic map goes along so the
- * "already mapped" context matches what the user sees), shows what the
- * prompt contains and the privacy notice, offers copy / download per
- * chunk, and takes the LLM's answer back through the store's ingest():
- * the server validates it and the imported records render as ordinary
- * pasted_llm suggestion pills that need the same explicit review.
+ * "already mapped" context matches what the user sees) and opens it in a
+ * modal that shows, first of all, the part of the prompt that carries
+ * the user's own column names or values. Copy and download sit in that
+ * modal behind one acknowledgement checkbox. The LLM's answer comes back
+ * through the store's ingest(): the server validates it and the imported
+ * records render as ordinary pasted_llm suggestion pills that need the
+ * same explicit review.
  *
- * Works everywhere: copying tries the async clipboard API (secure
- * contexts only), falls back to a selected textarea + execCommand, and
- * every chunk can also be downloaded as a .txt or read from a preview.
- * The chunk size is the user's choice so small context windows work.
+ * Copying tries the async clipboard API (secure contexts only) and falls
+ * back to a selected textarea + execCommand; every part can also be
+ * downloaded as a .txt. The part size is the user's choice so small
+ * context windows work.
  *
  * Props:
  *   phase — 'variables' or 'values'.
@@ -59,7 +61,7 @@ export async function copyText(text) {
  *   ingested — after a successful import; payload is the ingest summary.
  */
 
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import * as jsonld from '@/lib/jsonld'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
@@ -81,7 +83,12 @@ const chunk = ref(suggestions.promptExportChunk || 40)
 const generating = ref(false)
 const generateError = ref('')
 const prompt = ref(null)
-const previewOpen = reactive({})
+// The modal: which part is shown, whether the user acknowledged the risk
+// (reset every time the modal opens), whether the full text is unfolded.
+const modalOpen = ref(false)
+const part = ref(1)
+const acknowledged = ref(false)
+const fullOpen = ref(false)
 const answer = ref('')
 const importing = ref(false)
 const importError = ref('')
@@ -95,14 +102,32 @@ const chunkOptions = computed(() => {
   return CHUNK_OPTIONS.includes(d) ? CHUNK_OPTIONS : [...CHUNK_OPTIONS, d].sort((a, b) => a - b)
 })
 
-// The pre-generation notice describes the phase; once a prompt has been
-// generated the server's notice wins (the variables prompt shares no
-// values; the values one shares the distinct values being mapped).
-const privacyNotice = computed(() => {
-  if (prompt.value?.privacy) return prompt.value.privacy
-  return props.phase === 'values'
-    ? 'The prompt contains variable keys and labels, their term keys, your column names and the distinct values being mapped. It contains no data rows.'
-    : 'The prompt contains variable keys and labels and your column names. It contains no data rows.'
+const chunks = computed(() => prompt.value?.chunks || [])
+
+const currentChunk = computed(
+  () => chunks.value.find((c) => c.index === part.value) || chunks.value[0] || null,
+)
+
+// Section 3 of a part: the local column names or values, the only part
+// of the prompt that carries the user's own data. Shown first in the
+// modal; the rest of the prompt is schema and instructions.
+const dataSection = computed(() => {
+  const text = currentChunk.value?.prompt || ''
+  const start = text.indexOf('\n## 3.')
+  if (start < 0) return text
+  const end = text.indexOf('\n## 4.', start)
+  return text.slice(start + 1, end > start ? end : text.length).trim()
+})
+
+// What the guards kept out of this prompt, one short line.
+const leftOut = computed(() => {
+  const p = prompt.value
+  if (!p) return []
+  const out = (p.held_back || []).map((h) => `${h.column} held back (${h.reason})`)
+  if (p.suppressed) {
+    out.push(`${p.suppressed} rare value${p.suppressed === 1 ? '' : 's'} left out (seen fewer than ${p.min_value_count} times)`)
+  }
+  return out
 })
 
 const importSummary = computed(() => {
@@ -119,52 +144,30 @@ const summary = computed(() => {
   const p = prompt.value
   if (!p) return ''
   if (!p.item_count) {
-    if (props.phase !== 'values') {
-      return 'Every column of this database is already mapped; there is nothing to ask an LLM.'
-    }
     const rare = p.suppressed
       ? ` ${p.suppressed} rare value${p.suppressed === 1 ? '' : 's'} (seen fewer than ${p.min_value_count} times) stay with you.`
       : ''
-    return `Every value of the mapped categorical columns in this database is already mapped; there is nothing to ask an LLM.${rare}`
+    return props.phase === 'values'
+      ? `Every value of the mapped categorical columns is already mapped; nothing to ask an LLM.${rare}`
+      : 'Every column is already mapped; nothing to ask an LLM.'
   }
   const parts = [`${p.item_count} ${itemLabel.value} still to map`]
-  if (p.already_mapped) parts.push(`${p.already_mapped} column${p.already_mapped === 1 ? '' : 's'} already mapped and shown as context`)
-  if (p.chunks?.length > 1) parts.push(`split into ${p.chunks.length} parts of at most ${p.chunk_hint} ${itemLabel.value}; send each part on its own`)
+  if (p.chunks?.length > 1) parts.push(`${p.chunks.length} parts of at most ${p.chunk_hint}`)
   if (p.held_back?.length) parts.push(`${p.held_back.length} column${p.held_back.length === 1 ? '' : 's'} held back`)
-  if (p.suppressed) parts.push(`${p.suppressed} rare value${p.suppressed === 1 ? '' : 's'} left out (seen fewer than ${p.min_value_count} times)`)
+  if (p.suppressed) parts.push(`${p.suppressed} rare value${p.suppressed === 1 ? '' : 's'} left out`)
   return parts.join(' · ')
 })
-
-// Values phase only: which columns the prompt asks about and which of
-// their values leave the browser, so the user sees it before copying.
-const askedValues = computed(() =>
-  props.phase === 'values' ? (prompt.value?.asked || []).filter((a) => a.values || a.suppressed) : [],
-)
-
-function sampleText(entry) {
-  const sample = entry.sample || []
-  const more = entry.values - sample.length
-  return more > 0 ? `${sample.join(', ')} and ${more} more` : sample.join(', ')
-}
-
-function countText(entry) {
-  const parts = [`${entry.values} ${entry.values === 1 ? 'value' : 'values'}`]
-  if (entry.suppressed) {
-    parts.push(`${entry.suppressed} rare ${entry.suppressed === 1 ? 'value' : 'values'} left out`)
-  }
-  return parts.join(', ')
-}
 
 async function generate() {
   generating.value = true
   generateError.value = ''
   prompt.value = null
-  for (const k of Object.keys(previewOpen)) delete previewOpen[k]
   try {
     prompt.value = await suggestions.fetchPrompt(props.phase, props.database, {
       mapping: jsonld.getMapping(),
       chunk: chunk.value,
     })
+    if (chunks.value.length) openModal()
   } catch (err) {
     generateError.value = err?.message || 'Could not generate the prompt.'
   } finally {
@@ -172,23 +175,52 @@ async function generate() {
   }
 }
 
-async function copyChunk(item) {
+function openModal() {
+  part.value = chunks.value[0]?.index || 1
+  acknowledged.value = false
+  fullOpen.value = false
+  modalOpen.value = true
+}
+
+function closeModal() {
+  modalOpen.value = false
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && modalOpen.value) closeModal()
+}
+
+watch(modalOpen, (isOpen) => {
+  if (typeof document === 'undefined') return
+  if (isOpen) document.addEventListener('keydown', onKeydown)
+  else document.removeEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeydown)
+})
+
+async function copyCurrent() {
+  const item = currentChunk.value
+  if (!item || !acknowledged.value) return
   const ok = await copyText(item.prompt)
   if (ok) {
     status.success(
-      prompt.value.chunks.length > 1
-        ? `Part ${item.index} of ${prompt.value.chunks.length} copied — paste it into your LLM client`
+      chunks.value.length > 1
+        ? `Part ${item.index} of ${chunks.value.length} copied — paste it into your LLM client`
         : 'Prompt copied — paste it into your LLM client',
     )
   } else {
-    previewOpen[item.index] = true
-    status.warning('Copying is blocked in this browser; select the text in the preview below or download it.')
+    fullOpen.value = true
+    status.warning('Copying is blocked in this browser; select the text in the full prompt or download it.')
   }
 }
 
-function downloadChunk(item) {
+function downloadCurrent() {
+  const item = currentChunk.value
+  if (!item || !acknowledged.value) return
   const name = `flyover-prompt-${props.phase}-${props.database}${
-    prompt.value.chunks.length > 1 ? `-part${item.index}` : ''
+    chunks.value.length > 1 ? `-part${item.index}` : ''
   }.txt`
   const blob = new Blob([item.prompt], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -199,10 +231,6 @@ function downloadChunk(item) {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
-}
-
-function togglePreview(index) {
-  previewOpen[index] = !previewOpen[index]
 }
 
 async function importAnswer() {
@@ -252,18 +280,9 @@ async function importAnswer() {
       class="llm-help-body"
     >
       <p class="llm-help-intro">
-        No language model is currently running inside Flyover.
-        You can generate a prompt below and copy this into an LLM that you are allowed to use within your institution.
+        Flyover runs no language model. Generate a prompt, run it in an LLM your institution
+        allows, and paste the answer back; nothing is saved until you accept a suggestion.
       </p>
-      <p class="llm-help-privacy">
-        <i class="fas fa-shield-halved" />
-        {{ privacyNotice }} Review it before sending.
-      </p>
-      <p class="llm-help-intro llm-help-answer-note">
-        The LLM's answer should help with your mapping.
-        Carefully review its suggestions; nothing is saved until you accept.
-      </p>
-
 
       <div class="llm-help-options">
         <label class="llm-help-option">
@@ -271,7 +290,7 @@ async function importAnswer() {
           <select
             v-model.number="chunk"
             class="form-select form-select-sm llm-help-chunk-size"
-            title="Smaller parts fit models with a small context window"
+            title="Smaller parts suit an LLM with a small context window"
           >
             <option
               v-for="n in chunkOptions"
@@ -282,126 +301,38 @@ async function importAnswer() {
             </option>
           </select>
         </label>
-        <span class="llm-help-option-hint">
-          Smaller parts suit an LLM with a small context window.
-        </span>
-      </div>
-
-      <button
-        type="button"
-        class="btn btn-sm btn-primary llm-help-generate"
-        :disabled="generating"
-        @click="generate"
-      >
-        <i
-          class="fas"
-          :class="generating ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"
-        />
-        {{ prompt ? 'Regenerate prompt' : 'Generate prompt' }}
-      </button>
-      <span
-        v-if="generateError"
-        class="llm-help-error"
-        role="alert"
-      >{{ generateError }}</span>
-
-      <div
-        v-if="prompt"
-        class="llm-help-result"
-      >
-        <p class="llm-help-summary">
-          {{ summary }}
-        </p>
-        <details
-          v-if="prompt.item_count"
-          class="llm-help-contains"
+        <button
+          type="button"
+          class="btn btn-sm btn-primary llm-help-generate"
+          :disabled="generating"
+          @click="generate"
         >
-          <summary>What leaves the browser</summary>
-          <ul>
-            <li
-              v-for="entry in prompt.contains"
-              :key="entry"
-            >
-              {{ entry }}
-            </li>
-          </ul>
-        </details>
-        <div
-          v-if="askedValues.length"
-          class="llm-help-asked"
-        >
-          <p class="llm-help-asked-intro">
-            These values leave the browser:
-          </p>
-          <ul>
-            <li
-              v-for="entry in askedValues"
-              :key="entry.column"
-            >
-              <strong>{{ entry.column }}</strong> ({{ countText(entry) }}){{ entry.values ? ':' : '' }}
-              {{ sampleText(entry) }}
-            </li>
-          </ul>
-        </div>
-        <div
-          v-if="prompt.held_back?.length"
-          class="llm-help-held-back"
-          role="status"
-        >
-          <p class="llm-help-held-back-intro">
-            <i class="fas fa-triangle-exclamation" />
-            {{ prompt.held_back.length === 1 ? 'One column was' : `${prompt.held_back.length} columns were` }}
-            held back: the values look like free text, dates or identifiers rather than categories,
-            so they are not in the prompt.
-          </p>
-          <ul>
-            <li
-              v-for="held in prompt.held_back"
-              :key="held.column"
-            >
-              <strong>{{ held.column }}</strong> → {{ held.variable }} ({{ held.reason }})
-            </li>
-          </ul>
-        </div>
-        <div
-          v-for="item in prompt.chunks"
-          :key="item.index"
-          class="llm-help-chunk"
-        >
-          <span class="llm-help-chunk-label">
-            <template v-if="prompt.chunks.length > 1">Part {{ item.index }} of {{ prompt.chunks.length }} · </template>
-            {{ item.item_count }} {{ itemLabel }}
-          </span>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary llm-help-copy"
-            @click="copyChunk(item)"
-          >
-            <i class="fas fa-copy" /> Copy prompt
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-secondary llm-help-download"
-            @click="downloadChunk(item)"
-          >
-            <i class="fas fa-download" /> Download .txt
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-link llm-help-preview-toggle"
-            @click="togglePreview(item.index)"
-          >
-            {{ previewOpen[item.index] ? 'Hide' : 'Show' }} prompt
-          </button>
-          <textarea
-            v-if="previewOpen[item.index]"
-            class="form-control llm-help-preview"
-            readonly
-            rows="12"
-            :value="item.prompt"
+          <i
+            class="fas"
+            :class="generating ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"
           />
-        </div>
+          {{ prompt ? 'Regenerate prompt' : 'Generate prompt' }}
+        </button>
+        <button
+          v-if="chunks.length"
+          type="button"
+          class="btn btn-sm btn-outline-primary llm-help-show"
+          @click="openModal"
+        >
+          <i class="fas fa-eye" /> Show prompt
+        </button>
+        <span
+          v-if="generateError"
+          class="llm-help-error"
+          role="alert"
+        >{{ generateError }}</span>
       </div>
+      <p
+        v-if="prompt"
+        class="llm-help-summary"
+      >
+        {{ summary }}
+      </p>
 
       <div class="llm-help-paste">
         <label
@@ -450,6 +381,118 @@ async function importAnswer() {
         </div>
       </div>
     </div>
+
+    <div
+      v-if="modalOpen && currentChunk"
+      class="llm-prompt-modal"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="`Prompt for ${database}`"
+    >
+      <div
+        class="llm-prompt-modal-backdrop"
+        @click="closeModal"
+      />
+      <div class="llm-prompt-modal-dialog">
+        <div class="llm-prompt-modal-header">
+          <h5 class="llm-prompt-modal-title">
+            <i class="fas fa-robot" /> Prompt for {{ database }} · {{ itemLabel }}
+          </h5>
+          <button
+            type="button"
+            class="llm-prompt-modal-close"
+            aria-label="Close"
+            @click="closeModal"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="llm-prompt-modal-body">
+          <div
+            v-if="chunks.length > 1"
+            class="llm-prompt-parts"
+          >
+            <span>{{ chunks.length }} parts, send each on its own:</span>
+            <button
+              v-for="c in chunks"
+              :key="c.index"
+              type="button"
+              class="btn btn-sm llm-prompt-part"
+              :class="c.index === currentChunk.index ? 'btn-primary' : 'btn-outline-primary'"
+              @click="part = c.index"
+            >
+              Part {{ c.index }}
+            </button>
+          </div>
+          <h6 class="llm-prompt-modal-heading">
+            <i class="fas fa-shield-halved" />
+            {{ phase === 'values' ? 'Values' : 'Column names' }} that leave the browser
+            <template v-if="chunks.length > 1">
+              in part {{ currentChunk.index }}
+            </template>
+          </h6>
+          <pre class="llm-prompt-modal-data">{{ dataSection }}</pre>
+          <p
+            v-if="leftOut.length"
+            class="llm-prompt-modal-left-out"
+          >
+            Left out: {{ leftOut.join(' · ') }}
+          </p>
+          <p class="llm-prompt-modal-privacy">
+            {{ prompt.privacy }}
+          </p>
+          <details
+            class="llm-prompt-modal-full"
+            :open="fullOpen || null"
+            @toggle="fullOpen = $event.target.open"
+          >
+            <summary>Full prompt ({{ currentChunk.item_count }} {{ itemLabel }})</summary>
+            <textarea
+              class="form-control llm-help-preview"
+              readonly
+              rows="12"
+              :value="currentChunk.prompt"
+            />
+          </details>
+          <label class="llm-prompt-ack">
+            <input
+              v-model="acknowledged"
+              type="checkbox"
+              class="llm-prompt-ack-input"
+            >
+            I have checked the {{ phase === 'values' ? 'values' : 'column names' }} above for
+            personal data and accept the risk of sending them to the LLM I use.
+          </label>
+        </div>
+        <div class="llm-prompt-modal-footer">
+          <button
+            type="button"
+            class="btn btn-sm btn-primary llm-help-copy"
+            :disabled="!acknowledged"
+            :title="acknowledged ? null : 'Tick the acknowledgement first'"
+            @click="copyCurrent"
+          >
+            <i class="fas fa-copy" /> Copy prompt
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary llm-help-download"
+            :disabled="!acknowledged"
+            :title="acknowledged ? null : 'Tick the acknowledgement first'"
+            @click="downloadCurrent"
+          >
+            <i class="fas fa-download" /> Download .txt
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm btn-link llm-prompt-modal-close-footer"
+            @click="closeModal"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -479,25 +522,15 @@ async function importAnswer() {
 }
 
 .llm-help-intro {
-  margin-bottom: 0.4rem;
-}
-
-/* A full empty line between the privacy note and the answer hint. */
-.llm-help-answer-note {
-  margin-top: 1.5rem;
-}
-
-.llm-help-privacy {
   margin-bottom: 0.6rem;
-  color: #5a3c82;
-  font-size: 0.85rem;
 }
 
 .llm-help-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-  margin-bottom: 0.6rem;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.4rem;
 }
 
 .llm-help-option {
@@ -512,86 +545,13 @@ async function importAnswer() {
   display: inline-block;
 }
 
-.llm-help-option-hint {
-  align-self: center;
-  color: #6c757d;
-  font-size: 0.85rem;
-}
-
 .llm-help-error {
-  margin-left: 0.5rem;
   color: #b02a37;
-}
-
-.llm-help-result {
-  margin-top: 0.75rem;
 }
 
 .llm-help-summary {
   margin-bottom: 0.3rem;
   font-weight: 500;
-}
-
-.llm-help-contains {
-  margin-bottom: 0.5rem;
-  font-size: 0.85rem;
-}
-
-.llm-help-contains ul {
-  margin: 0.25rem 0 0;
-}
-
-.llm-help-held-back {
-  margin: 0.5rem 0;
-  padding: 0.5rem 0.75rem;
-  border-left: 4px solid #b02a37;
-  background: rgba(176, 42, 55, 0.06);
-  border-radius: 4px;
-  font-size: 0.85rem;
-}
-
-.llm-help-held-back-intro {
-  margin-bottom: 0.35rem;
-  color: #842029;
-}
-
-
-.llm-help-chunk {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0.35rem 0;
-}
-
-.llm-help-chunk-label {
-  min-width: 9rem;
-}
-
-.llm-help-preview {
-  width: 100%;
-  font-family: monospace;
-  font-size: 0.8rem;
-}
-
-.llm-help-asked {
-  margin: 0.5rem 0;
-  padding: 0.5rem 0.75rem;
-  border-left: 4px solid rgba(118, 75, 162, 0.75);
-  background: #fff;
-  border-radius: 4px;
-  font-size: 0.85rem;
-}
-
-.llm-help-asked-intro {
-  margin-bottom: 0.35rem;
-  font-weight: 500;
-}
-
-.llm-help-asked ul,
-.llm-help-held-back ul {
-  margin: 0;
-  padding-left: 1.1rem;
 }
 
 .llm-help-paste {
@@ -620,5 +580,135 @@ async function importAnswer() {
 .llm-help-import-result ul {
   margin: 0.25rem 0 0;
   color: #6c757d;
+}
+
+/* The prompt modal: a fixed overlay of our own, since the page loads
+   Bootstrap's CSS but not its JavaScript. */
+.llm-prompt-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.llm-prompt-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.llm-prompt-modal-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(60rem, 100%);
+  max-height: calc(100vh - 2rem);
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  font-size: 0.9rem;
+}
+
+.llm-prompt-modal-header,
+.llm-prompt-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+}
+
+.llm-prompt-modal-header {
+  border-bottom: 1px solid #dee2e6;
+}
+
+.llm-prompt-modal-footer {
+  border-top: 1px solid #dee2e6;
+}
+
+.llm-prompt-modal-title {
+  flex: 1;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.llm-prompt-modal-close {
+  border: none;
+  background: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.llm-prompt-modal-body {
+  overflow: auto;
+  padding: 0.75rem 1rem;
+}
+
+.llm-prompt-parts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.llm-prompt-modal-heading {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  color: #5a3c82;
+}
+
+/* The user's own names or values: the part to read before copying. */
+.llm-prompt-modal-data {
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #764ba2;
+  background: rgba(118, 75, 162, 0.08);
+  font-family: monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.llm-prompt-modal-left-out {
+  margin-bottom: 0.4rem;
+  color: #842029;
+  font-size: 0.85rem;
+}
+
+.llm-prompt-modal-privacy {
+  margin-bottom: 0.5rem;
+  color: #5a3c82;
+  font-size: 0.85rem;
+}
+
+.llm-prompt-modal-full {
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.llm-help-preview {
+  width: 100%;
+  margin-top: 0.3rem;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.llm-prompt-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 500;
+}
+
+.llm-prompt-ack-input {
+  flex: none;
+  margin: 0.2rem 0 0;
 }
 </style>

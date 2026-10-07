@@ -66,14 +66,18 @@ record, never the reason text.
 
 ## What the user sees before copying
 
-In the values phase the panel lists, above the copy buttons, every asked
-column with its first eight values and the count of the rest, the number
-of rare values left out per column, and the held-back columns with the
-reason. The prompt itself sits behind a "Show prompt" toggle in both
-phases. Both phases show a privacy line that names what the prompt
-contains, and the values-phase line says that a distinct value can still
-identify someone. Nothing is gated: the rules above decide what is in the
-prompt, the panel only reports it.
+Generating a prompt opens a modal rather than rendering the text inline.
+The modal shows first the part of the prompt that carries the user's own
+data: section 3, the local column names (variables phase) or the values
+per column (values phase) of the selected part. Below it, one line names
+what the guards left out (held-back columns with the reason, the number
+of rare values under the floor), then the privacy line, then the full
+prompt folded away. Copy and Download are disabled until the user ticks
+one acknowledgement: that they checked the values above for personal data
+and accept the risk of sending them to the LLM they use. The
+acknowledgement resets every time the modal opens. The panel itself keeps
+one line of summary (items still to map, parts, held back, left out) and
+a "Show prompt" button that reopens the modal.
 
 ## Settings
 
@@ -98,15 +102,15 @@ that was applied (`min_value_count`).
 | Mapped categorical columns only | `prompt_export.py`, `PromptExport.value_groups` | `test_only_mapped_variables_terms_and_unmapped_values` |
 | Shape guard and `include` | `prompt_export.py`, `looks_like_free_text`, `value_groups` | `test_free_text_like_column_is_held_back`, `test_included_column_bypasses_the_guard`, `test_long_values_are_held_back_even_when_few` |
 | Frequency floor | `prompt_export.py`, `value_groups`; counts from `jobs.py`, `_parse_category_counts` | `TestValueFrequencyFloor` |
-| Asked values, left-out counts and held-back columns shown in the panel | `app/frontend/src/components/LlmPromptPanel.vue` | `LlmPromptPanel.spec.js` |
+| Prompt modal: section 3 first, left-out line, acknowledgement before copy | `app/frontend/src/components/LlmPromptPanel.vue` | `LlmPromptPanel.spec.js` |
 | End to end, both phases, on a real store | | `tests/e2e/llm-prompt-roundtrip.spec.js` |
 
 ## What the rules do not cover
 
 - **Quasi-identifiers in genuinely categorical columns.** Ages, years and
   site names pass the shape guard; the floor removes the rare ones, but a
-  common value is still shared. The panel shows the values so the user
-  can judge; nothing stops the copy.
+  common value is still shared. The modal shows the values and asks for
+  an acknowledgement; it cannot judge them.
 - **Where the user pastes.** Flyover cannot tell an institutional LLM
   from a public chatbot. The intro asks for an LLM the institution
   allows; nothing enforces it.

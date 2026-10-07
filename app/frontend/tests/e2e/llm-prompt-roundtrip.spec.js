@@ -56,7 +56,6 @@ async function openAndGenerate(page, phase) {
   const panel = panelFor(page, phase)
   await expect(panel).toHaveCount(1)
   await panel.locator('.llm-help-toggle').click()
-  await expect(panel.locator('.llm-help-privacy')).toContainText(/no data rows/)
   // The assertions below read the first part only, and which column lands
   // there depends on the store's column order and the part size (the
   // sample data has well over 40 values), so ask for the largest part.
@@ -64,8 +63,14 @@ async function openAndGenerate(page, phase) {
   await panel.locator('.llm-help-chunk-size').selectOption(await sizes.last().getAttribute('value'))
   await panel.locator('.llm-help-generate').click()
   await expect(panel.locator('.llm-help-summary')).toBeVisible({ timeout: 60_000 })
-  await panel.locator('.llm-help-preview-toggle').first().click()
-  const promptText = await panel.locator('.llm-help-preview').first().inputValue()
+  // The prompt opens in a modal; copy sits behind an acknowledgement.
+  const modal = panel.locator('.llm-prompt-modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.locator('.llm-prompt-modal-privacy')).toContainText(/no data rows/)
+  await expect(modal.locator('.llm-help-copy')).toBeDisabled()
+  const promptText = await modal.locator('.llm-help-preview').inputValue()
+  await modal.locator('.llm-prompt-modal-close').click()
+  await expect(modal).toHaveCount(0)
   return { panel, promptText }
 }
 
