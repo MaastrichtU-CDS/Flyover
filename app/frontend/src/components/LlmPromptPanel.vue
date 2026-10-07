@@ -342,7 +342,6 @@ async function importAnswer() {
             <input
               v-model="include[held.column]"
               type="checkbox"
-              class="form-check-input"
             >
             <strong>{{ held.column }}</strong> → {{ held.variable }} ({{ held.reason }})
           </label>
@@ -546,8 +545,11 @@ async function importAnswer() {
   margin: 0.15rem 0;
 }
 
-.llm-help-held-back-option .form-check-input {
+/* A plain checkbox: the legacy Bootstrap 4 sheet positions
+   .form-check-input absolutely, over the label text. */
+.llm-help-held-back-option input {
   margin: 0;
+  flex: none;
 }
 
 .llm-help-chunk {
