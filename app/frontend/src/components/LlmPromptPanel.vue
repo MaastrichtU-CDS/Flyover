@@ -238,7 +238,7 @@ async function importAnswer() {
 
       <div class="llm-help-options">
         <label class="llm-help-option">
-          Adjust the items per prompt to the limits of the LLM available to you; items per prompt
+          Items per prompt
           <select
             v-model.number="chunk"
             class="form-select form-select-sm llm-help-chunk-size"
@@ -253,6 +253,9 @@ async function importAnswer() {
             </option>
           </select>
         </label>
+        <span class="llm-help-option-hint">
+          Smaller parts suit an LLM with a small context window.
+        </span>
       </div>
 
       <button
@@ -441,6 +444,12 @@ async function importAnswer() {
 .llm-help-chunk-size {
   width: auto;
   display: inline-block;
+}
+
+.llm-help-option-hint {
+  align-self: center;
+  color: #6c757d;
+  font-size: 0.85rem;
 }
 
 .llm-help-error {
