@@ -848,9 +848,9 @@ onBeforeUnmount(() => {
           >
             <i class="fas fa-times" /> Dismiss all suggestions
           </button>
-          <!-- Copy-prompt / paste-answer round trip with an external LLM
-               (issue 2). Available whether or not any tier runs; the
-               imported records render as ordinary pasted_llm pills. -->
+          <!-- Copy-prompt / paste-answer round trip with an external LLM.
+               Available whether or not any tier runs; the imported
+               records render as ordinary pasted_llm pills. -->
           <LlmPromptPanel
             v-if="suggestions.promptExport"
             phase="variables"

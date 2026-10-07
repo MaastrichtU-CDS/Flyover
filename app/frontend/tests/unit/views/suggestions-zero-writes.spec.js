@@ -781,7 +781,7 @@ describe('DescribeVariableDetailsView — zero writes without explicit review', 
 })
 
 // ---------------------------------------------------------------------------
-// Paste-back round trip (issue 2): an imported LLM answer becomes ordinary
+// Paste-back round trip: an imported LLM answer becomes ordinary
 // pasted_llm records. It must render as pills (even on a stack with every
 // tier off), never write to the JSON-LD, and never touch review marks.
 // ---------------------------------------------------------------------------

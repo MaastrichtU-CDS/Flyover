@@ -581,7 +581,7 @@ describe('Frontend unit: useSuggestionsStore', () => {
     expect(SOURCE_ICONS.string).toBeDefined()
   })
 
-  // --- Prompt export / paste-back (issue 2) ------------------------------
+  // --- Prompt export / paste-back ----------------------------------------
 
   it('init() reads prompt_export from /status, active even with tiers off', async () => {
     api.get.mockResolvedValueOnce(

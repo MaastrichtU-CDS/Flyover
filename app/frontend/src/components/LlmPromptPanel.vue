@@ -34,7 +34,9 @@ export async function copyText(text) {
 <script setup>
 /**
  * LlmPromptPanel — the per-database "use an external LLM" panel on the
- * describe pages (issue 2, prompt export + paste-back round trip).
+ * describe pages: the prompt export + paste-back round trip of
+ * docs/mapping-suggestions/02-llm-prompt-export-roundtrip.md; the rules
+ * the prompt obeys are in docs/mapping-suggestions/prompt-export-rules.md.
  *
  * Collapsed by default. Open, it generates a prompt for one database and
  * phase on the server (the browser's semantic map goes along so the

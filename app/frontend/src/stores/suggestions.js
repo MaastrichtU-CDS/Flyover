@@ -66,7 +66,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   const tiers = ref({})
   const threshold = ref(0.8)
   const rulesVersion = ref(null)
-  // The copy-prompt / paste-answer round trip (issue 2). It needs no
+  // The copy-prompt / paste-answer round trip. It needs no
   // model and no flag, so /status reports it active even when every tier
   // is off; null until /status answered.
   const promptExport = ref(null)

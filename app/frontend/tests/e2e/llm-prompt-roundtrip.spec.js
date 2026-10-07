@@ -10,7 +10,7 @@ import {
 } from './helpers/suggestions.js'
 
 // ---------------------------------------------------------------------------
-// LLM prompt export + paste-back round trip (issue 2), one flow per phase.
+// LLM prompt export + paste-back round trip, one flow per phase.
 //
 // Both flows ingest the example CSV and upload a semantic map, open the
 // "Use an LLM" panel of the ingested database, generate the prompt

@@ -93,7 +93,6 @@ def suggestions_status():
                 "threshold": service.config.threshold if service else 0.8,
                 # The copy-prompt / paste-answer round trip has no model
                 # and no flag: it is available whenever the service is.
-                # The chunk default matches the enabled branch.
                 "prompt_export": (
                     {
                         "state": "active",

@@ -146,7 +146,7 @@ class SuggestionJob:
         # ``fingerprint`` (which decides whether ``start`` may reuse the
         # job) so an ingest never forces a rebuild, while the public
         # fingerprint still changes so the browser expires stale marks
-        # per key (decision D3).
+        # per key (decision D3 in docs/mapping-suggestions/README.md).
         self.ingested_fingerprint: Optional[str] = None
 
     @property

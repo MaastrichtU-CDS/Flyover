@@ -411,7 +411,7 @@ class TestFingerprintExpiry(unittest.TestCase):
 
 
 class TestIngest(unittest.TestCase):
-    """Issue 2: ``ingest()`` turns a pasted LLM answer into pasted_llm
+    """``ingest()`` turns a pasted LLM answer into pasted_llm
     records through the same gate as every producer, merges them into the
     phase's job without touching the JSON-LD, and survives a rebuild."""
 
@@ -611,7 +611,7 @@ class TestIngest(unittest.TestCase):
                 # Stronger than tier 1's weak record: replaces it.
                 {"item": "yr", "match": "year_of_initial_diagnosis", "confidence": 0.9},
                 # Fills a tier-1 abstain, but with the variable 'yr' now
-                # holds at 0.9: a conflict loser (D2).
+                # holds at 0.9: a conflict loser (decision D2).
                 {
                     "item": "free",
                     "match": "year_of_initial_diagnosis",
@@ -665,7 +665,7 @@ class TestIngest(unittest.TestCase):
         cache = self._cache_with_free_variable()
         svc = SuggestionService(_config())
         svc.start(VARIABLES_PHASE, cache, self.rdf)
-        # D2 left 'free' a conflict loser; the user dismissed 'yr'.
+        # Decision D2 left 'free' a conflict loser; the user dismissed 'yr'.
         result = svc.ingest(
             VARIABLES_PHASE,
             cache,
