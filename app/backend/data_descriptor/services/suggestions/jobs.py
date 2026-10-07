@@ -54,6 +54,39 @@ def _parse_category_values(categories_csv: Any) -> list[str]:
     return values
 
 
+def _parse_category_counts(categories_csv: Any) -> dict[str, int]:
+    """Parse the RDF store's get_categories CSV into ``value -> row count``.
+
+    Same CSV as :func:`_parse_category_values` (``value,count``); a value
+    whose count does not parse counts as 0.
+    """
+    if not categories_csv:
+        return {}
+    try:
+        import polars as pl
+
+        df = pl.read_csv(
+            io.StringIO(categories_csv),
+            separator=",",
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
+    except Exception:  # pragma: no cover - defensive
+        return {}
+    counts: dict[str, int] = {}
+    for row in df.to_dicts():
+        v = row.get("value")
+        if v is None:
+            continue
+        try:
+            n = int(float(row.get("count") or 0))
+        except (TypeError, ValueError):
+            n = 0
+        counts[str(v)] = counts.get(str(v), 0) + n
+    return counts
+
+
 def _merge_records(a: dict, b: dict) -> tuple[dict, Optional[dict]]:
     """Merge two records for the same item; return (winner, loser_or_None).
 

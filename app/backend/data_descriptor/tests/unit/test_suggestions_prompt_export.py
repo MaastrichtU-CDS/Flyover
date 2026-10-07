@@ -7,15 +7,20 @@ the values phase's "only the mapped variables' terms" rule.
 """
 
 import sys
+import os
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from loaders import JSONLDMapping
+from services.suggestions.jobs import _parse_category_counts
 from services.suggestions.prompt_export import (
     DEFAULT_CHUNK,
+    DEFAULT_MIN_VALUE_COUNT,
     looks_like_free_text,
+    min_value_count_from_env,
     PromptExport,
     answer_schema,
     chunk_size_from_env,
@@ -300,6 +305,7 @@ class TestValuesPrompt(unittest.TestCase):
                     "variable": "biological_sex",
                     "values": 2,
                     "sample": ["F", "U"],
+                    "suppressed": 0,
                 }
             ],
         )
@@ -365,6 +371,77 @@ class TestValuesPrompt(unittest.TestCase):
             [c["items"] for c in result["chunks"]], [["geslacht"], ["opmerking"]]
         )
         self.assertEqual(result["chunks"][1]["item_count"], 65)
+
+
+class TestValueFrequencyFloor(unittest.TestCase):
+    """Values fewer rows than the floor share are left out of the prompt."""
+
+    def test_rare_values_are_left_out_and_reported(self):
+        # geslacht: M already mapped; F seen 3 times, U seen 20 times.
+        result = _export("values", value_counts=lambda c: {"F": 3, "U": 20}).build()
+        prompt = result["prompt"]
+        self.assertIn('- "U"', prompt)
+        self.assertNotIn('- "F"', prompt)
+        self.assertEqual(result["item_count"], 1)
+        self.assertEqual(result["suppressed"], 1)
+        self.assertEqual(result["min_value_count"], DEFAULT_MIN_VALUE_COUNT)
+        self.assertEqual(
+            result["asked"],
+            [
+                {
+                    "column": "geslacht",
+                    "variable": "biological_sex",
+                    "values": 1,
+                    "sample": ["U"],
+                    "suppressed": 1,
+                }
+            ],
+        )
+        self.assertIn("fewer than 10 times are left out", result["privacy"])
+
+    def test_column_with_only_rare_values_is_reported_but_not_asked(self):
+        result = _export("values", value_counts=lambda c: {"F": 1, "U": 2}).build()
+        self.assertEqual(result["item_count"], 0)
+        self.assertEqual(result["chunks"], [])
+        self.assertEqual(result["suppressed"], 2)
+        self.assertEqual(
+            result["asked"],
+            [
+                {
+                    "column": "geslacht",
+                    "variable": "biological_sex",
+                    "values": 0,
+                    "sample": [],
+                    "suppressed": 2,
+                }
+            ],
+        )
+
+    def test_floor_of_one_disables_it(self):
+        result = _export(
+            "values", value_counts=lambda c: {"F": 1, "U": 1}, min_value_count=1
+        ).build()
+        self.assertEqual(result["item_count"], 2)
+        self.assertEqual(result["suppressed"], 0)
+        self.assertNotIn("left out", result["privacy"])
+
+    def test_without_counts_every_value_is_asked(self):
+        result = _export("values").build()
+        self.assertEqual(result["item_count"], 2)
+        self.assertEqual(result["suppressed"], 0)
+
+    def test_floor_from_env_is_clamped(self):
+        with patch.dict(os.environ, {"FLYOVER_SUGGESTION_MIN_VALUE_COUNT": "0"}):
+            self.assertEqual(min_value_count_from_env(), 1)
+        with patch.dict(os.environ, {"FLYOVER_SUGGESTION_MIN_VALUE_COUNT": "x"}):
+            self.assertEqual(min_value_count_from_env(), DEFAULT_MIN_VALUE_COUNT)
+        with patch.dict(os.environ, {"FLYOVER_SUGGESTION_MIN_VALUE_COUNT": "25"}):
+            self.assertEqual(min_value_count_from_env(), 25)
+
+    def test_category_counts_parser(self):
+        csv = "value,count\nF,3\nU,20\nF,2\n"
+        self.assertEqual(_parse_category_counts(csv), {"F": 5, "U": 20})
+        self.assertEqual(_parse_category_counts(""), {})
 
 
 def _with_wide_column_mapped():

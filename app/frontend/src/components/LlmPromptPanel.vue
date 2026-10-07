@@ -125,27 +125,33 @@ const summary = computed(() => {
   const p = prompt.value
   if (!p) return ''
   if (!p.item_count) {
-    return props.phase === 'values'
-      ? 'Every value of the mapped categorical columns in this database is already mapped; there is nothing to ask an LLM.'
-      : 'Every column of this database is already mapped; there is nothing to ask an LLM.'
+    if (props.phase !== 'values') {
+      return 'Every column of this database is already mapped; there is nothing to ask an LLM.'
+    }
+    const rare = p.suppressed
+      ? ` ${p.suppressed} rare value${p.suppressed === 1 ? '' : 's'} (seen fewer than ${p.min_value_count} times) stay with you.`
+      : ''
+    return `Every value of the mapped categorical columns in this database is already mapped; there is nothing to ask an LLM.${rare}`
   }
   const parts = [`${p.item_count} ${itemLabel.value} still to map`]
   if (p.already_mapped) parts.push(`${p.already_mapped} column${p.already_mapped === 1 ? '' : 's'} already mapped and shown as context`)
   if (p.chunks?.length > 1) parts.push(`split into ${p.chunks.length} parts of at most ${p.chunk_hint} ${itemLabel.value}; send each part on its own`)
   if (p.held_back?.length) parts.push(`${p.held_back.length} column${p.held_back.length === 1 ? '' : 's'} held back`)
+  if (p.suppressed) parts.push(`${p.suppressed} rare value${p.suppressed === 1 ? '' : 's'} left out (seen fewer than ${p.min_value_count} times)`)
   return parts.join(' · ')
 })
 
 // Values phase only: which columns the prompt asks about and how many of
 // their values leave the browser, so the user can judge each one.
 const askedValues = computed(() =>
-  props.phase === 'values' ? (prompt.value?.asked || []).filter((a) => a.values) : [],
+  props.phase === 'values' ? (prompt.value?.asked || []).filter((a) => a.values || a.suppressed) : [],
 )
 
 const includedColumns = computed(() => Object.keys(include).filter((c) => include[c]))
 
+// Only columns with values in the prompt need confirming.
 const unconfirmedCount = computed(
-  () => askedValues.value.filter((a) => !confirmed[a.column]).length,
+  () => askedValues.value.filter((a) => a.values && !confirmed[a.column]).length,
 )
 
 // The variables prompt carries column names only, so nothing to confirm.
@@ -161,6 +167,14 @@ function sampleText(entry) {
   const sample = entry.sample || []
   const more = entry.values - sample.length
   return more > 0 ? `${sample.join(', ')} and ${more} more` : sample.join(', ')
+}
+
+function countText(entry) {
+  const parts = [`${entry.values} ${entry.values === 1 ? 'value' : 'values'}`]
+  if (entry.suppressed) {
+    parts.push(`${entry.suppressed} rare ${entry.suppressed === 1 ? 'value' : 'values'} left out`)
+  }
+  return parts.join(', ')
 }
 
 // Split a prompt into the text before, inside and after section 3 (the
@@ -390,11 +404,12 @@ async function importAnswer() {
             >
               <label class="llm-help-asked-option">
                 <input
+                  v-if="entry.values"
                   v-model="confirmed[entry.column]"
                   type="checkbox"
                 >
                 <span>
-                  <strong>{{ entry.column }}</strong> ({{ entry.values }} {{ entry.values === 1 ? 'value' : 'values' }}):
+                  <strong>{{ entry.column }}</strong> ({{ countText(entry) }}){{ entry.values ? ':' : '' }}
                   {{ sampleText(entry) }}
                 </span>
               </label>

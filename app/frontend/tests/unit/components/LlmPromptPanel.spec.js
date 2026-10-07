@@ -230,9 +230,12 @@ describe('Frontend unit: LlmPromptPanel', () => {
     response.data.phase = 'values'
     response.data.chunks[0].prompt = 'HEAD\n## 3. Local values\n- "a"\n## 4. Answer\nTAIL'
     response.data.asked = [
-      { column: 'sex', variable: 'biological_sex', values: 2, sample: ['M', 'F'] },
-      { column: 'stage', variable: 't_stage', values: 10, sample: ['T1', 'T2', 'T3', 'T4', 'Tx', 'T0', 'Tis', 'T1a'] },
+      { column: 'sex', variable: 'biological_sex', values: 2, sample: ['M', 'F'], suppressed: 0 },
+      { column: 'stage', variable: 't_stage', values: 10, sample: ['T1', 'T2', 'T3', 'T4', 'Tx', 'T0', 'Tis', 'T1a'], suppressed: 3 },
+      { column: 'notes', variable: 'survival_status', values: 0, sample: [], suppressed: 4 },
     ]
+    response.data.suppressed = 7
+    response.data.min_value_count = 10
     const writeText = vi.fn().mockResolvedValue()
     vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText })
     api.post.mockResolvedValue(response)
@@ -247,7 +250,11 @@ describe('Frontend unit: LlmPromptPanel', () => {
     // The values are quoted, with the remainder counted.
     const options = wrapper.findAll('.llm-help-asked-option')
     expect(options[0].text()).toBe('sex (2 values): M, F')
-    expect(options[1].text()).toBe('stage (10 values): T1, T2, T3, T4, Tx, T0, Tis, T1a and 2 more')
+    expect(options[1].text()).toBe('stage (10 values, 3 rare values left out): T1, T2, T3, T4, Tx, T0, Tis, T1a and 2 more')
+    // A column whose every value fell under the floor is listed without a checkbox.
+    expect(options[2].text()).toBe('notes (0 values, 4 rare values left out)')
+    expect(options[2].find('input').exists()).toBe(false)
+    expect(wrapper.find('.llm-help-summary').text()).toMatch(/7 rare values left out \(seen fewer than 10 times\)/)
     expect(wrapper.find('.llm-help-asked-intro').text()).toMatch(/category codes, not free text, dates or identifiers/)
 
     // Copy and download stay disabled until every column is confirmed.

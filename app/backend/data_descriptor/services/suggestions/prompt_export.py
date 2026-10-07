@@ -53,7 +53,16 @@ MAX_CHUNK = 1000
 DEFAULT_PASTED_CONFIDENCE = 0.7
 
 ValueSource = Callable[[str], list[str]]
+CountSource = Callable[[str], dict[str, int]]
 NameMatch = Callable[[str, str], bool]
+
+# Frequency floor for the values phase. A value that fewer rows than this
+# share is left out of the prompt: a rare diagnosis, an unusual code or a
+# stray free-text entry can identify a person even though no row is sent.
+# 1 disables the floor (env override below).
+DEFAULT_MIN_VALUE_COUNT = 10
+MIN_MIN_VALUE_COUNT = 1
+MAX_MIN_VALUE_COUNT = 10000
 
 # Guard for the values phase. A column mapped to a categorical variable
 # should hold a handful of short codes; one with more distinct values
@@ -92,6 +101,23 @@ def chunk_size_from_env() -> int:
         return clamp_chunk(int(raw))
     except (TypeError, ValueError):
         return DEFAULT_CHUNK
+
+
+def min_value_count_from_env() -> int:
+    """``FLYOVER_SUGGESTION_MIN_VALUE_COUNT`` clamped to a sane range."""
+    raw = os.getenv("FLYOVER_SUGGESTION_MIN_VALUE_COUNT", str(DEFAULT_MIN_VALUE_COUNT))
+    try:
+        return clamp_min_value_count(int(raw))
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_VALUE_COUNT
+
+
+def clamp_min_value_count(value: Any) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MIN_VALUE_COUNT
+    return max(MIN_MIN_VALUE_COUNT, min(MAX_MIN_VALUE_COUNT, n))
 
 
 def clamp_chunk(value: Any) -> int:
@@ -299,25 +325,28 @@ def _header(phase: str, database: str) -> str:
     )
 
 
-def _privacy_note(phase: str) -> str:
+def _privacy_note(phase: str, min_value_count: int = DEFAULT_MIN_VALUE_COUNT) -> str:
     """What the prompt carries, worded per phase.
 
-    The user must see exactly what leaves the browser (the issue's
-    privacy goal): the variables phase shares no values at all, the
-    values phase shares the distinct values being mapped.
+    The user must see exactly what leaves the browser: the variables
+    phase shares no values at all, the values phase shares the distinct
+    values being mapped, minus those under the frequency floor.
     """
     if phase == "variables":
         return (
             "This prompt contains variable keys and labels and the local "
             "column names. It contains no values and no data rows."
         )
-    return (
+    note = (
         "This prompt contains variable keys, their term keys, the local column "
         "names and the distinct values of the mapped categorical columns "
         "listed in the summary. It contains no data rows, but a distinct value "
         "can still identify someone: check that none of these columns holds "
         "free text, dates or identifiers before sending."
     )
+    if min_value_count > 1:
+        note += f" Values seen fewer than {min_value_count} times are left out."
+    return note
 
 
 class PromptExport:
@@ -331,10 +360,12 @@ class PromptExport:
         *,
         columns: list[str],
         distinct_values: Optional[ValueSource] = None,
+        value_counts: Optional[CountSource] = None,
         records: Optional[dict] = None,
         mapping_data: Optional[dict] = None,
         chunk_size: Optional[int] = None,
         include: Optional[list[str]] = None,
+        min_value_count: Optional[int] = None,
         name_match: NameMatch = default_name_match,
     ) -> None:
         if phase not in ("variables", "values"):
@@ -345,6 +376,7 @@ class PromptExport:
         self.mapping_data = mapping_data
         self.columns = list(columns or [])
         self.distinct_values = distinct_values
+        self.value_counts = value_counts
         self.records = records or {}
         self.chunk_size = (
             clamp_chunk(chunk_size) if chunk_size else chunk_size_from_env()
@@ -355,9 +387,18 @@ class PromptExport:
         self.include = {str(c) for c in (include or [])}
         # Columns the guard held back in the last build, with the reason.
         self.held_back: list[dict] = []
+        # Values phase: a value fewer rows than this share is left out.
+        self.min_value_count = (
+            clamp_min_value_count(min_value_count)
+            if min_value_count is not None
+            else min_value_count_from_env()
+        )
+        # Per column, how many values the floor left out in the last build.
+        self.suppressed: dict[str, dict] = {}
         self.db_key, _, self.table_key, _ = find_database(mapping, database, name_match)
         self.mapped = mapped_columns(mapping, database, name_match)
         self._value_cache: dict[str, Optional[list[str]]] = {}
+        self._count_cache: dict[str, dict[str, int]] = {}
 
     # -- data access -------------------------------------------------------
 
@@ -373,6 +414,21 @@ class PromptExport:
                 values = None
         self._value_cache[column] = values
         return values
+
+    def _counts(self, column: str) -> dict[str, int]:
+        if column in self._count_cache:
+            return self._count_cache[column]
+        counts: dict[str, int] = {}
+        if self.value_counts is not None:
+            try:
+                counts = {
+                    str(k): int(v) for k, v in (self.value_counts(column) or {}).items()
+                }
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("value counts for %s failed: %s", column, exc)
+                counts = {}
+        self._count_cache[column] = counts
+        return counts
 
     # -- item collection ---------------------------------------------------
 
@@ -407,6 +463,7 @@ class PromptExport:
         """
         groups: list[dict] = []
         self.held_back = []
+        self.suppressed = {}
         for column in self.columns:
             var_key = self.mapped.get(column)
             if not var_key:
@@ -436,12 +493,25 @@ class PromptExport:
             todo = [v for v in values if v != "" and v not in mapped_values]
             if not todo:
                 continue
+            # The frequency floor: a value fewer rows than min_value_count
+            # share stays with the human. Without counts (no store) the
+            # floor cannot apply and every value is asked.
+            counts = self._counts(column) if self.min_value_count > 1 else {}
+            rare = [
+                v for v in todo if counts and counts.get(v, 0) < self.min_value_count
+            ]
+            if rare:
+                self.suppressed[column] = {"variable": var_key, "count": len(rare)}
+                todo = [v for v in todo if v not in rare]
+            if not todo:
+                continue
             groups.append(
                 {
                     "column": column,
                     "variable": var_key,
                     "terms": terms,
                     "already": already,
+                    "suppressed": len(rare),
                     "values": [
                         {
                             "value": v,
@@ -700,9 +770,24 @@ class PromptExport:
                     "variable": g["variable"],
                     "values": len(g["values"]),
                     "sample": [v["value"] for v in g["values"][:SAMPLE_VALUES]],
+                    "suppressed": g["suppressed"],
                 }
                 for g in groups
             ]
+            asked_columns = {a["column"] for a in asked}
+            # A column whose every value fell under the floor is still
+            # reported, so the user sees why it is missing.
+            for column, info in self.suppressed.items():
+                if column not in asked_columns:
+                    asked.append(
+                        {
+                            "column": column,
+                            "variable": info["variable"],
+                            "values": 0,
+                            "sample": [],
+                            "suppressed": info["count"],
+                        }
+                    )
         return {
             "phase": self.phase,
             "database": self.database,
@@ -711,10 +796,12 @@ class PromptExport:
             "item_count": item_count,
             "chunk_hint": self.chunk_size,
             "contains": contains,
-            "privacy": _privacy_note(self.phase),
+            "privacy": _privacy_note(self.phase, self.min_value_count),
             "already_mapped": len(self.mapped),
             "asked": asked,
             "held_back": list(self.held_back),
+            "suppressed": sum(info["count"] for info in self.suppressed.values()),
+            "min_value_count": self.min_value_count,
             "answer_schema": answer_schema(self.phase),
         }
 

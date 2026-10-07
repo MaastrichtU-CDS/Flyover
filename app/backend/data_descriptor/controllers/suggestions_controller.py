@@ -16,7 +16,10 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from services.suggestions import SuggestionRequestError
-from services.suggestions.prompt_export import chunk_size_from_env
+from services.suggestions.prompt_export import (
+    chunk_size_from_env,
+    min_value_count_from_env,
+)
 from utils.mapping_request import parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
@@ -92,7 +95,11 @@ def suggestions_status():
                 # and no flag: it is available whenever the service is.
                 # The chunk default matches the enabled branch.
                 "prompt_export": (
-                    {"state": "active", "chunk": chunk_size_from_env()}
+                    {
+                        "state": "active",
+                        "chunk": chunk_size_from_env(),
+                        "min_value_count": min_value_count_from_env(),
+                    }
                     if service is not None
                     else {"state": "inactive", "reason": "no suggestion service"}
                 ),

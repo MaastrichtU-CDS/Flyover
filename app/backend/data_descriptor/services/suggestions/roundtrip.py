@@ -32,6 +32,7 @@ from .jobs import (
     VARIABLES_PHASE,
     SuggestionJob,
     _merge_records,
+    _parse_category_counts,
     _parse_category_values,
 )
 from .pasted_answer import AnswerParseError, parse_answer_text, records_from_answer
@@ -136,12 +137,24 @@ class PasteRoundTripMixin:
                 )
                 return []
 
+        def value_counts(column: str) -> dict[str, int]:
+            try:
+                return _parse_category_counts(
+                    rdf_store_service.get_categories(column, database)
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "get_categories(%s, %s) failed: %s", column, database, exc
+                )
+                return {}
+
         export = PromptExport(
             phase,
             database,
             mapping,
             columns=columns,
             distinct_values=distinct_values if rdf_store_service is not None else None,
+            value_counts=value_counts if rdf_store_service is not None else None,
             records=records,
             mapping_data=mapping_data,
             chunk_size=chunk,

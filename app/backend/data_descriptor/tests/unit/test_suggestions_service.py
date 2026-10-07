@@ -24,7 +24,10 @@ from services.suggestions import (
     VARIABLES_PHASE,
     VALUES_PHASE,
 )
-from services.suggestions.prompt_export import chunk_size_from_env
+from services.suggestions.prompt_export import (
+    chunk_size_from_env,
+    min_value_count_from_env,
+)
 
 # ---------------------------------------------------------------------------
 # Fake tier producer
@@ -968,7 +971,11 @@ class TestBuildPrompt(unittest.TestCase):
             status = SuggestionService(_config(tiers=tiers)).status()
             self.assertEqual(
                 status["prompt_export"],
-                {"state": "active", "chunk": chunk_size_from_env()},
+                {
+                    "state": "active",
+                    "chunk": chunk_size_from_env(),
+                    "min_value_count": min_value_count_from_env(),
+                },
             )
             self.assertIsInstance(status["prompt_export"]["chunk"], int)
 

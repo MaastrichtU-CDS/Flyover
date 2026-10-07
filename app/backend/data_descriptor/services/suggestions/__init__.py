@@ -30,7 +30,7 @@ from .jobs import (  # noqa: F401 — re-exported for callers and tests
     _merge_records,
     _parse_category_values,
 )
-from .prompt_export import chunk_size_from_env
+from .prompt_export import chunk_size_from_env, min_value_count_from_env
 from .roundtrip import PasteRoundTripMixin, SuggestionRequestError  # noqa: F401
 from .tiers import SuggestionContext
 from .tiers.rules import (
@@ -178,6 +178,7 @@ class SuggestionService(PasteRoundTripMixin):
             "prompt_export": {
                 "state": "active",
                 "chunk": chunk_size_from_env(),
+                "min_value_count": min_value_count_from_env(),
             },
         }
 
