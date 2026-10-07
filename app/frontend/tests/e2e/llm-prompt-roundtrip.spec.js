@@ -64,11 +64,8 @@ async function openAndGenerate(page, phase) {
   await panel.locator('.llm-help-chunk-size').selectOption(await sizes.last().getAttribute('value'))
   await panel.locator('.llm-help-generate').click()
   await expect(panel.locator('.llm-help-summary')).toBeVisible({ timeout: 60_000 })
-  // The values prompt is shown as soon as it is generated; the variables
-  // prompt (names only) sits behind the toggle.
-  const preview = panel.locator('.llm-help-preview').first()
-  if (!(await preview.isVisible())) await panel.locator('.llm-help-preview-toggle').first().click()
-  const promptText = await preview.textContent()
+  await panel.locator('.llm-help-preview-toggle').first().click()
+  const promptText = await panel.locator('.llm-help-preview').first().inputValue()
   return { panel, promptText }
 }
 

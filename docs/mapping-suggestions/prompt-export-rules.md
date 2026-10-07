@@ -34,9 +34,11 @@ do appear, since the answer is a JSON-LD slice keyed by them.
 
    This catches the common mistake of mapping a notes, date, identifier
    or continuous column to a categorical variable on the variables page.
-   The panel lists the held-back columns with the reason; a user who is
-   sure a column is categorical ticks it and regenerates, which sends the
-   column in `include` and bypasses the guard for that column only.
+   The panel lists the held-back columns with the reason. The guard can
+   be bypassed per column through the API (`include`, a list in the
+   `/prompt` body or comma-separated in the query string); the panel
+   offers no control for it, so a column that is wrongly held back is
+   fixed by correcting its mapping on the variables page.
 3. **Frequency floor: rare values are left out.** A value shared by fewer
    rows than `FLYOVER_SUGGESTION_MIN_VALUE_COUNT` (default 10) is not
    asked about, because a rare diagnosis, an unusual code or a stray
@@ -62,23 +64,16 @@ store query, lists no distinct values and no sample, and the hints it
 carries are the match key, confidence and source of the current job
 record, never the reason text.
 
-## What the user has to do before copying
+## What the user sees before copying
 
-In the values phase the panel:
-
-- lists every asked column with its first eight values and the count of
-  the rest, and the number of rare values left out;
-- asks for one confirmation per column, worded as a statement ("its
-  values are category codes, not free text, dates or identifiers");
-- keeps Copy and Download disabled until every column with values in the
-  prompt is confirmed, and asks again after a regenerate;
-- shows the prompt as soon as it is generated, with section 3 (the user's
-  values) highlighted and scrolled into view.
-
-In the variables phase the prompt sits behind a toggle and needs no
-confirmation, since it carries names only. Both phases show a privacy
-line that names what the prompt contains, and the values-phase line says
-that a distinct value can still identify someone.
+In the values phase the panel lists, above the copy buttons, every asked
+column with its first eight values and the count of the rest, the number
+of rare values left out per column, and the held-back columns with the
+reason. The prompt itself sits behind a "Show prompt" toggle in both
+phases. Both phases show a privacy line that names what the prompt
+contains, and the values-phase line says that a distinct value can still
+identify someone. Nothing is gated: the rules above decide what is in the
+prompt, the panel only reports it.
 
 ## Settings
 
@@ -103,14 +98,15 @@ that was applied (`min_value_count`).
 | Mapped categorical columns only | `prompt_export.py`, `PromptExport.value_groups` | `test_only_mapped_variables_terms_and_unmapped_values` |
 | Shape guard and `include` | `prompt_export.py`, `looks_like_free_text`, `value_groups` | `test_free_text_like_column_is_held_back`, `test_included_column_bypasses_the_guard`, `test_long_values_are_held_back_even_when_few` |
 | Frequency floor | `prompt_export.py`, `value_groups`; counts from `jobs.py`, `_parse_category_counts` | `TestValueFrequencyFloor` |
-| Per-column confirmation, samples, highlighted preview | `app/frontend/src/components/LlmPromptPanel.vue` | `LlmPromptPanel.spec.js` |
+| Asked values, left-out counts and held-back columns shown in the panel | `app/frontend/src/components/LlmPromptPanel.vue` | `LlmPromptPanel.spec.js` |
 | End to end, both phases, on a real store | | `tests/e2e/llm-prompt-roundtrip.spec.js` |
 
 ## What the rules do not cover
 
 - **Quasi-identifiers in genuinely categorical columns.** Ages, years and
   site names pass the shape guard; the floor removes the rare ones, but a
-  common value is still shared. The confirmation step exists for this.
+  common value is still shared. The panel shows the values so the user
+  can judge; nothing stops the copy.
 - **Where the user pastes.** Flyover cannot tell an institutional LLM
   from a public chatbot. The intro asks for an LLM the institution
   allows; nothing enforces it.
