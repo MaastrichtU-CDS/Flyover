@@ -409,14 +409,17 @@ function onFkManualChange(index) {
 // When a PK is set on table at index pkIndex, check every other table for
 // a column whose name matches the PK (case-insensitive). If found and the
 // other table's FK fields are not already manually set, auto-fill them.
+// The PK watch runs this for every table with a PK, so a table the user
+// already reviewed is left alone: a dismissed inference would otherwise
+// be refilled the next time any PK changes.
 function autoSuggestFk(pkIndex) {
   const suggestions = computeAutoSuggestions(
     pkFkTables.value, csvColumns, pkSelections, pkIndex
   )
   for (const [index, s] of Object.entries(suggestions)) {
     const i = Number(index)
-    // Don't override a manually-set FK
-    if (fkSelections[i]) continue
+    // Don't override a manually-set FK or revisit a reviewed one
+    if (fkSelections[i] || reviewedFk[i]) continue
     fkSelections[i] = s.fk
     fkTableSelections[i] = s.fkTable
     fkColumnSelections[i] = s.fkColumn

@@ -1119,6 +1119,30 @@ describe('IngestView — PK/FK', () => {
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
+  it('keeps a dismissed FK dismissed when a PK is set on another table', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+      csvFile('doctors.csv', 'doctor_id,name'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    await w.find('.suggestion-badge .suggestion-dismiss').trigger('click')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('')
+    // The PK watch re-runs inference for every PK; the dismissed table
+    // must not be refilled and submit must stay enabled.
+    await w.find('#pk_2').setValue('doctor_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('')
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
+    expect(w.find('.submit-review-hint').exists()).toBe(false)
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('disables submit when FK is selected but referenced table has no PK', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
