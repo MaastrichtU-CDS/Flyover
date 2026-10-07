@@ -461,31 +461,6 @@ function dismissFkInference(index) {
   reviewedFk[index] = true
 }
 
-// Accept all unreviewed inferred FKs for a specific table.
-function acceptAllFkForTable(tableIndex) {
-  if (inferredFk[tableIndex]) {
-    delete inferredFk[tableIndex]
-    reviewedFk[tableIndex] = true
-  }
-}
-
-// Dismiss all unreviewed inferred FKs for a specific table — clear the
-// FK fields and mark as reviewed so the user can proceed.
-function dismissAllFkForTable(tableIndex) {
-  if (inferredFk[tableIndex]) {
-    fkSelections[tableIndex] = ''
-    fkTableSelections[tableIndex] = ''
-    fkColumnSelections[tableIndex] = ''
-    delete inferredFk[tableIndex]
-    reviewedFk[tableIndex] = true
-  }
-}
-
-// Check if a table has an unreviewed inferred FK.
-function hasUnreviewedFk(tableIndex) {
-  return !!inferredFk[tableIndex]
-}
-
 // Count unreviewed inferred FKs across all tables.
 const unreviewedFkCount = computed(() => Object.keys(inferredFk).length)
 
@@ -996,24 +971,6 @@ onMounted(async () => {
                   @dismiss="dismissFkInference(index)"
                   @accept="acceptFkInference(index)"
                 />
-                <button
-                  v-if="hasUnreviewedFk(index)"
-                  type="button"
-                  class="btn btn-sm btn-light suggestion-section-button"
-                  title="Accept this inferred foreign key"
-                  @click.stop="acceptAllFkForTable(index)"
-                >
-                  <i class="fas fa-check-double" /> Accept all suggestions
-                </button>
-                <button
-                  v-if="hasUnreviewedFk(index)"
-                  type="button"
-                  class="btn btn-sm btn-light suggestion-section-button"
-                  title="Dismiss this inferred foreign key and clear the fields"
-                  @click.stop="dismissAllFkForTable(index)"
-                >
-                  <i class="fas fa-times" /> Dismiss all suggestions
-                </button>
               </h6>
             </div>
             <div class="card-body">
@@ -1460,11 +1417,6 @@ onMounted(async () => {
 
 .card-header :deep(.suggestion-badge:hover) {
   background: rgba(255, 255, 255, 0.15);
-}
-
-.suggestion-section-button {
-  margin-left: 0.75rem;
-  font-size: 0.8em;
 }
 
 .submit-review-hint {

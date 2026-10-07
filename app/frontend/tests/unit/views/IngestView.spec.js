@@ -1097,7 +1097,7 @@ describe('IngestView — PK/FK', () => {
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('enables submit after dismissing all inferred FKs for a table', async () => {
+  it('enables submit after dismissing the inferred FK from the badge', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1109,10 +1109,9 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     // Auto-suggest infers an FK on visits.csv — submit disabled
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
-    // Click "Dismiss all" button for that table
-    const dismissBtn = w.findAll('button').find((b) => b.text().includes('Dismiss all'))
-    expect(dismissBtn).toBeDefined()
-    await dismissBtn.trigger('click')
+    // The pill's × is the only dismiss control on the card
+    expect(w.findAll('button').some((b) => b.text().includes('all suggestions'))).toBe(false)
+    await w.find('.suggestion-badge .suggestion-dismiss').trigger('click')
     await flushPromises()
     // FK fields cleared and submit enabled
     expect(w.find('#fk_1').element.value).toBe('')
