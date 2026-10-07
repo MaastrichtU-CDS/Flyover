@@ -57,6 +57,11 @@ async function openAndGenerate(page, phase) {
   await expect(panel).toHaveCount(1)
   await panel.locator('.llm-help-toggle').click()
   await expect(panel.locator('.llm-help-privacy')).toContainText(/no data rows/)
+  // The assertions below read the first part only, and which column lands
+  // there depends on the store's column order and the part size (the
+  // sample data has well over 40 values), so ask for the largest part.
+  const sizes = panel.locator('.llm-help-chunk-size option')
+  await panel.locator('.llm-help-chunk-size').selectOption(await sizes.last().getAttribute('value'))
   await panel.locator('.llm-help-generate').click()
   await expect(panel.locator('.llm-help-summary')).toBeVisible({ timeout: 60_000 })
   await panel.locator('.llm-help-preview-toggle').first().click()
