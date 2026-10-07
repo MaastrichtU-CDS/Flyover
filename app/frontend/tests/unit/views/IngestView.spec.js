@@ -1502,6 +1502,30 @@ describe('IngestView — PK/FK', () => {
     expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
   })
 
+  it('forgets a dismissal when the PK that produced it is removed', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    await w.find('.suggestion-badge .suggestion-dismiss').trigger('click')
+    await flushPromises()
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
+    // Removing the PK drops the "reviewed" pill ...
+    await w.find('#pk_0').setValue('')
+    await flushPromises()
+    expect(w.find('.suggestion-badge').exists()).toBe(false)
+    // ... and setting it again infers afresh
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('patient_id')
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
+  })
+
   it('removes the suggestion badge when the PK is removed', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()

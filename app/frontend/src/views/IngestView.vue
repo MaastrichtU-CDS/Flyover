@@ -77,6 +77,9 @@ const fkSelections = reactive({})
 const fkTableSelections = reactive({})
 const fkColumnSelections = reactive({})
 const inferredFk = reactive({})
+// Per table: true once the user accepted or edited the inferred FK, or
+// { dismissedTable } when they dismissed it, so the mark can be dropped
+// again when the PK that produced the inference goes away.
 const reviewedFk = reactive({})
 
 const showPkFkSection = ref(false)
@@ -442,6 +445,11 @@ function clearAutoSuggestedFk(pkIndex) {
     delete inferredFk[index]
     delete reviewedFk[index]
   }
+  // A dismissed inference holds no FK fields, so find it by the table it
+  // referenced and forget the dismissal along with the PK.
+  for (const index of Object.keys(reviewedFk)) {
+    if (reviewedFk[index]?.dismissedTable === pkTableName) delete reviewedFk[index]
+  }
 }
 
 // Mark a single inferred FK as reviewed (accepted as-is).
@@ -452,13 +460,15 @@ function acceptFkInference(index) {
   }
 }
 
-// Dismiss an inferred FK — clear the FK fields and mark as reviewed.
+// Dismiss an inferred FK — clear the FK fields and mark as reviewed,
+// remembering which table's PK the inference pointed at.
 function dismissFkInference(index) {
+  const dismissedTable = fkTableSelections[index] || ''
   fkSelections[index] = ''
   fkTableSelections[index] = ''
   fkColumnSelections[index] = ''
   delete inferredFk[index]
-  reviewedFk[index] = true
+  reviewedFk[index] = { dismissedTable }
 }
 
 // Count unreviewed inferred FKs across all tables.
