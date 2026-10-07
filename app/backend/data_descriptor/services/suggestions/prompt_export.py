@@ -491,8 +491,9 @@ class PromptExport:
             + ("\n".join(item_lines) if item_lines else "(none)")
         )
         lines.append(
-            "\nHints come from Flyover's rule-based matcher (confidence 0–1, source); "
-            "confirm or overrule them, they are not authoritative."
+            "\nHints are Flyover's current suggestions (confidence 0–1, source: the "
+            "rule-based matcher or an earlier pasted answer); confirm or overrule "
+            "them, they are not authoritative."
         )
         entry = {
             "mapsTo": "schema:variable/<variable_key>",
@@ -562,8 +563,9 @@ class PromptExport:
             + ("\n".join(group_lines) if group_lines else "(none)")
         )
         lines.append(
-            "\nHints come from Flyover's rule-based matcher (confidence 0–1, source); "
-            "confirm or overrule them, they are not authoritative."
+            "\nHints are Flyover's current suggestions (confidence 0–1, source: the "
+            "rule-based matcher or an earlier pasted answer); confirm or overrule "
+            "them, they are not authoritative."
         )
         entry = {
             "mapsTo": "schema:variable/<variable_key>",
