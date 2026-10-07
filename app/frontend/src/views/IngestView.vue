@@ -1413,10 +1413,10 @@ onMounted(async () => {
   background-color: rgba(118, 75, 162, 0.04);
 }
 
-/* SuggestionBadge sits on the bg-light card header where the default
-   faint-purple/green text is hard to read. Use a transparent background
-   with white font and a white outline so the badge reads clearly on
-   any card-header colour. */
+/* The legacy flyover-custom.css paints every .card-header with the
+   purple gradient and white text, so the badge's default faint-purple
+   and green styles are hard to read there. Use a transparent background
+   with white text and a white outline so the pill reads on the gradient. */
 .card-header :deep(.suggestion-badge),
 .card-header :deep(.suggestion-badge.applied),
 .card-header :deep(.suggestion-badge.confirmed) {
