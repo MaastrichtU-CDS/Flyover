@@ -451,9 +451,12 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   // the "already mapped" context and the candidate list match what the
   // user sees. Returns the response payload; throws on failure with a
   // readable message on error.message.
-  async function fetchPrompt(phase, database, { mapping, chunk } = {}) {
+  // `include` names values-phase columns the server would hold back
+  // because their values look like free text; the user asked for them.
+  async function fetchPrompt(phase, database, { mapping, chunk, include } = {}) {
     const body = { phase, database, mapping }
     if (chunk) body.chunk = chunk
+    if (include?.length) body.include = include
     try {
       const { data } = await api.post('/api/v1/suggestions/prompt', body)
       return data

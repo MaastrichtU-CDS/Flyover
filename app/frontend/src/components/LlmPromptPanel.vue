@@ -80,6 +80,10 @@ const generating = ref(false)
 const generateError = ref('')
 const prompt = ref(null)
 const previewOpen = reactive({})
+// Values phase: columns the server held back because their values look
+// like free text, dates or identifiers, which the user ticked to include
+// anyway (column name -> true). Sent with the next generate.
+const include = reactive({})
 const answer = ref('')
 const importing = ref(false)
 const importError = ref('')
@@ -124,8 +128,17 @@ const summary = computed(() => {
   const parts = [`${p.item_count} ${itemLabel.value} still to map`]
   if (p.already_mapped) parts.push(`${p.already_mapped} column${p.already_mapped === 1 ? '' : 's'} already mapped and shown as context`)
   if (p.chunks?.length > 1) parts.push(`split into ${p.chunks.length} parts of at most ${p.chunk_hint} ${itemLabel.value}; send each part on its own`)
+  if (p.held_back?.length) parts.push(`${p.held_back.length} column${p.held_back.length === 1 ? '' : 's'} held back`)
   return parts.join(' · ')
 })
+
+// Values phase only: which columns the prompt asks about and how many of
+// their values leave the browser, so the user can judge each one.
+const askedValues = computed(() =>
+  props.phase === 'values' ? (prompt.value?.asked || []).filter((a) => a.values) : [],
+)
+
+const includedColumns = computed(() => Object.keys(include).filter((c) => include[c]))
 
 async function generate() {
   generating.value = true
@@ -135,6 +148,7 @@ async function generate() {
     prompt.value = await suggestions.fetchPrompt(props.phase, props.database, {
       mapping: jsonld.getMapping(),
       chunk: chunk.value,
+      include: includedColumns.value,
     })
   } catch (err) {
     generateError.value = err?.message || 'Could not generate the prompt.'
@@ -296,7 +310,43 @@ async function importAnswer() {
               {{ entry }}
             </li>
           </ul>
+          <ul
+            v-if="askedValues.length"
+            class="llm-help-asked"
+          >
+            <li
+              v-for="entry in askedValues"
+              :key="entry.column"
+            >
+              {{ entry.column }}: {{ entry.values }} {{ entry.values === 1 ? 'value' : 'values' }}
+            </li>
+          </ul>
         </details>
+        <div
+          v-if="prompt.held_back?.length"
+          class="llm-help-held-back"
+          role="status"
+        >
+          <p class="llm-help-held-back-intro">
+            <i class="fas fa-triangle-exclamation" />
+            {{ prompt.held_back.length === 1 ? 'One column was' : `${prompt.held_back.length} columns were` }}
+            held back: the values look like free text, dates or identifiers rather than categories,
+            so they are not in the prompt. Include a column only if you are sure it is categorical,
+            then regenerate.
+          </p>
+          <label
+            v-for="held in prompt.held_back"
+            :key="held.column"
+            class="llm-help-held-back-option"
+          >
+            <input
+              v-model="include[held.column]"
+              type="checkbox"
+              class="form-check-input"
+            >
+            <strong>{{ held.column }}</strong> → {{ held.variable }} ({{ held.reason }})
+          </label>
+        </div>
         <div
           v-for="item in prompt.chunks"
           :key="item.index"
@@ -473,6 +523,31 @@ async function importAnswer() {
 
 .llm-help-contains ul {
   margin: 0.25rem 0 0;
+}
+
+.llm-help-held-back {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid #b02a37;
+  background: rgba(176, 42, 55, 0.06);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.llm-help-held-back-intro {
+  margin-bottom: 0.35rem;
+  color: #842029;
+}
+
+.llm-help-held-back-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.15rem 0;
+}
+
+.llm-help-held-back-option .form-check-input {
+  margin: 0;
 }
 
 .llm-help-chunk {

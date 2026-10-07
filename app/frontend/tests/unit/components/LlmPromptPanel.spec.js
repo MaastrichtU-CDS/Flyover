@@ -192,6 +192,33 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(wrapper.find('.llm-help-preview').exists()).toBe(true)
   })
 
+  it('lists the values per column and lets the user include a held-back column', async () => {
+    const response = promptResponse()
+    response.data.phase = 'values'
+    response.data.asked = [{ column: 'geslacht', variable: 'biological_sex', values: 2 }]
+    response.data.held_back = [
+      { column: 'opmerking', variable: 'survival_status', distinct: 65, reason: '65 distinct values (more than 50)' },
+    ]
+    api.post.mockResolvedValue(response)
+    const wrapper = await mountOpen({ phase: 'values' })
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('include')
+    expect(wrapper.find('.llm-help-summary').text()).toMatch(/1 column held back/)
+    expect(wrapper.findAll('.llm-help-asked li').map((li) => li.text())).toEqual(['geslacht: 2 values'])
+    const held = wrapper.find('.llm-help-held-back')
+    expect(held.text()).toMatch(/One column was held back/)
+    expect(held.text()).toContain('opmerking')
+    expect(held.text()).toContain('65 distinct values')
+
+    // Ticking the column and regenerating sends it as `include`.
+    await held.find('input[type="checkbox"]').setValue(true)
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+    expect(api.post.mock.calls[1][1].include).toEqual(['opmerking'])
+  })
+
   it('says so when there is nothing left to map', async () => {
     api.post.mockResolvedValue({ data: { ...promptResponse().data, item_count: 0, chunks: [] } })
     const wrapper = await mountOpen()

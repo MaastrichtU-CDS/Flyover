@@ -618,6 +618,11 @@ describe('Frontend unit: useSuggestionsStore', () => {
       mapping: MAPPING,
       chunk: 20,
     })
+    // Included columns go along only when there are any.
+    await s.fetchPrompt('values', 'nki', { mapping: MAPPING, include: [] })
+    expect(api.post.mock.calls[1][1]).not.toHaveProperty('include')
+    await s.fetchPrompt('values', 'nki', { mapping: MAPPING, include: ['notes'] })
+    expect(api.post.mock.calls[2][1].include).toEqual(['notes'])
   })
 
   it('fetchPrompt surfaces the server message on failure', async () => {
