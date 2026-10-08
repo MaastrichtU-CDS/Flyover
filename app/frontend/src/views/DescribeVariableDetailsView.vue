@@ -7,6 +7,7 @@ import { formatToTitleCase } from '@/lib/jsonld'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
 import SuggestionStatusBar from '@/components/SuggestionStatusBar.vue'
+import LlmPromptPanel from '@/components/LlmPromptPanel.vue'
 
 const DEFAULT_CATEGORY_OPTIONS = [
   { value: 'Yes', label: 'Yes' },
@@ -787,6 +788,13 @@ onBeforeUnmount(() => {
               "
             />
           </button>
+          <!-- Copy-prompt / paste-answer round trip with an external LLM:
+               asks only about the values still unmapped. -->
+          <LlmPromptPanel
+            v-if="suggestions.promptExport"
+            phase="values"
+            :database="dbEntry.name"
+          />
 
           <div
             class="content variables-container"

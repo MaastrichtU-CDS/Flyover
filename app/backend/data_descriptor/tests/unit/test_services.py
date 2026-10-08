@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import polars as pl
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -65,6 +67,29 @@ class TestIngestServiceValidation(unittest.TestCase):
         self.assertTrue(is_valid)
         self.assertIsNone(error)
 
+    def test_validate_excel_files_accepts_xlsx_xls_and_ods(self):
+        """Excel validation accepts Excel and OpenDocument workbooks alike."""
+        for name in ("data.xlsx", "data.xls", "data.ods", "DATA.ODS"):
+            mock_file = MagicMock()
+            mock_file.filename = name
+            is_valid, error = IngestService.validate_excel_files([mock_file])
+            self.assertTrue(is_valid, name)
+            self.assertIsNone(error, name)
+
+    def test_validate_excel_files_rejects_other_extensions(self):
+        """Excel validation rejects non-spreadsheet files and names .ods."""
+        for name in ("data.csv", "data.txt", "data.odt"):
+            mock_file = MagicMock()
+            mock_file.filename = name
+            is_valid, error = IngestService.validate_excel_files([mock_file])
+            self.assertFalse(is_valid, name)
+            self.assertIn("'.ods'", error)
+
+    def test_allowed_file_ods(self):
+        """.ods is part of the default allowed extensions."""
+        self.assertTrue(IngestService.allowed_file("sheet.ods"))
+        self.assertTrue(IngestService.allowed_file("sheet.ODS", {"ods"}))
+
 
 class TestIngestServiceDataParsing(unittest.TestCase):
     """Test IngestService data parsing methods."""
@@ -96,6 +121,93 @@ class TestIngestServiceDataParsing(unittest.TestCase):
         json_str = '{"newTableName": "new", "existingTableName": "old"}'
         result = IngestService.parse_cross_graph_data(json_str)
         self.assertEqual(result["newTableName"], "new")
+
+
+def _minimal_ods(sheets):
+    """Build a minimal OpenDocument spreadsheet in memory.
+
+    ``sheets`` maps a sheet name to a list of rows; every cell is written as
+    a string cell. Only the parts calamine needs are included (mimetype,
+    manifest and content.xml), which keeps the fixture readable.
+    """
+    import io
+    import zipfile
+
+    def cell(value):
+        return (
+            '<table:table-cell office:value-type="string">'
+            f"<text:p>{value}</text:p></table:table-cell>"
+        )
+
+    tables = ""
+    for name, rows in sheets.items():
+        body = "".join(
+            "<table:table-row>" + "".join(cell(v) for v in row) + "</table:table-row>"
+            for row in rows
+        )
+        tables += f'<table:table table:name="{name}">{body}</table:table>'
+
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<office:document-content"
+        ' xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"'
+        ' xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"'
+        ' xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"'
+        ' office:version="1.2">'
+        f"<office:body><office:spreadsheet>{tables}</office:spreadsheet>"
+        "</office:body></office:document-content>"
+    )
+    manifest = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<manifest:manifest"
+        ' xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"'
+        ' manifest:version="1.2">'
+        '<manifest:file-entry manifest:full-path="/"'
+        ' manifest:media-type="application/vnd.oasis.opendocument.spreadsheet"/>'
+        '<manifest:file-entry manifest:full-path="content.xml"'
+        ' manifest:media-type="text/xml"/>'
+        "</manifest:manifest>"
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr(
+            zipfile.ZipInfo("mimetype"),
+            "application/vnd.oasis.opendocument.spreadsheet",
+            compress_type=zipfile.ZIP_STORED,
+        )
+        archive.writestr("content.xml", content, compress_type=zipfile.ZIP_DEFLATED)
+        archive.writestr(
+            "META-INF/manifest.xml", manifest, compress_type=zipfile.ZIP_DEFLATED
+        )
+    return buf.getvalue()
+
+
+class TestIngestServiceExcelParsing(unittest.TestCase):
+    """Test IngestService.parse_excel_files across workbook formats."""
+
+    def test_parse_ods_workbook_yields_one_table_per_sheet(self):
+        """An .ods upload is parsed like an .xlsx: one table per sheet,
+        named filename_sheetname, with every column read as text."""
+        import io
+
+        ods_bytes = _minimal_ods(
+            {
+                "Patients": [["id", "name"], ["1", "Ann"]],
+                "Visits": [["visit_id", "patient_id"], ["10", "1"]],
+            }
+        )
+        upload = io.BytesIO(ods_bytes)
+        upload.filename = "clinic.ods"
+
+        dataframes, table_names, error = IngestService.parse_excel_files([upload])
+
+        self.assertIsNone(error)
+        self.assertEqual(table_names, ["clinic_Patients", "clinic_Visits"])
+        self.assertEqual(dataframes[0].columns, ["id", "name"])
+        self.assertEqual(dataframes[1].columns, ["visit_id", "patient_id"])
+        self.assertEqual(dataframes[0]["id"].to_list(), ["1"])
+        self.assertTrue(all(dtype == pl.Utf8 for dtype in dataframes[1].dtypes))
 
 
 class TestProcessPkFkRelationships(unittest.TestCase):

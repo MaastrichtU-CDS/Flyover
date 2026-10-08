@@ -37,6 +37,29 @@ export const SOURCE_ICONS = {
   llm: 'fa-robot',
   pasted_llm: 'fa-clipboard',
   manual: 'fa-hand',
+  // Frontend-only: the ingest page's inferred foreign keys (never sent
+  // by the suggestions API).
+  foreign_key: 'fa-project-diagram',
+}
+
+// One-line toast for an ingest result, e.g. "3 suggestions imported, 1
+// left for you to decide, 2 already mapped". A nulled record is one whose
+// match the server rejected (invalid key, or a variable already mapped
+// in this database); the item stays with the human, hence the wording.
+// Exported so the tests can assert on it.
+export function ingestSummary({
+  accepted = 0,
+  nulled = 0,
+  rejected = 0,
+  skipped = 0,
+  reopened = 0,
+} = {}) {
+  const parts = [`${accepted} ${accepted === 1 ? 'suggestion' : 'suggestions'} imported`]
+  if (reopened) parts.push(`${reopened} shown again after a dismissal`)
+  if (nulled) parts.push(`${nulled} left for you to decide`)
+  if (rejected) parts.push(`${rejected} ignored (unknown column or value)`)
+  if (skipped) parts.push(`${skipped} already mapped`)
+  return parts.join(', ')
 }
 
 export const useSuggestionsStore = defineStore('suggestions', () => {
@@ -46,6 +69,16 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
   const tiers = ref({})
   const threshold = ref(0.8)
   const rulesVersion = ref(null)
+  // The copy-prompt / paste-answer round trip. It needs no
+  // model and no flag, so /status reports it active even when every tier
+  // is off; null until /status answered.
+  const promptExport = ref(null)
+  // The site's "Items per prompt" default (FLYOVER_SUGGESTION_PROMPT_CHUNK,
+  // clamped server-side) so the panel offers it instead of hardcoding 40.
+  const promptExportChunk = ref(40)
+  // Summary of the last successful ingest ({accepted, nulled, rejected,
+  // skipped, messages, phase, database}); the panel and tests read it.
+  const lastIngestResult = ref(null)
 
   const variables = reactive({
     status: 'idle',
@@ -83,10 +116,15 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
 
   // First-visit cue (WS2): whether the user has already seen the
   // "review suggested mappings" coachmark per phase, persisted in the
-  // metadata store as { variables, values }. `loaded` is false until
+  // metadata store as { variables, values, foreign_keys } (the ingest page anchors the same cue on its inferred foreign keys). `loaded` is false until
   // loadCoachmark() resolved, so a view never flashes the cue before the
   // persisted flags arrive.
-  const coachmarkSeen = reactive({ loaded: false, variables: false, values: false })
+  const coachmarkSeen = reactive({
+    loaded: false,
+    variables: false,
+    values: false,
+    foreign_keys: false,
+  })
 
   let _pollTimer = null
   let _pollStartedAt = 0
@@ -148,6 +186,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       const stored = await db.getData('metadata', COACHMARK_KEY)
       coachmarkSeen.variables = !!stored?.variables
       coachmarkSeen.values = !!stored?.values
+      coachmarkSeen.foreign_keys = !!stored?.foreign_keys
     } catch {
       // Fall through: flags stay false until first close.
     }
@@ -349,8 +388,11 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
         tiers.value = data.tiers || {}
         threshold.value = data.threshold ?? 0.8
         rulesVersion.value = data.rules_version || null
+        promptExport.value = data.prompt_export?.state === 'active'
+        promptExportChunk.value = data.prompt_export?.chunk || 40
       } catch {
         enabled.value = false
+        promptExport.value = false
       }
     }
     if (!enabled.value) return
@@ -411,6 +453,89 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       }
       if (!isPolling()) startPolling(phase)
     }
+  }
+
+  // Compose the prompt for one database and phase on the server. The
+  // browser's semantic map goes along (the describe pages work on it) so
+  // the "already mapped" context and the candidate list match what the
+  // user sees. Returns the response payload; throws on failure with a
+  // readable message on error.message.
+  // `include` names values-phase columns the server would hold back
+  // because their values look like free text; the user asked for them.
+  async function fetchPrompt(phase, database, { mapping, chunk, include } = {}) {
+    const body = { phase, database, mapping }
+    if (chunk) body.chunk = chunk
+    if (include?.length) body.include = include
+    try {
+      const { data } = await api.post('/api/v1/suggestions/prompt', body)
+      return data
+    } catch (err) {
+      throw new Error(_apiMessage(err, 'Could not generate the prompt.'))
+    }
+  }
+
+  // Send the pasted LLM answer to the server, which validates it and
+  // merges it into the phase's job as pasted_llm suggestions. Nothing
+  // touches the JSON-LD or the review marks: the merged snapshot arrives
+  // through the same path as a poll. Returns the ingest summary; throws
+  // with a readable message when the paste is unusable.
+  async function ingest(phase, database, { answer, records, mapping } = {}) {
+    // A dismissal judges one suggestion, not the field: pasting an answer
+    // asks for a new one, so the dismissed keys go along and the server
+    // lets the paste take those fields (it answers which it re-opened).
+    const dismissed = Object.keys(marks[phase].dismissed).filter((k) => marks[phase].dismissed[k])
+    const body = { database, source: 'pasted_llm', mapping, dismissed }
+    if (answer !== undefined) body.answer = answer
+    if (records !== undefined) body.records = records
+    let data
+    try {
+      ;({ data } = await api.post(`/api/v1/suggestions/${phase}/ingest`, body))
+    } catch (err) {
+      throw new Error(_apiMessage(err, 'Could not import the answer.'))
+    }
+    // A paste makes the suggestion UI relevant even on a stack with every
+    // tier off: the pills must render the imported records.
+    enabled.value = true
+    // Drop the dismissals the server re-opened before the records land, so
+    // the pre-fill watchers treat those fields as fresh. Applied/touched
+    // marks are not touched here: a reviewed field is not re-opened.
+    const reopened = Array.isArray(data.reopened) ? data.reopened : []
+    if (reopened.length) {
+      const m = marks[phase]
+      for (const key of reopened) {
+        delete m.dismissed[key]
+        delete m.matches[key]
+      }
+      _persistMarks(phase)
+    }
+    if (data.job) {
+      const state = _phaseState(phase)
+      state.status = data.job.status || 'done'
+      state.reason = null
+      state.progress = {
+        done: data.job.progress?.done ?? 0,
+        total: data.job.progress?.total ?? 0,
+      }
+      _ingestRecords(phase, data.job)
+    }
+    lastIngestResult.value = {
+      phase,
+      database,
+      accepted: data.accepted ?? 0,
+      nulled: data.nulled ?? 0,
+      rejected: data.rejected ?? 0,
+      skipped: data.skipped ?? 0,
+      reopened: reopened.length,
+      messages: data.messages || [],
+    }
+    useStatusStore().success(ingestSummary(lastIngestResult.value))
+    return lastIngestResult.value
+  }
+
+  function _apiMessage(err, fallback) {
+    const body = err?.response?.data
+    if (body && typeof body.error === 'string' && body.error) return body.error
+    return fallback
   }
 
   function _currentMarks() {
@@ -511,11 +636,16 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
     tiers,
     threshold,
     rulesVersion,
+    promptExport,
+    promptExportChunk,
+    lastIngestResult,
     variables,
     values,
     marks,
     coachmarkSeen,
     init,
+    fetchPrompt,
+    ingest,
     refresh,
     startPolling,
     stopPolling,

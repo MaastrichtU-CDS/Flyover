@@ -70,7 +70,7 @@ POST /api/v1/suggestions/{variables|values}/start      # body: {tiers?: [1,2,3],
 GET  /api/v1/suggestions/{variables|values}            # job snapshot: status, progress, records keyed by item key
 POST /api/v1/suggestions/{variables|values}/priority   # bump items visible on the current page (from branch)
 POST /api/v1/suggestions/{variables|values}/ingest     # browser-computed (tier 2) or pasted (prompt) records; validated
-GET  /api/v1/suggestions/prompt?phase=&database=       # issue 2: prompt text + JSON answer schema
+GET  /api/v1/suggestions/prompt?phase=&database=       # prompt text in parts, what it contains, held-back columns (prompt-export-rules.md)
 GET  /static/models/<bundle>/...                       # issue 3, browser mode only
 ```
 
@@ -80,9 +80,12 @@ Backend module layout:
 app/backend/data_descriptor/
   controllers/suggestions_controller.py
   services/suggestions/
-    __init__.py            # SuggestionService: jobs, fingerprint, cascade, merge
+    __init__.py            # SuggestionService: configuration, cascade, merge
+    jobs.py                # phases, SuggestionJob, fingerprint, category CSV parsing
     contract.py            # record contract + JSON schema (from matching.py)
-    prompt_export.py       # issue 2
+    prompt_export.py       # LLM prompt composition and its privacy rules (prompt-export-rules.md)
+    pasted_answer.py       # tolerant parsing of a pasted LLM answer
+    roundtrip.py           # /prompt and /ingest service side (mixin of SuggestionService)
     tiers/rules.py         # tier 1
     tiers/embedding.py     # tier 2, host mode
     tiers/llm/             # tier 3: base, config, factory, providers, matching
@@ -184,6 +187,7 @@ graph LR
 4. **Never fetch at runtime.** Model bundles are in the image or a mounted volume; the only outbound traffic is the explicitly allowed remote LLM provider in tier 3.
 5. **Visible availability.** Every tier is `active` or `inactive(reason)` in `/status` and in the UI.
 6. **Human last.** Nothing is locked in; the user can always override any suggestion.
+7. **Nothing leaves without the user seeing it.** The only data that leaves Flyover is the LLM prompt the user copies; what it may contain and the guards on it are in [`prompt-export-rules.md`](prompt-export-rules.md).
 
 ## Remediation decisions (D1–D5)
 
@@ -201,9 +205,16 @@ Decisions taken during the tier-1 remediation review
 - **D3 — Marks on a new fingerprint.** Marks expire per key, not
   wholesale: a mark survives while the suggestion it was made against is
   unchanged in the new job.
-- **D4 — IngestView FK review gate.** Moved to its own branch/PR; it was
-  never part of the tier-1 plan and rendered outside
-  `FLYOVER_SUGGESTION_TIERS`.
+- **D4 — IngestView FK review gate.** Moved to its own branch/PR
+  (`feature/ingest-fk-review-gate`); it was never part of the tier-1 plan
+  and rendered outside `FLYOVER_SUGGESTION_TIERS`. Decisions taken there:
+  the gate stays **independent of the flag**, because the ingest page
+  auto-fills foreign keys whether or not suggestions are enabled and the
+  gate only asks the user to confirm what was auto-filled; the FK record
+  uses a **frontend-only source `foreign_key`** (not part of the API
+  `source` enum above, never emitted by the service) with no tier label,
+  at 90 % for an exact column-name match with the referenced primary key
+  and 60 % when one name merely contains the other.
 - **D5 — Value-based variable suggestions.** Stay disabled (collecting
   distinct values costs one store query per column); the
   `{M,V} → biological_sex` and year-abstain criteria moved to a

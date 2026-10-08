@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useStatusStore } from '@/stores/status.js'
+import { useStatusStore, TOAST_TIMEOUT_MS, ERROR_TIMEOUT_MS } from '@/stores/status.js'
 
 describe('useStatusStore', () => {
   beforeEach(() => {
@@ -43,4 +43,42 @@ describe('useStatusStore', () => {
     s.clear()
     expect(s.messages).toEqual([])
   })
+
+  describe('auto-dismiss', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('a message disappears after the toast timeout', () => {
+      const s = useStatusStore()
+      s.success('copied')
+      expect(s.messages).toHaveLength(1)
+      vi.advanceTimersByTime(TOAST_TIMEOUT_MS - 1)
+      expect(s.messages).toHaveLength(1)
+      vi.advanceTimersByTime(1)
+      expect(s.messages).toEqual([])
+    })
+
+    it('errors stay longer than the default timeout', () => {
+      const s = useStatusStore()
+      s.error('bad')
+      vi.advanceTimersByTime(TOAST_TIMEOUT_MS)
+      expect(s.messages).toHaveLength(1)
+      vi.advanceTimersByTime(ERROR_TIMEOUT_MS - TOAST_TIMEOUT_MS)
+      expect(s.messages).toEqual([])
+    })
+
+    it('a manually dismissed message does not reappear', () => {
+      const s = useStatusStore()
+      const id = s.add('bye')
+      s.dismiss(id)
+      vi.advanceTimersByTime(ERROR_TIMEOUT_MS + 1)
+      expect(s.messages).toEqual([])
+    })
+  })
 })
+

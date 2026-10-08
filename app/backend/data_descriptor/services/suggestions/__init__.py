@@ -12,7 +12,6 @@ LLM branch's ``suggestion_service.py`` with the provider dependency dropped.
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import logging
 import os
@@ -22,6 +21,17 @@ from typing import Any, Optional
 from services.rdf_store_service import RDFStoreService
 
 from .contract import sanitise_pairs
+from .jobs import (  # noqa: F401 — re-exported for callers and tests
+    PHASES,
+    VALUES_PHASE,
+    VARIABLES_PHASE,
+    SuggestionJob,
+    _fingerprint,
+    _merge_records,
+    _parse_category_values,
+)
+from .prompt_export import chunk_size_from_env, min_value_count_from_env
+from .roundtrip import PasteRoundTripMixin, SuggestionRequestError  # noqa: F401
 from .tiers import SuggestionContext
 from .tiers.rules import (
     _iter_columns,
@@ -31,10 +41,6 @@ from .tiers.rules import (
 )
 
 logger = logging.getLogger(__name__)
-
-VARIABLES_PHASE = "variables"
-VALUES_PHASE = "values"
-PHASES = (VARIABLES_PHASE, VALUES_PHASE)
 
 DEFAULT_THRESHOLD = 0.8
 DEFAULT_MARGIN = 0.05
@@ -115,40 +121,6 @@ class SuggestionConfig:
         return {"state": "active"}
 
 
-def _fingerprint(payload: dict) -> str:
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, default=str).encode()
-    ).hexdigest()
-
-
-def _parse_category_values(categories_csv: Any) -> list[str]:
-    """Parse the RDF store's get_categories CSV into distinct value strings.
-
-    Shared by the column-values collection (variables phase) and the
-    values-phase fallback so both parse categories exactly the same way.
-    """
-    if not categories_csv:
-        return []
-    try:
-        import polars as pl
-
-        df = pl.read_csv(
-            io.StringIO(categories_csv),
-            separator=",",
-            infer_schema_length=0,
-            null_values=[],
-            try_parse_dates=False,
-        )
-    except Exception:  # pragma: no cover - defensive
-        return []
-    values: list[str] = []
-    for row in df.to_dicts():
-        v = row.get("value")
-        if v is not None and str(v) not in values:
-            values.append(str(v))
-    return values
-
-
 def _alias_memory_hash(mapping: Any) -> str:
     """Stable hash of every remembered (database, column, variable) pair.
 
@@ -169,73 +141,7 @@ def _alias_memory_hash(mapping: Any) -> str:
     return hashlib.sha256(json.dumps(pairs).encode()).hexdigest()[:16]
 
 
-def _merge_records(a: dict, b: dict) -> tuple[dict, Optional[dict]]:
-    """Merge two records for the same item; return (winner, loser_or_None).
-
-    Highest confidence wins; ties go to the lower tier (cheaper). When
-    both records abstain, the reason that mentions the margin wins: the
-    string matcher's abstain names the scores it saw, the earlier tiers'
-    "no hit" reasons do not — the plan's "reason mentions margin"
-    criterion must hold end-to-end.
-
-    Only a losing record with a non-null ``match`` different from the
-    winner's is kept in ``alternatives``: abstains and duplicates of the
-    winner are noise, not choices for the user.
-    """
-    both_abstain = a.get("match") is None and b.get("match") is None
-    if (
-        both_abstain
-        and "margin" in str(b.get("reason", ""))
-        and "margin" not in str(a.get("reason", ""))
-    ):
-        winner, loser = b, a
-    elif both_abstain:
-        winner, loser = a, b
-    elif a.get("confidence") == b.get("confidence"):
-        if a.get("tier", 99) <= b.get("tier", 99):
-            winner, loser = a, b
-        else:
-            winner, loser = b, a
-    elif a.get("confidence", 0.0) > b.get("confidence", 0.0):
-        winner, loser = a, b
-    else:
-        winner, loser = b, a
-
-    loser_copy = {k: v for k, v in loser.items() if k != "alternatives"}
-    winner = dict(winner)
-    if loser_copy.get("match") and loser_copy["match"] != winner.get("match"):
-        alts = list(winner.get("alternatives", []))
-        alts.append(loser_copy)
-        winner["alternatives"] = alts
-    return winner, loser_copy
-
-
-class SuggestionJob:
-    """State of one suggestion job, polled by the frontend.
-
-    Records are stored as ``item -> record dict`` keyed by the composite
-    phase key (``${db}_${column}`` or ``${db}_${column}_${value}``).
-    """
-
-    def __init__(self, phase: str, fingerprint: str) -> None:
-        self.phase = phase
-        self.fingerprint = fingerprint
-        self.status = "pending"
-        self.records: dict[str, dict] = {}
-        self.progress = {"done": 0, "total": 0}
-        self.error: Optional[dict] = None
-
-    def to_public_dict(self) -> dict:
-        return {
-            "status": self.status,
-            "fingerprint": self.fingerprint,
-            "progress": self.progress,
-            "error": self.error,
-            "records": dict(self.records),
-        }
-
-
-class SuggestionService:
+class SuggestionService(PasteRoundTripMixin):
     """Orchestrate tier producers into a single job per phase.
 
     The service is constructed once per app and reads env vars for which
@@ -265,6 +171,15 @@ class SuggestionService:
             "rules_version": (
                 (self._rules or {}).get("version") if self._rules else None
             ),
+            # The copy-prompt / paste-answer round trip needs no model and
+            # no flag: it is available whenever the service is. The chunk
+            # default is the env's clamped value so the panel can offer the
+            # site's chosen default (FLYOVER_SUGGESTION_PROMPT_CHUNK).
+            "prompt_export": {
+                "state": "active",
+                "chunk": chunk_size_from_env(),
+                "min_value_count": min_value_count_from_env(),
+            },
         }
 
     # ------------------------------------------------------------------
@@ -345,6 +260,9 @@ class SuggestionService:
             logger.exception("Suggestion job failed: %s", exc)
             job.status = "failed"
             job.error = {"kind": "job_failed", "message": str(exc)}
+        # Pasted records outlive a rebuild (page reload, forced re-run):
+        # they were the user's explicit action, not a cache.
+        self._reapply_ingested(session_cache, job)
         return {"status": "started"}
 
     def _fingerprint_payload(self, phase: str, payload: dict, mapping: Any) -> dict:
@@ -889,37 +807,6 @@ class SuggestionService:
         if job is None:
             return {"status": "no_job"}
         return {"status": "ok", "moved": 0}
-
-    def ingest(self, phase: str, records: list, source: str) -> list[dict]:
-        """Reserved for issues 2/3: browser-computed or pasted records.
-
-        The signature is reserved now so it cannot drift from the plan.
-        The ``/ingest`` route is not wired yet, so this validates the
-        records through :func:`sanitise_pairs` (the same normalisation
-        every producer output passes: confidence clamped, reason filled,
-        junk dropped) and then raises ``NotImplementedError`` — nothing is
-        stored. The real route will validate against the phase's actual
-        schema targets instead of the records' own matches.
-        """
-        if phase not in PHASES:
-            raise ValueError(f"unknown phase '{phase}'")
-        items = [r.get("item") for r in records or [] if isinstance(r, dict)]
-        targets = {
-            r.get("match")
-            for r in records or []
-            if isinstance(r, dict) and r.get("match")
-        }
-        sanitised = sanitise_pairs(
-            records or [],
-            items=items,
-            valid_targets=targets,
-            source=source,
-            tier=3,
-        )
-        raise NotImplementedError(
-            "suggestions ingest is reserved for issues 2/3; no route is wired yet "
-            f"({len(sanitised)} records validated and discarded)"
-        )
 
     # ------------------------------------------------------------------
     # Internals

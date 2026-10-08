@@ -1,9 +1,11 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useNavigation } from '@/composables/useNavigation'
 import { readCSVColumns } from '@/lib/csvParser'
 import { readExcelSheetInfo } from '@/lib/excelParser'
+import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import { useSuggestionsStore } from '@/stores/suggestions'
 import {
   isValidPgUrl,
   preventBlockedKey,
@@ -26,11 +28,22 @@ import {
 
 const { dataExists: graphExists, refreshDataExists } = useNavigation()
 
+// Only the coachmark bookkeeping is used here: the ingest page never talks
+// to the suggestions API, it just reuses the same first-visit review cue
+// (and its persisted "seen" flag) that the describe pages show.
+const suggestions = useSuggestionsStore()
+
 // --- File type configuration ---
 
 const FILE_TYPE_EXTENSIONS = {
   CSV: ['.csv'],
-  Excel: ['.xlsx', '.xls'],
+  Excel: ['.xlsx', '.xls', '.ods'],
+}
+
+// Labels shown to the user; the keys above stay the API's file_type values.
+const FILE_TYPE_LABELS = {
+  CSV: 'CSV',
+  Excel: 'Spreadsheet',
 }
 
 // --- Reactive state ---
@@ -41,7 +54,7 @@ const csvColumns = reactive({})
 const csvPath = ref('')
 
 // Unified list of "tables" for PK/FK. For CSV, each file is a table.
-// For Excel, each sheet is a table (name: "filename_sheetname").
+// For Excel (.xlsx/.xls/.ods), each sheet is a table (name: "filename_sheetname").
 const pkFkTables = ref([])
 const detectedDecimal = (1.1).toLocaleString(navigator.language).match(/[.,]/)?.[0] || '.'
 const csvSeparatorSign = ref(detectedDecimal === ',' ? ';' : ',')
@@ -70,6 +83,10 @@ const fkSelections = reactive({})
 const fkTableSelections = reactive({})
 const fkColumnSelections = reactive({})
 const inferredFk = reactive({})
+// Per table: true once the user accepted or edited the inferred FK, or
+// { dismissedTable } when they dismissed it, so the mark can be dropped
+// again when the PK that produced the inference goes away.
+const reviewedFk = reactive({})
 
 const showPkFkSection = ref(false)
 const showDataLinkingSection = ref(false)
@@ -153,6 +170,7 @@ function resetPkFk() {
   for (const k of Object.keys(fkTableSelections)) delete fkTableSelections[k]
   for (const k of Object.keys(fkColumnSelections)) delete fkColumnSelections[k]
   for (const k of Object.keys(inferredFk)) delete inferredFk[k]
+  for (const k of Object.keys(reviewedFk)) delete reviewedFk[k]
 }
 
 // --- Computed: form validation & submit ---
@@ -171,7 +189,7 @@ const isFormValid = computed(() => {
       !pgHasBlockedCharInView('password') &&
       !pgHasBlockedCharInView('url') &&
       !pgHasBlockedCharInView('db'))
-  return basic && validatePkFkRelationships()
+  return basic && validatePkFkRelationships() && unreviewedFkCount.value === 0
 })
 
 function validatePkFkRelationships() {
@@ -188,6 +206,9 @@ const submitButtonTitle = computed(() => {
   if (isFormValid.value) return ''
   if (!validatePkFkRelationships()) {
     return 'Please select primary keys for all tables that are referenced by foreign keys'
+  }
+  if (unreviewedFkCount.value > 0) {
+    return `${unreviewedFkCount.value} ${unreviewedFkCount.value === 1 ? 'suggestion needs' : 'suggestions need'} review — click each highlighted badge to confirm or change the dropdown`
   }
   return ''
 })
@@ -267,14 +288,15 @@ async function processFiles(files) {
 }
 
 async function processExcelFiles(files) {
-  // For Excel, each sheet is a table. Read sheet info from the xlsx zip.
+  // For Excel, each sheet is a table. Read sheet info from the workbook
+  // zip (.xlsx or .ods; .xls is binary and falls back to one table).
   const allSheetInfo = await Promise.all(
     Array.from(files).map((f) => readExcelSheetInfo(f))
   )
   const tables = []
   allSheetInfo.forEach((sheets, fi) => {
     const file = files[fi]
-    const base = file.name.replace(/\.(xlsx|xls)$/i, '')
+    const base = file.name.replace(/\.(xlsx|xls|ods)$/i, '')
     if (sheets.length === 0) {
       // Could not read sheets — treat the file as a single table
       tables.push(base)
@@ -336,8 +358,8 @@ async function onTileDrop(type, e) {
   pageDragActive.value = false
   const dropped = filterByExtension(e.dataTransfer.files, FILE_TYPE_EXTENSIONS[type])
   if (!dropped.length) {
-    const exts = type === 'Excel' ? '.xlsx or .xls' : '.csv'
-    dropError.value = `Please drop only ${exts} files on the ${type} tile.`
+    const exts = type === 'Excel' ? '.xlsx, .xls or .ods' : '.csv'
+    dropError.value = `Please drop only ${exts} files on the ${FILE_TYPE_LABELS[type]} tile.`
     return
   }
   fileType.value = type
@@ -372,7 +394,7 @@ async function onPageDrop(e) {
   const detected = detectFileType(allFiles, FILE_TYPE_EXTENSIONS)
   if (!detected) {
     const names = allFiles.map((f) => f.name).join(', ')
-    dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, or .xls files.`
+    dropError.value = `Unsupported file type(s): ${names}. Please use .csv, .xlsx, .xls or .ods files.`
     return
   }
   fileType.value = detected
@@ -385,27 +407,34 @@ async function onPageDrop(e) {
 function onFkTableChange(index) {
   fkColumnSelections[index] = ''
   delete inferredFk[index]
+  reviewedFk[index] = true
 }
 
 function onFkManualChange(index) {
   delete inferredFk[index]
+  reviewedFk[index] = true
 }
 
 // When a PK is set on table at index pkIndex, check every other table for
 // a column whose name matches the PK (case-insensitive). If found and the
 // other table's FK fields are not already manually set, auto-fill them.
+// The PK watch runs this for every table with a PK, so a table the user
+// already reviewed is left alone: a dismissed inference would otherwise
+// be refilled the next time any PK changes.
 function autoSuggestFk(pkIndex) {
   const suggestions = computeAutoSuggestions(
     pkFkTables.value, csvColumns, pkSelections, pkIndex
   )
   for (const [index, s] of Object.entries(suggestions)) {
     const i = Number(index)
-    // Don't override a manually-set FK
-    if (fkSelections[i]) continue
+    // Don't override a manually-set FK or revisit a reviewed one
+    if (fkSelections[i] || reviewedFk[i]) continue
     fkSelections[i] = s.fk
     fkTableSelections[i] = s.fkTable
     fkColumnSelections[i] = s.fkColumn
-    inferredFk[i] = true
+    // Truthy marker for "inferred, not yet reviewed"; keeps how the column
+    // was matched so the badge can report an honest confidence.
+    inferredFk[i] = { exact: s.exact }
   }
 }
 
@@ -420,7 +449,116 @@ function clearAutoSuggestedFk(pkIndex) {
     fkTableSelections[index] = ''
     fkColumnSelections[index] = ''
     delete inferredFk[index]
+    delete reviewedFk[index]
   }
+  // A dismissed inference holds no FK fields, so find it by the table it
+  // referenced and forget the dismissal along with the PK.
+  for (const index of Object.keys(reviewedFk)) {
+    if (reviewedFk[index]?.dismissedTable === pkTableName) delete reviewedFk[index]
+  }
+}
+
+// Mark a single inferred FK as reviewed (accepted as-is).
+function acceptFkInference(index) {
+  if (inferredFk[index]) {
+    delete inferredFk[index]
+    reviewedFk[index] = true
+    maybeCloseFkCoachmark()
+  }
+}
+
+// Dismiss an inferred FK — clear the FK fields and mark as reviewed,
+// remembering which table's PK the inference pointed at.
+function dismissFkInference(index) {
+  const dismissedTable = fkTableSelections[index] || ''
+  fkSelections[index] = ''
+  fkTableSelections[index] = ''
+  fkColumnSelections[index] = ''
+  delete inferredFk[index]
+  reviewedFk[index] = { dismissedTable }
+  maybeCloseFkCoachmark()
+}
+
+// Count unreviewed inferred FKs across all tables.
+const unreviewedFkCount = computed(() => Object.keys(inferredFk).length)
+
+// --- First-visit review cue (the same callout as the describe pages) ---
+
+// Verbatim copy from the describe pages: the review gate means nothing is
+// saved (submitted) until the pre-filled FK is confirmed or dismissed.
+const COACHMARK_COPY = {
+  title: 'Check this suggestion',
+  body: 'Flyover pre-filled this field. Click the pill to confirm it or × to dismiss it; nothing is saved until you do.',
+}
+
+// The callout anchors on the first inferred FK still awaiting review, so a
+// user who did not notice the pill gets pointed straight at it.
+const fkCoachmarkTarget = computed(() => {
+  if (!fkCoachmarkShown.value) return null
+  const keys = Object.keys(inferredFk)
+  return keys.length ? Number(keys[0]) : null
+})
+
+// First visit only: until the persisted flag arrives the cue stays hidden,
+// and once the user has acknowledged it anywhere it never returns.
+const fkCoachmarkShown = computed(
+  () =>
+    unreviewedFkCount.value > 0 &&
+    suggestions.coachmarkSeen.loaded &&
+    !suggestions.coachmarkSeen.foreign_keys,
+)
+
+function closeFkCoachmark() {
+  suggestions.markCoachmarkSeen('foreign_keys')
+}
+
+// Accepting or dismissing a pill counts as having seen the cue, like the
+// describe pages treat their suggestion pills: the flag is marked even
+// though the pill that carried the callout was cleared, so the cue never
+// returns for a later inference.
+function maybeCloseFkCoachmark() {
+  closeFkCoachmark()
+}
+
+// Confidence reported for an inferred FK, by how the column was matched.
+// An exact name match with the referenced primary key is strong but not
+// certain (two tables can share an 'id'); a partial match, where one name
+// merely contains the other, is a hint the user should look at.
+const FK_CONFIDENCE = { exact: 0.9, partial: 0.6 }
+
+// Build a SuggestionBadge-compatible record for an inferred FK, in the
+// describe-page suggestion shape so the same component renders it. The
+// record has its own source, 'foreign_key': the ingest page never talks
+// to the suggestions API, and this is not a tier of that feature, so it
+// carries no tier label and no alias source at full confidence.
+function fkSuggestionRecord(index) {
+  const refTable = fkTableSelections[index] || ''
+  const refColumn = fkColumnSelections[index] || ''
+  const exact = inferredFk[index]?.exact !== false
+  return {
+    source: 'foreign_key',
+    confidence: exact ? FK_CONFIDENCE.exact : FK_CONFIDENCE.partial,
+    reason: exact
+      ? `Column name equals primary key '${refColumn}' of ${refTable}`
+      : `Column name resembles primary key '${refColumn}' of ${refTable}`,
+    alternatives: [],
+    item: `${pkFkTables.value[index]}.${fkSelections[index] || ''}`,
+    match: `${refTable}.${refColumn}`,
+  }
+}
+
+// Scroll to the first table card that still has an unreviewed inferred FK.
+function jumpToNextUnreviewedFk() {
+  const keys = Object.keys(inferredFk)
+  if (!keys.length) return
+  const index = Number(keys[0])
+  nextTick(() => {
+    const el = document.getElementById(`fk_${index}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus({ preventScroll: true })
+    }
+  })
 }
 
 watch(pkSelections, () => {
@@ -461,6 +599,7 @@ function submitWithoutData(e) {
 onMounted(async () => {
   await refreshDataExists()
   if (graphExists.value) loadExistingGraphData()
+  suggestions.loadCoachmark()
 })
 </script>
 
@@ -482,7 +621,7 @@ onMounted(async () => {
             Drop files anywhere to upload
           </h5>
           <p class="text-muted small mb-0">
-            CSV and Excel files will be auto-detected
+            CSV and spreadsheet files (.xlsx, .xls, .ods) will be auto-detected
           </p>
         </div>
       </div>
@@ -575,9 +714,9 @@ onMounted(async () => {
                   for="Excel"
                   class="form-check-label d-block"
                 >
-                  <i class="fas fa-file-excel fa-2x mb-2 d-block text-success" />
-                  <strong>Excel Files</strong>
-                  <small class="d-block text-muted">Upload Excel files, or drag &amp; drop here</small>
+                  <i class="fas fa-table fa-2x mb-2 d-block text-success" />
+                  <strong>Spreadsheet Files</strong>
+                  <small class="d-block text-muted">Upload .xlsx, .xls or .ods files, or drag &amp; drop here</small>
                 </label>
               </div>
             </div>
@@ -744,7 +883,7 @@ onMounted(async () => {
               name="csvFile"
               style="display: none"
               multiple
-              :accept="fileType === 'Excel' ? '.xlsx,.xls' : '.csv'"
+              :accept="fileType === 'Excel' ? '.xlsx,.xls,.ods' : '.csv'"
               @change="handleFileChange"
             >
             <small class="form-text text-muted mt-2 d-block">
@@ -752,7 +891,7 @@ onMounted(async () => {
                 Supports multiple CSV files. Each file will be treated as a separate table.
               </span>
               <span v-else-if="fileType === 'Excel'">
-                Supports Excel files (.xlsx, .xls). Each sheet will be treated as a separate table.
+                Supports Excel and OpenDocument spreadsheets (.xlsx, .xls, .ods). Each sheet will be treated as a separate table.
               </span>
             </small>
           </div>
@@ -881,12 +1020,17 @@ onMounted(async () => {
                 <small class="text-white-50">
                   ({{ getFileColumns(tableName).length }} columns detected)
                 </small>
-                <span
-                  v-if="inferredFk[index]"
-                  class="badge bg-warning text-white ms-2 align-middle"
-                >
-                  <i class="fas fa-lightbulb" /> Inferred — please verify
-                </span>
+                <SuggestionBadge
+                  v-if="inferredFk[index] || reviewedFk[index]"
+                  :suggestion="fkSuggestionRecord(index)"
+                  :applied="!!inferredFk[index]"
+                  :touched="!!reviewedFk[index]"
+                  :coachmark="fkCoachmarkTarget === index"
+                  :coachmark-copy="COACHMARK_COPY"
+                  @dismiss="dismissFkInference(index)"
+                  @accept="acceptFkInference(index)"
+                  @coachmark-close="closeFkCoachmark"
+                />
               </h6>
             </div>
             <div class="card-body">
@@ -931,7 +1075,7 @@ onMounted(async () => {
                       v-model="fkSelections[index]"
                       :name="`fk_${index}`"
                       class="form-control"
-                      :class="{ 'inferred-select': inferredFk[index] }"
+                      :class="{ 'suggestion-highlight': inferredFk[index] }"
                       @change="onFkManualChange(index)"
                     >
                       <option value="">
@@ -993,7 +1137,7 @@ onMounted(async () => {
                       v-model="fkColumnSelections[index]"
                       :name="`fkColumn_${index}`"
                       class="form-control"
-                      :class="{ 'inferred-select': inferredFk[index] }"
+                      :class="{ 'suggestion-highlight': inferredFk[index] }"
                       @change="onFkManualChange(index)"
                     >
                       <option value="">
@@ -1180,6 +1324,22 @@ onMounted(async () => {
         />{{ submitButtonLabel }}
       </button>
 
+      <span
+        v-if="unreviewedFkCount > 0"
+        class="submit-review-hint"
+      >
+        <i class="fas fa-exclamation-circle" />
+        {{ unreviewedFkCount }} {{ unreviewedFkCount === 1 ? 'suggestion needs' : 'suggestions need' }} review
+        <button
+          type="button"
+          class="btn btn-sm btn-link jump-to-unreviewed"
+          title="Jump to the next unreviewed suggestion"
+          @click="jumpToNextUnreviewedFk"
+        >
+          <i class="fas fa-arrow-down" /> Go to next
+        </button>
+      </span>
+
       <div class="mt-4">
         <div class="alert alert-info-highlight py-2">
           <i class="fas fa-info-circle" />
@@ -1297,8 +1457,46 @@ onMounted(async () => {
   border-color: rgba(0, 0, 0, 0.9) transparent transparent;
 }
 
-.inferred-select {
-  border-color: var(--bs-warning, #ffc107);
-  background-color: var(--bs-warning-bg-subtle, #fff3cd);
+.suggestion-highlight {
+  border-color: rgba(118, 75, 162, 0.7);
+  border-style: dashed;
+  background-color: rgba(118, 75, 162, 0.04);
+}
+
+/* The legacy flyover-custom.css paints every .card-header with the
+   purple gradient and white text, so the badge's default faint-purple
+   and green styles are hard to read there. Use a transparent background
+   with white text and a white outline so the pill reads on the gradient. */
+.card-header :deep(.suggestion-badge),
+.card-header :deep(.suggestion-badge.applied),
+.card-header :deep(.suggestion-badge.confirmed) {
+  background: transparent;
+  color: #fff;
+  border: 1px solid #fff;
+}
+
+.card-header :deep(.suggestion-badge:hover) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.submit-review-hint {
+  margin-left: 0.75rem;
+  color: #764ba2;
+  font-size: 0.85em;
+}
+
+.jump-to-unreviewed {
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  color: #764ba2;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.jump-to-unreviewed:hover {
+  text-decoration: underline;
 }
 </style>

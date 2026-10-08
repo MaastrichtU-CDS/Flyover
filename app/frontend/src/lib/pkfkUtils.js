@@ -12,13 +12,13 @@ function findFkMatch(pkColumn, columns) {
   if (!columns || !columns.length) return null
   const pkLower = pkColumn.toLowerCase()
 
-  let match = columns.find((c) => c.toLowerCase() === pkLower)
-  if (!match) {
-    match = columns.find(
-      (c) => c.toLowerCase().includes(pkLower) || pkLower.includes(c.toLowerCase())
-    )
-  }
-  return match || null
+  const exact = columns.find((c) => c.toLowerCase() === pkLower)
+  if (exact) return { column: exact, exact: true }
+
+  const partial = columns.find(
+    (c) => c.toLowerCase().includes(pkLower) || pkLower.includes(c.toLowerCase())
+  )
+  return partial ? { column: partial, exact: false } : null
 }
 
 /**
@@ -41,9 +41,12 @@ export function computeAutoSuggestions(tables, columns, pkSelections, pkIndex) {
     const match = findFkMatch(pkColumn, cols)
     if (match) {
       suggestions[index] = {
-        fk: match,
+        fk: match.column,
         fkTable: pkTableName,
         fkColumn: pkColumn,
+        // true when the column name equals the PK name (case-insensitive);
+        // false when one name merely contains the other.
+        exact: match.exact,
       }
     }
   })
