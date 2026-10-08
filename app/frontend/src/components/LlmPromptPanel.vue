@@ -42,11 +42,13 @@ export async function copyText(text) {
  * phase on the server (the browser's semantic map goes along so the
  * "already mapped" context matches what the user sees) and opens it in a
  * modal that shows, first of all, the part of the prompt that carries
- * the user's own column names or values. Copy, download and the
- * paste-back field all sit in that modal — copy behind one
- * acknowledgement checkbox, the answer import ungated — so a
- * multi-part round trip never has to leave the modal. The LLM's answer
- * comes back through the store's ingest(): the server validates it and
+ * the user's own column names or values. At the bottom of the modal,
+ * right above the answer field, sit Copy prompt, Show full text and
+ * Download .txt, so a multi-part round trip — copy a part, run it in
+ * the LLM, paste the answer, import it, next part — never has to leave
+ * the modal. Copy and download are gated behind the acknowledgement
+ * checkbox; the paste-back import is not, since pasting sends nothing
+ * out. The LLM's answer comes back through the store's ingest(): the server validates it and
  * the imported records render as ordinary pasted_llm suggestion pills
  * that need the same explicit review.
  *
@@ -396,19 +398,6 @@ async function importAnswer() {
           <p class="llm-prompt-modal-privacy">
             {{ prompt.privacy }}
           </p>
-          <details
-            class="llm-prompt-modal-full"
-            :open="fullOpen || null"
-            @toggle="fullOpen = $event.target.open"
-          >
-            <summary>Full prompt ({{ currentChunk.item_count }} {{ itemLabel }})</summary>
-            <textarea
-              class="form-control llm-help-preview"
-              readonly
-              rows="12"
-              :value="currentChunk.prompt"
-            />
-          </details>
           <label class="llm-prompt-ack">
             <input
               v-model="acknowledged"
@@ -418,10 +407,50 @@ async function importAnswer() {
             I have checked the {{ phase === 'values' ? 'values' : 'column names' }} above for
             personal data and accept the risk of sending them to the LLM I use.
           </label>
-          <!-- The paste-back ends the modal body: copy a part, run it in the
-               LLM, paste the answer here, import it, move to the next part —
-               a multi-part round trip never has to leave the modal. -->
+          <!-- The bottom section carries the round trip: copy the part (or
+               unfold its full text), run it in the LLM, paste the answer,
+               import it, move to the next part — nothing has to leave the
+               modal. -->
           <div class="llm-help-paste llm-prompt-modal-paste">
+            <div class="llm-prompt-modal-actions">
+              <button
+                type="button"
+                class="btn btn-sm btn-primary llm-help-copy"
+                :disabled="!acknowledged"
+                :title="acknowledged ? null : 'Tick the acknowledgement first'"
+                @click="copyCurrent"
+              >
+                <i class="fas fa-copy" /> Copy prompt
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary llm-prompt-full-toggle"
+                :aria-expanded="fullOpen ? 'true' : 'false'"
+                @click="fullOpen = !fullOpen"
+              >
+                <i
+                  class="fas"
+                  :class="fullOpen ? 'fa-chevron-up' : 'fa-file-lines'"
+                />
+                {{ fullOpen ? 'Hide full text' : 'Show full text' }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary llm-help-download"
+                :disabled="!acknowledged"
+                :title="acknowledged ? null : 'Tick the acknowledgement first'"
+                @click="downloadCurrent"
+              >
+                <i class="fas fa-download" /> Download .txt
+              </button>
+            </div>
+            <textarea
+              v-if="fullOpen"
+              class="form-control llm-help-preview"
+              readonly
+              rows="12"
+              :value="currentChunk.prompt"
+            />
             <label
               class="llm-help-paste-label"
               :for="`llm-answer-${phase}-${database}`"
@@ -469,24 +498,6 @@ async function importAnswer() {
           </div>
         </div>
         <div class="llm-prompt-modal-footer">
-          <button
-            type="button"
-            class="btn btn-sm btn-primary llm-help-copy"
-            :disabled="!acknowledged"
-            :title="acknowledged ? null : 'Tick the acknowledgement first'"
-            @click="copyCurrent"
-          >
-            <i class="fas fa-copy" /> Copy prompt
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-secondary llm-help-download"
-            :disabled="!acknowledged"
-            :title="acknowledged ? null : 'Tick the acknowledgement first'"
-            @click="downloadCurrent"
-          >
-            <i class="fas fa-download" /> Download .txt
-          </button>
           <button
             type="button"
             class="btn btn-sm btn-link llm-prompt-modal-close-footer"
@@ -691,11 +702,6 @@ async function importAnswer() {
   font-size: 0.85rem;
 }
 
-.llm-prompt-modal-full {
-  margin-bottom: 0.6rem;
-  font-size: 0.85rem;
-}
-
 .llm-help-preview {
   width: 100%;
   margin-top: 0.3rem;
@@ -723,5 +729,18 @@ async function importAnswer() {
   margin-top: 0.9rem;
   padding-top: 0.7rem;
   border-top: 1px dashed #ced4da;
+}
+
+/* Copy prompt, Show full text and Download sit right above the answer
+   field, in the order the round trip uses them. */
+.llm-prompt-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.llm-prompt-modal-paste .llm-help-preview {
+  margin-top: 0.5rem;
+  margin-bottom: 0.6rem;
 }
 </style>

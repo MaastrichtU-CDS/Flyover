@@ -121,13 +121,23 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(modal.find('.llm-prompt-modal-heading').text()).toMatch(/Column names that leave the browser/)
     expect(modal.find('.llm-prompt-modal-data').text()).toBe('## 3. Local columns\n- clin_t')
     expect(modal.find('.llm-prompt-modal-privacy').text()).toBe('SERVER PRIVACY NOTE')
-    expect(modal.find('.llm-help-preview').element.value).toBe(response.data.chunks[0].prompt)
-    expect(modal.find('.llm-prompt-parts').exists()).toBe(false)
     // The paste-back field lives in the modal, not in the panel body, so a
     // multi-part round trip never has to leave it.
     expect(modal.find('.llm-help-answer').exists()).toBe(true)
     expect(modal.find('.llm-help-import').exists()).toBe(true)
     expect(wrapper.find('.llm-help-body .llm-help-answer').exists()).toBe(false)
+    // Copy prompt, Show full text and Download sit in the bottom section,
+    // right above the answer field; the full text unfolds there on demand.
+    const paste = modal.find('.llm-prompt-modal-paste')
+    expect(paste.find('.llm-help-copy').exists()).toBe(true)
+    expect(paste.find('.llm-prompt-full-toggle').exists()).toBe(true)
+    expect(paste.find('.llm-help-download').exists()).toBe(true)
+    expect(modal.find('.llm-help-preview').exists()).toBe(false)
+    await paste.find('.llm-prompt-full-toggle').trigger('click')
+    expect(modal.find('.llm-help-preview').element.value).toBe(response.data.chunks[0].prompt)
+    await paste.find('.llm-prompt-full-toggle').trigger('click')
+    expect(modal.find('.llm-help-preview').exists()).toBe(false)
+    expect(modal.find('.llm-prompt-parts').exists()).toBe(false)
 
     // Closing hides it; "Show prompt" brings it back.
     await modal.find('.llm-prompt-modal-close').trigger('click')
@@ -210,7 +220,8 @@ describe('Frontend unit: LlmPromptPanel', () => {
     await wrapper.find('.llm-help-copy').trigger('click')
     await flushPromises()
     expect(useStatusStore().messages.at(-1).level).toBe('warning')
-    expect(wrapper.find('.llm-prompt-modal-full').attributes('open')).toBeDefined()
+    // The failed copy unfolded the full text above the answer field.
+    expect(wrapper.find('.llm-help-preview').exists()).toBe(true)
   })
 
   it('names the held-back columns and the rare values left out', async () => {
