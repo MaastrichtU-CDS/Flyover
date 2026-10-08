@@ -876,9 +876,25 @@ function pastedValuesIngest() {
   }
 }
 
+// A minimal prompt response: the panel only needs one chunk, because the
+// paste-back field lives in the prompt modal that the chunk opens.
+function llmPromptResponse() {
+  return {
+    data: {
+      chunks: [{ index: 1, prompt: 'PROMPT 1', item_count: 1 }],
+      item_count: 1,
+      chunk_hint: 40,
+      privacy: 'PRIVACY NOTE',
+    },
+  }
+}
+
 async function importThroughPanel(wrapper, answer = '{"databases": {}}') {
   const panel = wrapper.findComponent({ name: 'LlmPromptPanel' })
   await panel.find('.llm-help-toggle').trigger('click')
+  // The paste-back field sits in the prompt modal, so open it first.
+  await panel.find('.llm-help-generate').trigger('click')
+  await flushPromises()
   await panel.find('.llm-help-answer').setValue(answer)
   await panel.find('.llm-help-import').trigger('click')
   await flushPromises()
@@ -891,6 +907,7 @@ describe('DescribeVariablesView — pasted LLM answer', () => {
       ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
       ['/api/v1/suggestions/status', { data: STATUS_TIERS_OFF }],
       ['/api/v1/suggestions/variables', { data: IDLE_SNAPSHOT }],
+      ['/api/v1/suggestions/prompt', llmPromptResponse()],
       ['/api/v1/suggestions/variables/ingest', pastedVariablesIngest()],
     ])
     const wrapper = mount(DescribeVariablesView)
@@ -942,6 +959,7 @@ describe('DescribeVariablesView — pasted LLM answer', () => {
       ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
       ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
       ['/api/v1/suggestions/variables', { data: VARIABLES_SNAPSHOT }],
+      ['/api/v1/suggestions/prompt', llmPromptResponse()],
       ['/api/v1/suggestions/variables/ingest', pastedVariablesIngest()],
     ])
     const wrapper = mount(DescribeVariablesView)
@@ -999,6 +1017,7 @@ describe('DescribeVariablesView — pasted answer re-opens a dismissed field', (
       ['/api/v1/describe-variables-state', { data: { column_info: { test_db: ['morph', 'sex'] } } }],
       ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
       ['/api/v1/suggestions/variables', { data: VARIABLES_SNAPSHOT }],
+      ['/api/v1/suggestions/prompt', llmPromptResponse()],
       ['/api/v1/suggestions/variables/ingest', ingest],
     ])
     const wrapper = mount(DescribeVariablesView)
@@ -1048,6 +1067,7 @@ describe('DescribeVariableDetailsView — pasted LLM answer', () => {
       ['/api/v1/describe-variable-details-state', { data: DETAILS_STATE }],
       ['/api/v1/suggestions/status', { data: { ...STATUS, prompt_export: { state: 'active' } } }],
       ['/api/v1/suggestions/values', { data: { ...VALUES_SNAPSHOT, records: { patients_sex_M: VALUES_SNAPSHOT.records.patients_sex_M } } }],
+      ['/api/v1/suggestions/prompt', llmPromptResponse()],
       ['/api/v1/suggestions/values/ingest', pastedValuesIngest()],
     ])
     const wrapper = mount(DescribeVariableDetailsView, {

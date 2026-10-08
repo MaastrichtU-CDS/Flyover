@@ -123,6 +123,11 @@ describe('Frontend unit: LlmPromptPanel', () => {
     expect(modal.find('.llm-prompt-modal-privacy').text()).toBe('SERVER PRIVACY NOTE')
     expect(modal.find('.llm-help-preview').element.value).toBe(response.data.chunks[0].prompt)
     expect(modal.find('.llm-prompt-parts').exists()).toBe(false)
+    // The paste-back field lives in the modal, not in the panel body, so a
+    // multi-part round trip never has to leave it.
+    expect(modal.find('.llm-help-answer').exists()).toBe(true)
+    expect(modal.find('.llm-help-import').exists()).toBe(true)
+    expect(wrapper.find('.llm-help-body .llm-help-answer').exists()).toBe(false)
 
     // Closing hides it; "Show prompt" brings it back.
     await modal.find('.llm-prompt-modal-close').trigger('click')
@@ -248,11 +253,17 @@ describe('Frontend unit: LlmPromptPanel', () => {
   })
 
   it('imports the pasted answer through the store and emits ingested', async () => {
-    api.post.mockResolvedValue(ingestResponse)
+    api.post.mockImplementation(async (url) =>
+      url === '/api/v1/suggestions/prompt' ? promptResponse() : ingestResponse,
+    )
     const wrapper = await mountOpen()
-    const importButton = wrapper.find('.llm-help-import')
+    await wrapper.find('.llm-help-generate').trigger('click')
+    await flushPromises()
+
+    const modal = wrapper.find('.llm-prompt-modal')
+    const importButton = modal.find('.llm-help-import')
     expect(importButton.attributes('disabled')).toBeDefined()
-    await wrapper.find('.llm-help-answer').setValue('```json\n{"databases": {}}\n```')
+    await modal.find('.llm-help-answer').setValue('```json\n{"databases": {}}\n```')
     expect(importButton.attributes('disabled')).toBeUndefined()
     await importButton.trigger('click')
     await flushPromises()
@@ -267,20 +278,26 @@ describe('Frontend unit: LlmPromptPanel', () => {
     const store = useSuggestionsStore()
     expect(store.variables.byKey.nki_taal.source).toBe('pasted_llm')
     expect(wrapper.emitted('ingested')[0][0].accepted).toBe(1)
-    expect(wrapper.find('.llm-help-import-result').text()).toMatch(/1 imported, 1 left for you to decide/)
-    expect(wrapper.find('.llm-help-answer').element.value).toBe('')
+    expect(modal.find('.llm-help-import-result').text()).toMatch(/1 imported, 1 left for you to decide/)
+    expect(modal.find('.llm-help-answer').element.value).toBe('')
   })
 
   it('keeps the paste and shows the message when the import fails', async () => {
-    api.post.mockRejectedValue({
-      response: { status: 400, data: { error: 'Could not find valid JSON in the pasted text.' } },
+    api.post.mockImplementation(async (url) => {
+      if (url === '/api/v1/suggestions/prompt') return promptResponse()
+      return Promise.reject({
+        response: { status: 400, data: { error: 'Could not find valid JSON in the pasted text.' } },
+      })
     })
     const wrapper = await mountOpen()
-    await wrapper.find('.llm-help-answer').setValue('not json')
-    await wrapper.find('.llm-help-import').trigger('click')
+    await wrapper.find('.llm-help-generate').trigger('click')
     await flushPromises()
-    expect(wrapper.find('.llm-help-error').text()).toMatch(/Could not find valid JSON/)
-    expect(wrapper.find('.llm-help-answer').element.value).toBe('not json')
+    const modal = wrapper.find('.llm-prompt-modal')
+    await modal.find('.llm-help-answer').setValue('not json')
+    await modal.find('.llm-help-import').trigger('click')
+    await flushPromises()
+    expect(modal.find('.llm-help-error').text()).toMatch(/Could not find valid JSON/)
+    expect(modal.find('.llm-help-answer').element.value).toBe('not json')
     expect(wrapper.emitted('ingested')).toBeUndefined()
   })
 })

@@ -42,11 +42,13 @@ export async function copyText(text) {
  * phase on the server (the browser's semantic map goes along so the
  * "already mapped" context matches what the user sees) and opens it in a
  * modal that shows, first of all, the part of the prompt that carries
- * the user's own column names or values. Copy and download sit in that
- * modal behind one acknowledgement checkbox. The LLM's answer comes back
- * through the store's ingest(): the server validates it and the imported
- * records render as ordinary pasted_llm suggestion pills that need the
- * same explicit review.
+ * the user's own column names or values. Copy, download and the
+ * paste-back field all sit in that modal — copy behind one
+ * acknowledgement checkbox, the answer import ungated — so a
+ * multi-part round trip never has to leave the modal. The LLM's answer
+ * comes back through the store's ingest(): the server validates it and
+ * the imported records render as ordinary pasted_llm suggestion pills
+ * that need the same explicit review.
  *
  * Copying tries the async clipboard API (secure contexts only) and falls
  * back to a selected textarea + execCommand; every part can also be
@@ -333,53 +335,6 @@ async function importAnswer() {
       >
         {{ summary }}
       </p>
-
-      <div class="llm-help-paste">
-        <label
-          class="llm-help-paste-label"
-          :for="`llm-answer-${phase}-${database}`"
-        >
-          Paste the LLM's answer
-        </label>
-        <textarea
-          :id="`llm-answer-${phase}-${database}`"
-          v-model="answer"
-          class="form-control llm-help-answer"
-          rows="5"
-          placeholder="Paste the JSON answer here; code fences and surrounding text are fine"
-        />
-        <button
-          type="button"
-          class="btn btn-sm btn-primary llm-help-import"
-          :disabled="importing || !answer.trim()"
-          @click="importAnswer"
-        >
-          <i
-            class="fas"
-            :class="importing ? 'fa-spinner fa-spin' : 'fa-file-import'"
-          />
-          Import answer
-        </button>
-        <span
-          v-if="importError"
-          class="llm-help-error"
-          role="alert"
-        >{{ importError }}</span>
-        <div
-          v-if="importResult"
-          class="llm-help-import-result"
-        >
-          <span>{{ importSummary }}</span>
-          <ul v-if="importResult.messages?.length">
-            <li
-              v-for="message in importResult.messages"
-              :key="message"
-            >
-              {{ message }}
-            </li>
-          </ul>
-        </div>
-      </div>
     </div>
 
     <div
@@ -463,6 +418,55 @@ async function importAnswer() {
             I have checked the {{ phase === 'values' ? 'values' : 'column names' }} above for
             personal data and accept the risk of sending them to the LLM I use.
           </label>
+          <!-- The paste-back ends the modal body: copy a part, run it in the
+               LLM, paste the answer here, import it, move to the next part —
+               a multi-part round trip never has to leave the modal. -->
+          <div class="llm-help-paste llm-prompt-modal-paste">
+            <label
+              class="llm-help-paste-label"
+              :for="`llm-answer-${phase}-${database}`"
+            >
+              Paste the LLM's answer
+            </label>
+            <textarea
+              :id="`llm-answer-${phase}-${database}`"
+              v-model="answer"
+              class="form-control llm-help-answer"
+              rows="5"
+              placeholder="Paste the JSON answer here; code fences and surrounding text are fine"
+            />
+            <button
+              type="button"
+              class="btn btn-sm btn-primary llm-help-import"
+              :disabled="importing || !answer.trim()"
+              @click="importAnswer"
+            >
+              <i
+                class="fas"
+                :class="importing ? 'fa-spinner fa-spin' : 'fa-file-import'"
+              />
+              Import answer
+            </button>
+            <span
+              v-if="importError"
+              class="llm-help-error"
+              role="alert"
+            >{{ importError }}</span>
+            <div
+              v-if="importResult"
+              class="llm-help-import-result"
+            >
+              <span>{{ importSummary }}</span>
+              <ul v-if="importResult.messages?.length">
+                <li
+                  v-for="message in importResult.messages"
+                  :key="message"
+                >
+                  {{ message }}
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
         <div class="llm-prompt-modal-footer">
           <button
@@ -710,5 +714,14 @@ async function importAnswer() {
 .llm-prompt-ack-input {
   flex: none;
   margin: 0.2rem 0 0;
+}
+
+/* The paste-back sits at the bottom of the modal body, set apart from the
+   acknowledgement, so a multi-part round trip never leaves the modal. */
+.llm-prompt-modal-paste {
+  width: 100%;
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed #ced4da;
 }
 </style>
