@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
+import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
@@ -80,6 +81,9 @@ describe('IngestView', () => {
     refreshDataExists.mockClear()
     api.get.mockReset()
     api.get.mockResolvedValue({ data: { tables: [], tableColumns: {} } })
+    // IngestView reads the suggestions store for the first-visit coachmark
+    // flag, so every mount needs an active pinia.
+    setActivePinia(createPinia())
   })
 
   it('renders the form with POST /upload', () => {
@@ -885,6 +889,9 @@ describe('IngestView — PK/FK', () => {
     refreshDataExists.mockClear()
     api.get.mockReset()
     api.get.mockResolvedValue({ data: { tables: [], tableColumns: {} } })
+    // IngestView reads the suggestions store for the first-visit coachmark
+    // flag, so every mount needs an active pinia.
+    setActivePinia(createPinia())
   })
 
   // -- CSV: section visibility --------------------------------------------
@@ -1434,6 +1441,52 @@ describe('IngestView — PK/FK', () => {
     const accept = badge.find('.suggestion-accept')
     expect(accept.attributes('title')).toBe("Column name equals primary key 'patient_id' of patients.csv — click to confirm or change the dropdown")
     expect(accept.attributes('aria-label')).toContain("map 'visits.csv.patient_id' to 'patients.csv.patient_id' (90%)")
+  })
+
+  it('shows the first-visit review cue on the first unreviewed FK pill', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+
+    const callouts = w.findAllComponents({ name: 'SuggestionCoachmark' })
+    expect(callouts.length).toBe(1)
+    // Same copy as the describe pages' cue.
+    expect(callouts[0].text()).toContain('Check this suggestion')
+    expect(callouts[0].text()).toContain('Flyover pre-filled this field')
+    expect(callouts[0].text()).toContain('nothing is saved until you do')
+    // Anchored to the table card whose FK was inferred.
+    expect(callouts[0].element.closest('.card-header').textContent).toContain('visits.csv')
+  })
+
+  it('marks the review cue seen when the FK suggestion is accepted', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(1)
+
+    await w.find('.suggestion-accept').trigger('click')
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+
+    // A fresh inference must not bring the cue back: accepting the pill
+    // already acknowledged it.
+    await w.find('#pk_0').setValue('')
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
   })
 
   it('reports 60% when the FK column name only resembles the primary key', async () => {

@@ -5,6 +5,7 @@ import { useNavigation } from '@/composables/useNavigation'
 import { readCSVColumns } from '@/lib/csvParser'
 import { readExcelSheetInfo } from '@/lib/excelParser'
 import SuggestionBadge from '@/components/SuggestionBadge.vue'
+import { useSuggestionsStore } from '@/stores/suggestions'
 import {
   isValidPgUrl,
   preventBlockedKey,
@@ -26,6 +27,11 @@ import {
 } from '@/lib/pkfkUtils'
 
 const { dataExists: graphExists, refreshDataExists } = useNavigation()
+
+// Only the coachmark bookkeeping is used here: the ingest page never talks
+// to the suggestions API, it just reuses the same first-visit review cue
+// (and its persisted "seen" flag) that the describe pages show.
+const suggestions = useSuggestionsStore()
 
 // --- File type configuration ---
 
@@ -457,6 +463,7 @@ function acceptFkInference(index) {
   if (inferredFk[index]) {
     delete inferredFk[index]
     reviewedFk[index] = true
+    maybeCloseFkCoachmark()
   }
 }
 
@@ -469,10 +476,49 @@ function dismissFkInference(index) {
   fkColumnSelections[index] = ''
   delete inferredFk[index]
   reviewedFk[index] = { dismissedTable }
+  maybeCloseFkCoachmark()
 }
 
 // Count unreviewed inferred FKs across all tables.
 const unreviewedFkCount = computed(() => Object.keys(inferredFk).length)
+
+// --- First-visit review cue (the same callout as the describe pages) ---
+
+// Verbatim copy from the describe pages: the review gate means nothing is
+// saved (submitted) until the pre-filled FK is confirmed or dismissed.
+const COACHMARK_COPY = {
+  title: 'Check this suggestion',
+  body: 'Flyover pre-filled this field. Click the pill to confirm it or × to dismiss it; nothing is saved until you do.',
+}
+
+// The callout anchors on the first inferred FK still awaiting review, so a
+// user who did not notice the pill gets pointed straight at it.
+const fkCoachmarkTarget = computed(() => {
+  if (!fkCoachmarkShown.value) return null
+  const keys = Object.keys(inferredFk)
+  return keys.length ? Number(keys[0]) : null
+})
+
+// First visit only: until the persisted flag arrives the cue stays hidden,
+// and once the user has acknowledged it anywhere it never returns.
+const fkCoachmarkShown = computed(
+  () =>
+    unreviewedFkCount.value > 0 &&
+    suggestions.coachmarkSeen.loaded &&
+    !suggestions.coachmarkSeen.foreign_keys,
+)
+
+function closeFkCoachmark() {
+  suggestions.markCoachmarkSeen('foreign_keys')
+}
+
+// Accepting or dismissing a pill counts as having seen the cue, like the
+// describe pages treat their suggestion pills: the flag is marked even
+// though the pill that carried the callout was cleared, so the cue never
+// returns for a later inference.
+function maybeCloseFkCoachmark() {
+  closeFkCoachmark()
+}
 
 // Confidence reported for an inferred FK, by how the column was matched.
 // An exact name match with the referenced primary key is strong but not
@@ -553,6 +599,7 @@ function submitWithoutData(e) {
 onMounted(async () => {
   await refreshDataExists()
   if (graphExists.value) loadExistingGraphData()
+  suggestions.loadCoachmark()
 })
 </script>
 
@@ -978,8 +1025,11 @@ onMounted(async () => {
                   :suggestion="fkSuggestionRecord(index)"
                   :applied="!!inferredFk[index]"
                   :touched="!!reviewedFk[index]"
+                  :coachmark="fkCoachmarkTarget === index"
+                  :coachmark-copy="COACHMARK_COPY"
                   @dismiss="dismissFkInference(index)"
                   @accept="acceptFkInference(index)"
+                  @coachmark-close="closeFkCoachmark"
                 />
               </h6>
             </div>

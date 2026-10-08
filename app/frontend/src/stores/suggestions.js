@@ -116,10 +116,15 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
 
   // First-visit cue (WS2): whether the user has already seen the
   // "review suggested mappings" coachmark per phase, persisted in the
-  // metadata store as { variables, values }. `loaded` is false until
+  // metadata store as { variables, values, foreign_keys } (the ingest page anchors the same cue on its inferred foreign keys). `loaded` is false until
   // loadCoachmark() resolved, so a view never flashes the cue before the
   // persisted flags arrive.
-  const coachmarkSeen = reactive({ loaded: false, variables: false, values: false })
+  const coachmarkSeen = reactive({
+    loaded: false,
+    variables: false,
+    values: false,
+    foreign_keys: false,
+  })
 
   let _pollTimer = null
   let _pollStartedAt = 0
@@ -181,6 +186,7 @@ export const useSuggestionsStore = defineStore('suggestions', () => {
       const stored = await db.getData('metadata', COACHMARK_KEY)
       coachmarkSeen.variables = !!stored?.variables
       coachmarkSeen.values = !!stored?.values
+      coachmarkSeen.foreign_keys = !!stored?.foreign_keys
     } catch {
       // Fall through: flags stay false until first close.
     }
