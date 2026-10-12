@@ -68,6 +68,9 @@ async function openAndGenerate(page, phase) {
   await expect(modal).toBeVisible()
   await expect(modal.locator('.llm-prompt-modal-privacy')).toContainText(/no data rows/)
   await expect(modal.locator('.llm-help-copy')).toBeDisabled()
+  // The full text is folded away behind "Show full text"; the modal
+  // shows section 3 (the user's own names or values) by default.
+  await modal.locator('.llm-prompt-full-toggle').click()
   const promptText = await modal.locator('.llm-help-preview').inputValue()
   await modal.locator('.llm-prompt-modal-close').click()
   await expect(modal).toHaveCount(0)
