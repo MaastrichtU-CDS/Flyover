@@ -68,17 +68,29 @@ async function openAndGenerate(page, phase) {
   await expect(modal).toBeVisible()
   await expect(modal.locator('.llm-prompt-modal-privacy')).toContainText(/no data rows/)
   await expect(modal.locator('.llm-help-copy')).toBeDisabled()
+  // The full text is folded away behind "Show full text"; the modal
+  // shows section 3 (the user's own names or values) by default.
+  await modal.locator('.llm-prompt-full-toggle').click()
   const promptText = await modal.locator('.llm-help-preview').inputValue()
-  await modal.locator('.llm-prompt-modal-close').click()
-  await expect(modal).toHaveCount(0)
-  return { panel, promptText }
+  // The modal stays open: the paste-back lives at the bottom of its body.
+  return { panel, modal, promptText }
 }
 
-async function importAnswer(panel, answer) {
-  await panel.locator('.llm-help-answer').fill(answer)
-  await panel.locator('.llm-help-import').click()
-  await expect(panel.locator('.llm-help-import-result')).toBeVisible({ timeout: 30_000 })
-  return panel.locator('.llm-help-import-result')
+/**
+ * Paste an answer into the open modal and import it. Returns the import
+ * result line, still inside the modal; call closeModal() before touching
+ * the pills, the modal's backdrop covers the page.
+ */
+async function importAnswer(modal, answer) {
+  await modal.locator('.llm-help-answer').fill(answer)
+  await modal.locator('.llm-help-import').click()
+  await expect(modal.locator('.llm-help-import-result')).toBeVisible({ timeout: 30_000 })
+  return modal.locator('.llm-help-import-result')
+}
+
+async function closeModal(modal) {
+  await modal.locator('.llm-prompt-modal-close').click()
+  await expect(modal).toHaveCount(0)
 }
 
 test.describe('LLM prompt export round trip', () => {
@@ -107,7 +119,7 @@ test.describe('LLM prompt export round trip', () => {
       await expect(clinT.locator('.description-select')).toHaveValue('')
     }
 
-    const { panel, promptText } = await openAndGenerate(page, 'variables')
+    const { panel, modal, promptText } = await openAndGenerate(page, 'variables')
     await expect(panel.locator('.llm-help-summary')).toContainText(/columns still to map/)
     // The prompt: JSON-LD answer skeleton, the unmapped column, a hint from
     // tier 1 — and no values at all: the variables phase shares only the
@@ -148,8 +160,9 @@ test.describe('LLM prompt export round trip', () => {
         },
       },
     }, null, 2)}\n\`\`\`\nLet me know if you need anything else.`
-    const result = await importAnswer(panel, answer)
+    const result = await importAnswer(modal, answer)
     await expect(result).toContainText(/1 imported, 1 left for you to decide/)
+    await closeModal(modal)
 
     // The imported record shows as a pasted_llm pill on the clin_t row
     // (confident, so pre-filled for review) although the user dismissed
@@ -214,7 +227,7 @@ test.describe('LLM prompt export round trip', () => {
     await expandAllDatabases(page)
     await dismissCoachmarkIfPresent(page)
 
-    const { panel, promptText } = await openAndGenerate(page, 'values')
+    const { panel, modal, promptText } = await openAndGenerate(page, 'values')
     await expect(panel.locator('.llm-help-summary')).toContainText(/values still to map/)
     expect(promptText).toContain('"localMappings"')
     expect(promptText).toContain('Column "event_overall_survival" → variable survival_status')
@@ -240,10 +253,11 @@ test.describe('LLM prompt export round trip', () => {
         },
       },
     })
-    const result = await importAnswer(panel, answer)
+    const result = await importAnswer(modal, answer)
     // '9' is not a value of the column: ignored; Dead/Alive imported.
     await expect(result).toContainText(/2 imported/)
     await expect(result).toContainText(/1 ignored/)
+    await closeModal(modal)
 
     await expandAllVariables(page)
     const pasted = page.locator('.suggestion-badge').filter({ has: page.locator('.fa-clipboard') })
