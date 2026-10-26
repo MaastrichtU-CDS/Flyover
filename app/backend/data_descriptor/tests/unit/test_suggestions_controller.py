@@ -7,16 +7,18 @@ Tests cover ``/status``, ``/<phase>/start``, ``GET /<phase>``,
 """
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from flask import Flask
 
 from controllers import suggestions_bp
+from services.suggestions import SuggestionRequestError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -412,3 +414,270 @@ class TestPriority(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# Prompt export / ingest
+# ---------------------------------------------------------------------------
+
+
+class TestPromptRoute(unittest.TestCase):
+    def _service(self):
+        svc = _make_mock_service()
+        svc.build_prompt.return_value = {
+            "prompt": "PROMPT",
+            "chunks": [
+                {"index": 1, "items": ["yr"], "item_count": 1, "prompt": "PROMPT"}
+            ],
+            "item_count": 1,
+            "chunk_hint": 40,
+            "contains": ["variable keys"],
+            "answer_schema": {"type": "object"},
+        }
+        return svc
+
+    def test_get_prompt(self):
+        svc = self._service()
+        app = _make_app(svc)
+        with app.test_client() as client:
+            resp = client.get("/api/v1/suggestions/prompt?phase=variables&database=nki")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertEqual(data["prompt"], "PROMPT")
+            self.assertEqual(data["item_count"], 1)
+            self.assertIn("answer_schema", data)
+            self.assertIn("contains", data)
+        kwargs = svc.build_prompt.call_args.kwargs
+        self.assertEqual(kwargs["database"], "nki")
+        self.assertIsNone(kwargs["chunk"])
+        self.assertIsNone(kwargs["mapping"])
+        self.assertEqual(kwargs["include"], [])
+
+    def test_post_prompt_with_options_and_mapping(self):
+        svc = self._service()
+        app = _make_app(svc)
+        with app.test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/prompt",
+                data=json.dumps(
+                    {
+                        "phase": "values",
+                        "database": "christie",
+                        "chunk": "20",
+                        "include": ["opmerking", ""],
+                        "mapping": _VALID_MAPPING,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+        args, kwargs = svc.build_prompt.call_args
+        self.assertEqual(args[0], "values")
+        self.assertEqual(kwargs["chunk"], 20)
+        self.assertEqual(kwargs["include"], ["opmerking"])
+        self.assertIsNotNone(kwargs["mapping"])
+        self.assertEqual(kwargs["mapping_data"], _VALID_MAPPING)
+
+    def test_get_prompt_include_is_comma_separated(self):
+        svc = self._service()
+        app = _make_app(svc)
+        with app.test_client() as client:
+            resp = client.get(
+                "/api/v1/suggestions/prompt?phase=values&database=nki"
+                "&include=opmerking,%20notes,"
+            )
+            self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            svc.build_prompt.call_args.kwargs["include"], ["opmerking", "notes"]
+        )
+
+    def test_prompt_errors(self):
+        svc = self._service()
+        svc.build_prompt.side_effect = SuggestionRequestError(
+            "unknown_database", "unknown database 'nope'"
+        )
+        app = _make_app(svc)
+        with app.test_client() as client:
+            resp = client.get("/api/v1/suggestions/prompt?phase=bogus&database=nki")
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_phase")
+            resp = client.get("/api/v1/suggestions/prompt?phase=variables")
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_database")
+            resp = client.get(
+                "/api/v1/suggestions/prompt?phase=variables&database=nope"
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_database")
+            self.assertIn("nope", resp.get_json()["error"])
+            # A body that parses to a JSON array is a caller mistake: a
+            # readable 400, not an unhandled AttributeError (a 500).
+            resp = client.post(
+                "/api/v1/suggestions/prompt",
+                data=json.dumps(["not", "a", "dict"]),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_phase")
+        with _make_app(None).test_client() as client:
+            resp = client.get("/api/v1/suggestions/prompt?phase=variables&database=nki")
+            self.assertEqual(resp.status_code, 503)
+
+    def test_status_lists_prompt_export(self):
+        svc = _make_mock_service(enabled=False)
+        with _make_app(svc).test_client() as client:
+            data = client.get("/api/v1/suggestions/status").get_json()
+            self.assertFalse(data["enabled"])
+            self.assertEqual(data["prompt_export"]["state"], "active")
+            # The site's chunk default reaches the panel through /status.
+            with patch.dict(os.environ, {"FLYOVER_SUGGESTION_PROMPT_CHUNK": "160"}):
+                data = client.get("/api/v1/suggestions/status").get_json()
+            self.assertEqual(data["prompt_export"]["chunk"], 160)
+        with _make_app(None).test_client() as client:
+            data = client.get("/api/v1/suggestions/status").get_json()
+            self.assertEqual(data["prompt_export"]["state"], "inactive")
+
+
+class TestIngestRoute(unittest.TestCase):
+    def _service(self):
+        svc = _make_mock_service(enabled=False)
+        svc.ingest.return_value = {
+            "accepted": 3,
+            "nulled": 1,
+            "rejected": 0,
+            "skipped": 0,
+            "messages": [],
+            "job": {"status": "done", "fingerprint": "x", "records": {}},
+        }
+        return svc
+
+    def test_ingest_answer_text(self):
+        svc = self._service()
+        app = _make_app(svc)
+        with app.test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(
+                    {
+                        "database": "nki",
+                        "source": "pasted_llm",
+                        "answer": "```json\n[]\n```",
+                        "mapping": _VALID_MAPPING,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertEqual((data["accepted"], data["nulled"]), (3, 1))
+            self.assertIn("job", data)
+        args, kwargs = svc.ingest.call_args
+        self.assertEqual(args[0], "variables")
+        self.assertEqual(kwargs["database"], "nki")
+        self.assertEqual(kwargs["answer"], "```json\n[]\n```")
+        self.assertIsNone(kwargs["records"])
+        self.assertEqual(kwargs["source"], "pasted_llm")
+        self.assertIsNotNone(kwargs["mapping"])
+        self.assertEqual(kwargs["dismissed"], [])
+
+    def test_ingest_passes_dismissed_keys(self):
+        svc = self._service()
+        with _make_app(svc).test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(
+                    {"database": "nki", "answer": "{}", "dismissed": ["nki_taal", 7]}
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+        self.assertEqual(svc.ingest.call_args.kwargs["dismissed"], ["nki_taal", "7"])
+        with _make_app(svc).test_client() as client:
+            client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(
+                    {"database": "nki", "answer": "{}", "dismissed": "nope"}
+                ),
+                content_type="application/json",
+            )
+        self.assertEqual(svc.ingest.call_args.kwargs["dismissed"], [])
+
+    def test_ingest_records_list(self):
+        svc = self._service()
+        with _make_app(svc).test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/values/ingest",
+                data=json.dumps(
+                    {"database": "nki", "records": [{"item": "M", "match": "male"}]}
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+        kwargs = svc.ingest.call_args.kwargs
+        self.assertIsNone(kwargs["answer"])
+        self.assertEqual(kwargs["records"], [{"item": "M", "match": "male"}])
+
+    def test_ingest_errors(self):
+        svc = self._service()
+        with _make_app(svc).test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/bogus/ingest",
+                data="{}",
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps({"answer": "{}"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_database")
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps({"database": "nki"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "bad_answer")
+            # A body that parses to a JSON array is a caller mistake: a
+            # readable 400, not an unhandled AttributeError (a 500).
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps(["not", "a", "dict"]),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertEqual(resp.get_json()["kind"], "unknown_database")
+            svc.ingest.side_effect = SuggestionRequestError(
+                "bad_answer", "Could not find valid JSON in the pasted text."
+            )
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps({"database": "nki", "answer": "nope"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400)
+            self.assertIn("Could not find valid JSON", resp.get_json()["error"])
+        with _make_app(None).test_client() as client:
+            resp = client.post(
+                "/api/v1/suggestions/variables/ingest",
+                data=json.dumps({"database": "nki", "answer": "{}"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 503)
+
+    def test_snapshot_reports_enabled_when_a_pasted_job_exists(self):
+        svc = _make_mock_service(enabled=False)
+        with _make_app(svc).test_client() as client:
+            data = client.get("/api/v1/suggestions/variables").get_json()
+            self.assertTrue(data["enabled"])
+        svc.get_state.return_value = {
+            "status": "idle",
+            "progress": {"done": 0, "total": 0},
+            "error": None,
+            "records": {},
+        }
+        with _make_app(svc).test_client() as client:
+            data = client.get("/api/v1/suggestions/variables").get_json()
+            self.assertFalse(data["enabled"])

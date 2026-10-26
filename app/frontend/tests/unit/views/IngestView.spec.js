@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
+import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
@@ -80,6 +81,9 @@ describe('IngestView', () => {
     refreshDataExists.mockClear()
     api.get.mockReset()
     api.get.mockResolvedValue({ data: { tables: [], tableColumns: {} } })
+    // IngestView reads the suggestions store for the first-visit coachmark
+    // flag, so every mount needs an active pinia.
+    setActivePinia(createPinia())
   })
 
   it('renders the form with POST /upload', () => {
@@ -603,7 +607,7 @@ describe('IngestView', () => {
 
     await dropOnTile(w, 'CSV', [csvFile('notes.txt')])
     expect(w.find('#csvPath').element.value).toBe('')
-    expect(w.text()).toContain('Please drop only .csv files')
+    expect(w.text()).toContain('Please drop only .csv files on the CSV tile')
   })
 
   it('shows an error when CSV files are dropped on the Excel tile', async () => {
@@ -612,7 +616,7 @@ describe('IngestView', () => {
 
     await dropOnTile(w, 'Excel', [csvFile('data.csv')])
     expect(w.find('#csvPath').element.value).toBe('')
-    expect(w.text()).toContain('Please drop only .xlsx or .xls files')
+    expect(w.text()).toContain('Please drop only .xlsx, .xls or .ods files on the Spreadsheet tile')
   })
 
   it('shows the drag-over highlight while dragging over the CSV tile', async () => {
@@ -665,6 +669,44 @@ describe('IngestView', () => {
     const excelTile = findTile(w, 'Excel')
     expect(excelTile.classList.contains('selected-source')).toBe(true)
     expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  it('labels the Excel source as Spreadsheet Files while keeping the Excel key', async () => {
+    const w = mountIngest()
+    await flushPromises()
+    const tile = findTile(w, 'Excel')
+    expect(tile.textContent).toContain('Spreadsheet Files')
+    expect(tile.textContent).not.toContain('Excel Files')
+    expect(w.find('#Excel').element.value).toBe('Excel')
+  })
+
+  it('accepts .ods files dropped on the Excel tile', async () => {
+    const w = mountIngest()
+    await flushPromises()
+    const submit = w.find('button[type="submit"]')
+
+    await dropOnTile(w, 'Excel', [csvFile('report.ods')])
+    expect(w.find('#csvPath').element.value).toBe('report.ods')
+    expect(submit.attributes('disabled')).toBeUndefined()
+  })
+
+  it('auto-detects .ods as Excel when dropped anywhere on the page', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await dropOnPage(w, [csvFile('report.ods')])
+    expect(w.find('#csvPath').element.value).toBe('report.ods')
+    expect(findTile(w, 'Excel').classList.contains('selected-source')).toBe(true)
+  })
+
+  it('treats mixed .xlsx and .ods drops as one Excel upload', async () => {
+    const w = mountIngest()
+    await flushPromises()
+
+    await dropOnPage(w, [csvFile('a.xlsx'), csvFile('b.ods')])
+    expect(w.find('#csvPath').element.value).toBe('a.xlsx, b.ods')
+    expect(findTile(w, 'Excel').classList.contains('selected-source')).toBe(true)
+    expect(w.text()).not.toContain('Unsupported file type')
   })
 
   it('shows an error when unsupported files are dropped on the page', async () => {
@@ -819,12 +861,37 @@ ${sheetNames.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml
   return new File([blob], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
 }
 
+// Build a minimal .ods blob: sheets live in content.xml as <table:table>
+// elements and the header row is the first <table:table-row>.
+async function odsFile(name, sheetNames, header = 'col1,col2,col3') {
+  const headers = header.split(',')
+  const row = headers
+    .map((h) => `<table:table-cell office:value-type="string"><text:p>${h}</text:p></table:table-cell>`)
+    .join('')
+  const tables = sheetNames
+    .map((s) => `<table:table table:name="${s}"><table:table-row>${row}</table:table-row></table:table>`)
+    .join('')
+  const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3">
+<office:body><office:spreadsheet>${tables}</office:spreadsheet></office:body></office:document-content>`
+
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  zip.file('mimetype', 'application/vnd.oasis.opendocument.spreadsheet', { compression: 'STORE' })
+  zip.file('content.xml', contentXml)
+  const blob = await zip.generateAsync({ type: 'blob' })
+  return new File([blob], name, { type: 'application/vnd.oasis.opendocument.spreadsheet' })
+}
+
 describe('IngestView — PK/FK', () => {
   beforeEach(() => {
     dataExists.value = false
     refreshDataExists.mockClear()
     api.get.mockReset()
     api.get.mockResolvedValue({ data: { tables: [], tableColumns: {} } })
+    // IngestView reads the suggestions store for the first-visit coachmark
+    // flag, so every mount needs an active pinia.
+    setActivePinia(createPinia())
   })
 
   // -- CSV: section visibility --------------------------------------------
@@ -1029,6 +1096,56 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
+    // Auto-suggest infers an FK on visits.csv — must review before submit
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    // The pill's accept control is a button of its own (keyboard reachable)
+    await w.find('.suggestion-badge .suggestion-accept').trigger('click')
+    await flushPromises()
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('enables submit after dismissing the inferred FK from the badge', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    // Auto-suggest infers an FK on visits.csv — submit disabled
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    // The pill's × is the only dismiss control on the card
+    expect(w.findAll('button').some((b) => b.text().includes('all suggestions'))).toBe(false)
+    await w.find('.suggestion-badge .suggestion-dismiss').trigger('click')
+    await flushPromises()
+    // FK fields cleared and submit enabled
+    expect(w.find('#fk_1').element.value).toBe('')
+    expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('keeps a dismissed FK dismissed when a PK is set on another table', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+      csvFile('doctors.csv', 'doctor_id,name'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    await w.find('.suggestion-badge .suggestion-dismiss').trigger('click')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('')
+    // The PK watch re-runs inference for every PK; the dismissed table
+    // must not be refilled and submit must stay enabled.
+    await w.find('#pk_2').setValue('doctor_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('')
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
+    expect(w.find('.submit-review-hint').exists()).toBe(false)
     expect(w.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
   })
 
@@ -1134,6 +1251,31 @@ describe('IngestView — PK/FK', () => {
     expect(patientsEntry).toBeDefined()
     expect(patientsEntry.fileName).toContain('Patients')
     expect(patientsEntry.primaryKey).toBe('col1')
+  })
+
+  // -- ODS: same behaviour as xlsx ------------------------------------------
+
+  it('hides PK/FK section for a single .ods file with one sheet', async () => {
+    const f = await odsFile('data.ods', ['Sheet1'])
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    expect(findPkFkSection(w).style.display).toBe('none')
+  })
+
+  it('renders one PK/FK card per .ods sheet with its detected columns', async () => {
+    const f = await odsFile('data.ods', ['Patients', 'Visits'], 'patient_id,name')
+    const w = mountIngest()
+    await w.find('#Excel').setValue()
+    await pickFiles(w, [f])
+    await flushPromises()
+    expect(findPkFkSection(w).style.display).not.toBe('none')
+    expect(w.findAll('.card.mb-3').length).toBe(2)
+    expect(w.text()).toContain('data_Patients')
+    expect(w.text()).toContain('data_Visits')
+    expect(w.find('#pk_0').element.innerHTML).toContain('patient_id')
+    expect(w.find('#pk_1').element.innerHTML).toContain('name')
   })
 
   // -- Section title -------------------------------------------------------
@@ -1267,7 +1409,7 @@ describe('IngestView — PK/FK', () => {
 
   // -- Inference marking ---------------------------------------------------
 
-  it('shows an "Inferred" badge on the table card when FK is auto-suggested', async () => {
+  it('shows a suggestion badge on the table card when FK is auto-suggested', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1277,11 +1419,93 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.text()).toContain('Inferred')
-    expect(w.text()).toContain('please verify')
+    expect(w.find('.suggestion-badge').exists()).toBe(true)
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
   })
 
-  it('does not show an "Inferred" badge when no FK is auto-suggested', async () => {
+  it('renders the inferred FK with its own source, 90% for an exact name match and no tier', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    const badge = w.find('.suggestion-badge')
+    expect(badge.find('.fa-project-diagram').exists()).toBe(true)
+    expect(badge.find('.fa-link').exists()).toBe(false)
+    expect(badge.text()).toContain('90%')
+    expect(badge.text()).not.toContain('tier')
+    const accept = badge.find('.suggestion-accept')
+    expect(accept.attributes('title')).toBe("Column name equals primary key 'patient_id' of patients.csv — click to confirm or change the dropdown")
+    expect(accept.attributes('aria-label')).toContain("map 'visits.csv.patient_id' to 'patients.csv.patient_id' (90%)")
+  })
+
+  it('shows the first-visit review cue on the first unreviewed FK pill', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+
+    const callouts = w.findAllComponents({ name: 'SuggestionCoachmark' })
+    expect(callouts.length).toBe(1)
+    // Same copy as the describe pages' cue.
+    expect(callouts[0].text()).toContain('Check this suggestion')
+    expect(callouts[0].text()).toContain('Flyover pre-filled this field')
+    expect(callouts[0].text()).toContain('nothing is saved until you do')
+    // Anchored to the table card whose FK was inferred.
+    expect(callouts[0].element.closest('.card-header').textContent).toContain('visits.csv')
+  })
+
+  it('marks the review cue seen when the FK suggestion is accepted', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(1)
+
+    await w.find('.suggestion-accept').trigger('click')
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+
+    // A fresh inference must not bring the cue back: accepting the pill
+    // already acknowledged it.
+    await w.find('#pk_0').setValue('')
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.findAllComponents({ name: 'SuggestionCoachmark' }).length).toBe(0)
+  })
+
+  it('reports 60% when the FK column name only resembles the primary key', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,fk_patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('fk_patient_id')
+    const badge = w.find('.suggestion-badge')
+    expect(badge.text()).toContain('60%')
+    expect(badge.find('.suggestion-accept').attributes('title')).toContain('resembles primary key')
+  })
+
+  it('does not show a suggestion badge when no FK is auto-suggested', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1291,10 +1515,10 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.text()).not.toContain('Inferred')
+    expect(w.find('.suggestion-badge').exists()).toBe(false)
   })
 
-  it('removes the "Inferred" badge when the user manually changes the FK', async () => {
+  it('transitions to reviewed when the user manually changes the FK', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1304,14 +1528,15 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.text()).toContain('Inferred')
+    expect(w.find('.suggestion-badge').exists()).toBe(true)
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
     // Manually change the FK to a different column
     await w.find('#fk_1').setValue('other_id')
     await flushPromises()
-    expect(w.text()).not.toContain('Inferred')
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
   })
 
-  it('removes the "Inferred" badge when the user changes the referenced table', async () => {
+  it('transitions to reviewed when the user changes the referenced table', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1322,14 +1547,15 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.text()).toContain('Inferred')
+    expect(w.find('.suggestion-badge').exists()).toBe(true)
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
     // Manually change the referenced table
     await w.find('#fkTable_2').setValue('doctors.csv')
     await flushPromises()
-    expect(w.text()).not.toContain('Inferred')
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
   })
 
-  it('removes the "Inferred" badge when the PK is removed', async () => {
+  it('forgets a dismissal when the PK that produced it is removed', async () => {
     const w = mountIngest()
     await w.find('#CSV').setValue()
     await pickFiles(w, [
@@ -1339,9 +1565,33 @@ describe('IngestView — PK/FK', () => {
     await flushPromises()
     await w.find('#pk_0').setValue('patient_id')
     await flushPromises()
-    expect(w.text()).toContain('Inferred')
+    await w.find('.suggestion-badge .suggestion-dismiss').trigger('click')
+    await flushPromises()
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(true)
+    // Removing the PK drops the "reviewed" pill ...
     await w.find('#pk_0').setValue('')
     await flushPromises()
-    expect(w.text()).not.toContain('Inferred')
+    expect(w.find('.suggestion-badge').exists()).toBe(false)
+    // ... and setting it again infers afresh
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('#fk_1').element.value).toBe('patient_id')
+    expect(w.find('.suggestion-badge.confirmed').exists()).toBe(false)
+  })
+
+  it('removes the suggestion badge when the PK is removed', async () => {
+    const w = mountIngest()
+    await w.find('#CSV').setValue()
+    await pickFiles(w, [
+      csvFile('patients.csv', 'patient_id,name'),
+      csvFile('visits.csv', 'visit_id,patient_id,date'),
+    ])
+    await flushPromises()
+    await w.find('#pk_0').setValue('patient_id')
+    await flushPromises()
+    expect(w.find('.suggestion-badge').exists()).toBe(true)
+    await w.find('#pk_0').setValue('')
+    await flushPromises()
+    expect(w.find('.suggestion-badge').exists()).toBe(false)
   })
 })
