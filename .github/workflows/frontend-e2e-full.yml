@@ -1,12 +1,11 @@
 name: Frontend E2E (Full)
 
 on:
-  schedule:
-    - cron: '0 3 * * *'
-  workflow_dispatch:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
-    types: [labeled, opened, synchronize, reopened]
+  workflow_dispatch:
 
 jobs:
   e2e-full:
@@ -39,12 +38,6 @@ jobs:
       COMPOSE_PROFILES: graphdb
       FLYOVER_SUGGESTION_TIERS: ${{ matrix.suggestion_tiers }}
       E2E_SUGGESTIONS_DISABLED: ${{ matrix.expect_disabled }}
-    # Only run on PRs if the run-full-e2e label is present. Always run on the
-    # other triggers (schedule, dispatch).
-    if: >
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'run-full-e2e')
-
     steps:
       - uses: actions/checkout@v4
 

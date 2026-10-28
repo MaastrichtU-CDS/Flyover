@@ -137,7 +137,7 @@ Practical heuristics:
 
 - **Prefer the cheaper layer.** A unit test runs in milliseconds; an E2E test takes minutes and is flakier. If you can mock a service and unit-test the handler logic, do that first.
 - **Don't unit-test what Vitest is good at.** Component rendering, click handlers, derived UI state belong in Vitest, not in Playwright. Playwright is for "does the whole ingest workflow still work?", not "does this button enable when the field is filled?"
-- **One E2E happy-path per workflow** is the goal — that's what `smoke.spec.js` is for. The richer specs (`ingest.spec.js`, `annotate.spec.js`, etc.) cover the variants and run nightly.
+- **One E2E happy-path per workflow** is the goal — that's what `smoke.spec.js` is for. The richer specs (`ingest.spec.js`, `annotate.spec.js`, etc.) cover the variants; the full suite runs on every push to `main` and every PR, like the other layers.
 
 ## CI workflow map
 
@@ -148,7 +148,7 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 | `unit-tests.yml`          | push to `main`, all PRs                                   | yes             | pytest unit tests, then integration tests, with combined coverage; fails the build on any failure |
 | `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest, Vite production build                                       |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
-| `frontend-e2e-full.yml`   | nightly cron 03:00 UTC; manual dispatch; PRs with label `run-full-e2e` | no | Full Playwright suite against the test stack                                                      |
+| `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack (both the default and the suggestions-disabled stack) |
 | `code-quality.yml`        | push to `main`, all PRs                                   | partial         | Black (auto-applies and commits with `[skip ci]`), flake8, mypy, Safety (HIGH severity blocking), Bandit |
 | `release.yaml`            | tag push                                                  | n/a             | Builds and publishes the production flyover-app + flyover-graphdb images to ghcr.io                        |
 
