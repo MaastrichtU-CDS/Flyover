@@ -40,7 +40,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
@@ -131,10 +131,12 @@ class FakeRdfStore:
     - ``outage``: an exception every request raises (store unreachable);
     - ``outage_after``: the store goes down after this many requests;
     - ``ask_answer``: a bool, or a callable ``query -> bool``;
-    - ``update_status``: HTTP status for SPARQL UPDATE requests;
+    - ``update_status``: HTTP status for SPARQL UPDATE requests, or
+      ``update_status_fn`` to decide per update text;
     - ``select_status`` / ``ask_status``: HTTP status for SELECT and ASK
       requests (the body is an HTML error page when not 200, like a real
-      store would return).
+      store would return); ``ask_status_queue`` answers the next ASKs
+      with the listed statuses first (a briefly overloaded store).
 
     Every request is recorded in ``calls`` so tests can assert what crossed
     the boundary (``selects``, ``asks``, ``updates``, ``graph_downloads``).
@@ -152,8 +154,14 @@ class FakeRdfStore:
         self.outage_after: Optional[int] = None
         self.ask_answer: Any = True
         self.update_status = 204
+        # Optional per-update status: ``update_text -> HTTP status`` (e.g.
+        # refuse writes into one named graph only).
+        self.update_status_fn: Optional[Callable[[str], int]] = None
         self.select_status = 200
         self.ask_status = 200
+        # Statuses for the next ASK requests, consumed in order; then
+        # ``ask_status`` applies. Models a store that is briefly overloaded.
+        self.ask_status_queue: List[int] = []
         self.data_graph_exists = True
 
     # -- model helpers -----------------------------------------------------
@@ -215,13 +223,23 @@ class FakeRdfStore:
         if self.outage_after is not None and len(self.calls) > self.outage_after:
             raise requests.ConnectionError("fake store went down")
         if call.kind == "update":
-            return self.update_status, {}, ""
+            status = (
+                self.update_status_fn(call.update)
+                if self.update_status_fn is not None
+                else self.update_status
+            )
+            return status, {}, ""
         if call.kind == "graph":
             return self._serve_graph(call.graph)
         if call.kind == "ask":
-            if self.ask_status != 200:
+            status = (
+                self.ask_status_queue.pop(0)
+                if self.ask_status_queue
+                else self.ask_status
+            )
+            if status != 200:
                 return (
-                    self.ask_status,
+                    status,
                     {"Content-Type": "text/html"},
                     "<html><body>Fake store error</body></html>",
                 )
