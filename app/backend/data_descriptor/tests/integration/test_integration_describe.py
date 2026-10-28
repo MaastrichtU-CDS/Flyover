@@ -500,3 +500,128 @@ class TestDescribeEdgeCases:
 
         assert response.status_code == 200
         assert response.get_json() == {"column_info": {}}
+
+
+# ---------------------------------------------------------------------------
+# Remaining branches of the describe controller
+# ---------------------------------------------------------------------------
+
+
+class TestDescribeRoutesAndBranches:
+    @pytest.mark.parametrize(
+        "route, target",
+        [
+            ("/describe_landing", "/describe"),
+            ("/describe_variables", "/describe/variables"),
+            ("/describe_variable_details", "/describe/variable-details"),
+        ],
+    )
+    def test_legacy_routes_redirect_into_the_spa(self, client, route, target):
+        response = client.get(route)
+
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith(target)
+
+    def test_a_variable_without_description_is_labelled_missing(
+        self, client, session_cache, seeded_store
+    ):
+        client.get(VARIABLES_STATE)
+
+        client.post(
+            "/units",
+            data={f"{TABLE}_sex": "categorical", f"ncit_comment_{TABLE}_sex": ""},
+        )
+
+        (entry,) = session_cache.DescriptiveInfoDetails[TABLE]
+        assert list(entry) == ['Missing Description (or "sex")']
+
+    def test_empty_database_names_in_the_session_are_skipped(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        session_cache.databases = ["", TABLE]
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        client.post("/units", data=_units_form())
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert set(session_cache.descriptive_info) == {TABLE}
+        assert set(body["descriptive_info_details"]) == {TABLE}
+
+    def test_a_mapping_without_databases_populates_nothing(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        del mapping_dict["databases"]
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert body["descriptive_info_details"] == {}
+
+    def test_variables_without_a_column_or_only_identifiers_leave_no_details(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        del columns["biological_sex"]
+        del columns["age_at_diagnosis"]
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert body["descriptive_info_details"] == {}
+        assert body["descriptive_info"] == {
+            TABLE: {
+                "id": {
+                    "type": "Variable type: identifier",
+                    "description": "Variable description: Identifier",
+                    "comments": "Variable comment: No comment provided",
+                }
+            }
+        }
+
+    def test_unparseable_categories_skip_the_variable_instead_of_failing(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+        seeded_store.select_overrides["GROUP BY (?value)"] = (
+            'value,count\n"unterminated,1\n'
+        )
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert body["descriptive_info_details"] == {
+            TABLE: ['Age At Diagnosis (or "age")']
+        }
+
+    def test_category_options_ignore_unknown_and_repeated_variables(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+        session_cache.databases = [TABLE]
+        session_cache.descriptive_info = {TABLE: {}}
+        session_cache.DescriptiveInfoDetails = {
+            TABLE: [
+                {'Biological Sex (or "sex")': []},
+                {'Biological Sex (or "sex")': []},
+                {'Mystery Thing (or "x")': []},
+            ]
+        }
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert body["category_options"] == {
+            'Biological Sex (or "sex")': ["Male", "Female", "Missing or unspecified"],
+            'Mystery Thing (or "x")': [],
+        }
+
+    def test_details_form_creates_the_database_entry_it_lacks(
+        self, client, session_cache, seeded_store
+    ):
+        session_cache.databases = [TABLE]
+        session_cache.descriptive_info = {}
+
+        response = client.post("/end", data={f"{TABLE}_age": "years"})
+
+        assert response.status_code == 302
+        assert session_cache.descriptive_info[TABLE]["age"] == {"units": "years"}
+        # A variable with units only has nothing to write to the ontology graph
+        assert seeded_store.updates == []

@@ -302,3 +302,254 @@ class TestVariants:
 
         assert legacy["variable_info"]["age_at_diagnosis"]["local_definition"] is None
         assert legacy["variable_info"]["biological_sex"]["local_definition"] == "sex"
+
+
+# ---------------------------------------------------------------------------
+# Loader accessors and validator diagnostics on the shapes the app meets
+# ---------------------------------------------------------------------------
+
+
+class TestLoaderShapes:
+    @pytest.mark.xfail(
+        strict=True,
+        reason="The loader, the annotation CLI and the paste-back parser all accept a list-valued "
+        "localColumn (first name wins), but the schema only allows string or null, so the validator "
+        "rejects what the rest of the code reads",
+    )
+    def test_list_valued_local_columns_pass_validation(self, mapping_dict):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["biological_sex"]["localColumn"] = ["sex", "gender"]
+
+        assert MappingValidator().validate(mapping_dict).is_valid
+
+    def test_list_valued_local_columns_take_the_first_name(self, mapping_dict):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["biological_sex"]["localColumn"] = ["sex", "gender"]
+
+        mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        assert mapping.get_local_column("biological_sex") == "sex"
+        assert (
+            mapping.to_legacy_format()["variable_info"]["biological_sex"][
+                "local_definition"
+            ]
+            == "sex"
+        )
+        assert (
+            mapping.to_dict()["databases"]["centre_x"]["tables"][TABLE]["columns"][
+                "biological_sex"
+            ]["localColumn"]
+            == "sex"
+        )
+
+    def test_lookups_for_things_the_mapping_does_not_hold(self, mapping_dict):
+        mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        assert mapping.has_variable("biological_sex") and not mapping.has_variable(
+            "nope"
+        )
+        assert mapping.get_variable("nope") is None
+        assert mapping.get_database("nope") is None
+        assert mapping.get_local_term("nope", "male") is None
+        assert mapping.get_local_term("biological_sex", "nope") is None
+        assert mapping.get_target_class("nope", "male") is None
+        assert mapping.get_target_class("biological_sex", "nope") is None
+        assert (
+            mapping.get_column_for_variable("biological_sex", database_key="nope")
+            is None
+        )
+        assert (
+            mapping.get_column_for_variable(
+                "biological_sex", database_key="centre_x", table_key="nope"
+            )
+            is None
+        )
+        assert (
+            mapping.get_column_for_variable(
+                "biological_sex", database_key="centre_x", table_key=TABLE
+            ).local_column
+            == "sex"
+        )
+        assert mapping.find_database_key_for_rdf_store("elsewhere") is None
+        assert (
+            JSONLDMapping.from_dict({}).find_database_key_for_rdf_store(TABLE) is None
+        )
+        assert mapping.get_prefixes_string().startswith(
+            "PREFIX sio: <http://semanticscience.org/resource/>"
+        )
+
+    def test_a_column_without_a_schema_reference_has_no_variable(self, mapping_dict):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["identifier"]["mapsTo"] = "something-else"
+
+        mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        assert (
+            mapping.get_database("centre_x")
+            .tables[TABLE]
+            .columns["identifier"]
+            .get_variable_key()
+            is None
+        )
+        assert mapping.get_local_column("identifier") is None
+
+    def test_reconstruction_nodes_of_other_types_fall_back_on_their_labels(
+        self, mapping_dict
+    ):
+        variable = mapping_dict["schema"]["variables"]["age_at_diagnosis"]
+        variable["schemaReconstruction"] = [
+            {
+                "@type": "schema:PropertyNode",
+                "predicate": "sio:SIO_000221",
+                "class": "ncit:C29848",
+                "nodeLabel": "years",
+            },
+            {
+                "@type": "schema:OtherNode",
+                "predicate": "sio:SIO_000235",
+                "class": "mesh:D000091569",
+                "classLabel": "demo",
+            },
+            {
+                "@type": "schema:OtherNode",
+                "predicate": "sio:SIO_000236",
+                "class": "mesh:D000091570",
+                "nodeLabel": "unit",
+            },
+        ]
+
+        legacy = JSONLDMapping.from_dict(mapping_dict).to_legacy_format()
+
+        assert [
+            n["type"]
+            for n in legacy["variable_info"]["age_at_diagnosis"][
+                "schema_reconstruction"
+            ]
+        ] == ["node", "class", "node"]
+
+
+class TestValidatorDiagnostics:
+    @pytest.mark.parametrize(
+        "mutate, expected_suggestion",
+        [
+            (
+                lambda m: m["schema"]["variables"]["identifier"].pop("predicate"),
+                "Add the missing field(s):",
+            ),
+            (
+                lambda m: m["schema"].__setitem__("variables", []),
+                "Change the value to type: object",
+            ),
+            (
+                lambda m: m["schema"]["variables"]["identifier"].__setitem__(
+                    "dataType", "weird"
+                ),
+                "'weird' is not supported",
+            ),
+            (
+                lambda m: m.__setitem__("created", "yesterday"),
+                "Value must match pattern",
+            ),
+            (
+                lambda m: m.__setitem__("name", ""),
+                "Value must be at least 1 character(s)",
+            ),
+            (
+                lambda m: m["databases"]["centre_x"]["tables"][TABLE].__setitem__(
+                    "columns", {}
+                ),
+                "Object must have at least 1 property/properties",
+            ),
+        ],
+    )
+    def test_each_schema_violation_comes_with_a_suggestion(
+        self, mapping_dict, mutate, expected_suggestion
+    ):
+        mutate(mapping_dict)
+
+        result = MappingValidator().validate(mapping_dict)
+        formatted = MappingValidator().format_errors_for_ui(result)
+
+        assert result.is_valid is False
+        assert any(expected_suggestion in (e["suggestion"] or "") for e in formatted), [
+            e["suggestion"] for e in formatted
+        ]
+        assert all(e["path"] for e in formatted)
+
+    def test_value_previews_describe_the_offending_value(self, mapping_dict):
+        mapping_dict["schema"]["variables"]["identifier"]["predicate"] = [
+            "not",
+            "a",
+            "string",
+        ]
+        mapping_dict["schema"]["variables"]["biological_sex"]["class"] = {
+            "an": "object"
+        }
+        mapping_dict["schema"]["variables"]["age_at_diagnosis"]["predicate"] = True
+        mapping_dict["version"] = 3
+        mapping_dict["name"] = "x" * 80
+
+        formatted = MappingValidator().format_errors_for_ui(
+            MappingValidator().validate(mapping_dict)
+        )
+        previews = {e["path"]: e["value"] for e in formatted}
+
+        assert previews["schema.variables.age_at_diagnosis.predicate"] == "true"
+        assert previews["version"] == "3"
+        assert set(previews) >= {
+            "schema.variables.identifier.predicate",
+            "schema.variables.biological_sex.class",
+        }
+        assert all(
+            "Change the value to type: string" in e["suggestion"] for e in formatted
+        )
+
+    def test_unknown_terms_in_local_mappings_are_named_with_the_available_terms(
+        self, mapping_dict
+    ):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["biological_sex"]["localMappings"]["diverse"] = "D"
+
+        result = MappingValidator().validate(mapping_dict)
+
+        (issue,) = result.issues
+        assert issue.severity == "info"
+        assert issue.path.endswith("columns.biological_sex.localMappings.diverse")
+        assert issue.message == "Local mapping key 'diverse' not in schema terms"
+        assert issue.suggestion == "Schema terms: female, male, missing_or_unspecified"
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="_check_cross_references files an unknown local term as an 'info' issue, but validate() "
+        "treats every non-warning issue as blocking, so an informational note invalidates the mapping",
+    )
+    def test_an_informational_issue_does_not_invalidate_the_mapping(self, mapping_dict):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["biological_sex"]["localMappings"]["diverse"] = "D"
+
+        assert MappingValidator().validate(mapping_dict).is_valid is True
+
+    def test_a_missing_schema_file_degrades_to_a_warning(self, tmp_path, mapping_dict):
+        validator = MappingValidator(schema_path=tmp_path / "nope.json")
+
+        result = validator.validate(mapping_dict)
+
+        assert result.is_valid is True
+        assert "Schema file not found" in result.warnings[0].message
+
+    def test_an_unreadable_schema_file_degrades_to_a_warning(
+        self, tmp_path, mapping_dict
+    ):
+        broken = tmp_path / "schema.json"
+        broken.write_text("{not json")
+
+        result = MappingValidator(schema_path=broken).validate(mapping_dict)
+
+        assert result.is_valid is True
+        assert result.warnings[0].path == "(system)"
+
+    def test_a_directory_instead_of_a_file_is_a_read_error(self, tmp_path):
+        result = MappingValidator().validate_file(tmp_path)
+
+        assert result.is_valid is False
+        assert "Error reading file" in result.issues[0].message

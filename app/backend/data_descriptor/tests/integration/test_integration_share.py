@@ -13,6 +13,7 @@ lives in ``share_service`` and is what the share endpoints call.
 import io
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 import requests
@@ -406,3 +407,130 @@ class TestMockDataGeneration:
 
         assert response.status_code == 400
         assert response.get_json() == {"success": False, "error": error}
+
+
+# ---------------------------------------------------------------------------
+# Remaining branches of the share controller and service
+# ---------------------------------------------------------------------------
+
+
+class TestShareRoutesAndBranches:
+    @pytest.mark.parametrize(
+        "route, target",
+        [
+            ("/share_landing", "/share"),
+            ("/share_mock", "/share/mock"),
+            ("/share_publish", "/share/publish"),
+        ],
+    )
+    def test_legacy_routes_redirect_into_the_spa(self, client, route, target):
+        response = client.get(route)
+
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith(target)
+
+    def test_the_favicon_is_served_from_the_static_folder(self, app, client):
+        ctx = app.config["APP_CONTEXT"]
+        static = Path(ctx["root_dir"]) / ctx["child_dir"] / "static"
+        static.mkdir(parents=True, exist_ok=True)
+        (static / "favicon.ico").write_bytes(b"\x00\x00\x01\x00")
+
+        response = client.get("/favicon.ico")
+
+        assert response.status_code == 200
+        assert response.mimetype == "image/vnd.microsoft.icon"
+        assert response.data == b"\x00\x00\x01\x00"
+
+    def test_mock_data_without_a_json_body_is_a_server_error(self, client):
+        response = client.post("/api/generate-mock-data", data="jsonld_map=x")
+
+        assert response.status_code == 500
+        assert response.get_json()["success"] is False
+        assert response.headers["Access-Control-Allow-Origin"] == "*"
+
+    def test_mock_data_skips_columns_without_local_names_or_values(
+        self, client, mapping_dict
+    ):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["identifier"].pop("localColumn")
+        columns["biological_sex"]["localMappings"] = {}
+
+        body = _mock(
+            client, jsonld_map=mapping_dict, num_rows=2, random_seed=0
+        ).get_json()
+
+        assert set(body["data"][f"centre_x.{TABLE}"][0]) == {"age"}
+
+    def test_standardised_variables_are_generated_like_continuous_ones(
+        self, client, mapping_dict
+    ):
+        mapping_dict["schema"]["variables"]["age_at_diagnosis"][
+            "dataType"
+        ] = "standardised"
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["age_at_diagnosis"]["localMappings"] = {
+            "missing_or_unspecified": ["NULL", "NA"]
+        }
+
+        body = _mock(
+            client, jsonld_map=mapping_dict, num_rows=200, random_seed=5
+        ).get_json()
+
+        ages = [row["age"] for row in body["data"][f"centre_x.{TABLE}"]]
+        assert "NULL, NA" in ages  # a list of missing codes is joined
+        assert all(age == "NULL, NA" or 1 <= int(age) <= 100 for age in ages)
+
+    def test_the_legacy_single_ontology_graph_is_served_when_no_graph_is_listed(
+        self, client, rdf_store
+    ):
+        rdf_store.seed_ontology_graph("", NTRIPLES)
+
+        response = client.get("/downloadOntology")
+
+        assert response.status_code == 200
+        assert (
+            response.headers["Content-Disposition"]
+            == "attachment;filename=local_ontology.nt"
+        )
+        assert rdf_store.graph_downloads == ["http://ontology.local/"]
+
+    def test_a_store_outage_during_the_download_itself_is_a_server_error(
+        self, client, session_cache, rdf_store
+    ):
+        session_cache.databases = ["patients"]
+        rdf_store.outage = requests.ConnectionError("down")
+
+        response = client.get("/downloadOntology")
+
+        assert response.status_code == 500
+
+
+class TestMockDataService:
+    def test_a_table_filter_without_a_database_is_refused_by_the_service(
+        self, mapping_dict
+    ):
+        from services import ShareService
+
+        result = ShareService.generate_mock_data_from_semantic_map(
+            mapping_dict, table_id=TABLE
+        )
+
+        assert result["success"] is False
+        assert result["error"] == "table_id requires database_id to be specified"
+        assert result["metadata"]["privacy_preserving"] is True
+
+    def test_a_table_filter_skips_the_other_tables_of_the_database(
+        self, client, mapping_dict
+    ):
+        tables = mapping_dict["databases"]["centre_x"]["tables"]
+        tables["visits"] = dict(tables[TABLE], sourceFile="visits")
+
+        body = _mock(
+            client,
+            jsonld_map=mapping_dict,
+            num_rows=2,
+            database_id="centre_x",
+            table_id="visits",
+        ).get_json()
+
+        assert list(body["data"]) == ["centre_x.visits"]

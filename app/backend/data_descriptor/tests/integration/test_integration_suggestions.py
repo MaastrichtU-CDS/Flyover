@@ -1213,3 +1213,402 @@ class TestStoreOrderIndependence:
         }
         assert all(r["confidence"] == 1.0 for r in records.values())
         assert copy.deepcopy(records) == records  # plain JSON, no surprises
+
+
+# ---------------------------------------------------------------------------
+# Matcher rules beyond the alias memory
+# ---------------------------------------------------------------------------
+
+
+def _add_variable(mapping, key, data_type="categorical", terms=None):
+    variable = {
+        "@id": f"schema:variable/{key}",
+        "@type": (
+            "schema:CategoricalVariable"
+            if data_type == "categorical"
+            else "schema:ContinuousVariable"
+        ),
+        "dataType": data_type,
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C25364",
+    }
+    if terms:
+        variable["valueMapping"] = {
+            "terms": {t: {"targetClass": "ncit:C25364"} for t in terms}
+        }
+    mapping["schema"]["variables"][key] = variable
+    return mapping
+
+
+class TestValueBasedVariableRules:
+    @pytest.fixture(autouse=True)
+    def value_rules_on(self, monkeypatch):
+        from services.suggestions.tiers import rules
+
+        monkeypatch.setattr(rules, "VALUE_BASED_VARIABLE_SUGGESTIONS", True)
+
+    def test_a_column_coded_like_sex_is_suggested_from_its_values(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(TABLE, {"geslacht": ["M", "F", "M", ""]})
+        mapping = unmapped_own_site(mapping_dict)
+
+        start(client, "variables", mapping)
+
+        record = snapshot(client, "variables")["records"][f"{TABLE}_geslacht"]
+        assert record["match"] == "biological_sex"
+        assert record["source"] == "value_regex"
+        assert record["confidence"] == 0.9
+        assert "sex" in record["reason"]
+        # One categories query per column paid for the values
+        assert any("GROUP BY" in c.query for c in rdf_store.selects)
+
+    def test_pattern_and_range_rules_pick_the_variable_by_its_name(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(
+            TABLE,
+            {
+                "topo": ["C50.9", "C34.1"],
+                "dx_year": ["1999", "2015"],
+                "future": ["2999"],
+            },
+        )
+        mapping = unmapped_own_site(mapping_dict)
+        _add_variable(mapping, "tumour_topography_icd_o")
+        _add_variable(mapping, "year_of_initial_diagnosis", "continuous")
+
+        start(client, "variables", mapping)
+
+        records = snapshot(client, "variables")["records"]
+        assert records[f"{TABLE}_topo"]["match"] == "tumour_topography_icd_o"
+        assert records[f"{TABLE}_dx_year"]["match"] == "year_of_initial_diagnosis"
+        assert (
+            records[f"{TABLE}_future"]["source"] != "value_regex"
+        )  # outside the year range
+
+    def test_a_rule_fitting_two_variables_abstains(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(TABLE, {"geslacht": ["M", "F"]})
+        mapping = unmapped_own_site(mapping_dict)
+        _add_variable(mapping, "sex_at_birth")
+
+        start(client, "variables", mapping)
+
+        record = snapshot(client, "variables")["records"][f"{TABLE}_geslacht"]
+        assert record["source"] != "value_regex" or record["match"] is None
+
+
+class TestMatcherAbstentions:
+    def test_two_remembered_labels_equally_close_make_the_alias_matcher_abstain(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(TABLE, {"morf": ["1"]})
+        mapping = unmapped_own_site(mapping_dict)
+        add_site(mapping, "site_a", columns={"biological_sex": "morfa"})
+        add_site(mapping, "site_b", columns={"age_at_diagnosis": "morfe"})
+
+        start(client, "variables", mapping)
+
+        record = snapshot(client, "variables")["records"][f"{TABLE}_morf"]
+        assert record["match"] is None
+        assert "margin" in record["reason"]
+
+    def test_a_column_made_of_stopwords_has_no_label_to_match(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(TABLE, {"the": ["1"]})
+
+        start(client, "variables", unmapped_own_site(mapping_dict))
+
+        record = snapshot(client, "variables")["records"][f"{TABLE}_the"]
+        assert record["match"] is None
+        assert record["confidence"] == 0.0
+
+    def test_a_missing_code_with_two_candidate_terms_abstains(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(TABLE, {"sex": ["M", "NA"]})
+        terms = mapping_dict["schema"]["variables"]["biological_sex"]["valueMapping"][
+            "terms"
+        ]
+        terms["unknown"] = {"targetClass": "ncit:C17998"}
+
+        start(client, "values", mapping_dict)
+
+        record = snapshot(client, "values")["records"][f"{TABLE}_sex_NA"]
+        assert record["match"] is None
+        assert record["source"] != "value_regex"
+        # The merge keeps the abstain that names its margin (the string matcher's)
+        assert "margin" in record["reason"]
+
+    def test_yes_no_codes_map_positionally_to_the_yes_and_no_terms(
+        self, client, rdf_store, mapping_dict
+    ):
+        rdf_store.seed_table(TABLE, {"smoker": ["1", "0", "1"]})
+        _add_variable(mapping_dict, "smoking_yes_no", terms=["yes", "no"])
+        mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]["smoking"] = {
+            "mapsTo": "schema:variable/smoking_yes_no",
+            "localColumn": "smoker",
+        }
+
+        start(client, "values", mapping_dict)
+
+        records = snapshot(client, "values")["records"]
+        assert records[f"{TABLE}_smoker_1"]["match"] == "yes"
+        assert records[f"{TABLE}_smoker_0"]["match"] == "no"
+
+    def test_a_pasted_record_at_equal_confidence_loses_to_the_cheaper_tier(
+        self, client, rdf_store, alias_mapping
+    ):
+        rdf_store.seed_table(TABLE, {"id": ["P1"], "sex": ["M"]})
+        start(client, "variables", alias_mapping)
+        answer = answer_jsonld(
+            {
+                "x": {
+                    "mapsTo": "schema:variable/age_at_diagnosis",
+                    "localColumn": "sex",
+                    "confidence": 1.0,
+                }
+            }
+        )
+
+        body = ingest(client, "variables", answer, alias_mapping).get_json()
+
+        sex = body["job"]["records"][f"{TABLE}_sex"]
+        assert sex["source"] == "alias" and sex["tier"] == 1
+        assert sex["alternatives"][0]["source"] == "pasted_llm"
+
+
+class TestPasteParsingVariants:
+    def test_an_already_parsed_object_and_the_variable_field_are_accepted(
+        self, client, seeded_store, mapping_dict
+    ):
+        mapping = unmapped_own_site(mapping_dict)
+        answer = {
+            "columns": {
+                "x": {"variable": "biological_sex", "localColumn": ["sex", "gender"]}
+            }
+        }
+
+        body = ingest(client, "variables", answer, mapping).get_json()
+
+        assert body["accepted"] == 1
+        assert body["job"]["records"][f"{TABLE}_sex"]["match"] == "biological_sex"
+
+    def test_the_entry_key_names_the_variable_when_nothing_else_does(
+        self, client, seeded_store, mapping_dict
+    ):
+        mapping = unmapped_own_site(mapping_dict)
+        answer = json.dumps(
+            {"biological_sex": {"localColumn": "sex", "confidence": "high"}}
+        )
+
+        body = ingest(client, "variables", answer, mapping).get_json()
+
+        assert body["accepted"] == 1
+        assert (
+            body["job"]["records"][f"{TABLE}_sex"]["confidence"] == 0.7
+        )  # garbage confidence -> default
+
+    def test_duplicate_entries_keep_the_most_confident(
+        self, client, seeded_store, mapping_dict
+    ):
+        mapping = unmapped_own_site(mapping_dict)
+        answer = json.dumps(
+            [
+                {"item": "sex", "match": "biological_sex", "confidence": 0.5},
+                {"item": "sex", "match": "age_at_diagnosis", "confidence": 0.95},
+                {"item": "sex", "match": "identifier"},
+            ]
+        )
+
+        body = ingest(client, "variables", answer, mapping).get_json()
+
+        assert body["job"]["records"][f"{TABLE}_sex"]["match"] == "age_at_diagnosis"
+        assert body["job"]["records"][f"{TABLE}_sex"]["confidence"] == 0.95
+
+    @pytest.mark.parametrize("answer", ["", "   ", "```json\n\n```"])
+    def test_blank_pastes_are_named_as_such(
+        self, client, session_cache, seeded_store, mapping_dict, answer
+    ):
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(
+            unmapped_own_site(mapping_dict)
+        )
+
+        response = ingest(client, "variables", answer)
+
+        assert response.status_code == 400
+        assert response.get_json()["kind"] == "bad_answer"
+
+    def test_a_record_array_preceded_by_prose_is_found(
+        self, client, seeded_store, mapping_dict
+    ):
+        mapping = unmapped_own_site(mapping_dict)
+        answer = (
+            'Sure! [{"item": "age", "match": "age_at_diagnosis"},] Hope this helps.'
+        )
+
+        body = ingest(client, "variables", answer, mapping).get_json()
+
+        assert body["accepted"] == 1
+
+    def test_value_records_without_a_column_or_for_unknown_columns_are_rejected(
+        self, client, seeded_store, mapping_dict
+    ):
+        answer = json.dumps(
+            [
+                {"item": "F", "match": "female"},
+                {"item": "F", "match": "female", "column": "zzz"},
+            ]
+        )
+
+        body = ingest(client, "values", answer, mapping_dict).get_json()
+
+        assert body["rejected"] == 2
+        assert body["messages"] == [
+            "value 'F' names no column (localColumn); ignored.",
+            "'zzz' is not a column of this database; ignored.",
+        ]
+
+    def test_values_for_a_variable_without_terms_are_rejected(
+        self, client, seeded_store, mapping_dict
+    ):
+        answer = answer_jsonld(
+            {
+                "x": {
+                    "mapsTo": "schema:variable/age_at_diagnosis",
+                    "localColumn": "age",
+                    "localMappings": {"young": "45"},
+                }
+            }
+        )
+
+        body = ingest(client, "values", answer, mapping_dict).get_json()
+
+        assert body["rejected"] == 1
+        assert body["messages"] == [
+            "age_at_diagnosis ('age') has no terms to map values to."
+        ]
+
+
+class TestPromptExportVariants:
+    def test_variable_labels_and_descriptions_from_the_browser_map_are_rendered(
+        self, client, seeded_store, mapping_dict
+    ):
+        mapping = unmapped_own_site(mapping_dict)
+        mapping["schema"]["variables"]["biological_sex"]["label"] = "Sex of the patient"
+        mapping["schema"]["variables"]["biological_sex"]["description"] = (
+            "Biological sex at birth. " * 20
+        )
+        mapping["schema"]["variables"]["age_at_diagnosis"][
+            "description"
+        ] = "Age in years"
+
+        body = client.post(
+            PROMPT, json={"phase": "variables", "database": TABLE, "mapping": mapping}
+        ).get_json()
+
+        assert (
+            '- biological_sex: "Sex of the patient" (categorical) — Biological sex at birth.'
+            in body["prompt"]
+        )
+        assert "..." in body["prompt"]  # the long description is cut
+        assert (
+            '- age_at_diagnosis: "Age at diagnosis" (continuous) — Age in years'
+            in body["prompt"]
+        )
+
+    def test_abstains_show_as_no_candidate_hints(self, client, rdf_store, mapping_dict):
+        rdf_store.seed_table(TABLE, {"xqz": ["1"]})
+        mapping = unmapped_own_site(mapping_dict)
+        start(client, "variables", mapping)
+
+        body = client.post(
+            PROMPT, json={"phase": "variables", "database": TABLE, "mapping": mapping}
+        ).get_json()
+
+        assert "- xqz    hint: no candidate" in body["prompt"]
+
+    def test_env_overrides_that_do_not_parse_fall_back_to_the_defaults(
+        self, monkeypatch, client
+    ):
+        monkeypatch.setenv("FLYOVER_SUGGESTION_PROMPT_CHUNK", "lots")
+        monkeypatch.setenv("FLYOVER_SUGGESTION_MIN_VALUE_COUNT", "few")
+
+        body = client.get(STATUS).get_json()
+
+        assert body["prompt_export"] == {
+            "state": "active",
+            "chunk": 40,
+            "min_value_count": 10,
+        }
+
+    def test_a_chunk_request_that_does_not_parse_uses_the_default(
+        self, client, seeded_store, mapping_dict
+    ):
+        body = client.post(
+            PROMPT,
+            json={
+                "phase": "variables",
+                "database": TABLE,
+                "mapping": unmapped_own_site(mapping_dict),
+                "chunk": "big",
+            },
+        ).get_json()
+
+        assert body["chunk_hint"] == 40
+
+    def test_include_from_the_query_string_is_split_on_commas(
+        self, client, monkeypatch, session_cache, rdf_store, mapping_dict
+    ):
+        monkeypatch.setenv("FLYOVER_SUGGESTION_MIN_VALUE_COUNT", "1")
+        rdf_store.seed_table(
+            TABLE, {"sex": [f"a long free text value number {i}" for i in range(5)]}
+        )
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        held = client.get(
+            PROMPT, query_string={"phase": "values", "database": TABLE}
+        ).get_json()
+        included = client.get(
+            PROMPT,
+            query_string={
+                "phase": "values",
+                "database": TABLE,
+                "include": "sex, other",
+            },
+        ).get_json()
+
+        assert held["held_back"][0]["reason"].startswith("values average")
+        assert included["held_back"] == []
+
+    def test_a_column_with_more_values_than_the_chunk_gets_its_own_part(
+        self, client, monkeypatch, rdf_store, mapping_dict
+    ):
+        monkeypatch.setenv("FLYOVER_SUGGESTION_MIN_VALUE_COUNT", "1")
+        rdf_store.seed_table(
+            TABLE, {"sex": [f"v{i}" for i in range(8)], "smoker": ["1", "0"]}
+        )
+        _add_variable(mapping_dict, "smoking_yes_no", terms=["yes", "no"])
+        mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]["smoking"] = {
+            "mapsTo": "schema:variable/smoking_yes_no",
+            "localColumn": "smoker",
+        }
+        del mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"][
+            "biological_sex"
+        ]["localMappings"]
+
+        body = client.post(
+            PROMPT,
+            json={
+                "phase": "values",
+                "database": TABLE,
+                "mapping": mapping_dict,
+                "chunk": 5,
+            },
+        ).get_json()
+
+        assert [c["items"] for c in body["chunks"]] == [["sex"], ["smoker"]]
+        assert [c["item_count"] for c in body["chunks"]] == [8, 2]

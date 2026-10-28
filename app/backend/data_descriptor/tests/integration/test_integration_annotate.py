@@ -959,3 +959,108 @@ class TestLegacyAnnotationMap:
         body = client.post("/start-annotation").get_json()
 
         assert body["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# Remaining branches of the annotate controller
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotateRoutesAndBranches:
+    @pytest.mark.parametrize(
+        "route, target",
+        [
+            ("/annotation_landing", "/annotate"),
+            ("/annotation-review", "/annotate/review"),
+            ("/annotation-verify", "/annotate/verify"),
+        ],
+    )
+    def test_legacy_routes_redirect_into_the_spa(self, client, route, target):
+        response = client.get(route)
+
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith(target)
+
+    def test_an_empty_json_body_is_no_filter(
+        self, client, session_cache, annotate_ready
+    ):
+        body = client.post("/start-annotation", json={}).get_json()
+
+        assert body["success"] is True
+        assert len(session_cache.annotation_status) == 3
+
+    def test_a_nameless_file_is_rejected(self, client, seeded_store):
+        response = client.post(
+            "/upload-annotation-json",
+            data={"annotationJsonFile": (BytesIO(b"{}"), "")},
+            content_type="multipart/form-data",
+        )
+
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "No file selected"
+
+    def test_an_unwritable_upload_folder_is_a_server_error(
+        self, app, client, seeded_store, mapping_dict
+    ):
+        app.config["APP_CONTEXT"]["upload_folder"] = str(
+            Path(app.config["APP_CONTEXT"]["upload_folder"]) / "missing" / "deeper"
+        )
+
+        response = _upload_mapping(client, mapping_dict)
+
+        assert response.status_code == 500
+        assert response.get_json()["error"].startswith("Upload failed:")
+
+    def test_verification_without_a_json_body_is_a_handled_error(
+        self, client, annotate_ready
+    ):
+        response = client.post("/verify-annotation-ask", data="variable=x")
+
+        body = response.get_json()
+        assert body["success"] is False
+        assert body["error"]
+
+    def test_a_mapping_without_source_files_is_a_global_template(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        # No table names to match on: the mapping applies to every table
+        del mapping_dict["databases"]["centre_x"]["tables"][TABLE]["sourceFile"]
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+
+        body = client.post("/start-annotation").get_json()
+        state = client.get(VERIFY_STATE).get_json()
+
+        assert body["success"] is True
+        assert len(state["annotated_variables"]) == 3
+
+
+class TestLegacyShapedState:
+    def test_an_invalid_jsonld_upload_leaves_a_dict_that_cannot_be_annotated(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        mapping_dict["schema"]["variables"]["identifier"]["dataType"] = "unknown_type"
+        assert _upload_mapping(client, mapping_dict).status_code == 200
+        assert session_cache.jsonld_mapping is None
+
+        body = client.post("/start-annotation").get_json()
+
+        # The JSON-LD-shaped dict is read as a legacy map, which the broken
+        # formulate_local_map wiring cannot serve (see the cleanup ticket)
+        assert body["success"] is False
+        assert body["error"]
+        assert seeded_store.updates == []
+
+    def test_non_string_local_terms_are_left_out_of_the_verification(
+        self, client, session_cache, seeded_store, mapping_dict
+    ):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["biological_sex"]["localMappings"] = {"male": [1, 2], "female": "F"}
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+        session_cache.databases = [TABLE]
+
+        query = client.post(
+            "/verify-annotation-ask", json={"variable": f"{TABLE}.biological_sex"}
+        ).get_json()["query"]
+
+        assert '"F"^^xsd:string' in query
+        assert "ncit:C20197 rdfs:subClassOf" not in query
