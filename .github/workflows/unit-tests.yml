@@ -13,6 +13,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # A throwaway PostgreSQL for the integration tests of the Postgres
+    # ingest path (tests/integration/test_integration_ingest.py); they
+    # skip when FLYOVER_TEST_POSTGRES_DSN is unset.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flyover
+          POSTGRES_PASSWORD: flyover
+          POSTGRES_DB: flyover
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flyover"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FLYOVER_TEST_POSTGRES_DSN: postgresql://flyover:flyover@localhost:5432/flyover
 
     steps:
     - name: Checkout code
@@ -50,6 +69,7 @@ jobs:
           --tb=short \
           --junit-xml=unit-test-results.xml \
           --cov=app/backend/data_descriptor \
+          --cov-config=app/backend/data_descriptor/.coveragerc \
           --cov-report=term-missing \
           --cov-report=xml:coverage.xml \
           -q 2>&1 | tee unit-test-output.txt
@@ -69,6 +89,7 @@ jobs:
           --tb=short \
           --junit-xml=integration-test-results.xml \
           --cov=app/backend/data_descriptor \
+          --cov-config=app/backend/data_descriptor/.coveragerc \
           --cov-append \
           --cov-report=term-missing \
           --cov-report=xml:coverage.xml \
@@ -86,7 +107,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
         # Use the .coverage data file produced by the test step above
-        python -m coverage report --show-missing 2>&1 | grep -E "^(TOTAL|app)" | head -30 > coverage-summary.txt || true
+        python -m coverage report --rcfile=app/backend/data_descriptor/.coveragerc --show-missing 2>&1 | grep -E "^(TOTAL|app)" | head -30 > coverage-summary.txt || true
         if [ -s coverage-summary.txt ]; then
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat coverage-summary.txt >> $GITHUB_STEP_SUMMARY

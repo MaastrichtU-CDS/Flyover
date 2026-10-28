@@ -162,6 +162,9 @@ class FakeRdfStore:
         # Statuses for the next ASK requests, consumed in order; then
         # ``ask_status`` applies. Models a store that is briefly overloaded.
         self.ask_status_queue: List[int] = []
+        # Raw bodies for SELECTs whose text contains the key (first match
+        # wins): lets a test hand Flyover a malformed or unexpected result.
+        self.select_overrides: Dict[str, str] = {}
         self.data_graph_exists = True
 
     # -- model helpers -----------------------------------------------------
@@ -296,7 +299,13 @@ class FakeRdfStore:
 
     def _serve_graph(self, graph_uri: str):
         for database, content in self.ontology_graphs.items():
-            if graph_uri == f"http://ontology.local/{database}/":
+            # The empty database name is the legacy single ontology graph
+            expected = (
+                f"http://ontology.local/{database}/"
+                if database
+                else "http://ontology.local/"
+            )
+            if graph_uri == expected:
                 return (
                     200,
                     {"Content-Type": "application/n-triples; charset=utf-8"},
@@ -307,6 +316,9 @@ class FakeRdfStore:
     def _answer_select(self, query: str) -> str:
         """Answer the SELECT queries Flyover's layers build."""
         compact = " ".join(query.split())
+        for needle, body in self.select_overrides.items():
+            if needle in compact:
+                return body
 
         # Column info / graph structure: ?uri dbo:column ?column
         if "?uri dbo:column ?column" in compact:
@@ -371,6 +383,12 @@ for arg in "$@"; do
     printf '%s\\n' "$arg" >> "$FAKE_CURL_LOG"
 done
 printf '%s\\n' '--END-OF-INVOCATION--' >> "$FAKE_CURL_LOG"
+if [ -n "$FAKE_CURL_SLEEP" ]; then sleep "$FAKE_CURL_SLEEP"; fi
+if [ "$FAKE_CURL_FAIL_DATA_BINARY" = "1" ]; then
+    for arg in "$@"; do
+        if [ "$arg" = "--data-binary" ]; then exit 22; fi
+    done
+fi
 exit "${FAKE_CURL_EXIT:-0}"
 """
 
@@ -391,6 +409,14 @@ class FakeCurl:
     def fail(self, exit_code: int = 22) -> None:
         """Make every curl invocation fail (22 is curl's HTTP-error status)."""
         self._monkeypatch.setenv("FAKE_CURL_EXIT", str(exit_code))
+
+    def fail_data_binary_only(self) -> None:
+        """Fail the --data-binary strategy; the streaming fallback succeeds."""
+        self._monkeypatch.setenv("FAKE_CURL_FAIL_DATA_BINARY", "1")
+
+    def hang(self, seconds: float) -> None:
+        """Make every curl invocation take this long before exiting."""
+        self._monkeypatch.setenv("FAKE_CURL_SLEEP", str(seconds))
 
     @property
     def invocations(self) -> List[List[str]]:
@@ -512,7 +538,17 @@ def build_app(work_dir: Path, store: FakeRdfStore) -> Flask:
             )
         ),
         "start_background": lambda sc: background_jobs.append(sc),
-        "handle_postgres": lambda *args: (False, "PostgreSQL is not under test"),
+        "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
+            IngestService().handle_postgres_connection(
+                username,
+                password,
+                postgres_url,
+                postgres_db,
+                table,
+                root_dir,
+                child_dir,
+            )
+        ),
         "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
         "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(
             db

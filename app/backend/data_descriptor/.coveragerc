@@ -1,0 +1,19 @@
+# Coverage configuration for the backend test layers (pytest --cov).
+# Lives next to the code it measures; from the repo root pass
+# --cov-config=app/backend/data_descriptor/.coveragerc, as the CI workflow does.
+#
+# The test modules themselves and the gunicorn entrypoint are left out of
+# the denominator: data_descriptor_main.py monkey-patches gevent and builds
+# the store client at import time, so it is only ever exercised by the
+# Docker e2e layer, never in-process.
+[run]
+omit =
+    */data_descriptor/tests/*
+    */data_descriptor/data_descriptor_main.py
+    */backend/scripts/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
