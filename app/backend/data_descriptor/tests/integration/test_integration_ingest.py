@@ -830,3 +830,38 @@ class TestStoreChecksEdgeCases:
 
         assert body["success"] is False
         assert body["databases"] == []
+
+
+class TestEncodings:
+    def test_utf8_bom_is_tolerated(self, client, session_cache, fake_curl):
+        _post_csv(client, b"\xef\xbb\xbfid,sex\nP1,M\n", f"{TABLE}.csv")
+
+        # The BOM must not end up in the first column's name
+        assert session_cache.csvData[0].columns == ["id", "sex"]
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="utils.data_preprocessing.read_csv_with_encoding_detection exists but nothing calls "
+        "it: parse_csv_files hands the raw bytes to polars, so a Latin-1 value is rejected as "
+        "'invalid utf-8 sequence'",
+    )
+    def test_latin1_values_are_converted_before_triplification(
+        self, client, session_cache, fake_curl
+    ):
+        response = _post_csv(
+            client, "id,city\nP1,Zürich\n".encode("latin-1"), f"{TABLE}.csv"
+        )
+
+        assert response.headers["Location"].endswith("/describe")
+        assert session_cache.csvData[0]["city"].to_list() == ["Zürich"]
+
+    def test_latin1_csv_is_currently_rejected_with_the_parse_error(
+        self, client, session_cache, fake_curl
+    ):
+        response = _post_csv(
+            client, "id,city\nP1,Zürich\n".encode("latin-1"), f"{TABLE}.csv"
+        )
+
+        assert "Error+parsing+CSV+files" in response.headers["Location"]
+        assert "utf-8" in response.headers["Location"].lower()
+        assert session_cache.csvData is None
