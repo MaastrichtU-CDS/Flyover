@@ -41,7 +41,7 @@ The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tes
 
 The triplifier (`pythonTool`, from `requirements.txt`) runs for real into a temp directory, so the ingest tests triplify an actual CSV. Tests that document a known defect are marked `xfail(strict=True)` with the reason, so they flip to a failure once the defect is fixed.
 
-One file per flow: `test_integration_ingest.py`, `..._describe.py`, `..._annotate.py`, `..._share.py`, plus `..._loader_validation.py` (loader ↔ validator) and `..._session.py` (server-side state across requests). The older `test_loaders_real_files.py` and `test_validation_real_files.py` read `example_data/` directly.
+One file per flow: `test_integration_ingest.py`, `..._describe.py`, `..._annotate.py`, `..._share.py`, `..._suggestions.py` (tier-1 matchers, both phases, prompt export and paste-back), plus `..._loader_validation.py` (loader ↔ validator) and `..._session.py` (server-side state across requests). The older `test_loaders_real_files.py` and `test_validation_real_files.py` read `example_data/` directly.
 
 A few practical notes about the layout:
 - [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
