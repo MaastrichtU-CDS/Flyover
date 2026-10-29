@@ -3,9 +3,10 @@
 # --cov-config=app/backend/data_descriptor/.coveragerc, as the CI workflow does.
 #
 # The test modules themselves and the gunicorn entrypoint are left out of
-# the denominator: data_descriptor_main.py monkey-patches gevent and builds
-# the store client at import time, so it is only ever exercised by the
-# Docker e2e layer, never in-process.
+# the denominator: data_descriptor_main.py monkey-patches gevent at import
+# time, so it is only imported in a separate process (test_api_factory.py)
+# or by the Docker e2e layer; the app it builds comes from app_factory.py,
+# which is measured.
 [run]
 omit =
     */data_descriptor/tests/*

@@ -9,7 +9,7 @@ on:
 
 jobs:
   unit-tests:
-    name: Python Unit and Integration Tests
+    name: Python Unit, Integration and API Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-mock pytest-cov responses
+        pip install pytest pytest-mock pytest-cov responses hypothesis
         # Install project dependencies
         if [ -f app/backend/requirements.txt ]; then pip install -r app/backend/requirements.txt; fi
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
@@ -101,6 +101,79 @@ jobs:
         exit $EXIT_CODE
       continue-on-error: false
 
+    - name: Run API tests
+      id: api-tests
+      env:
+        # Kept apart from the combined data until the gate below has read it.
+        COVERAGE_FILE: .coverage.api
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🌐 API Tests" >> $GITHUB_STEP_SUMMARY
+        python -m pytest app/backend/data_descriptor/tests/api/ \
+          --tb=short \
+          --junit-xml=api-test-results.xml \
+          --cov=app/backend/data_descriptor \
+          --cov-config=app/backend/data_descriptor/.coveragerc \
+          --cov-report= \
+          -q 2>&1 | tee api-test-output.txt
+        EXIT_CODE=${PIPESTATUS[0]}
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -20 api-test-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        exit $EXIT_CODE
+      continue-on-error: false
+
+    - name: API coverage of the HTTP layer (at least 90 %)
+      id: api-coverage
+      run: |
+        # The API layer mocks the services, so its own bar is the HTTP layer:
+        # the controllers, the app factory and the request-boundary helpers.
+        python -m coverage report \
+          --data-file=.coverage.api \
+          --rcfile=app/backend/data_descriptor/.coveragerc \
+          --include='*/data_descriptor/controllers/*,*/data_descriptor/app_factory.py,*/data_descriptor/utils/response_compression.py,*/data_descriptor/utils/mapping_request.py' \
+          --show-missing \
+          --fail-under=90 2>&1 | tee api-coverage.txt
+        EXIT_CODE=${PIPESTATUS[0]}
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### API coverage of the HTTP layer" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        cat api-coverage.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        exit $EXIT_CODE
+      continue-on-error: false
+
+    - name: Combine coverage
+      if: always()
+      run: |
+        if [ -f .coverage.api ]; then
+          python -m coverage combine --append --keep \
+            --rcfile=app/backend/data_descriptor/.coveragerc .coverage.api
+        fi
+        python -m coverage xml --rcfile=app/backend/data_descriptor/.coveragerc -o coverage.xml || true
+      continue-on-error: true
+
+    - name: Performance checks (non-blocking)
+      id: perf-checks
+      if: always()
+      env:
+        FLYOVER_PERF_REPORT: perf-report.md
+      run: |
+        # Timed without coverage, which would slow every request down.
+        python -m pytest app/backend/data_descriptor/tests/perf/ -m perf \
+          --tb=short \
+          --junit-xml=perf-test-results.xml \
+          -q 2>&1 | tee perf-test-output.txt
+        EXIT_CODE=${PIPESTATUS[0]}
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## ⏱️ Performance Checks (non-blocking)" >> $GITHUB_STEP_SUMMARY
+        if [ -f perf-report.md ]; then cat perf-report.md >> $GITHUB_STEP_SUMMARY; fi
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -5 perf-test-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        exit $EXIT_CODE
+      continue-on-error: true
+
     - name: Coverage report summary
       if: always()
       run: |
@@ -127,6 +200,12 @@ jobs:
           unit-test-output.txt
           integration-test-results.xml
           integration-test-output.txt
+          api-test-results.xml
+          api-test-output.txt
+          api-coverage.txt
+          perf-test-results.xml
+          perf-test-output.txt
+          perf-report.md
           coverage.xml
         retention-days: 30
 
@@ -140,13 +219,12 @@ jobs:
         echo "### Test scope" >> $GITHUB_STEP_SUMMARY
         echo "- Unit tests from \`app/backend/data_descriptor/tests/unit/\` (path-based selection)" >> $GITHUB_STEP_SUMMARY
         echo "- Integration tests from \`app/backend/data_descriptor/tests/integration/\` (RDF store faked at the HTTP boundary)" >> $GITHUB_STEP_SUMMARY
+        echo "- API tests from \`app/backend/data_descriptor/tests/api/\` (every route through the Flask test client, services mocked)" >> $GITHUB_STEP_SUMMARY
+        echo "- Performance checks from \`app/backend/data_descriptor/tests/perf/\` (\`-m perf\`)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🚫 Blocking (Will Fail Build)" >> $GITHUB_STEP_SUMMARY
-        echo "- Any unit or integration test failure" >> $GITHUB_STEP_SUMMARY
+        echo "- Any unit, integration or API test failure" >> $GITHUB_STEP_SUMMARY
+        echo "- API coverage of the HTTP layer below 90 %" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Modules covered" >> $GITHUB_STEP_SUMMARY
-        echo "- \`annotation_helper/main.py\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`services/rdf_store_service.py\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`services/share_service.py\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`repositories/rdf_store_repository.py\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`scripts/convert_legacy_mapping.py\`" >> $GITHUB_STEP_SUMMARY
+        echo "### ⚠️ Non-Blocking" >> $GITHUB_STEP_SUMMARY
+        echo "- Performance checks (budgets and growth exponents; see their report above)" >> $GITHUB_STEP_SUMMARY

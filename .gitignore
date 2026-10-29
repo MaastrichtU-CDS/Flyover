@@ -37,6 +37,7 @@ app/frontend/test-results/
 
 # Test coverage artifacts
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
 app/.coverage
