@@ -939,12 +939,6 @@ class TestLegacyAnnotationMap:
         # A legacy map is not a JSON-LD mapping and never becomes one
         assert session_cache.jsonld_mapping is None
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="main wires formulate_local_map as a one-argument lambda, but "
-        "DescribeService.formulate_local_semantic_map needs the global map and the database, "
-        "so annotating a legacy JSON map raises inside the service and reports an error",
-    )
     def test_a_legacy_map_can_be_annotated(
         self, client, session_cache, seeded_store, legacy_mapping_data
     ):

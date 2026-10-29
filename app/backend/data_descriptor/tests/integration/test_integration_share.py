@@ -93,12 +93,6 @@ class TestSemanticMapDownload:
 
         assert response.status_code == 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="main wires formulate_local_map as a one-argument lambda, but "
-        "DescribeService.formulate_local_semantic_map needs the global map and the database, "
-        "so the legacy (non JSON-LD) download always fails",
-    )
     def test_legacy_mapping_is_exported_as_json(
         self, client, session_cache, legacy_mapping_data
     ):

@@ -246,8 +246,12 @@ def build_app_context(
             )
         ),
         "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
+        # A legacy JSON map becomes one database's local map: the session's
+        # legacy map, filled in from what the user described for that database.
         "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(
-            db
+            session_cache.global_semantic_map,
+            db,
+            (session_cache.descriptive_info or {}).get(db),
         ),
         "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
         "name_matcher": lambda map_db, target_db: (
