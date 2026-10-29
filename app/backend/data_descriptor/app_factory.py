@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 
 import gevent
 from flask import Flask, abort, request, send_from_directory
+from werkzeug.security import safe_join
 
 from controllers import (
     annotate_bp,
@@ -293,7 +294,11 @@ def _register_spa(app: Flask, spa_dir: str) -> None:
     def serve_spa(subpath: str = ""):
         if not os.path.isdir(spa_dir):
             abort(404)
-        if subpath and os.path.isfile(os.path.join(spa_dir, subpath)):
+        # safe_join refuses a path that leaves the SPA folder before anything
+        # touches the file system, so the answer never shows whether a file
+        # outside it exists.
+        asset = safe_join(spa_dir, subpath) if subpath else None
+        if asset is not None and os.path.isfile(asset):
             return send_from_directory(spa_dir, subpath)
         return send_from_directory(spa_dir, "index.html")
 

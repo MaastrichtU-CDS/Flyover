@@ -54,18 +54,20 @@ class TestPathsThatLeaveTheServedFolders:
         assert b"def create_app" not in response.data
         assert response.status_code != 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: serve_spa checks os.path.isfile() on the joined path "
-        "before send_from_directory rejects it, so a path outside the SPA folder "
-        "answers 404 when the file exists and the SPA shell when it does not, "
-        "which lets any page probe the server's file system",
+    @pytest.mark.parametrize(
+        "prefix",
+        ["/..", "/%2e%2e", "/assets/../..", "/..%5c.."],
+        ids=["dots", "encoded", "through-assets", "backslash"],
     )
-    def test_outside_paths_get_the_same_answer_whether_or_not_they_exist(self, client):
-        existing = client.get("/../secret.txt")
-        missing = client.get("/../no-such-file.txt")
+    def test_outside_paths_get_the_same_answer_whether_or_not_they_exist(
+        self, client, prefix
+    ):
+        # A different answer would let any page probe the server's file system.
+        existing = client.get(f"{prefix}/secret.txt")
+        missing = client.get(f"{prefix}/no-such-file.txt")
 
         assert existing.status_code == missing.status_code
+        assert existing.data == missing.data
 
 
 class TestWhatResponsesNeverCarry:
