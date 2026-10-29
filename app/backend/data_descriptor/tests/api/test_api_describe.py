@@ -405,20 +405,40 @@ class TestDetailsStateFromTheSessionMap:
             SEX: ["Male", "Female", "Missing or unspecified"]
         }
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: _variable_exists_in_details matches column names by "
-        "substring, so a described 'stage' column hides the map's 'age' variable",
+    @pytest.mark.parametrize(
+        "listed",
+        [
+            'T Stage (or "stage")',
+            {'T Stage (or "stage")': [{"value": "T1", "count": "3"}]},
+            'Age group (or "age_group")',
+            'Notes on age (or "notes")',
+        ],
+        ids=["inside-a-longer-name", "categorical", "prefix", "in-the-text"],
     )
-    def test_a_column_named_inside_another_columns_name_is_still_offered(
-        self, client, session_cache, described_table
+    def test_a_column_named_inside_another_entry_is_still_offered(
+        self, client, session_cache, described_table, listed
     ):
         _adopt(session_cache)
-        session_cache.DescriptiveInfoDetails = {TABLE: ['T Stage (or "stage")']}
+        session_cache.DescriptiveInfoDetails = {TABLE: [listed]}
 
         body = client.get(DETAILS_STATE).get_json()
 
         assert AGE in _names(body["descriptive_info_details"][TABLE])
+
+    @pytest.mark.parametrize(
+        "listed",
+        ['Age as the user named it (or "age")', {'Age (or "age")': []}],
+        ids=["continuous", "categorical"],
+    )
+    def test_a_column_already_listed_is_not_offered_again(
+        self, client, session_cache, described_table, listed
+    ):
+        _adopt(session_cache)
+        session_cache.DescriptiveInfoDetails = {TABLE: [listed]}
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert AGE not in _names(body["descriptive_info_details"][TABLE])
 
 
 class TestDetailsStateFromTheBrowserMap:

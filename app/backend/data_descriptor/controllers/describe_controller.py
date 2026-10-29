@@ -8,12 +8,13 @@ data variables, including type specification and categorisation.
 import copy
 import json
 import logging
+import re
 from io import StringIO
 
 import polars as pl
 from flask import Blueprint, jsonify, redirect, request
 
-from typing import Any
+from typing import Any, Optional
 
 from services import DescribeService
 from utils.mapping_request import parse_and_validate_mapping
@@ -197,14 +198,30 @@ def describe_variable_details():
     return redirect("/describe/variable-details")
 
 
+# Both describe pages name a details entry '<description> (or "<column>")'.
+_LISTED_COLUMN = re.compile(r'\(or "(?P<column>.*)"\)\Z', re.DOTALL)
+
+
+def _listed_column(display_name: str) -> Optional[str]:
+    """The column a details entry names: 'Age (or "age")' -> 'age'."""
+    match = _LISTED_COLUMN.search(display_name)
+    return match.group("column") if match else None
+
+
 def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
+    """Whether the details list already has an entry for ``local_column``.
+
+    The column is compared whole, so an "age" column is not taken for the
+    "stage" column already listed.
+    """
     for item in details_list:
-        if isinstance(item, str) and local_column in item:
+        # A continuous variable is listed by name, a categorical one as
+        # {name: categories}.
+        names = (
+            [item] if isinstance(item, str) else item if isinstance(item, dict) else []
+        )
+        if any(_listed_column(name) == local_column for name in names):
             return True
-        if isinstance(item, dict):
-            for key in item:
-                if local_column in key:
-                    return True
     return False
 
 
