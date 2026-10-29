@@ -380,6 +380,35 @@ class TestUploadAnnotationMap:
 
         assert _saved_files(app) == []
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="defect (found by the fuzz tests): the table listing calls .items() "
+        "and .get() without checking the shapes, so a map whose document, "
+        "databases or tables section is a list or text answers 500 'Upload "
+        "failed' and stays in the upload folder",
+    )
+    @pytest.mark.parametrize(
+        "document",
+        [
+            [1, 2],
+            {**valid_mapping(), "databases": ["centre_x"]},
+            {
+                **valid_mapping(),
+                "databases": {"centre_x": {"name": TABLE, "tables": [TABLE]}},
+            },
+            {
+                **valid_mapping(),
+                "databases": {"centre_x": {"name": TABLE, "tables": "text"}},
+            },
+        ],
+        ids=["document-list", "databases-list", "tables-list", "tables-text"],
+    )
+    def test_a_malformed_map_is_refused_and_removed(self, app, client, document):
+        response = client.post("/upload-annotation-json", data=_upload(document))
+
+        assert response.status_code == 400
+        assert _saved_files(app) == []
+
 
 # ---------------------------------------------------------------------------
 # POST /start-annotation
@@ -727,6 +756,21 @@ class TestStartAnnotationWithAFilteredMap:
         response = client.post("/start-annotation", json=self._filtered())
 
         assert response.get_json()["success"] is True
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="defect (found by the fuzz tests): when that run is refused, the "
+        "route returns before its restore, so the refused filtered map stays in "
+        "the session and the Share page exports it",
+    )
+    def test_a_refused_filtered_run_leaves_no_map_in_the_session(
+        self, client, session_cache, annotatable
+    ):
+        session_cache.jsonld_mapping = None
+
+        client.post("/start-annotation", json=self._filtered())
+
+        assert session_cache.jsonld_mapping is None
 
     @pytest.mark.parametrize(
         "body",
