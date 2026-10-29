@@ -102,6 +102,37 @@ def safe_remove_file(filepath: str) -> None:
         logger.warning(f"Failed to remove file {filepath}: {e}")
 
 
+def _jsonld_table_names(json_data) -> list:
+    """The tables a map defines: each table's sourceFile (else its key), or a
+    legacy map's database_name.
+
+    An uploaded file is untrusted, so each section's shape is checked before
+    it is walked: a document, databases or tables section that is not an
+    object defines no tables.
+    """
+    if not isinstance(json_data, dict):
+        return []
+    databases = json_data.get("databases")
+    if databases:
+        if not isinstance(databases, dict):
+            return []
+        names = []
+        for db_data in databases.values():
+            tables = db_data.get("tables") if isinstance(db_data, dict) else None
+            if not isinstance(tables, dict):
+                continue
+            for table_key, table_data in tables.items():
+                names.append(
+                    table_data.get("sourceFile", table_key)
+                    if isinstance(table_data, dict)
+                    else table_key
+                )
+        return names
+    if json_data.get("database_name"):
+        return [json_data["database_name"]]
+    return []
+
+
 @annotate_bp.route("/annotation_landing")
 def annotation_landing():
     return redirect("/annotate")
@@ -129,17 +160,18 @@ def upload_annotation_json():
 
         filename = secure_filename(file.filename)
         filepath = os.path.join(upload_folder, filename)
-        file.save(filepath)
-
+        # The file is kept only when the upload succeeds: every refusal and
+        # every failure, a failed save included, removes it again.
+        kept = False
         try:
-            with open(filepath, "r") as f:
+            file.save(filepath)
+            with open(filepath, "r", encoding="utf-8") as f:
                 json_data = json.load(f)
 
             databases = rdf_store_service.get_databases() if rdf_store_service else []
             session_cache.databases = databases
 
             if not databases:
-                safe_remove_file(filepath)
                 return (
                     jsonify(
                         {
@@ -151,22 +183,9 @@ def upload_annotation_json():
                     400,
                 )
 
-            jsonld_tables = []
-            if json_data.get("databases"):
-                for db_key, db_data in json_data["databases"].items():
-                    if isinstance(db_data, dict) and db_data.get("tables"):
-                        for table_key, table_data in db_data["tables"].items():
-                            table_name = (
-                                table_data.get("sourceFile", table_key)
-                                if isinstance(table_data, dict)
-                                else table_key
-                            )
-                            jsonld_tables.append(table_name)
-            elif json_data.get("database_name"):
-                jsonld_tables.append(json_data["database_name"])
+            jsonld_tables = _jsonld_table_names(json_data)
 
             if not jsonld_tables:
-                safe_remove_file(filepath)
                 return (
                     jsonify(
                         {
@@ -193,7 +212,6 @@ def upload_annotation_json():
                     non_matching.append(jsonld_table)
 
             if not matching:
-                safe_remove_file(filepath)
                 return (
                     jsonify(
                         {
@@ -248,7 +266,7 @@ def upload_annotation_json():
             if result.is_valid:
                 session_cache.jsonld_mapping = JSONLDMapping.from_dict(json_data)
 
-            return jsonify(
+            response = jsonify(
                 {
                     "success": True,
                     "message": "JSON-LD file validated successfully",
@@ -261,10 +279,16 @@ def upload_annotation_json():
                     "cleaned_mapping": json_data,
                 }
             )
+            kept = True
+            return response
 
-        except json.JSONDecodeError:
-            safe_remove_file(filepath)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # JSON is UTF-8 text, so a file that does not decode is not JSON.
             return jsonify({"error": "Invalid JSON file format"}), 400
+
+        finally:
+            if not kept:
+                safe_remove_file(filepath)
 
     except Exception as e:
         return jsonify({"error": f"Upload failed: {e}"}), 500

@@ -354,12 +354,6 @@ class TestUploadAnnotationMap:
         assert response.status_code == 400
         assert response.get_json()["rdf_store_databases"] == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: a file the server cannot decode as UTF-8 raises outside the "
-        "JSON error handling, so the upload answers 500 and leaves the file in "
-        "the upload folder",
-    )
     def test_a_file_that_is_not_utf8_is_refused_and_removed(self, app, client):
         response = client.post(
             "/upload-annotation-json", data=_upload(b'{"name": "caf\xe9"}')
@@ -368,11 +362,6 @@ class TestUploadAnnotationMap:
         assert response.status_code == 400
         assert _saved_files(app) == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: when the store fails after the file was saved, the 500 "
-        "path does not remove it, so failed uploads accumulate in the folder",
-    )
     def test_a_failed_upload_leaves_no_file_behind(self, app, client, store):
         store.get_databases.side_effect = ConnectionError("store down")
 
@@ -380,13 +369,6 @@ class TestUploadAnnotationMap:
 
         assert _saved_files(app) == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (found by the fuzz tests): the table listing calls .items() "
-        "and .get() without checking the shapes, so a map whose document, "
-        "databases or tables section is a list or text answers 500 'Upload "
-        "failed' and stays in the upload folder",
-    )
     @pytest.mark.parametrize(
         "document",
         [

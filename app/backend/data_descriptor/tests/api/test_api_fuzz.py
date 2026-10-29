@@ -107,25 +107,6 @@ def statistics_would_crash(document) -> bool:
     return False
 
 
-def table_walk_would_crash(document) -> bool:
-    """/upload-annotation-json's table listing raises on this document.
-
-    Pinned by test_api_annotate.py::TestUploadAnnotationMap::
-    test_a_malformed_map_is_refused_and_removed.
-    """
-    if not isinstance(document, dict):
-        return True
-    databases = document.get("databases")
-    if not databases:
-        return False
-    if not isinstance(databases, dict):
-        return True
-    return any(
-        isinstance(db, dict) and db.get("tables") and not isinstance(db["tables"], dict)
-        for db in databases.values()
-    )
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -236,7 +217,6 @@ class TestMappingDocuments:
     def test_an_annotation_map_upload_never_fails_and_never_strays(
         self, client, doubles, tmp_path, content, filename
     ):
-        assume(not table_walk_would_crash(content))
         doubles.reset_state()
         doubles.store.get_databases.return_value = [TABLE]
         uploads = tmp_path / "uploads"
