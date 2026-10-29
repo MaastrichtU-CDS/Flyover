@@ -500,6 +500,14 @@ class TestStatisticsCollection(unittest.TestCase):
         self.assertFalse(result.is_valid)
         self.assertIn("databases", result.statistics)
 
+    def test_a_document_that_is_not_an_object_is_invalid_not_an_error(self):
+        """A number, text, a list or null is reported, not raised on."""
+        for document in (7, "databases", [1, 2], None):
+            with self.subTest(document=document):
+                result = self.validator.validate(document)
+                self.assertFalse(result.is_valid)
+                self.assertEqual(result.statistics["databases"], 0)
+
 
 # ---------------------------------------------------------------------------
 # format_errors_for_ui

@@ -10,10 +10,8 @@ redirects the two describe forms end in.
 
 import json
 import urllib.parse
-from importlib.metadata import version
 
 import pytest
-from packaging.version import Version
 
 from loaders import JSONLDMapping
 from tests.api.support import TABLE, valid_mapping
@@ -407,20 +405,40 @@ class TestDetailsStateFromTheSessionMap:
             SEX: ["Male", "Female", "Missing or unspecified"]
         }
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: _variable_exists_in_details matches column names by "
-        "substring, so a described 'stage' column hides the map's 'age' variable",
+    @pytest.mark.parametrize(
+        "listed",
+        [
+            'T Stage (or "stage")',
+            {'T Stage (or "stage")': [{"value": "T1", "count": "3"}]},
+            'Age group (or "age_group")',
+            'Notes on age (or "notes")',
+        ],
+        ids=["inside-a-longer-name", "categorical", "prefix", "in-the-text"],
     )
-    def test_a_column_named_inside_another_columns_name_is_still_offered(
-        self, client, session_cache, described_table
+    def test_a_column_named_inside_another_entry_is_still_offered(
+        self, client, session_cache, described_table, listed
     ):
         _adopt(session_cache)
-        session_cache.DescriptiveInfoDetails = {TABLE: ['T Stage (or "stage")']}
+        session_cache.DescriptiveInfoDetails = {TABLE: [listed]}
 
         body = client.get(DETAILS_STATE).get_json()
 
         assert AGE in _names(body["descriptive_info_details"][TABLE])
+
+    @pytest.mark.parametrize(
+        "listed",
+        ['Age as the user named it (or "age")', {'Age (or "age")': []}],
+        ids=["continuous", "categorical"],
+    )
+    def test_a_column_already_listed_is_not_offered_again(
+        self, client, session_cache, described_table, listed
+    ):
+        _adopt(session_cache)
+        session_cache.DescriptiveInfoDetails = {TABLE: [listed]}
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert AGE not in _names(body["descriptive_info_details"][TABLE])
 
 
 class TestDetailsStateFromTheBrowserMap:
@@ -508,12 +526,6 @@ class TestDetailsStateFromTheBrowserMap:
         (mapping, *_), _ = describe_service.get_preselected_values.call_args
         assert mapping is session_cache.jsonld_mapping
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: a JSON body that is not an object (a list, a string, a "
-        "number) reaches body.get() and answers 500; the suggestion routes "
-        "treat such a body as empty",
-    )
     @pytest.mark.parametrize("body", [[1, 2], "text", 7])
     def test_a_body_that_is_not_an_object_falls_back_to_the_session(
         self, client, session_cache, described_table, body
@@ -684,23 +696,22 @@ class TestVariablesForm:
         assert response.mimetype == "text/html"
         assert b"Flyover SPA" in response.data
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: unlike the details state, /units parses the store's "
-        "categories without a guard, so one unreadable category result fails "
-        "the whole form with a 500",
-    )
     def test_unreadable_categories_leave_the_variable_out_without_failing(
-        self, client, store, describe_service
+        self, client, session_cache, store, describe_service
     ):
+        # The details state guards the same parse; one bad result must not
+        # fail the whole form.
         describe_service.parse_form_data_for_database.return_value = {
-            "sex": _described("categorical")
+            "sex": _described("categorical"),
+            "age": _described("continuous", "Age"),
         }
         store.get_categories.return_value = 'value,count\n"unterminated,1\n'
 
         response = client.post("/units", data={})
 
         assert response.status_code == 302
+        assert response.headers["Location"] == "/describe/variable-details"
+        assert session_cache.DescriptiveInfoDetails == {TABLE: ['Age (or "age")']}
 
 
 # ---------------------------------------------------------------------------
@@ -749,15 +760,6 @@ class TestDetailsForm:
         ]
         assert existing == [{"age": {"type": "continuous"}}, {}]
 
-    @pytest.mark.route("GET", "/end", "success")
-    def test_a_get_is_processed_like_a_post(self, client, store, describe_service):
-        describe_service.process_detailed_form_data.return_value = {"age": {}}
-
-        response = client.get("/end")
-
-        assert response.headers["Location"] == "/annotate/review"
-        store.insert_equivalencies.assert_called_once_with("age", TABLE, {})
-
     @pytest.mark.route("POST", "/end", "failure")
     def test_a_store_failure_while_saving_is_a_server_error(
         self, client, store, describe_service
@@ -769,21 +771,6 @@ class TestDetailsForm:
 
         assert response.status_code == 500
 
-    @pytest.mark.route("GET", "/end", "failure")
-    def test_a_get_with_a_store_failure_is_a_server_error(
-        self, client, store, describe_service
-    ):
-        describe_service.process_detailed_form_data.return_value = {"age": {}}
-        store.insert_equivalencies.side_effect = ConnectionError("store down")
-
-        assert client.get("/end").status_code == 500
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (also pinned by the integration layer): /end iterates "
-        "session_cache.databases and indexes descriptive_info, both None before "
-        "the describe pages ran, so an out-of-order submission raises",
-    )
     @pytest.mark.parametrize("unset", ["databases", "descriptive_info"])
     def test_a_submission_before_the_describe_pages_redirects(
         self, client, session_cache, unset
@@ -793,6 +780,7 @@ class TestDetailsForm:
         response = client.post("/end", data={})
 
         assert response.status_code == 302
+        assert response.headers["Location"] == "/annotate/review"
 
 
 # ---------------------------------------------------------------------------
@@ -812,15 +800,10 @@ def _details_form(values_per_variable: int, variables: int = 10) -> str:
     return urllib.parse.urlencode(fields)
 
 
-# Werkzeug 3.1.9 stopped applying MAX_FORM_MEMORY_SIZE to urlencoded bodies (it
-# now limits multipart text parts only), and requirements.txt does not pin
-# Werkzeug, so whether a describe form is capped depends on the version installed.
-URLENCODED_FORMS_CAPPED = Version(version("werkzeug")) < Version("3.1.9")
-
-
 class TestFormSizeLimits:
-    """Before Werkzeug 3.1.9, Flask 3.1 caps a urlencoded form at 500 KB
-    (MAX_FORM_MEMORY_SIZE); from 3.1.9 nothing caps it."""
+    """Werkzeug 3.1.9 and later (the floor in requirements.txt) no longer cap a
+    urlencoded form at Flask's 500 KB MAX_FORM_MEMORY_SIZE, and Flyover sets no
+    limit of its own, so a describe form is accepted whatever its size."""
 
     def test_a_typical_details_form_is_accepted(self, client, session_cache):
         session_cache.databases = [TABLE]
@@ -834,13 +817,6 @@ class TestFormSizeLimits:
 
         assert response.status_code == 302
 
-    @pytest.mark.xfail(
-        URLENCODED_FORMS_CAPPED,
-        strict=True,
-        reason="defect with Werkzeug before 3.1.9: a describe form over Flask's "
-        "500 KB MAX_FORM_MEMORY_SIZE (about 2,400 category values on the details "
-        "page) is refused with a bare HTML 413 and the user's input is lost",
-    )
     @pytest.mark.parametrize("path", ["/end", "/units"])
     def test_a_form_for_a_wide_dataset_is_accepted(self, client, session_cache, path):
         session_cache.databases = [TABLE]

@@ -6,17 +6,17 @@ data variables, including type specification and categorisation.
 """
 
 import copy
-import json
 import logging
+import re
 from io import StringIO
 
 import polars as pl
 from flask import Blueprint, jsonify, redirect, request
 
-from typing import Any
+from typing import Any, Optional
 
 from services import DescribeService
-from utils.mapping_request import parse_and_validate_mapping
+from utils.mapping_request import json_object_body, parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ def api_describe_variable_details_state():
     if session_cache.DescriptiveInfoDetails is None:
         session_cache.DescriptiveInfoDetails = {}
 
-    body = request.get_json(silent=True) or {}
+    body = json_object_body()
     body_mapping = parse_and_validate_mapping(body.get("mapping"))
     effective_mapping = body_mapping or session_cache.jsonld_mapping
 
@@ -127,6 +127,26 @@ def api_describe_variable_details_state():
     )
 
 
+def _read_categories(cat_result: Any, local_column: str) -> Optional[list]:
+    """The store's category counts for a column as rows, or None when the
+    store has none or they cannot be read (logged; the column is then left
+    out rather than failing the page)."""
+    if not cat_result:
+        return None
+    try:
+        df = pl.read_csv(
+            StringIO(cat_result),
+            separator=",",
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to parse categories for {local_column}: {e}")
+        return None
+    return df.to_dicts()
+
+
 @describe_bp.route("/units", methods=["POST"])
 def retrieve_descriptive_info():
     """Process variable descriptions from form submission."""
@@ -164,17 +184,12 @@ def retrieve_descriptive_info():
                 display_name = f'{global_var} (or "{local_var}")'
 
             if data_type == "categorical":
-                cat_result = rdf_store_service.get_categories(local_var, database)
-                if cat_result:
-                    df = pl.read_csv(
-                        StringIO(cat_result),
-                        separator=",",
-                        infer_schema_length=0,
-                        null_values=[],
-                        try_parse_dates=False,
-                    )
+                categories = _read_categories(
+                    rdf_store_service.get_categories(local_var, database), local_var
+                )
+                if categories is not None:
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {display_name: df.to_dicts()}
+                        {display_name: categories}
                     )
             elif data_type == "continuous":
                 session_cache.DescriptiveInfoDetails[database].append(display_name)
@@ -197,14 +212,30 @@ def describe_variable_details():
     return redirect("/describe/variable-details")
 
 
+# Both describe pages name a details entry '<description> (or "<column>")'.
+_LISTED_COLUMN = re.compile(r'\(or "(?P<column>.*)"\)\Z', re.DOTALL)
+
+
+def _listed_column(display_name: str) -> Optional[str]:
+    """The column a details entry names: 'Age (or "age")' -> 'age'."""
+    match = _LISTED_COLUMN.search(display_name)
+    return match.group("column") if match else None
+
+
 def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
+    """Whether the details list already has an entry for ``local_column``.
+
+    The column is compared whole, so an "age" column is not taken for the
+    "stage" column already listed.
+    """
     for item in details_list:
-        if isinstance(item, str) and local_column in item:
+        # A continuous variable is listed by name, a categorical one as
+        # {name: categories}.
+        names = (
+            [item] if isinstance(item, str) else item if isinstance(item, dict) else []
+        )
+        if any(_listed_column(name) == local_column for name in names):
             return True
-        if isinstance(item, dict):
-            for key in item:
-                if local_column in key:
-                    return True
     return False
 
 
@@ -281,9 +312,6 @@ def _populate_details_from_jsonld(
 
         for var_key in mapping.get_all_variable_keys():
             var_info = mapping.get_variable(var_key)
-            if not var_info:
-                continue
-
             data_type = getattr(var_info, "data_type", None)
             local_column = mapping.get_local_column(var_key)
 
@@ -306,21 +334,12 @@ def _populate_details_from_jsonld(
                 }
 
             if data_type == "categorical":
-                cat_result = rdf_store_service.get_categories(local_column, database)
-                if cat_result:
-                    try:
-                        df = pl.read_csv(
-                            StringIO(cat_result),
-                            separator=",",
-                            infer_schema_length=0,
-                            null_values=[],
-                            try_parse_dates=False,
-                        )
-                        details[database].append({display_name: df.to_dicts()})
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to parse categories for {local_column}: {e}"
-                        )
+                categories = _read_categories(
+                    rdf_store_service.get_categories(local_column, database),
+                    local_column,
+                )
+                if categories is not None:
+                    details[database].append({display_name: categories})
             elif data_type == "continuous":
                 details[database].append(display_name)
 
@@ -328,14 +347,19 @@ def _populate_details_from_jsonld(
             del details[database]
 
 
-@describe_bp.route("/end", methods=["GET", "POST"])
+@describe_bp.route("/end", methods=["POST"])
 def retrieve_detailed_descriptive_info():
     """Process detailed variable info (units, categories)."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
 
-    for database in session_cache.databases:
+    # The describe pages set both; a submission that arrives before them (a
+    # stale tab, a reload after a restart) has nothing to save.
+    if session_cache.descriptive_info is None:
+        session_cache.descriptive_info = {}
+
+    for database in session_cache.databases or []:
         if database not in session_cache.descriptive_info:
             session_cache.descriptive_info[database] = {}
 

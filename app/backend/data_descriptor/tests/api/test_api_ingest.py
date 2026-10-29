@@ -472,13 +472,7 @@ class TestOrphanCheckOnMalformedShapes:
         assert response.status_code == 400
         assert "error" in response.get_json()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (also pinned by the integration layer): MappingValidator's "
-        "_collect_statistics calls .values() on a databases or tables section that "
-        "is a list or text, so the validation endpoint answers 500, not invalid",
-    )
-    @pytest.mark.parametrize("value", [[], "text"])
+    @pytest.mark.parametrize("value", [[], "text", ["centre_x"], 7])
     def test_list_or_text_sections_are_reported_by_the_validation_endpoint(
         self, client, value
     ):
@@ -864,18 +858,30 @@ class TestUploadCsv:
 
         assert response.status_code == 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: upload_func's verdict is ignored, so a failed graph upload "
-        "is reported as a successful ingest (redirect to /describe)",
-    )
     def test_a_failed_graph_upload_goes_back_to_ingest(self, client, helpers):
-        helpers["upload_func"].return_value = (False, ["HTTP 503 from the store"])
+        helpers["upload_func"].return_value = (
+            False,
+            ["HTTP 503 from the store", "data graph not loaded"],
+        )
 
         response = client.post("/upload", data=_csv_form("patients.csv"))
 
-        assert urlsplit(response.headers["Location"]).path == "/ingest"
+        assert _error_from_redirect(response) == (
+            "Error: the RDF store did not accept the triplified data: "
+            "HTTP 503 from the store; data graph not loaded"
+        )
         helpers["start_background"].assert_not_called()
+
+    def test_a_failed_upload_without_messages_still_says_what_failed(
+        self, client, helpers
+    ):
+        helpers["upload_func"].return_value = (False, [])
+
+        response = client.post("/upload", data=_csv_form("patients.csv"))
+
+        assert _error_from_redirect(response) == (
+            "Error: the RDF store did not accept the triplified data"
+        )
 
 
 class TestUploadRedirectMessages:

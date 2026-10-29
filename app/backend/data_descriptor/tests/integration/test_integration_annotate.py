@@ -395,11 +395,6 @@ class TestStartAnnotation:
         }
         assert annotate_ready.updates == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="A valid filtered map is reported as invalid when the session holds no mapping: "
-        "_apply_filtered_semantic_map returns the (None) original and the controller reads None as failure",
-    )
     def test_filtered_map_without_a_session_mapping_still_annotates(
         self, client, session_cache, seeded_store, mapping_dict
     ):
@@ -944,12 +939,6 @@ class TestLegacyAnnotationMap:
         # A legacy map is not a JSON-LD mapping and never becomes one
         assert session_cache.jsonld_mapping is None
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="main wires formulate_local_map as a one-argument lambda, but "
-        "DescribeService.formulate_local_semantic_map needs the global map and the database, "
-        "so annotating a legacy JSON map raises inside the service and reports an error",
-    )
     def test_a_legacy_map_can_be_annotated(
         self, client, session_cache, seeded_store, legacy_mapping_data
     ):

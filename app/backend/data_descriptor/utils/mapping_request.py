@@ -1,5 +1,5 @@
 """
-Request-body semantic maps.
+Request bodies: JSON objects and the semantic maps they carry.
 
 The describe pages work on the semantic map in the browser's IndexedDB and
 send it with their requests (suggestions ``/start``, the details state). A
@@ -10,10 +10,24 @@ session's own mapping.
 
 import logging
 
+from flask import request
+
 from loaders import JSONLDMapping
 from validation.mapping_validator import MappingValidator
 
 logger = logging.getLogger(__name__)
+
+
+def json_object_body() -> dict:
+    """The request body when it is a JSON object, else ``{}``.
+
+    A body that parses to a list, a string or a number is a caller
+    mistake, not a server error: it is treated as empty so the route's
+    own required-field checks answer with a readable 400 instead of an
+    unhandled ``AttributeError`` (a 500).
+    """
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
 
 
 def parse_and_validate_mapping(mapping_data):

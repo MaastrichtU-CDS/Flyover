@@ -40,7 +40,6 @@ EXPECTED_ROUTES = {
     ("POST", "/api/v1/describe-variable-details-state"),
     ("POST", "/units"),
     ("GET", "/describe_variable_details"),
-    ("GET", "/end"),
     ("POST", "/end"),
     # annotate_controller
     ("GET", "/annotation_landing"),
