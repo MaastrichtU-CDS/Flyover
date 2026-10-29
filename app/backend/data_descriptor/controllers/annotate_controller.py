@@ -62,6 +62,8 @@ def _extract_filtered_semantic_map(request_data: dict) -> Optional[dict]:
 
 def _filtered_run_mapping(filtered_semantic_map) -> Optional[JSONLDMapping]:
     """The filtered map for one annotation run, or None if it fails validation."""
+    if not isinstance(filtered_semantic_map, dict):
+        return None
     validation_result = MappingValidator().validate(filtered_semantic_map)
     if not validation_result.is_valid:
         return None

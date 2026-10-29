@@ -808,19 +808,7 @@ class TestStartAnnotationWithAFilteredMap:
 
     @pytest.mark.parametrize(
         "body",
-        [
-            [1, 2],
-            "text",
-            pytest.param(
-                7,
-                marks=pytest.mark.xfail(
-                    strict=True,
-                    reason="defect: MappingValidator.validate raises on a number, "
-                    "and the filtered map is validated outside the route's "
-                    "error handling, so a JSON number as the body answers 500",
-                ),
-            ),
-        ],
+        [[1, 2], "text", 7, 2.5, True],
     )
     def test_a_body_that_is_not_an_object_is_refused_as_a_filtered_map(
         self, client, session_cache, annotatable, body

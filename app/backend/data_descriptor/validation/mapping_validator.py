@@ -514,7 +514,13 @@ class MappingValidator:
         return issues
 
     def _collect_statistics(self, data: dict, result: ValidationResult) -> None:
-        """Collect statistics about the mapping."""
+        """Collect statistics about the mapping.
+
+        Runs after the schema verdict, so on documents the schema refused too:
+        a document that is not an object has nothing to count.
+        """
+        if not isinstance(data, dict):
+            return
         if "databases" in data:
             result.statistics["databases"] = len(data["databases"])
             for db_data in data["databases"].values():
