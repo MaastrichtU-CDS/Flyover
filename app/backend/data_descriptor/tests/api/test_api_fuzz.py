@@ -322,10 +322,7 @@ class TestJsonBodies:
 
     @pytest.mark.parametrize(
         "path",
-        # /api/generate-mock-data answers these with a 500: pinned in
-        # test_api_share.py::TestMockData::test_a_body_it_cannot_read_is_a_client_error
-        [p for p in _OBJECT_BODY_ROUTES if p != "/api/generate-mock-data"]
-        + ["/api/v1/validate-mapping"],
+        _OBJECT_BODY_ROUTES + ["/api/v1/validate-mapping"],
     )
     @given(raw=st.binary(min_size=1, max_size=120))
     def test_bytes_that_are_not_json_get_a_deliberate_answer(

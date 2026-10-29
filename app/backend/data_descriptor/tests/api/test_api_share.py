@@ -338,25 +338,28 @@ class TestMockData:
         assert "Access-Control-Allow-Origin" not in response.headers
         assert "Access-Control-Allow-Headers" not in response.headers
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: the route's catch-all handler turns Flask's own client "
-        "errors (malformed JSON, a non-JSON content type, a body that is not an "
-        "object) into a 500 'Server error'",
-    )
     @pytest.mark.parametrize(
         "data, content_type",
         [
             ("{broken", "application/json"),
             ('{"jsonld_map": {}}', "text/plain"),
+            ("jsonld_map=x", "application/x-www-form-urlencoded"),
             ("[1, 2]", "application/json"),
+            ('"text"', "application/json"),
         ],
-        ids=["malformed", "not-json", "not-an-object"],
+        ids=["malformed", "not-json", "form", "list", "text"],
     )
-    def test_a_body_it_cannot_read_is_a_client_error(self, client, data, content_type):
+    def test_a_body_it_cannot_read_is_a_client_error(
+        self, client, share_service, data, content_type
+    ):
         response = client.post(MOCK_DATA, data=data, content_type=content_type)
 
-        assert 400 <= response.status_code < 500
+        assert response.status_code == 400
+        assert response.get_json() == {
+            "success": False,
+            "error": "No JSON data provided",
+        }
+        share_service.generate_mock_data_from_semantic_map.assert_not_called()
 
     @pytest.mark.parametrize(
         "num_rows",

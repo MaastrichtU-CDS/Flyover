@@ -99,8 +99,10 @@ def share_publish():
 def generate_mock_data():
     """Generate mock data from a JSON-LD semantic map."""
     try:
-        data = request.get_json()
-        if not data:
+        # Malformed JSON, another content type and a body that is not an
+        # object are the client's to fix: a 400, not the 500 below.
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
             return jsonify({"success": False, "error": "No JSON data provided"}), 400
 
         jsonld_map = data.get("jsonld_map")
