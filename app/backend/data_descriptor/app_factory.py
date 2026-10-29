@@ -3,7 +3,8 @@ Application factory for the Flyover backend.
 
 ``create_app()`` builds the Flask app the way production runs it: the
 controller blueprints, the Vue SPA served at the root, the refusal of
-state-changing requests from other sites, response compression
+state-changing requests from other sites, JSON errors for the JSON API,
+response compression
 (``utils/response_compression.py``), and the ``APP_CONTEXT`` the controllers read
 their services and helpers from.
 
@@ -14,6 +15,7 @@ replace the services and helpers through ``context``, so they drive the same
 wiring production uses.
 """
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
@@ -21,6 +23,7 @@ from urllib.parse import urlsplit
 
 import gevent
 from flask import Flask, abort, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import safe_join
 
 from controllers import (
@@ -282,6 +285,29 @@ def _refuse_requests_from_other_sites() -> None:
         abort(403)
 
 
+def _is_api_path(path: str) -> bool:
+    return path == "/api" or path.startswith("/api/")
+
+
+def _answer_http_error(error: HTTPException):
+    """Answer an HTTP error in the form the client reads.
+
+    The JSON API under ``/api/``, and any client that asks for JSON first (the
+    SPA's requests), get ``{"error": <description>}`` with the error's status
+    and headers; page routes keep Flask's HTML page. A 500 says only that the
+    server failed, never what the exception was.
+    """
+    if not (
+        _is_api_path(request.path)
+        or request.accept_mimetypes.best == "application/json"
+    ):
+        return error
+    response = error.get_response()
+    response.data = json.dumps({"error": error.description})
+    response.content_type = "application/json"
+    return response
+
+
 def _register_spa(app: Flask, spa_dir: str) -> None:
     """Serve the built Vue SPA at the application root.
 
@@ -329,6 +355,7 @@ def create_app(
     app.config["UPLOAD_FOLDER"] = settings.upload_folder
     os.makedirs(settings.upload_folder, exist_ok=True)
     app.before_request(_refuse_requests_from_other_sites)
+    app.register_error_handler(HTTPException, _answer_http_error)
     FlyoverCompress(app)
 
     for blueprint in (ingest_bp, describe_bp, annotate_bp, share_bp, suggestions_bp):

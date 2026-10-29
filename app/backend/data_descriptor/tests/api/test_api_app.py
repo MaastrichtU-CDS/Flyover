@@ -147,7 +147,8 @@ class TestTheStaticFolder:
 
 
 class TestErrorPages:
-    """No error handlers are registered: Flask's own pages answer."""
+    """Page routes keep Flask's own HTML error pages; the JSON API under /api/,
+    and any client that asks for JSON first, get {"error": ...} instead."""
 
     def test_an_unknown_page_without_a_spa_is_flasks_404_page(self, make_app, tmp_path):
         client = make_app(spa=tmp_path / "never-built").test_client()
@@ -168,6 +169,20 @@ class TestErrorPages:
     def test_an_unhandled_exception_is_flasks_500_page_without_the_details(
         self, client, store
     ):
+        store.get_databases.side_effect = ConnectionError(
+            "connect to rdf-store:7200 as admin:hunter2 failed"
+        )
+
+        response = client.post("/units", data={})
+
+        assert response.status_code == 500
+        assert b"<title>500 Internal Server Error</title>" in response.data
+        assert b"hunter2" not in response.data
+        assert b"Traceback" not in response.data
+
+    def test_an_unhandled_exception_on_the_api_is_a_json_500_without_the_details(
+        self, client, store
+    ):
         store.get_column_info_by_database.side_effect = ConnectionError(
             "connect to rdf-store:7200 as admin:hunter2 failed"
         )
@@ -175,9 +190,12 @@ class TestErrorPages:
         response = client.get("/api/v1/describe-variables-state")
 
         assert response.status_code == 500
-        assert b"<title>500 Internal Server Error</title>" in response.data
+        assert response.get_json() == {
+            "error": "The server encountered an internal error and was unable to "
+            "complete your request. Either the server is overloaded or there is "
+            "an error in the application."
+        }
         assert b"hunter2" not in response.data
-        assert b"Traceback" not in response.data
 
     @pytest.mark.xfail(
         strict=True,
@@ -193,12 +211,6 @@ class TestErrorPages:
         assert response.status_code == 404
         assert response.is_json
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: no error handlers are registered, so the JSON API answers "
-        "its 404, 405 and 500s with Flask's HTML pages; the SPA's axios calls get "
-        "HTML where they expect a JSON error",
-    )
     @pytest.mark.parametrize(
         "method, path",
         [
@@ -209,6 +221,7 @@ class TestErrorPages:
         ids=["405-put", "405-post", "500"],
     )
     def test_api_errors_are_json(self, client, store, method, path):
+        # The SPA's axios calls read JSON; an HTML page fails to parse.
         store.get_column_info_by_database.side_effect = ConnectionError("store down")
 
         response = client.open(path, method=method)
@@ -216,6 +229,43 @@ class TestErrorPages:
         assert response.status_code >= 400
         assert response.is_json
         assert "error" in response.get_json()
+
+    def test_a_json_405_keeps_its_allow_header(self, client):
+        response = client.put("/api/v1/validate-mapping")
+
+        assert response.status_code == 405
+        assert response.get_json() == {
+            "error": "The method is not allowed for the requested URL."
+        }
+        assert {"POST", "OPTIONS"} <= set(response.headers["Allow"].split(", "))
+
+    def test_a_request_refused_from_another_site_on_the_api_is_json(self, client):
+        response = client.post(
+            "/api/v1/validate-mapping",
+            json={"name": "x"},
+            headers={"Origin": "https://evil.example"},
+        )
+
+        assert response.status_code == 403
+        assert response.is_json
+
+    def test_a_client_that_asks_for_json_gets_json_errors_on_page_routes(self, client):
+        # axios sends "application/json, text/plain, */*" with every request.
+        response = client.put(
+            "/units", headers={"Accept": "application/json, text/plain, */*"}
+        )
+
+        assert response.status_code == 405
+        assert response.is_json
+
+    def test_a_browser_gets_html_error_pages_on_page_routes(self, client):
+        response = client.put(
+            "/units",
+            headers={"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"},
+        )
+
+        assert response.status_code == 405
+        assert response.mimetype == "text/html"
 
 
 class TestHeadRequests:
