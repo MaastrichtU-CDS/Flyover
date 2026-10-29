@@ -107,7 +107,7 @@ What they found (a laptop; CI runners are roughly two to three times slower):
 | Mock data, 10,000 rows (the page's maximum, real generator) | 23 ms, 357 KB | Fast at the page's limit; the endpoint itself sets no limit (pinned). |
 | Annotation of 64 databases × 50 ms of store time | 109 ms | 29 times faster than one at a time; at most 32 in flight. |
 
-Limits found on the way, pinned as defects in the API layer: a describe form over Flask's 500 KB `MAX_FORM_MEMORY_SIZE` (about 2,400 category values on the details page) is refused with a bare 413, and `/api/generate-mock-data` passes any `num_rows` to the generator, so one request can ask the single worker for a billion rows.
+Limits found on the way, pinned as defects in the API layer: `/api/generate-mock-data` passes any `num_rows` to the generator, so one request can ask the single worker for a billion rows; and with Werkzeug before 3.1.9, a describe form over Flask's 500 KB `MAX_FORM_MEMORY_SIZE` (about 2,400 category values on the details page) is refused with a bare 413. Werkzeug 3.1.9 stopped applying that limit to urlencoded forms, so newer installs accept such a form but put no limit on its size at all. `requirements.txt` does not pin Werkzeug, so which of the two a build gets depends on when it was built.
 
 ### Frontend unit (Vitest)
 

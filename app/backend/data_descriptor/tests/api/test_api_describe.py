@@ -10,8 +10,10 @@ redirects the two describe forms end in.
 
 import json
 import urllib.parse
+from importlib.metadata import version
 
 import pytest
+from packaging.version import Version
 
 from loaders import JSONLDMapping
 from tests.api.support import TABLE, valid_mapping
@@ -810,8 +812,15 @@ def _details_form(values_per_variable: int, variables: int = 10) -> str:
     return urllib.parse.urlencode(fields)
 
 
+# Werkzeug 3.1.9 stopped applying MAX_FORM_MEMORY_SIZE to urlencoded bodies (it
+# now limits multipart text parts only), and requirements.txt does not pin
+# Werkzeug, so whether a describe form is capped depends on the version installed.
+URLENCODED_FORMS_CAPPED = Version(version("werkzeug")) < Version("3.1.9")
+
+
 class TestFormSizeLimits:
-    """Flask 3.1 caps a urlencoded form at 500 KB (MAX_FORM_MEMORY_SIZE)."""
+    """Before Werkzeug 3.1.9, Flask 3.1 caps a urlencoded form at 500 KB
+    (MAX_FORM_MEMORY_SIZE); from 3.1.9 nothing caps it."""
 
     def test_a_typical_details_form_is_accepted(self, client, session_cache):
         session_cache.databases = [TABLE]
@@ -826,10 +835,11 @@ class TestFormSizeLimits:
         assert response.status_code == 302
 
     @pytest.mark.xfail(
+        URLENCODED_FORMS_CAPPED,
         strict=True,
-        reason="defect: a describe form over Flask's 500 KB MAX_FORM_MEMORY_SIZE "
-        "(about 2,400 category values on the details page) is refused with a "
-        "bare HTML 413 and the user's input is lost",
+        reason="defect with Werkzeug before 3.1.9: a describe form over Flask's "
+        "500 KB MAX_FORM_MEMORY_SIZE (about 2,400 category values on the details "
+        "page) is refused with a bare HTML 413 and the user's input is lost",
     )
     @pytest.mark.parametrize("path", ["/end", "/units"])
     def test_a_form_for_a_wide_dataset_is_accepted(self, client, session_cache, path):
