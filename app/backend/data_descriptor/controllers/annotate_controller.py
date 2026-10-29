@@ -60,42 +60,36 @@ def _extract_filtered_semantic_map(request_data: dict) -> Optional[dict]:
     return filtered_semantic_map
 
 
-def _apply_filtered_semantic_map(
-    session_cache, filtered_semantic_map: dict
-) -> Optional[dict]:
-    """
-    Validate and temporarily apply a filtered semantic map for this annotation run.
-
-    Returns the original semantic map that was replaced, or None if no filter was applied.
-
-    The original map should be restored after annotation completes so that
-    the Share page (and every other route) continues to see the full map.
-    """
-    if not filtered_semantic_map:
-        return None
-
-    # Validate the filtered semantic map before using it
-    validator = MappingValidator()
-    validation_result = validator.validate(filtered_semantic_map)
+def _filtered_run_mapping(filtered_semantic_map) -> Optional[JSONLDMapping]:
+    """The filtered map for one annotation run, or None if it fails validation."""
+    validation_result = MappingValidator().validate(filtered_semantic_map)
     if not validation_result.is_valid:
         return None
-
-    original_semantic_map = session_cache.jsonld_mapping
-    session_cache.jsonld_mapping = JSONLDMapping.from_dict(filtered_semantic_map)
-    return original_semantic_map
+    return JSONLDMapping.from_dict(filtered_semantic_map)
 
 
-def _restore_original_semantic_map(
-    session_cache, original_semantic_map: Optional[dict]
-) -> None:
+class _SessionWithRunMapping:
+    """The shared session cache as one filtered annotation run reads it.
+
+    ``jsonld_mapping`` is the run's own filtered map; every other attribute is
+    the session's. Overlapping runs each read their own map, and the session's
+    map, which the Share page exports, is never swapped out, not even while a
+    run is in flight. The view is read-only: the annotation helpers only read
+    the session, and the route writes its results to the session itself.
     """
-    Restore the original semantic map after annotation completes.
 
-    This ensures the Share page and all other routes are never affected
-    by the per-run filter.
-    """
-    if original_semantic_map is not None:
-        session_cache.jsonld_mapping = original_semantic_map
+    def __init__(self, session_cache, jsonld_mapping: JSONLDMapping) -> None:
+        object.__setattr__(self, "_session_cache", session_cache)
+        object.__setattr__(self, "jsonld_mapping", jsonld_mapping)
+
+    def __getattr__(self, name: str):
+        return getattr(self._session_cache, name)
+
+    def __setattr__(self, name: str, value) -> None:
+        raise AttributeError(
+            f"an annotation run's view of the session is read-only: set {name!r} "
+            "on the session itself"
+        )
 
 
 def safe_remove_file(filepath: str) -> None:
@@ -295,20 +289,19 @@ def start_annotation():
     request_data = request.get_json(silent=True) or {}
     filtered_semantic_map = _extract_filtered_semantic_map(request_data)
 
-    # Temporarily apply filtered semantic map for this annotation run only.
-    # The original is always restored afterwards so that the Share page
-    # (and every other route) continues to see the full map.
-    original_semantic_map = _apply_filtered_semantic_map(
-        session_cache, filtered_semantic_map
-    )
-
-    if original_semantic_map is None and filtered_semantic_map:
-        return jsonify(
-            {"success": False, "error": "Filtered semantic map validation failed"}
-        )
+    # A posted map narrows this run only: the run reads it through its own
+    # view of the session, and the session's map is never touched.
+    run_session = session_cache
+    if filtered_semantic_map:
+        run_mapping = _filtered_run_mapping(filtered_semantic_map)
+        if run_mapping is None:
+            return jsonify(
+                {"success": False, "error": "Filtered semantic map validation failed"}
+            )
+        run_session = _SessionWithRunMapping(session_cache, run_mapping)
 
     try:
-        if not has_semantic_map(session_cache):
+        if not has_semantic_map(run_session):
             return jsonify({"success": False, "error": "No semantic map available"})
 
         databases = rdf_store_service.get_databases() if rdf_store_service else []
@@ -320,11 +313,11 @@ def start_annotation():
         endpoint = build_repository_endpoint(
             rdf_store_url, session_cache.repo, "/statements"
         )
-        map_table_names = get_table_names(session_cache)
+        map_table_names = get_table_names(run_session)
 
         annotation_data = AnnotateService.prepare_annotation_data(
             databases,
-            session_cache,
+            run_session,
             map_table_names,
             name_matcher,
             get_semantic_map,
@@ -423,11 +416,6 @@ def start_annotation():
     except Exception as e:
         logger.error(f"Annotation error: {e}")
         return jsonify({"success": False, "error": str(e)})
-
-    finally:
-        # Always restore the original (full) semantic map so that the Share
-        # page and all other routes are never affected by the per-run filter.
-        _restore_original_semantic_map(session_cache, original_semantic_map)
 
 
 @annotate_bp.route("/annotation-verify")

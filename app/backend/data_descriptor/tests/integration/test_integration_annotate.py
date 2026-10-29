@@ -395,11 +395,6 @@ class TestStartAnnotation:
         }
         assert annotate_ready.updates == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="A valid filtered map is reported as invalid when the session holds no mapping: "
-        "_apply_filtered_semantic_map returns the (None) original and the controller reads None as failure",
-    )
     def test_filtered_map_without_a_session_mapping_still_annotates(
         self, client, session_cache, seeded_store, mapping_dict
     ):

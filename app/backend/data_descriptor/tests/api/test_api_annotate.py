@@ -655,7 +655,8 @@ class TestStartAnnotation:
 
 
 class TestStartAnnotationWithAFilteredMap:
-    """A posted map narrows one run; the session's own map is always restored."""
+    """A posted map narrows one run, which reads it through its own view of the
+    session; the session's own map is never touched."""
 
     @staticmethod
     def _filtered():
@@ -691,7 +692,51 @@ class TestStartAnnotationWithAFilteredMap:
 
         assert seen == ["Only the selected table"]
 
-    def test_the_session_map_is_restored_when_the_run_fails(
+    def test_the_session_keeps_its_own_map_while_the_run_is_in_flight(
+        self, client, session_cache, annotatable
+    ):
+        original = session_cache.jsonld_mapping
+        during_the_run = []
+        annotatable.prepare_annotation_data.side_effect = lambda *args: (
+            during_the_run.append(session_cache.jsonld_mapping) or _prepared(TABLE)
+        )
+
+        client.post("/start-annotation", json=self._filtered())
+
+        assert during_the_run == [original]
+
+    def test_the_run_reads_the_rest_of_the_session_and_records_into_it(
+        self, client, session_cache, annotatable
+    ):
+        session_cache.global_semantic_map = {"database_name": "legacy"}
+        seen = []
+        annotatable.prepare_annotation_data.side_effect = lambda databases, cache, *r: (
+            seen.append((cache.global_semantic_map, cache.repo)) or _prepared(TABLE)
+        )
+
+        response = client.post("/start-annotation", json=self._filtered())
+
+        assert response.get_json()["success"] is True
+        assert seen == [({"database_name": "legacy"}, REPO)]
+        assert session_cache.annotation_status[f"{TABLE}.biological_sex"]["success"]
+
+    def test_the_run_cannot_write_into_the_session_through_its_view(
+        self, client, session_cache, annotatable
+    ):
+        original = session_cache.jsonld_mapping
+
+        def prepare(databases, cache, *rest):
+            cache.jsonld_mapping = None
+
+        annotatable.prepare_annotation_data.side_effect = prepare
+
+        response = client.post("/start-annotation", json=self._filtered())
+
+        assert response.get_json()["success"] is False
+        assert "read-only" in response.get_json()["error"]
+        assert session_cache.jsonld_mapping is original
+
+    def test_the_session_map_is_untouched_when_the_run_fails(
         self, client, session_cache, annotatable
     ):
         original = session_cache.jsonld_mapping
@@ -742,12 +787,6 @@ class TestStartAnnotationWithAFilteredMap:
 
         assert seen == [original]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (also pinned by the integration layer): with no map in the "
-        "session, applying a valid filtered map returns the session's None, which "
-        "the controller reads as 'validation failed'",
-    )
     def test_a_valid_filtered_map_works_without_a_session_map(
         self, client, session_cache, annotatable
     ):
@@ -757,15 +796,10 @@ class TestStartAnnotationWithAFilteredMap:
 
         assert response.get_json()["success"] is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (found by the fuzz tests): when that run is refused, the "
-        "route returns before its restore, so the refused filtered map stays in "
-        "the session and the Share page exports it",
-    )
-    def test_a_refused_filtered_run_leaves_no_map_in_the_session(
+    def test_a_filtered_run_leaves_a_session_without_a_map_without_one(
         self, client, session_cache, annotatable
     ):
+        # Otherwise the Share page would export the filtered map.
         session_cache.jsonld_mapping = None
 
         client.post("/start-annotation", json=self._filtered())
