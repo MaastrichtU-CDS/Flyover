@@ -12,6 +12,7 @@ same marks to require a success and a failure test for every route.
 """
 
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -61,6 +62,27 @@ def pytest_runtest_call(item):
         if problems:
             raise AssertionError("\n".join(problems))
     return result
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """API tests never leave the process.
+
+    Every service is a double, so any socket use is a leak (for example a
+    controller building a real store client). It is refused, and recorded:
+    code under test may swallow the error, the teardown check does not.
+    """
+    attempts = []
+
+    def refuse(*args, **kwargs):
+        attempts.append(args)
+        raise ConnectionRefusedError("API tests must not open network connections")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+    yield attempts
+    assert not attempts, f"the test tried to reach the network: {attempts}"
 
 
 @pytest.fixture
