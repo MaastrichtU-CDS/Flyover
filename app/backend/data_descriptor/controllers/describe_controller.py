@@ -328,7 +328,7 @@ def _populate_details_from_jsonld(
             del details[database]
 
 
-@describe_bp.route("/end", methods=["GET", "POST"])
+@describe_bp.route("/end", methods=["POST"])
 def retrieve_detailed_descriptive_info():
     """Process detailed variable info (units, categories)."""
     ctx = get_app_context()

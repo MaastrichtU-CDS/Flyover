@@ -121,22 +121,21 @@ class TestRequestsFromOtherSites:
     state-changing request whose Origin (or, from older browsers, Referer)
     names another host is refused instead."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (security): /end accepts GET and writes the details to "
-        "the RDF store, so an <img src='http://<flyover>/end'> on any page "
-        "triggers store writes; it should only accept POST",
-    )
     def test_the_details_form_does_not_write_on_a_get(
         self, client, session_cache, store, describe_service
     ):
+        # An <img src="http://<flyover>/end"> on any page, a prefetch or a
+        # reload would otherwise submit the details and write to the store.
         session_cache.databases = [TABLE]
         session_cache.descriptive_info = {TABLE: {}}
         describe_service.process_detailed_form_data.return_value = {"age": {}}
 
         response = client.get("/end")
 
-        assert response.status_code == 405
+        # Like every POST-only route, a GET falls through to the SPA shell.
+        assert response.status_code == 200
+        assert response.mimetype == "text/html"
+        describe_service.process_detailed_form_data.assert_not_called()
         store.insert_equivalencies.assert_not_called()
 
     @pytest.mark.parametrize("path", ["/upload", "/units", "/end"])

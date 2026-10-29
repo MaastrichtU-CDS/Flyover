@@ -747,15 +747,6 @@ class TestDetailsForm:
         ]
         assert existing == [{"age": {"type": "continuous"}}, {}]
 
-    @pytest.mark.route("GET", "/end", "success")
-    def test_a_get_is_processed_like_a_post(self, client, store, describe_service):
-        describe_service.process_detailed_form_data.return_value = {"age": {}}
-
-        response = client.get("/end")
-
-        assert response.headers["Location"] == "/annotate/review"
-        store.insert_equivalencies.assert_called_once_with("age", TABLE, {})
-
     @pytest.mark.route("POST", "/end", "failure")
     def test_a_store_failure_while_saving_is_a_server_error(
         self, client, store, describe_service
@@ -766,15 +757,6 @@ class TestDetailsForm:
         response = client.post("/end", data={})
 
         assert response.status_code == 500
-
-    @pytest.mark.route("GET", "/end", "failure")
-    def test_a_get_with_a_store_failure_is_a_server_error(
-        self, client, store, describe_service
-    ):
-        describe_service.process_detailed_form_data.return_value = {"age": {}}
-        store.insert_equivalencies.side_effect = ConnectionError("store down")
-
-        assert client.get("/end").status_code == 500
 
     @pytest.mark.xfail(
         strict=True,
