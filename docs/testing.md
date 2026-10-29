@@ -1,13 +1,15 @@
 # Testing
 
-Three test layers, each with a different speed/realism trade-off. This doc tells you what each layer does, how to run it locally, and when to write which kind of test.
+Several test layers, each with a different speed/realism trade-off. This doc tells you what each layer does, how to run it locally, and when to write which kind of test.
 
-## Three layers
+## The layers
 
 | Layer        | Tool                | Lives at                                                              | What it tests                                                              | Speed       | CI workflow                                                                 |
 |--------------|---------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------|-------------|-----------------------------------------------------------------------------|
-| Backend unit | pytest              | [`app/backend/data_descriptor/tests/unit/`](../app/backend/data_descriptor/tests/unit/) | Services, repositories, controllers — mocked GraphDB                       | <2 s        | [`unit-tests.yml`](../.github/workflows/unit-tests.yml)                     |
-| Backend integration | pytest       | [`tests/integration/`](../app/backend/data_descriptor/tests/integration/) | Controllers → services → repositories/loaders/validators with the real wiring; RDF store faked at the HTTP boundary, triplifier runs for real | ~10 s       | [`unit-tests.yml`](../.github/workflows/unit-tests.yml) (second step)       |
+| Backend unit | pytest              | [`app/backend/data_descriptor/tests/unit/`](../app/backend/data_descriptor/tests/unit/) | Services, repositories, loaders, validators — mocked GraphDB              | <2 s        | [`unit-tests.yml`](../.github/workflows/unit-tests.yml)                     |
+| Backend integration | pytest       | [`tests/integration/`](../app/backend/data_descriptor/tests/integration/) | Controllers → services → repositories/loaders/validators with the real wiring; RDF store faked at the HTTP boundary, triplifier runs for real | ~30 s       | [`unit-tests.yml`](../.github/workflows/unit-tests.yml) (second step)       |
+| Backend API  | pytest + Hypothesis | [`tests/api/`](../app/backend/data_descriptor/tests/api/) | Every route's HTTP behaviour (status, type, redirects, errors, session, compression, security) through the Flask test client, every service mocked | ~2 min      | [`unit-tests.yml`](../.github/workflows/unit-tests.yml) (third step, with a coverage gate) |
+| Backend performance | pytest       | [`tests/perf/`](../app/backend/data_descriptor/tests/perf/) | Latency, growth with input size, uploads, compression and parallel annotation of the HTTP layer | ~10 s       | [`unit-tests.yml`](../.github/workflows/unit-tests.yml) (non-blocking step) |
 | Frontend unit | Vitest             | [`app/frontend/tests/unit/`](../app/frontend/tests/unit/) | Stores, composables, view components — happy-dom, no backend               | <2 s        | [`frontend-checks.yml`](../.github/workflows/frontend-checks.yml)           |
 | Frontend E2E | Playwright          | [`app/frontend/tests/e2e/`](../app/frontend/tests/e2e/) | Multi-page workflow against a real stack (Flask + GraphDB)                 | ~minutes    | [`frontend-smoke.yml`](../.github/workflows/frontend-smoke.yml) (1 spec); [`frontend-e2e-full.yml`](../.github/workflows/frontend-e2e-full.yml) (all specs) |
 
@@ -28,9 +30,19 @@ uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock 
   python -m pytest tests/integration/ -q
 ```
 
+```bash
+# the API layer additionally needs Hypothesis (property-based fuzzing)
+uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with hypothesis \
+  python -m pytest tests/api/ -q
+
+# the performance checks: run on their own, never under coverage
+uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with hypothesis \
+  python -m pytest tests/perf/ -m perf -q
+```
+
 Add `--cov=. --cov-report=term-missing` if you want a coverage rollup. Drop `tests/unit/` and target a single file or class for faster iteration.
 
-Each layer carries a pytest marker named after its folder (`unit`, `integration`, `e2e`; registered in [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py)), so `-m integration` selects the same tests as the path or `-k integration`.
+Each layer carries a pytest marker named after its folder (`unit`, `integration`, `api`, `perf`, `e2e`; registered in [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py)), so `-m integration` selects the same tests as the path. `-k integration` and `-k api` work too, but match by name: `-k api` also picks up a few integration tests named after the API they drive, so prefer `-m api` to run exactly the API layer. The performance checks only run when selected: with `-m perf`, or when pytest is pointed at `tests/perf/` alone; in a run of the whole tree they are skipped.
 
 ### Backend integration tests
 
@@ -47,6 +59,55 @@ A few practical notes about the layout:
 - [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
 - [`tests/unit/conftest.py`](../app/backend/data_descriptor/tests/unit/conftest.py) adds unit-only stubs so unit tests stay isolated from real deps. Integration tests deliberately don't inherit those stubs.
 - Many test modules do `sys.path.insert(0, str(Path(__file__).parent.parent.parent))` to make `data_descriptor` importable as a top-level package. If you add a new test under a new sub-folder, mirror that pattern.
+
+### Backend API tests
+
+The API layer ([`tests/api/`](../app/backend/data_descriptor/tests/api/), issue #109) tests every route's HTTP behaviour: status codes, content types, redirects and their `Location`, error responses, how the request body, query string or form is read (JSON, multipart, urlencoded, and what happens with anything else), the session across requests, compression and security. It drives the app [`create_app()`](../app/backend/data_descriptor/app_factory.py) builds, the same wiring gunicorn serves, through Flask's test client and with production settings (`TESTING` off), so an unhandled exception is the 500 a browser would get.
+
+What is real and what is mocked:
+
+- **Mocked, every one of them:** the RDF store service and the suggestion service in `APP_CONTEXT`, every `APP_CONTEXT` helper (triplifier run, graph upload, background jobs, PostgreSQL ingest, the semantic-map lookups, the name matcher) and the service classes the controllers import directly (`IngestService`, `DescribeService`, `AnnotateService`, `ShareService`). The doubles are `create_autospec`s: a controller calling a method that does not exist, or with the wrong arguments, fails the test; the helpers are specced from the factory's own callables, so they follow its signatures. See [`tests/api/support.py`](../app/backend/data_descriptor/tests/api/support.py).
+- **Real:** Flask and Werkzeug, the controllers, and the request-boundary validation the controllers run before any service is involved (`MappingValidator`, `JSONLDMapping` parsing, the orphan-column clean-up), because those decide the HTTP answer. The session cache is the real `SessionCache`, so a misspelt attribute fails instead of landing on a MagicMock.
+- **Never:** the network. An autouse guard refuses and records every socket connection and DNS lookup and fails the test that tried; the ingest controller, for one, builds a real store client when the context has none.
+
+That is the line with the integration layer: there the services, repositories, loaders and the triplifier run for real against a store faked at HTTP level; here the services are doubles and the test is about what crosses HTTP. A scenario may appear in both (for example a store failure), checked at a different boundary.
+
+**Route marks and the inventory.** Each test says which route it exercises and whether it is that route's success or failure path: `@pytest.mark.route("POST", "/upload", "failure")` (or `pytest.param(..., marks=pytest.mark.route(...))`, with literal arguments or module-level constants). A hook checks after the test body that the test really sent that request, so a label cannot lie. [`test_api_routes.py`](../app/backend/data_descriptor/tests/api/test_api_routes.py) then requires a success test for every method of every route and a failure test for every route (a refused method counts), pins the route table, Werkzeug's precedence between specific routes and the SPA fallback, and a 405 with an `Allow` header for every undeclared method. A new route therefore fails the build until it is in the inventory and has its tests.
+
+**Property-based tests.** [`test_api_fuzz.py`](../app/backend/data_descriptor/tests/api/test_api_fuzz.py) uses [Hypothesis](https://hypothesis.readthedocs.io/) to send every route that reads input arbitrary JSON, mutated mappings, bytes that are not JSON, query strings, upload forms, filenames, error messages and paths, and checks that each answer is deliberate (2xx, 3xx or 4xx in the promised shape) and never a 500, a file from outside the served folders, a broken header or a half-written session. Known defects are characterised by exact predicates and pinned by their own xfail tests, so a failing property is always a new finding. Two profiles, chosen with `HYPOTHESIS_PROFILE`: `ci` (the default) replays a fixed set of 150 examples per property, so CI is deterministic; `thorough` explores 2,000 new examples per property for local bug hunting:
+
+```bash
+HYPOTHESIS_PROFILE=thorough python -m pytest tests/api/test_api_fuzz.py -q
+```
+
+**Known defects** are pinned like in the integration layer: `xfail(strict=True)` with the reason, so a fixed defect turns the test red until its marker is removed. A file per controller, `test_api_<controller>.py`, plus `test_api_app.py` (SPA shell, static folder, error pages), `test_api_security.py` (traversal, cookies, redirects, cross-site requests), `test_api_session.py` (state across requests, concurrency), `test_api_compression.py`, `test_api_factory.py` (settings, default wiring, the gunicorn entry point in a fresh process), `test_api_fuzz.py` and `test_api_routes.py`.
+
+To add a test for a new route: put it in the controller's module, request the `client` and the doubles you arrange (`store`, `session_cache`, `ingest_service`, …), mark it with `pytest.mark.route`, and add the route to `EXPECTED_ROUTES` in `test_api_routes.py`.
+
+CI holds the API layer on its own to at least 90 % line coverage of the HTTP layer it owns (the controllers, the factory, the compression and request-map helpers); it is at 99 %, 98 % with branch coverage.
+
+### Backend performance checks
+
+[`tests/perf/`](../app/backend/data_descriptor/tests/perf/) times requests through the API layer's app and doubles, so each figure is the HTTP layer's own: request latency, how the request-boundary work grows with the input (as a fitted growth exponent: about 1 for linear work, 2 for quadratic), upload and form parsing, compression, the real mock-data generator and the parallel annotation run. Production runs one gunicorn worker with gevent, where a request that keeps the CPU busy holds up every other request, so the checks bound single-request time rather than throughput.
+
+Budgets are 10 to 30 times what a laptop measures, and scaling checks take the best of several runs, so they catch a regression in kind (an accidental quadratic loop, a lost cache) rather than flake on a slow runner; the exponents move by less than 0.1 under CPU contention. CI runs them in a non-blocking step and appends the report to the job summary; locally the report is printed after the run, and `FLYOVER_PERF_REPORT=<path>` also writes it as Markdown.
+
+What they found (a laptop; CI runners are roughly two to three times slower):
+
+| Check | Measured | What it means |
+|---|---|---|
+| Cheap requests (graph check, status, redirects, SPA shell) | 0.3–0.4 ms p50 | The HTTP layer adds next to nothing. |
+| Validating a small mapping (validate, browser-map submit) | 1.6 ms p50 | Dominated by JSON Schema validation. |
+| Validation vs mapping size, 50–400 variables | exponent 0.95; 90 ms at 400 | Linear. A 400-variable map holds the single worker for about 90 ms. |
+| Validation vs databases, 25–200 | exponent 1.1; 33 ms at 50, 170 ms at 200 | The orphan check compares every database with every other, but those are cheap string comparisons; validation dominates well beyond realistic sizes. |
+| Details state, 75–300 categorical variables × 50 values | exponent 1.1; 45 ms; 547 KB (9 KB gzip) | Linear; the response is large and compresses 60-fold. |
+| Multipart upload of a 34 MB CSV | about 600 MB/s | Parsing the upload is never the bottleneck; the triplifier is. |
+| The variables form, 300 variables (900 fields, 35 KB) | 1.3 ms | Cheap, but see the form limit below. |
+| Compressing 0.7 MB of JSON | gzip 9 ms/MB (9×), Brotli 5 ms/MB (18×), zstd 1 ms/MB (29×) | Browsers that offer zstd (current Chrome and Firefox) get the cheapest and smallest. |
+| Mock data, 10,000 rows (the page's maximum, real generator) | 23 ms, 357 KB | Fast at the page's limit; the endpoint itself sets no limit (pinned). |
+| Annotation of 64 databases × 50 ms of store time | 109 ms | 29 times faster than one at a time; at most 32 in flight. |
+
+Limits found on the way, pinned as defects in the API layer: a describe form over Flask's 500 KB `MAX_FORM_MEMORY_SIZE` (about 2,400 category values on the details page) is refused with a bare 413, and `/api/generate-mock-data` passes any `num_rows` to the generator, so one request can ask the single worker for a billion rows.
 
 ### Frontend unit (Vitest)
 
@@ -123,7 +184,10 @@ The startup script [`scripts/start-test-stack.sh`](../scripts/start-test-stack.s
 ```
 Is the thing under test pure Python with deterministic inputs/outputs?
   └── yes → pytest unit (tests/unit/)
-  └── no  → does it cross layers (controller → service → repository/loader/validator)
+  └── no  → is it what a route does with a request (status, redirect, error shape,
+            body/form/query parsing, session across requests, headers)?
+            └── yes → pytest API (tests/api/), services mocked
+            └── no  → does it cross layers (controller → service → repository/loader/validator)
             or read real fixture files?
             └── yes → pytest integration (tests/integration/)
             └── no  → is it a Vue component, store, or composable?
@@ -135,7 +199,8 @@ Is the thing under test pure Python with deterministic inputs/outputs?
 
 Practical heuristics:
 
-- **Prefer the cheaper layer.** A unit test runs in milliseconds; an E2E test takes minutes and is flakier. If you can mock a service and unit-test the handler logic, do that first.
+- **Prefer the cheaper layer.** A unit test runs in milliseconds; an E2E test takes minutes and is flakier. If you can mock the services and test the route's HTTP behaviour in the API layer, do that before reaching for a stack.
+- **Unit tests do not use the Flask test client.** Anything that goes through a route belongs to the API layer (services mocked) or the integration layer (services real).
 - **Don't unit-test what Vitest is good at.** Component rendering, click handlers, derived UI state belong in Vitest, not in Playwright. Playwright is for "does the whole ingest workflow still work?", not "does this button enable when the field is filled?"
 - **One E2E happy-path per workflow** is the goal — that's what `smoke.spec.js` is for. The richer specs (`ingest.spec.js`, `annotate.spec.js`, etc.) cover the variants; the full suite runs on every push to `main` and every PR, like the other layers.
 
@@ -145,7 +210,7 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 
 | Workflow                  | Triggers                                                  | Blocking?       | What it does                                                                                      |
 |---------------------------|-----------------------------------------------------------|-----------------|---------------------------------------------------------------------------------------------------|
-| `unit-tests.yml`          | push to `main`, all PRs                                   | yes             | pytest unit tests, then integration tests, with combined coverage; fails the build on any failure |
+| `unit-tests.yml`          | push to `main`, all PRs                                   | yes (perf: no)  | pytest unit, integration and API tests with combined coverage, a 90 % gate on the API layer's coverage of the HTTP layer, then the performance checks (non-blocking, report in the job summary) |
 | `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest, Vite production build                                       |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
 | `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack (both the default and the suggestions-disabled stack) |
