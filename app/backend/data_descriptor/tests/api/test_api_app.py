@@ -99,14 +99,21 @@ class TestTheSpaShell:
 
         assert client.get(path).status_code == 404
 
-    def test_a_missing_asset_gets_the_shell_too(self, client):
-        # The fallback cannot tell an asset from a client route: a stale
-        # bundle reference gets HTML with 200, which the browser then fails
-        # to run as a script.
+    def test_a_missing_asset_is_not_found(self, client):
+        # A stale bundle reference would otherwise get the shell with a 200,
+        # which the browser fails to run as a script.
         response = client.get("/assets/missing-chunk.js")
 
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("path", ["/apiary", "/api-docs", "/assets"])
+    def test_client_routes_that_only_start_like_the_api_or_assets_get_the_shell(
+        self, client, path
+    ):
+        response = client.get(path)
+
         assert response.status_code == 200
-        assert response.mimetype == "text/html"
+        assert response.get_data(as_text=True) == SPA_INDEX
 
 
 class TestTheStaticFolder:
@@ -197,16 +204,21 @@ class TestErrorPages:
         }
         assert b"hunter2" not in response.data
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: the SPA fallback catches every GET, so a mistyped or "
-        "removed API path answers the SPA shell with 200 instead of a 404",
-    )
     @pytest.mark.parametrize(
-        "path", ["/api/v1/no-such-endpoint", "/api/v2/suggestions/status", "/api/"]
+        "path",
+        ["/api/v1/no-such-endpoint", "/api/v2/suggestions/status", "/api/", "/api"],
     )
     def test_an_unknown_api_path_is_not_found(self, client, path):
+        # The SPA's axios call would otherwise get the shell with a 200.
         response = client.get(path)
+
+        assert response.status_code == 404
+        assert response.is_json
+
+    def test_a_get_to_a_post_only_api_route_is_not_found_rather_than_the_shell(
+        self, client
+    ):
+        response = client.get("/api/v1/validate-mapping")
 
         assert response.status_code == 404
         assert response.is_json

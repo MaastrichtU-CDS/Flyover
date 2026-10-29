@@ -326,6 +326,11 @@ def _register_spa(app: Flask, spa_dir: str) -> None:
         asset = safe_join(spa_dir, subpath) if subpath else None
         if asset is not None and os.path.isfile(asset):
             return send_from_directory(spa_dir, subpath)
+        # Any other path is a client route the SPA's router renders, except an
+        # API path or a bundle file: those would otherwise get HTML with a 200,
+        # which an API call cannot parse and a browser cannot run as a script.
+        if _is_api_path(f"/{subpath}") or subpath.startswith("assets/"):
+            abort(404)
         return send_from_directory(spa_dir, "index.html")
 
 
