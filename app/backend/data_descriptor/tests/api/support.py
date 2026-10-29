@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ast
 import os
+import socket
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -91,6 +92,30 @@ ROUTE_OUTCOMES = ("success", "failure")
 
 # Methods Flask adds to every rule on its own.
 AUTOMATIC_METHODS = frozenset({"HEAD", "OPTIONS"})
+
+
+# ---------------------------------------------------------------------------
+# No network
+# ---------------------------------------------------------------------------
+
+
+def block_network(monkeypatch) -> List[Any]:
+    """Refuse every socket connection and DNS lookup; return the attempts.
+
+    Every service is a double, so any socket use is a leak (for example a
+    controller building a real store client). It is refused, and recorded:
+    code under test may swallow the error, so the caller checks the list.
+    """
+    attempts: List[Any] = []
+
+    def refuse(*args, **kwargs):
+        attempts.append(args)
+        raise ConnectionRefusedError("these tests must not open network connections")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+    return attempts
 
 
 # ---------------------------------------------------------------------------
