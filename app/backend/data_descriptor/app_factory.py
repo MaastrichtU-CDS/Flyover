@@ -2,8 +2,9 @@
 Application factory for the Flyover backend.
 
 ``create_app()`` builds the Flask app the way production runs it: the
-controller blueprints, the Vue SPA served at the root, and the
-``APP_CONTEXT`` the controllers read their services and helpers from.
+controller blueprints, the Vue SPA served at the root, response compression
+(``utils/response_compression.py``), and the ``APP_CONTEXT`` the controllers read
+their services and helpers from.
 
 The gunicorn entry point (``data_descriptor_main.py``) applies gevent's
 monkey patching first and then calls ``create_app()`` with the settings it
@@ -30,6 +31,7 @@ from services.describe_service import DescribeService
 from services.ingest_service import IngestService
 from services.rdf_store_service import RDFStoreService
 from services.suggestions import SuggestionService
+from utils.response_compression import FlyoverCompress
 from utils.rdf_store_url import normalise_rdf_store_base_url
 from utils.session_helpers import get_semantic_map_for_annotation
 
@@ -297,6 +299,7 @@ def create_app(
     app.secret_key = "secret_key"
     app.config["UPLOAD_FOLDER"] = settings.upload_folder
     os.makedirs(settings.upload_folder, exist_ok=True)
+    FlyoverCompress(app)
 
     for blueprint in (ingest_bp, describe_bp, annotate_bp, share_bp, suggestions_bp):
         app.register_blueprint(blueprint)
