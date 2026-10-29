@@ -472,13 +472,7 @@ class TestOrphanCheckOnMalformedShapes:
         assert response.status_code == 400
         assert "error" in response.get_json()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (also pinned by the integration layer): MappingValidator's "
-        "_collect_statistics calls .values() on a databases or tables section that "
-        "is a list or text, so the validation endpoint answers 500, not invalid",
-    )
-    @pytest.mark.parametrize("value", [[], "text"])
+    @pytest.mark.parametrize("value", [[], "text", ["centre_x"], 7])
     def test_list_or_text_sections_are_reported_by_the_validation_endpoint(
         self, client, value
     ):

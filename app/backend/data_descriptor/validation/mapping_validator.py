@@ -517,21 +517,31 @@ class MappingValidator:
         """Collect statistics about the mapping.
 
         Runs after the schema verdict, so on documents the schema refused too:
-        a document that is not an object has nothing to count.
+        only sections that are objects, as the schema requires, are counted,
+        and a document that is not an object has nothing to count.
         """
         if not isinstance(data, dict):
             return
-        if "databases" in data:
-            result.statistics["databases"] = len(data["databases"])
-            for db_data in data["databases"].values():
-                if isinstance(db_data, dict) and "tables" in db_data:
-                    result.statistics["tables"] += len(db_data["tables"])
-                    for table_data in db_data["tables"].values():
-                        if isinstance(table_data, dict) and "columns" in table_data:
-                            result.statistics["columns"] += len(table_data["columns"])
+        databases = data.get("databases")
+        if isinstance(databases, dict):
+            result.statistics["databases"] = len(databases)
+            for db_data in databases.values():
+                tables = db_data.get("tables") if isinstance(db_data, dict) else None
+                if not isinstance(tables, dict):
+                    continue
+                result.statistics["tables"] += len(tables)
+                for table_data in tables.values():
+                    columns = (
+                        table_data.get("columns")
+                        if isinstance(table_data, dict)
+                        else None
+                    )
+                    if isinstance(columns, dict):
+                        result.statistics["columns"] += len(columns)
 
-        if "schema" in data and "variables" in data["schema"]:
-            result.statistics["variables"] = len(data["schema"]["variables"])
+        schema = data.get("schema")
+        if isinstance(schema, dict) and isinstance(schema.get("variables"), dict):
+            result.statistics["variables"] = len(schema["variables"])
 
     def format_errors_for_ui(self, result: ValidationResult) -> List[Dict[str, Any]]:
         """

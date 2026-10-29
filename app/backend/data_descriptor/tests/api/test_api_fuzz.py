@@ -4,10 +4,11 @@ sends, every route answers deliberately (a 2xx, 3xx or 4xx with the body its
 contract promises) and never with a server error, a file from outside the
 served folders, a broken header or a half-written session.
 
-Known defects are characterised by exact predicates below and pinned by
-their own example-based xfail tests; inputs they cover are set aside here,
-so a failure of these properties is always a new finding. When a defect is
-fixed, drop its predicate together with the xfail.
+A defect these properties find is characterised by an exact predicate,
+pinned by its own example-based xfail test, and its inputs are set aside
+here with assume(), so a failure of these properties is always a new
+finding. When the defect is fixed, drop the predicate together with the
+xfail. (Every defect found so far is fixed, so no predicate is left.)
 
 Profiles (see conftest.py): "ci" runs a fixed set of examples; run
 ``HYPOTHESIS_PROFILE=thorough`` to explore new ones.
@@ -22,7 +23,6 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from tests.api.support import OUTSIDE_SECRET, TABLE, valid_mapping
-from validation.mapping_validator import MappingValidator, ValidationResult
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -88,26 +88,6 @@ mappings_and_objects = st.one_of(mapping_like(), json_objects)
 
 
 # ---------------------------------------------------------------------------
-# Known defects (each pinned by an xfail test named in its docstring)
-# ---------------------------------------------------------------------------
-
-
-def statistics_would_crash(document) -> bool:
-    """MappingValidator._collect_statistics raises on this document.
-
-    Pinned by test_api_ingest.py::TestOrphanCheckOnMalformedShapes::
-    test_list_or_text_sections_are_reported_by_the_validation_endpoint.
-    """
-    try:
-        MappingValidator()._collect_statistics(
-            document, ValidationResult(is_valid=True)
-        )
-    except Exception:
-        return True
-    return False
-
-
-# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -154,7 +134,6 @@ class TestMappingDocuments:
     def test_validate_mapping_answers_any_object_and_only_ever_removes(
         self, client, doubles, document
     ):
-        assume(not statistics_would_crash(document))
         doubles.reset_state()
         doubles.session_cache.databases = [TABLE]
         doubles.store.get_column_info_by_database.return_value = {TABLE: ["id", "sex"]}
@@ -269,9 +248,6 @@ class TestJsonBodies:
     def test_any_json_object_gets_a_deliberate_answer(
         self, client, doubles, path, document
     ):
-        if path == "/start-annotation":
-            # The filtered map is validated before the route's error handling.
-            assume(not statistics_would_crash(document))
         doubles.reset_state()
 
         response = _post_json(client, path, document)
