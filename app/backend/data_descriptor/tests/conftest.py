@@ -5,8 +5,39 @@ The pythonTool stub lives in tests/unit/conftest.py so it only applies to
 unit tests and does not bleed into integration or e2e tests.
 """
 
+from pathlib import Path
+
 import pytest
 import polars as pl
+
+# ---------------------------------------------------------------------------
+# Test layers (issue #106): one marker per layer, applied by folder, so each
+# layer can be selected with `-m` as well as by path or `-k`.
+#   unit         tests/unit/          isolated modules, external deps stubbed
+#   integration  tests/integration/   real internal wiring, RDF store faked at HTTP level
+#   e2e          tests/e2e/           full Docker stack (issue #110)
+# ---------------------------------------------------------------------------
+
+_TESTS_DIR = Path(__file__).parent
+_LAYER_MARKERS = {
+    "unit": "isolated unit test with external dependencies stubbed",
+    "integration": "cross-layer test with the RDF store faked at the HTTP boundary",
+    "e2e": "end-to-end test against the full Docker stack",
+}
+
+
+def pytest_configure(config):
+    for marker, description in _LAYER_MARKERS.items():
+        config.addinivalue_line("markers", f"{marker}: {description}")
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        path = Path(str(item.fspath))
+        for layer in _LAYER_MARKERS:
+            if (_TESTS_DIR / layer) in path.parents:
+                item.add_marker(getattr(pytest.mark, layer))
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures

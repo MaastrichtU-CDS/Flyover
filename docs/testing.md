@@ -7,7 +7,7 @@ Three test layers, each with a different speed/realism trade-off. This doc tells
 | Layer        | Tool                | Lives at                                                              | What it tests                                                              | Speed       | CI workflow                                                                 |
 |--------------|---------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------|-------------|-----------------------------------------------------------------------------|
 | Backend unit | pytest              | [`app/backend/data_descriptor/tests/unit/`](../app/backend/data_descriptor/tests/unit/) | Services, repositories, controllers — mocked GraphDB                       | <2 s        | [`unit-tests.yml`](../.github/workflows/unit-tests.yml)                     |
-| Backend integration | pytest       | [`tests/integration/`](../app/backend/data_descriptor/tests/integration/) | Loaders, validators — real files, no network                               | ~seconds    | (runs as part of unit-tests, if added to selection)                         |
+| Backend integration | pytest       | [`tests/integration/`](../app/backend/data_descriptor/tests/integration/) | Controllers → services → repositories/loaders/validators with the real wiring; RDF store faked at the HTTP boundary, triplifier runs for real | ~10 s       | [`unit-tests.yml`](../.github/workflows/unit-tests.yml) (second step)       |
 | Frontend unit | Vitest             | [`app/frontend/tests/unit/`](../app/frontend/tests/unit/) | Stores, composables, view components — happy-dom, no backend               | <2 s        | [`frontend-checks.yml`](../.github/workflows/frontend-checks.yml)           |
 | Frontend E2E | Playwright          | [`app/frontend/tests/e2e/`](../app/frontend/tests/e2e/) | Multi-page workflow against a real stack (Flask + GraphDB)                 | ~minutes    | [`frontend-smoke.yml`](../.github/workflows/frontend-smoke.yml) (1 spec); [`frontend-e2e-full.yml`](../.github/workflows/frontend-e2e-full.yml) (all specs) |
 
@@ -22,9 +22,26 @@ Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code
 cd app/backend/data_descriptor
 uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock \
   python -m pytest tests/unit/ -q
+
+# the integration layer additionally needs `responses` (HTTP-level fake of the RDF store)
+uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with responses \
+  python -m pytest tests/integration/ -q
 ```
 
 Add `--cov=. --cov-report=term-missing` if you want a coverage rollup. Drop `tests/unit/` and target a single file or class for faster iteration.
+
+Each layer carries a pytest marker named after its folder (`unit`, `integration`, `e2e`; registered in [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py)), so `-m integration` selects the same tests as the path or `-k integration`.
+
+### Backend integration tests
+
+The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives a Flask app wired like `data_descriptor_main` with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
+
+- **The RDF store** is `FakeRdfStore` in [`support.py`](../app/backend/data_descriptor/tests/integration/support.py): a backend-agnostic SPARQL 1.1 endpoint served through `responses` at the `requests` level. It answers the SELECTs the query builder produces from a small in-memory model (`seed_table(...)`), answers ASK checks (`ask_answer`), accepts UPDATEs, serves the Graph Store Protocol, and records every request so a test can assert exactly which SPARQL crossed the boundary (`store.selects`, `store.asks`, `store.updates`, `store.graph_downloads`). Knobs cover the error paths: `outage`, `outage_after`, `select_status`, `ask_status`, `update_status`.
+- **`curl`**, which the ingest service shells out to for graph uploads, is a recording script on `PATH` (`fake_curl` fixture; `fake_curl.uploads`, `fake_curl.fail()`).
+
+The triplifier (`pythonTool`, from `requirements.txt`) runs for real into a temp directory, so the ingest tests triplify an actual CSV. The PostgreSQL ingest path runs against a real PostgreSQL: CI starts one as a service container, locally set `FLYOVER_TEST_POSTGRES_DSN=postgresql://user:pass@host:port/db` (for example from `docker run -d -e POSTGRES_USER=flyover -e POSTGRES_PASSWORD=flyover -e POSTGRES_DB=flyover -p 55432:5432 postgres:16-alpine`); without it those tests skip. Coverage runs read `app/backend/data_descriptor/.coveragerc` (pass `--cov-config` with that path when running from the repo root, as CI does), which leaves the test modules and the gunicorn entrypoint out of the denominator. Tests that document a known defect are marked `xfail(strict=True)` with the reason, so they flip to a failure once the defect is fixed.
+
+One file per flow: `test_integration_ingest.py` and `..._ingest_uploads.py` (upload strategies, background jobs, PostgreSQL), `..._describe.py`, `..._annotate.py` and `..._annotation_cli.py`, `..._share.py`, `..._suggestions.py` (tier-1 matchers, both phases, prompt export and paste-back), `..._store_edges.py` (what the store should never answer), plus `..._loader_validation.py` (loader ↔ validator) and `..._session.py` (server-side state across requests). The older `test_loaders_real_files.py` and `test_validation_real_files.py` read `example_data/` directly.
 
 A few practical notes about the layout:
 - [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
@@ -106,7 +123,8 @@ The startup script [`scripts/start-test-stack.sh`](../scripts/start-test-stack.s
 ```
 Is the thing under test pure Python with deterministic inputs/outputs?
   └── yes → pytest unit (tests/unit/)
-  └── no  → does it touch the filesystem or read fixture files?
+  └── no  → does it cross layers (controller → service → repository/loader/validator)
+            or read real fixture files?
             └── yes → pytest integration (tests/integration/)
             └── no  → is it a Vue component, store, or composable?
                       └── yes → Vitest (frontend/tests/unit/)
@@ -119,7 +137,7 @@ Practical heuristics:
 
 - **Prefer the cheaper layer.** A unit test runs in milliseconds; an E2E test takes minutes and is flakier. If you can mock a service and unit-test the handler logic, do that first.
 - **Don't unit-test what Vitest is good at.** Component rendering, click handlers, derived UI state belong in Vitest, not in Playwright. Playwright is for "does the whole ingest workflow still work?", not "does this button enable when the field is filled?"
-- **One E2E happy-path per workflow** is the goal — that's what `smoke.spec.js` is for. The richer specs (`ingest.spec.js`, `annotate.spec.js`, etc.) cover the variants and run nightly.
+- **One E2E happy-path per workflow** is the goal — that's what `smoke.spec.js` is for. The richer specs (`ingest.spec.js`, `annotate.spec.js`, etc.) cover the variants; the full suite runs on every push to `main` and every PR, like the other layers.
 
 ## CI workflow map
 
@@ -127,10 +145,10 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 
 | Workflow                  | Triggers                                                  | Blocking?       | What it does                                                                                      |
 |---------------------------|-----------------------------------------------------------|-----------------|---------------------------------------------------------------------------------------------------|
-| `unit-tests.yml`          | push to `main`, all PRs                                   | yes             | pytest unit tests with coverage; fails the build on any failure                                   |
+| `unit-tests.yml`          | push to `main`, all PRs                                   | yes             | pytest unit tests, then integration tests, with combined coverage; fails the build on any failure |
 | `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest, Vite production build                                       |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
-| `frontend-e2e-full.yml`   | nightly cron 03:00 UTC; manual dispatch; PRs with label `run-full-e2e` | no | Full Playwright suite against the test stack                                                      |
+| `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack (both the default and the suggestions-disabled stack) |
 | `code-quality.yml`        | push to `main`, all PRs                                   | partial         | Black (auto-applies and commits with `[skip ci]`), flake8, mypy, Safety (HIGH severity blocking), Bandit |
 | `release.yaml`            | tag push                                                  | n/a             | Builds and publishes the production flyover-app + flyover-graphdb images to ghcr.io                        |
 
