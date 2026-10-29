@@ -15,6 +15,7 @@ from tests.api.support import (
     RequestLog,
     declared_methods,
     declared_route_marks,
+    missing_route_tests,
     rule_for,
     unmet_route_marks,
 )
@@ -109,6 +110,15 @@ class TestRouteTable:
     def test_every_example_path_routes_to_its_own_rule(self, app):
         for _, rule in EXPECTED_ROUTES:
             assert rule_for(app, _example_path(rule), rule), rule
+
+    def test_every_route_has_a_success_and_a_failure_test(self, app):
+        """Issue #109's bar, kept: each method of each route has a test marked
+        as its success path, and each route a test marked as a failure path
+        (a refused method counts). The marks are checked against the requests
+        the tests really send, so this cannot be met by labels alone."""
+        missing = missing_route_tests(app, declared_route_marks())
+
+        assert not missing, "\n".join(missing)
 
 
 class TestRoutingPrecedence:
@@ -221,6 +231,25 @@ class TestRouteMarkMachinery:
 
         assert any("unknown outcome" in p for p in problems)
         assert any("needs (method, rule, outcome)" in p for p in problems)
+
+    def test_the_inventory_reports_each_missing_success_and_failure_test(self, app):
+        marks = {
+            ("GET", "/api/v1/describe-variable-details-state", "success"),
+            ("POST", "/api/v1/describe-variable-details-state", "failure"),
+        }
+
+        missing = missing_route_tests(app, marks)
+
+        assert (
+            "POST /api/v1/describe-variable-details-state: no success test" in missing
+        )
+        assert not any(
+            line.startswith("GET /api/v1/describe-variable-details-state")
+            for line in missing
+        )
+        assert "/api/v1/describe-variable-details-state: no failure test" not in missing
+        assert "/upload: no failure test" in missing
+        assert "POST /upload: no success test" in missing
 
     def test_every_declared_mark_names_a_route_and_an_outcome(self):
         marks = declared_route_marks()

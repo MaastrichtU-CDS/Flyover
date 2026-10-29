@@ -510,6 +510,24 @@ def declared_route_marks(test_dir: Path = API_TESTS_DIR) -> Set[Tuple[str, ...]]
     return found
 
 
+def missing_route_tests(app: Flask, marks: Set[Tuple[str, ...]]) -> List[str]:
+    """What the route marks leave uncovered: a success test for every method
+    of every route, and a failure test (any method) for every route."""
+    missing = []
+    for rule, methods in sorted(declared_methods(app).items()):
+        missing += [
+            f"{method} {rule}: no success test"
+            for method in sorted(methods)
+            if (method, rule, "success") not in marks
+        ]
+        if not any(
+            len(mark) == 3 and mark[1] == rule and mark[2] == "failure"
+            for mark in marks
+        ):
+            missing.append(f"{rule}: no failure test")
+    return missing
+
+
 def declared_methods(app: Flask) -> Dict[str, Set[str]]:
     """Rule text -> the methods it declares (without HEAD/OPTIONS)."""
     methods: Dict[str, Set[str]] = {}
