@@ -771,12 +771,6 @@ class TestDetailsForm:
 
         assert response.status_code == 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (also pinned by the integration layer): /end iterates "
-        "session_cache.databases and indexes descriptive_info, both None before "
-        "the describe pages ran, so an out-of-order submission raises",
-    )
     @pytest.mark.parametrize("unset", ["databases", "descriptive_info"])
     def test_a_submission_before_the_describe_pages_redirects(
         self, client, session_cache, unset
@@ -786,6 +780,7 @@ class TestDetailsForm:
         response = client.post("/end", data={})
 
         assert response.status_code == 302
+        assert response.headers["Location"] == "/annotate/review"
 
 
 # ---------------------------------------------------------------------------

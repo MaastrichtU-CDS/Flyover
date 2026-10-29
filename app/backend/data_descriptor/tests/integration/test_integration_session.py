@@ -194,11 +194,6 @@ class TestOutOfOrderSteps:
         assert client.get(DETAILS_STATE).get_json()["descriptive_info_details"] == {}
         assert session_cache.databases == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="/end iterates session_cache.databases, which is None before any describe call, "
-        "so an out-of-order details submission raises instead of redirecting",
-    )
     def test_details_form_before_any_describe_call_redirects(
         self, client, seeded_store
     ):

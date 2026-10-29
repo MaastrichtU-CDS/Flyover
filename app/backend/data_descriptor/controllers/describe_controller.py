@@ -358,7 +358,12 @@ def retrieve_detailed_descriptive_info():
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
 
-    for database in session_cache.databases:
+    # The describe pages set both; a submission that arrives before them (a
+    # stale tab, a reload after a restart) has nothing to save.
+    if session_cache.descriptive_info is None:
+        session_cache.descriptive_info = {}
+
+    for database in session_cache.databases or []:
         if database not in session_cache.descriptive_info:
             session_cache.descriptive_info[database] = {}
 
