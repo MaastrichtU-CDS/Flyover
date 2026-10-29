@@ -116,8 +116,10 @@ class TestWhatResponsesNeverCarry:
 
 
 class TestRequestsFromOtherSites:
-    """The describe and ingest forms are plain form posts: a page on any other
-    site can submit them in the user's browser (no token, no Origin check)."""
+    """The describe and ingest forms are plain form posts with no token, so a
+    page on any other site could submit them in the user's browser. A
+    state-changing request whose Origin (or, from older browsers, Referer)
+    names another host is refused instead."""
 
     @pytest.mark.xfail(
         strict=True,
@@ -137,15 +139,9 @@ class TestRequestsFromOtherSites:
         assert response.status_code == 405
         store.insert_equivalencies.assert_not_called()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (security): state-changing form posts carry no CSRF token "
-        "and the Origin header is not checked, so another site can submit "
-        "/upload, /units and /end in the user's browser",
-    )
     @pytest.mark.parametrize("path", ["/upload", "/units", "/end"])
     def test_a_form_post_from_another_site_is_refused(
-        self, client, session_cache, path
+        self, client, session_cache, describe_service, store, helpers, path
     ):
         session_cache.databases = [TABLE]
         session_cache.descriptive_info = {TABLE: {}}
@@ -160,6 +156,71 @@ class TestRequestsFromOtherSites:
         )
 
         assert response.status_code == 403
+        describe_service.parse_form_data_for_database.assert_not_called()
+        describe_service.process_detailed_form_data.assert_not_called()
+        store.insert_equivalencies.assert_not_called()
+        helpers["run_triplifier"].assert_not_called()
+
+    @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+    def test_every_state_changing_method_from_another_site_is_refused(
+        self, client, method
+    ):
+        response = client.open(
+            "/api/v1/validate-mapping",
+            method=method,
+            json={"name": "x"},
+            headers={"Origin": "https://evil.example"},
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        "origin",
+        ["http://localhost:5173", "https://localhost:8443", "null", "evil.example"],
+        ids=["another-port", "another-scheme-and-port", "opaque", "no-scheme"],
+    )
+    def test_an_origin_that_is_not_this_host_is_refused(self, client, origin):
+        # The test client is http://localhost. "null" is what a sandboxed
+        # frame or a file:// page sends.
+        response = client.post(
+            "/api/v1/validate-mapping", json={"name": "x"}, headers={"Origin": origin}
+        )
+
+        assert response.status_code == 403
+
+    def test_an_older_browser_that_only_sends_a_referer_is_refused_too(self, client):
+        response = client.post(
+            "/units", data={}, headers={"Referer": "https://evil.example/page"}
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"Origin": "http://localhost"},
+            {"Origin": "http://LOCALHOST"},
+            {"Referer": "http://localhost/describe/variables"},
+            {"Origin": "http://localhost", "Referer": "https://evil.example/page"},
+            {},
+        ],
+        ids=["origin", "origin-in-capitals", "referer", "origin-wins", "neither"],
+    )
+    def test_a_post_from_this_site_or_without_a_page_is_let_through(
+        self, client, session_cache, headers
+    ):
+        session_cache.databases = [TABLE]
+
+        response = client.post("/units", data={}, headers=headers)
+
+        assert response.status_code == 302
+
+    def test_reading_from_another_site_is_not_refused(self, client):
+        response = client.get(
+            "/api/check-graph-exists", headers={"Origin": "https://evil.example"}
+        )
+
+        assert response.status_code == 200
 
     @pytest.mark.parametrize(
         "path",
@@ -172,13 +233,13 @@ class TestRequestsFromOtherSites:
     def test_json_routes_ignore_a_simple_cross_site_request(
         self, client, session_cache, helpers, path
     ):
-        # A cross-site page can only send text/plain without a preflight; the
-        # JSON routes do not read such a body as JSON, so nothing is adopted.
+        # A cross-site page can only send text/plain without a preflight, and
+        # the JSON routes do not read such a body as JSON, so nothing is
+        # adopted even from a browser that sends no Origin to be refused on.
         response = client.post(
             path,
             data='{"@type": "mapping:DataMapping"}',
             content_type="text/plain",
-            headers={"Origin": "https://evil.example"},
         )
 
         assert session_cache.jsonld_mapping is None

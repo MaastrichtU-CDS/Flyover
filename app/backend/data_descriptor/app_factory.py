@@ -2,7 +2,8 @@
 Application factory for the Flyover backend.
 
 ``create_app()`` builds the Flask app the way production runs it: the
-controller blueprints, the Vue SPA served at the root, response compression
+controller blueprints, the Vue SPA served at the root, the refusal of
+state-changing requests from other sites, response compression
 (``utils/response_compression.py``), and the ``APP_CONTEXT`` the controllers read
 their services and helpers from.
 
@@ -16,9 +17,10 @@ wiring production uses.
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
+from urllib.parse import urlsplit
 
 import gevent
-from flask import Flask, abort, send_from_directory
+from flask import Flask, abort, request, send_from_directory
 
 from controllers import (
     annotate_bp,
@@ -37,6 +39,8 @@ from utils.session_helpers import get_semantic_map_for_annotation
 
 # The Vite build output is copied into data_descriptor/spa/ by the Dockerfile.
 SPA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spa")
+
+STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 @dataclass(frozen=True)
@@ -257,6 +261,26 @@ def build_app_context(
     return context
 
 
+def _refuse_requests_from_other_sites() -> None:
+    """Refuse a state-changing request that a page on another site sent.
+
+    Flyover's forms (``/upload``, ``/units``, ``/end``) carry no CSRF token,
+    so without this any page the user visits could submit them to the Flyover
+    on their machine. Browsers name the sending page's origin in ``Origin``
+    (older ones only in ``Referer``); a request naming another host or port
+    is refused with a 403. Requests with neither header (scripts, curl) do not
+    come from a page and are let through. A reverse proxy in front of Flyover
+    must pass the original ``Host`` header on.
+    """
+    if request.method not in STATE_CHANGING_METHODS:
+        return
+    source = request.headers.get("Origin") or request.headers.get("Referer")
+    if not source:
+        return
+    if urlsplit(source).netloc.lower() != request.host.lower():
+        abort(403)
+
+
 def _register_spa(app: Flask, spa_dir: str) -> None:
     """Serve the built Vue SPA at the application root.
 
@@ -299,6 +323,7 @@ def create_app(
     app.secret_key = "secret_key"
     app.config["UPLOAD_FOLDER"] = settings.upload_folder
     os.makedirs(settings.upload_folder, exist_ok=True)
+    app.before_request(_refuse_requests_from_other_sites)
     FlyoverCompress(app)
 
     for blueprint in (ingest_bp, describe_bp, annotate_bp, share_bp, suggestions_bp):
