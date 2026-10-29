@@ -6,9 +6,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "utils"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from rdf_store_url import (
+from utils.rdf_store_url import (
     build_graph_store_endpoint,
     build_repository_endpoint,
     normalise_rdf_store_base_url,

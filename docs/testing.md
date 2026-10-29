@@ -20,23 +20,19 @@ Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code
 ### Backend (pytest)
 
 ```bash
-# from the repo root; uses uv to spin up an ephemeral env
+# from the repo root; uses uv to spin up an ephemeral env with the app's
+# dependencies and the test ones (pytest, pytest-mock, pytest-cov, responses,
+# Hypothesis: app/backend/requirements-test.txt, as CI installs them)
 cd app/backend/data_descriptor
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock \
-  python -m pytest tests/unit/ -q
+uv run --with-requirements ../requirements.txt --with-requirements ../requirements-test.txt \
+  python -m pytest tests/unit/ tests/integration/ tests/api/ -q
 
-# the integration layer additionally needs `responses` (HTTP-level fake of the RDF store)
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with responses \
-  python -m pytest tests/integration/ -q
-```
-
-```bash
-# the API layer additionally needs Hypothesis (property-based fuzzing)
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with hypothesis \
+# one layer at a time
+uv run --with-requirements ../requirements.txt --with-requirements ../requirements-test.txt \
   python -m pytest tests/api/ -q
 
 # the performance checks: run on their own, never under coverage
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with hypothesis \
+uv run --with-requirements ../requirements.txt --with-requirements ../requirements-test.txt \
   python -m pytest tests/perf/ -m perf -q
 ```
 
@@ -46,7 +42,7 @@ Each layer carries a pytest marker named after its folder (`unit`, `integration`
 
 ### Backend integration tests
 
-The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives a Flask app wired like `data_descriptor_main` with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
+The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives the app [`create_app()`](../app/backend/data_descriptor/app_factory.py) builds, the wiring gunicorn serves, with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
 
 - **The RDF store** is `FakeRdfStore` in [`support.py`](../app/backend/data_descriptor/tests/integration/support.py): a backend-agnostic SPARQL 1.1 endpoint served through `responses` at the `requests` level. It answers the SELECTs the query builder produces from a small in-memory model (`seed_table(...)`), answers ASK checks (`ask_answer`), accepts UPDATEs, serves the Graph Store Protocol, and records every request so a test can assert exactly which SPARQL crossed the boundary (`store.selects`, `store.asks`, `store.updates`, `store.graph_downloads`). Knobs cover the error paths: `outage`, `outage_after`, `select_status`, `ask_status`, `update_status`.
 - **`curl`**, which the ingest service shells out to for graph uploads, is a recording script on `PATH` (`fake_curl` fixture; `fake_curl.uploads`, `fake_curl.fail()`).
