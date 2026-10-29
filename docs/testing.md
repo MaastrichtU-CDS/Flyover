@@ -20,23 +20,19 @@ Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code
 ### Backend (pytest)
 
 ```bash
-# from the repo root; uses uv to spin up an ephemeral env
+# from the repo root; uses uv to spin up an ephemeral env with the app's
+# dependencies and the test ones (pytest, pytest-mock, pytest-cov, responses,
+# Hypothesis: app/backend/requirements-test.txt, as CI installs them)
 cd app/backend/data_descriptor
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock \
-  python -m pytest tests/unit/ -q
+uv run --with-requirements ../requirements.txt --with-requirements ../requirements-test.txt \
+  python -m pytest tests/unit/ tests/integration/ tests/api/ -q
 
-# the integration layer additionally needs `responses` (HTTP-level fake of the RDF store)
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with responses \
-  python -m pytest tests/integration/ -q
-```
-
-```bash
-# the API layer additionally needs Hypothesis (property-based fuzzing)
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with hypothesis \
+# one layer at a time
+uv run --with-requirements ../requirements.txt --with-requirements ../requirements-test.txt \
   python -m pytest tests/api/ -q
 
 # the performance checks: run on their own, never under coverage
-uv run --with-requirements ../requirements.txt --with pytest --with pytest-mock --with hypothesis \
+uv run --with-requirements ../requirements.txt --with-requirements ../requirements-test.txt \
   python -m pytest tests/perf/ -m perf -q
 ```
 

@@ -55,7 +55,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-mock pytest-cov responses hypothesis
+        pip install -r app/backend/requirements-test.txt
         # Install project dependencies
         if [ -f app/backend/requirements.txt ]; then pip install -r app/backend/requirements.txt; fi
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
