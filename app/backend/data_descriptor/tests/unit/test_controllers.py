@@ -3,7 +3,6 @@ Unit tests for the Flask controller/route layer.
 
 Tests cover each Blueprint in controllers/:
 - ShareController   — generate-mock-data, share_landing, share_mock
-- DescribeController — describe_landing (service layer fully mocked)
 - AnnotateController — annotation_landing (service layer fully mocked)
 
 Strategy: A minimal Flask app is created for each test class with
@@ -22,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from flask import Flask
 
-from controllers import annotate_bp, describe_bp, ingest_bp, share_bp
+from controllers import annotate_bp, ingest_bp, share_bp
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -190,33 +189,6 @@ class TestShareControllerShareMock(unittest.TestCase):
         response = self.client.get("/share_mock")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers.get("Location"), "/share/mock")
-
-
-# ---------------------------------------------------------------------------
-# DescribeController tests
-# ---------------------------------------------------------------------------
-
-
-class TestDescribeControllerLanding(unittest.TestCase):
-    """Tests for GET /describe_landing."""
-
-    def setUp(self):
-        self.app = _make_app(describe_bp)
-        self.client = self.app.test_client()
-
-    def test_describe_landing_redirects_to_spa(self):
-        """GET /describe_landing redirects to the SPA describe page."""
-        response = self.client.get("/describe_landing")
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/describe")
-
-    def test_describe_landing_redirect_is_independent_of_data_state(self):
-        """Redirect happens regardless of whether RDF data already exists."""
-        ctx = self.app.config["APP_CONTEXT"]
-        ctx["rdf_store_service"].check_data_exists.return_value = True
-        response = self.client.get("/describe_landing")
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers.get("Location"), "/describe")
 
 
 # ---------------------------------------------------------------------------
