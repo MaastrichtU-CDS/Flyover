@@ -526,12 +526,6 @@ class TestDetailsStateFromTheBrowserMap:
         (mapping, *_), _ = describe_service.get_preselected_values.call_args
         assert mapping is session_cache.jsonld_mapping
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: a JSON body that is not an object (a list, a string, a "
-        "number) reaches body.get() and answers 500; the suggestion routes "
-        "treat such a body as empty",
-    )
     @pytest.mark.parametrize("body", [[1, 2], "text", 7])
     def test_a_body_that_is_not_an_object_falls_back_to_the_session(
         self, client, session_cache, described_table, body

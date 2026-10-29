@@ -17,7 +17,7 @@ from flask import Blueprint, jsonify, redirect, request
 from typing import Any, Optional
 
 from services import DescribeService
-from utils.mapping_request import parse_and_validate_mapping
+from utils.mapping_request import json_object_body, parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def api_describe_variable_details_state():
     if session_cache.DescriptiveInfoDetails is None:
         session_cache.DescriptiveInfoDetails = {}
 
-    body = request.get_json(silent=True) or {}
+    body = json_object_body()
     body_mapping = parse_and_validate_mapping(body.get("mapping"))
     effective_mapping = body_mapping or session_cache.jsonld_mapping
 

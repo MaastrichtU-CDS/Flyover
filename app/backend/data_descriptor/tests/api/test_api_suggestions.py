@@ -182,11 +182,6 @@ class TestStart:
         assert response.status_code == 200
         assert response.get_json() == {"status": "disabled"}
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: a JSON body that is not an object reaches body.get() and "
-        "answers 500; /prompt and /ingest treat such a body as empty",
-    )
     @pytest.mark.parametrize("body", [[1, 2], "text", 7])
     def test_a_body_that_is_not_an_object_starts_a_plain_job(
         self, client, suggestions, body
@@ -194,6 +189,9 @@ class TestStart:
         response = client.post("/api/v1/suggestions/variables/start", json=body)
 
         assert response.status_code == 200
+        call = suggestions.start.call_args
+        assert call.kwargs["force"] is False
+        assert call.kwargs["mapping"] is None
 
 
 class TestStartWithTheBrowserMap:
@@ -376,16 +374,12 @@ class TestPriority:
 
         assert response.get_json() == {"status": "no_job"}
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: a JSON body that is not an object reaches body.get() and "
-        "answers 500 instead of 'items are required'",
-    )
     @pytest.mark.parametrize("body", [["sex"], "sex", 7])
     def test_a_body_that_is_not_an_object_is_a_client_error(self, client, body):
         response = client.post("/api/v1/suggestions/variables/priority", json=body)
 
         assert response.status_code == 400
+        assert response.get_json() == {"error": "items are required"}
 
 
 # ---------------------------------------------------------------------------
