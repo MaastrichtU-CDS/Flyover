@@ -696,23 +696,22 @@ class TestVariablesForm:
         assert response.mimetype == "text/html"
         assert b"Flyover SPA" in response.data
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: unlike the details state, /units parses the store's "
-        "categories without a guard, so one unreadable category result fails "
-        "the whole form with a 500",
-    )
     def test_unreadable_categories_leave_the_variable_out_without_failing(
-        self, client, store, describe_service
+        self, client, session_cache, store, describe_service
     ):
+        # The details state guards the same parse; one bad result must not
+        # fail the whole form.
         describe_service.parse_form_data_for_database.return_value = {
-            "sex": _described("categorical")
+            "sex": _described("categorical"),
+            "age": _described("continuous", "Age"),
         }
         store.get_categories.return_value = 'value,count\n"unterminated,1\n'
 
         response = client.post("/units", data={})
 
         assert response.status_code == 302
+        assert response.headers["Location"] == "/describe/variable-details"
+        assert session_cache.DescriptiveInfoDetails == {TABLE: ['Age (or "age")']}
 
 
 # ---------------------------------------------------------------------------

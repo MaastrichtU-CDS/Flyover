@@ -128,6 +128,26 @@ def api_describe_variable_details_state():
     )
 
 
+def _read_categories(cat_result: Any, local_column: str) -> Optional[list]:
+    """The store's category counts for a column as rows, or None when the
+    store has none or they cannot be read (logged; the column is then left
+    out rather than failing the page)."""
+    if not cat_result:
+        return None
+    try:
+        df = pl.read_csv(
+            StringIO(cat_result),
+            separator=",",
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to parse categories for {local_column}: {e}")
+        return None
+    return df.to_dicts()
+
+
 @describe_bp.route("/units", methods=["POST"])
 def retrieve_descriptive_info():
     """Process variable descriptions from form submission."""
@@ -165,17 +185,12 @@ def retrieve_descriptive_info():
                 display_name = f'{global_var} (or "{local_var}")'
 
             if data_type == "categorical":
-                cat_result = rdf_store_service.get_categories(local_var, database)
-                if cat_result:
-                    df = pl.read_csv(
-                        StringIO(cat_result),
-                        separator=",",
-                        infer_schema_length=0,
-                        null_values=[],
-                        try_parse_dates=False,
-                    )
+                categories = _read_categories(
+                    rdf_store_service.get_categories(local_var, database), local_var
+                )
+                if categories is not None:
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {display_name: df.to_dicts()}
+                        {display_name: categories}
                     )
             elif data_type == "continuous":
                 session_cache.DescriptiveInfoDetails[database].append(display_name)
@@ -323,21 +338,12 @@ def _populate_details_from_jsonld(
                 }
 
             if data_type == "categorical":
-                cat_result = rdf_store_service.get_categories(local_column, database)
-                if cat_result:
-                    try:
-                        df = pl.read_csv(
-                            StringIO(cat_result),
-                            separator=",",
-                            infer_schema_length=0,
-                            null_values=[],
-                            try_parse_dates=False,
-                        )
-                        details[database].append({display_name: df.to_dicts()})
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to parse categories for {local_column}: {e}"
-                        )
+                categories = _read_categories(
+                    rdf_store_service.get_categories(local_column, database),
+                    local_column,
+                )
+                if categories is not None:
+                    details[database].append({display_name: categories})
             elif data_type == "continuous":
                 details[database].append(display_name)
 
