@@ -95,14 +95,13 @@ def upload_semantic_map():
 
                 # Always try to populate loaded_databases from session cache or RDF store
                 loaded_databases = []
-                if session_cache and hasattr(session_cache, "databases"):
+                if hasattr(session_cache, "databases"):
                     loaded_databases = session_cache.databases or []
                 else:
                     # Populate session_cache.databases if not already set
                     try:
                         loaded_databases = rdf_store_service.get_databases() or []
-                        if session_cache:
-                            session_cache.databases = loaded_databases
+                        session_cache.databases = loaded_databases
                     except Exception as e:
                         logger.warning(f"Failed to fetch databases from RDF store: {e}")
                         loaded_databases = []
@@ -190,8 +189,6 @@ def submit_indexeddb_semantic_map():
             }
         )
 
-    except json.JSONDecodeError as e:
-        return jsonify({"error": f"Invalid JSON data: {e.msg}"}), 400
     except Exception as e:
         logger.error(f"Error processing IndexedDB semantic map: {e}")
         return jsonify({"error": f"Unexpected error: {e}"}), 400
@@ -445,10 +442,7 @@ def validate_mapping():
     When column warnings are found, returns a cleaned version of the mapping
     with the problematic columns removed.
     """
-    try:
-        mapping_data = request.get_json(silent=True)
-    except Exception as e:
-        return jsonify({"error": f"Invalid JSON body: {e}"}), 400
+    mapping_data = request.get_json(silent=True)
 
     if not mapping_data or not isinstance(mapping_data, dict):
         return jsonify({"error": "No mapping data provided"}), 400
@@ -475,14 +469,13 @@ def validate_mapping():
 
             # Always try to populate loaded_databases from session cache or RDF store
             loaded_databases = []
-            if session_cache and hasattr(session_cache, "databases"):
+            if hasattr(session_cache, "databases"):
                 loaded_databases = session_cache.databases or []
             else:
                 # Populate session_cache.databases if not already set
                 try:
                     loaded_databases = rdf_store_service.get_databases() or []
-                    if session_cache:
-                        session_cache.databases = loaded_databases
+                    session_cache.databases = loaded_databases
                 except Exception as e:
                     logger.warning(f"Failed to fetch databases from RDF store: {e}")
                     loaded_databases = []
@@ -501,10 +494,6 @@ def validate_mapping():
                     cleaned_mapping = _remove_orphan_columns_from_mapping(
                         mapping_data, orphan_columns
                     )
-                # If there are warnings but no orphan_columns (shouldn't happen, but safe fallback)
-                elif validation_warnings:
-                    # This shouldn't occur, but if it does, ensure we have a cleaned mapping
-                    cleaned_mapping = mapping_data
     except Exception as e:
         # CSV cross-check is best-effort — never let it fail the schema check.
         logger.warning(f"CSV cross-check skipped: {e}")

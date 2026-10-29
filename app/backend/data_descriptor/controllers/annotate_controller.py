@@ -229,32 +229,27 @@ def upload_annotation_json():
             # This ensures faulty mappings don't persist anywhere.
             removed_columns = []
             try:
-                if rdf_store_service is not None:
-                    columns_by_database = (
-                        rdf_store_service.get_column_info_by_database() or {}
+                columns_by_database = (
+                    rdf_store_service.get_column_info_by_database() or {}
+                )
+                if columns_by_database:
+                    from .ingest_controller import (
+                        _collect_orphan_column_issues,
+                        _remove_orphan_columns_from_mapping,
                     )
-                    if columns_by_database:
-                        from .ingest_controller import (
-                            _collect_orphan_column_issues,
-                            _remove_orphan_columns_from_mapping,
-                        )
 
-                        orphan_warnings, _, orphan_columns = (
-                            _collect_orphan_column_issues(
-                                json_data, columns_by_database, databases
-                            )
-                        )
+                    orphan_warnings, _, orphan_columns = _collect_orphan_column_issues(
+                        json_data, columns_by_database, databases
+                    )
 
-                        if orphan_columns:
-                            json_data = _remove_orphan_columns_from_mapping(
-                                json_data, orphan_columns
-                            )
-                            # Record which local column mappings were removed so the
-                            # user can be warned about them in the UI.
-                            for warning in orphan_warnings:
-                                values = warning.get("values")
-                                if values:
-                                    removed_columns.extend(values)
+                    if orphan_columns:
+                        json_data = _remove_orphan_columns_from_mapping(
+                            json_data, orphan_columns
+                        )
+                        # Record which local column mappings were removed so the
+                        # user can be warned about them in the UI.
+                        for warning in orphan_warnings:
+                            removed_columns.extend(warning["values"])
             except Exception as e:
                 logger.warning(f"Orphan column check skipped: {e}")
 

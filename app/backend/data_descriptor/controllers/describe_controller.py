@@ -6,7 +6,6 @@ data variables, including type specification and categorisation.
 """
 
 import copy
-import json
 import logging
 import re
 from io import StringIO
@@ -313,9 +312,6 @@ def _populate_details_from_jsonld(
 
         for var_key in mapping.get_all_variable_keys():
             var_info = mapping.get_variable(var_key)
-            if not var_info:
-                continue
-
             data_type = getattr(var_info, "data_type", None)
             local_column = mapping.get_local_column(var_key)
 
