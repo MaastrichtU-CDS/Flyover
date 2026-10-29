@@ -76,7 +76,7 @@ flowchart LR
     enriched -- "Share:<br/>export semantic map,<br/>generate mock data,<br/>publish metadata" --> out
 ```
 
-The JSON-LD mapping is **the** durable document that the user is editing across screens. Every Vue view either reads from it, writes to it, or both. The Flask backend keeps it in `session_cache` ([`data_descriptor_main.py`](../app/backend/data_descriptor/data_descriptor_main.py) line 70 onwards), with the browser holding a copy in IndexedDB so reloads don't lose state.
+The JSON-LD mapping is **the** durable document that the user is editing across screens. Every Vue view either reads from it, writes to it, or both. The Flask backend keeps it in `session_cache` (the `SessionCache` in [`app_factory.py`](../app/backend/data_descriptor/app_factory.py)), with the browser holding a copy in IndexedDB so reloads don't lose state.
 
 ## Backend layers
 
@@ -85,7 +85,8 @@ The Flask side at [`app/backend/data_descriptor/`](../app/backend/data_descripto
 - **[`controllers/`](../app/backend/data_descriptor/controllers/)** — One Flask Blueprint per workflow step (`ingest_bp`, `describe_bp`, `annotate_bp`, `share_bp`). Each route does HTTP parsing only — pulls JSON or form data, calls a service, packages the response. Many landing routes are now just `redirect("/app/...")` because the SPA owns the page rendering.
 - **[`services/`](../app/backend/data_descriptor/services/)** — Business logic. `IngestService` runs the Triplifier and writes to GraphDB; `RdfStoreService` is the higher-level wrapper around the repository; `ShareService` does export and mock-data generation; etc. Services are the right place to add new behaviour — they're the layer the unit tests exercise most heavily.
 - **[`repositories/`](../app/backend/data_descriptor/repositories/)** — `RdfStoreRepository` owns the actual HTTP calls to GraphDB's REST API; `query_builder.py` constructs the SPARQL strings. Anything that touches `requests.post("http://rdf-store:7200/...")` belongs here.
-- **`session_cache`** — A module-global instance of the `Cache` class in [`data_descriptor_main.py`](../app/backend/data_descriptor/data_descriptor_main.py) (line 70, instantiated at line 140). Holds the current user's in-flight state: the loaded CSV, the JSON-LD mapping under construction, the list of variables, etc. It's process-local, so the app is **not** safe to scale horizontally without changes.
+- **`session_cache`** — The one `SessionCache` instance [`create_app()`](../app/backend/data_descriptor/app_factory.py) puts into `APP_CONTEXT`, shared by every request. Holds the current user's in-flight state: the loaded CSV, the JSON-LD mapping under construction, the list of variables, etc. It's process-local, so the app is **not** safe to scale horizontally without changes.
+- **[`app_factory.py`](../app/backend/data_descriptor/app_factory.py)** — `create_app()` registers the blueprints and the SPA route, wires response compression ([`utils/response_compression.py`](../app/backend/data_descriptor/utils/response_compression.py)) and builds `APP_CONTEXT`: the session cache, the RDF store and suggestion services, and the helpers the controllers call (triplifier run, graph upload, background jobs, name matching). [`data_descriptor_main.py`](../app/backend/data_descriptor/data_descriptor_main.py) is the gunicorn entry point: it applies gevent's monkey patching and logging, then calls `create_app()` with the settings it reads from the environment. Tests call the factory with their own settings and services.
 
 If you're hunting a bug, work from the outside in: controller → service → repository. The controller usually just hands the request body to the service.
 
