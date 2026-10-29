@@ -464,19 +464,49 @@ def _route_marks_in(tree: ast.AST) -> Iterable[ast.Call]:
                 yield from (c for c in candidates if _is_route_mark(c))
 
 
+def _module_constants(tree: ast.Module) -> Dict[str, Any]:
+    """Module-level ``NAME = <literal>`` assignments (path constants)."""
+    constants: Dict[str, Any] = {}
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            try:
+                constants[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                continue
+    return constants
+
+
 def declared_route_marks(test_dir: Path = API_TESTS_DIR) -> Set[Tuple[str, ...]]:
     """Every route mark the API test modules apply, read from their source.
 
     Read from the source, not from collected items, so the inventory check
     sees every module even when only some tests are selected. A mark counts
-    when written as ``pytest.mark.route(<method>, <rule>, <outcome>)`` with
-    literal arguments, as a decorator or in ``pytest.param(..., marks=...)``.
+    when written as ``pytest.mark.route(<method>, <rule>, <outcome>)``, as a
+    decorator or in ``pytest.param(..., marks=...)``, with arguments that are
+    literals or module-level constants holding one.
     """
     found: Set[Tuple[str, ...]] = set()
     for path in sorted(test_dir.glob("test_api_*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        constants = _module_constants(tree)
         for call in _route_marks_in(tree):
-            found.add(tuple(ast.literal_eval(arg) for arg in call.args))
+            values = []
+            for arg in call.args:
+                if isinstance(arg, ast.Name) and arg.id in constants:
+                    values.append(constants[arg.id])
+                    continue
+                try:
+                    values.append(ast.literal_eval(arg))
+                except ValueError:
+                    raise ValueError(
+                        f"{path.name}:{call.lineno}: write route marks with literals "
+                        "or module constants, so the inventory can read them"
+                    ) from None
+            found.add(tuple(values))
     return found
 
 

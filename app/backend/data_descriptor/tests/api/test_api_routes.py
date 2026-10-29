@@ -250,3 +250,33 @@ class TestRouteMarkMachinery:
             ("POST", "/b", "failure"),
             ("GET", "/c", "failure"),
         }
+
+    def test_a_mark_with_computed_arguments_is_refused_with_its_location(
+        self, tmp_path
+    ):
+        (tmp_path / "test_api_example.py").write_text(
+            "import pytest\n"
+            "@pytest.mark.parametrize('path', ['/a'])\n"
+            "def test_a(path):\n"
+            "    pass\n"
+            "def test_b():\n"
+            "    pass\n"
+            "test_b = pytest.mark.parametrize('p', [\n"
+            "    pytest.param(1, marks=pytest.mark.route('GET', str(1), 'success'))\n"
+            "])(test_b)\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match=r"test_api_example.py:8: .*literals"):
+            declared_route_marks(tmp_path)
+
+    def test_module_constants_can_name_the_rule(self, tmp_path):
+        (tmp_path / "test_api_example.py").write_text(
+            "import pytest\n"
+            "STATE = '/api/v1/state'\n"
+            "@pytest.mark.route('GET', STATE, 'success')\n"
+            "def test_a(): pass\n",
+            encoding="utf-8",
+        )
+
+        assert declared_route_marks(tmp_path) == {("GET", "/api/v1/state", "success")}
