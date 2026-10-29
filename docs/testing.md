@@ -46,7 +46,7 @@ Each layer carries a pytest marker named after its folder (`unit`, `integration`
 
 ### Backend integration tests
 
-The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives a Flask app wired like `data_descriptor_main` with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
+The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives the app [`create_app()`](../app/backend/data_descriptor/app_factory.py) builds, the wiring gunicorn serves, with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
 
 - **The RDF store** is `FakeRdfStore` in [`support.py`](../app/backend/data_descriptor/tests/integration/support.py): a backend-agnostic SPARQL 1.1 endpoint served through `responses` at the `requests` level. It answers the SELECTs the query builder produces from a small in-memory model (`seed_table(...)`), answers ASK checks (`ask_answer`), accepts UPDATEs, serves the Graph Store Protocol, and records every request so a test can assert exactly which SPARQL crossed the boundary (`store.selects`, `store.asks`, `store.updates`, `store.graph_downloads`). Knobs cover the error paths: `outage`, `outage_after`, `select_status`, `ask_status`, `update_status`.
 - **`curl`**, which the ingest service shells out to for graph uploads, is a recording script on `PATH` (`fake_curl` fixture; `fake_curl.uploads`, `fake_curl.fail()`).

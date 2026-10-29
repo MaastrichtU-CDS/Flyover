@@ -19,10 +19,9 @@ both are faked where the real thing would leave the process:
 The triplifier package (``pythonTool``) is a real dependency and runs for
 real: the ingest tests triplify a CSV into a temporary directory.
 
-``data_descriptor_main`` cannot be imported here because it monkey-patches
-gevent and builds a store client for ``localhost:7200`` at import time, so
-:func:`build_app` mirrors its ``APP_CONTEXT`` wiring instead. If that wiring
-changes in ``data_descriptor_main.py``, update :func:`build_app` with it.
+:func:`build_app` uses ``create_app()``, the factory the gunicorn entry point
+calls, so the app under test has the production wiring; only the store URL
+and the background jobs (recorded instead of spawned) differ.
 
 The fixtures live in ``conftest.py``; this module holds the plain Python so
 test modules can import it by name (``from tests.integration.support import
@@ -52,18 +51,7 @@ from flask import Flask
 # the existing test modules.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from controllers import (  # noqa: E402
-    annotate_bp,
-    describe_bp,
-    ingest_bp,
-    share_bp,
-    suggestions_bp,
-)
-from services.describe_service import DescribeService  # noqa: E402
-from services.ingest_service import IngestService  # noqa: E402
-from services.rdf_store_service import RDFStoreService  # noqa: E402
-from services.suggestions import SuggestionService  # noqa: E402
-from utils.session_helpers import get_semantic_map_for_annotation  # noqa: E402
+from app_factory import AppSettings, SessionCache, create_app  # noqa: E402,F401
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
 EXAMPLE_DATA_DIR = REPO_ROOT / "example_data"
@@ -450,35 +438,12 @@ class FakeCurl:
 
 
 # ---------------------------------------------------------------------------
-# Flask app wired like data_descriptor_main
+# The production app, against the fake store
 # ---------------------------------------------------------------------------
 
 
-class SessionCache:
-    """The server-side session state, with the attributes of main's ``Cache``."""
-
-    def __init__(self, repo: str) -> None:
-        self.repo = repo
-        self.csvData = None
-        self.csvTableNames = None
-        self.global_semantic_map = None
-        self.jsonld_mapping = None
-        self.existing_graph = False
-        self.databases = None
-        self.descriptive_info = None
-        self.DescriptiveInfoDetails = None
-        self.StatusToDisplay = None
-        self.pk_fk_data = None
-        self.pk_fk_status = None
-        self.cross_graph_link_data = None
-        self.cross_graph_link_status = None
-        self.annotation_status = None
-        self.annotation_json_path = None
-        self.output_files = None
-
-
 def build_app(work_dir: Path, store: FakeRdfStore) -> Flask:
-    """Build the Flask app with the production APP_CONTEXT wiring.
+    """Build the app ``create_app()`` builds, pointed at the fake store.
 
     ``work_dir`` replaces the ``/app/`` root the Docker image uses: the
     triplifier writes its output there and uploads are saved under it.
@@ -488,79 +453,24 @@ def build_app(work_dir: Path, store: FakeRdfStore) -> Flask:
     upload_folder = work_dir / "uploads"
     os.makedirs(os.path.join(root_dir, child_dir), exist_ok=True)
     upload_folder.mkdir()
-
-    rdf_store_url = store.base_url
-    repo = store.repo
-    rdf_store_service = RDFStoreService(rdf_store_url, repo)
-    session_cache = SessionCache(repo)
-
-    app = Flask("flyover_integration")
-    app.secret_key = "integration-test-secret"
-    app.config["TESTING"] = True
-    app.config["UPLOAD_FOLDER"] = str(upload_folder)
-    app.config["rdf_store_url"] = rdf_store_url
-    app.config["repo"] = repo
-    for blueprint in (ingest_bp, describe_bp, annotate_bp, share_bp, suggestions_bp):
-        app.register_blueprint(blueprint)
-
-    def _run_triplifier_and_cache(properties_file: str) -> tuple:
-        result = IngestService().run_triplifier(
-            properties_file,
-            root_dir,
-            child_dir,
-            csv_data_list=session_cache.csvData,
-            csv_table_names=session_cache.csvTableNames,
-        )
-        session_cache.output_files = result[2]
-        return result[:2]
+    settings = AppSettings(
+        rdf_store_url=store.base_url,
+        repo=store.repo,
+        root_dir=root_dir,
+        child_dir=child_dir,
+        upload_folder=str(upload_folder),
+    )
 
     # main spawns the PK/FK and cross-graph jobs as gevent greenlets that
     # sleep for seconds before running. The test app records the request
     # instead; the jobs' own wiring is exercised directly by the ingest tests.
     background_jobs: List[Any] = []
-
-    app.config["APP_CONTEXT"] = {
-        "session_cache": session_cache,
-        "rdf_store_service": rdf_store_service,
-        "rdf_store_url": rdf_store_url,
-        "upload_folder": str(upload_folder),
-        "root_dir": root_dir,
-        "child_dir": child_dir,
-        "run_triplifier": _run_triplifier_and_cache,
-        "suggestion_service": SuggestionService(),
-        "upload_func": lambda file_type, output_files: (
-            IngestService().upload_multiple_graphs(
-                root_dir, rdf_store_url, repo, output_files, data_background=False
-            )
-            if file_type in ("CSV", "Excel")
-            else IngestService().upload_ontology_then_data(
-                root_dir, rdf_store_url, repo, data_background=False
-            )
-        ),
-        "start_background": lambda sc: background_jobs.append(sc),
-        "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
-            IngestService().handle_postgres_connection(
-                username,
-                password,
-                postgres_url,
-                postgres_db,
-                table,
-                root_dir,
-                child_dir,
-            )
-        ),
-        "has_semantic_map": lambda sc: DescribeService.has_semantic_map(sc),
-        "formulate_local_map": lambda db: DescribeService.formulate_local_semantic_map(
-            db
-        ),
-        "get_table_names": lambda sc: IngestService.get_table_names_from_mapping(sc),
-        "name_matcher": lambda map_db, target_db: (
-            RDFStoreService.graph_database_find_name_match(map_db, target_db)
-        ),
-        "get_semantic_map": lambda sc, database_key=None: (
-            get_semantic_map_for_annotation(sc, database_key)
-        ),
-    }
+    app = create_app(
+        settings,
+        context={"start_background": background_jobs.append},
+        spa_dir=str(work_dir / "no-spa-built"),
+    )
+    app.config["TESTING"] = True
     app.config["BACKGROUND_JOBS"] = background_jobs
     return app
 
