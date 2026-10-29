@@ -231,7 +231,9 @@ def suggestions_prompt():
     chunk = params.get("chunk")
     try:
         chunk = int(chunk) if chunk not in (None, "") else None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: a JSON number beyond a float's range (1e999, or
+        # Infinity, which Python's parser accepts) parses as infinity.
         chunk = None
     include = params.get("include")
     if isinstance(include, str):

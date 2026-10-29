@@ -559,13 +559,7 @@ class TestPrompt:
             "kind": "no_service",
         }
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: a JSON number too large for a float (1e999) parses as "
-        "infinity, and int(inf) raises OverflowError, which the chunk parsing "
-        "does not catch, so the prompt answers 500",
-    )
-    @pytest.mark.parametrize("chunk", ["1e999", "-1e999", "Infinity"])
+    @pytest.mark.parametrize("chunk", ["1e999", "-1e999", "Infinity", "-Infinity"])
     def test_an_infinite_chunk_size_falls_back_to_the_default(
         self, client, suggestions, chunk
     ):
