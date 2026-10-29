@@ -100,10 +100,10 @@ What they found (a laptop; CI runners are roughly two to three times slower):
 | Multipart upload of a 34 MB CSV | about 600 MB/s | Parsing the upload is never the bottleneck; the triplifier is. |
 | The variables form, 300 variables (900 fields, 35 KB) | 1.3 ms | Cheap, but see the form limit below. |
 | Compressing 0.7 MB of JSON | gzip 9 ms/MB (9×), Brotli 5 ms/MB (18×), zstd 1 ms/MB (29×) | Browsers that offer zstd (current Chrome and Firefox) get the cheapest and smallest. |
-| Mock data, 10,000 rows (the page's maximum, real generator) | 23 ms, 357 KB | Fast at the page's limit; the endpoint itself sets no limit (pinned). |
+| Mock data, 10,000 rows (the page's maximum, real generator) | 23 ms, 357 KB | Fast at the page's limit, which the endpoint enforces too. |
 | Annotation of 64 databases × 50 ms of store time | 109 ms | 29 times faster than one at a time; at most 32 in flight. |
 
-Limits found on the way, pinned as defects in the API layer: `/api/generate-mock-data` passes any `num_rows` to the generator, so one request can ask the single worker for a billion rows. Before Werkzeug 3.1.9, a describe form over Flask's 500 KB `MAX_FORM_MEMORY_SIZE` (about 2,400 category values on the details page) was refused with a bare 413. `requirements.txt` now requires 3.1.9 or later, which no longer applies that limit to urlencoded forms. Flyover sets no size limit of its own on those forms: it runs locally for one user.
+Limits found on the way: `/api/generate-mock-data` passed any `num_rows` to the generator, so one request could ask the single worker for a billion rows; it now refuses anything but a whole number from 0 (empty tables) to the page's maximum of 10,000. Before Werkzeug 3.1.9, a describe form over Flask's 500 KB `MAX_FORM_MEMORY_SIZE` (about 2,400 category values on the details page) was refused with a bare 413. `requirements.txt` now requires 3.1.9 or later, which no longer applies that limit to urlencoded forms. Flyover sets no size limit of its own on those forms: it runs locally for one user.
 
 ### Frontend unit (Vitest)
 

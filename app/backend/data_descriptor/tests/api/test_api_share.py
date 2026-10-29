@@ -358,21 +358,44 @@ class TestMockData:
 
         assert 400 <= response.status_code < 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: num_rows is passed to the generator unchecked; the SPA "
-        "offers 1 to 10,000, but any client can ask for a billion rows (built "
-        "in memory by one worker) or send text, which fails as a 500",
-    )
     @pytest.mark.parametrize(
-        "num_rows", [10**9, "five", 2.5, None], ids=["huge", "text", "float", "null"]
+        "num_rows",
+        [10**9, 10_001, -5, "five", "100", 2.5, True, None],
+        ids=[
+            "huge",
+            "one-too-many",
+            "negative",
+            "text",
+            "number-as-text",
+            "float",
+            "bool",
+            "null",
+        ],
     )
     def test_a_row_count_outside_what_the_page_offers_is_refused(
+        self, client, share_service, num_rows
+    ):
+        # The page offers up to 10,000; the generator builds every row in
+        # memory on the single worker, so a billion would stall it.
+        response = client.post(
+            MOCK_DATA, json={"jsonld_map": valid_mapping(), "num_rows": num_rows}
+        )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            "success": False,
+            "error": "num_rows must be a whole number from 0 to 10,000",
+        }
+        share_service.generate_mock_data_from_semantic_map.assert_not_called()
+
+    @pytest.mark.parametrize("num_rows", [0, 1, 10_000])
+    def test_empty_tables_and_the_page_s_largest_row_count_are_generated(
         self, client, share_service, num_rows
     ):
         response = client.post(
             MOCK_DATA, json={"jsonld_map": valid_mapping(), "num_rows": num_rows}
         )
 
-        assert response.status_code == 400
-        share_service.generate_mock_data_from_semantic_map.assert_not_called()
+        assert response.status_code == 200
+        call = share_service.generate_mock_data_from_semantic_map.call_args
+        assert call.kwargs["num_rows"] == num_rows
