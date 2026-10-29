@@ -864,18 +864,30 @@ class TestUploadCsv:
 
         assert response.status_code == 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: upload_func's verdict is ignored, so a failed graph upload "
-        "is reported as a successful ingest (redirect to /describe)",
-    )
     def test_a_failed_graph_upload_goes_back_to_ingest(self, client, helpers):
-        helpers["upload_func"].return_value = (False, ["HTTP 503 from the store"])
+        helpers["upload_func"].return_value = (
+            False,
+            ["HTTP 503 from the store", "data graph not loaded"],
+        )
 
         response = client.post("/upload", data=_csv_form("patients.csv"))
 
-        assert urlsplit(response.headers["Location"]).path == "/ingest"
+        assert _error_from_redirect(response) == (
+            "Error: the RDF store did not accept the triplified data: "
+            "HTTP 503 from the store; data graph not loaded"
+        )
         helpers["start_background"].assert_not_called()
+
+    def test_a_failed_upload_without_messages_still_says_what_failed(
+        self, client, helpers
+    ):
+        helpers["upload_func"].return_value = (False, [])
+
+        response = client.post("/upload", data=_csv_form("patients.csv"))
+
+        assert _error_from_redirect(response) == (
+            "Error: the RDF store did not accept the triplified data"
+        )
 
 
 class TestUploadRedirectMessages:

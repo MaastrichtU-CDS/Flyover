@@ -618,6 +618,13 @@ def upload_file():
             for msg in upload_messages:
                 logger.info(f"Upload: {msg}")
 
+            if not upload_success:
+                details = "; ".join(str(msg) for msg in upload_messages)
+                return _safe_redirect_error(
+                    "Error: the RDF store did not accept the triplified data"
+                    + (f": {details}" if details else "")
+                )
+
             if file_type in ("CSV", "Excel") and start_background:
                 start_background(session_cache)
 
