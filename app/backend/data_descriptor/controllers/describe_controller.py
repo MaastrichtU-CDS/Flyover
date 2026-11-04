@@ -6,6 +6,7 @@ data variables, including type specification and categorisation.
 """
 
 import copy
+import functools
 import logging
 import re
 from io import StringIO
@@ -13,7 +14,7 @@ from io import StringIO
 import polars as pl
 from flask import Blueprint, jsonify, redirect, request
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from services import DescribeService
 from utils.mapping_request import json_object_body, parse_and_validate_mapping
@@ -96,6 +97,12 @@ def api_describe_variable_details_state():
         descriptive_info = session_cache.descriptive_info
         details = session_cache.DescriptiveInfoDetails
 
+    # The store's columns per database, in their source order: read at most
+    # once per request, and only when the details need them.
+    store_columns = functools.cache(
+        lambda: rdf_store_service.get_column_info_by_database() or {}
+    )
+
     if effective_mapping:
         _populate_details_from_jsonld(
             effective_mapping,
@@ -104,7 +111,13 @@ def api_describe_variable_details_state():
             session_cache.databases,
             rdf_store_service,
             name_matcher,
+            store_columns,
         )
+
+    # The variables form and the map each add entries in their own order;
+    # the page lists them as their columns stand in the source.
+    if details:
+        _order_by_columns(details, store_columns())
 
     preselected_values = {}
     if effective_mapping and details:
@@ -239,6 +252,25 @@ def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
     return False
 
 
+def _entry_column(entry: Any) -> Optional[str]:
+    """The column a details entry is for. A continuous variable is listed by
+    name, a categorical one as {name: categories}."""
+    name = next(iter(entry), "") if isinstance(entry, dict) else entry
+    return _listed_column(name)
+
+
+def _order_by_columns(details: dict, columns_by_database: dict) -> None:
+    """Put each database's details entries in the source order of their
+    columns (mutates ``details``). An entry whose column the store does not
+    list keeps its place after the others."""
+    for database, entries in details.items():
+        places = {
+            column: place
+            for place, column in enumerate(columns_by_database.get(database, []))
+        }
+        entries.sort(key=lambda entry: places.get(_entry_column(entry), len(places)))
+
+
 def _category_options_from_mapping(mapping: Any, details: dict) -> dict:
     """Value-mapping options per variable display name, from the mapping the
     response is rendered on.
@@ -274,12 +306,14 @@ def _populate_details_from_jsonld(
     databases: list,
     rdf_store_service: Any,
     name_matcher: Any,
+    store_columns: Callable[[], dict],
 ) -> None:
     """Populate the details dicts from a JSON-LD mapping (mutates them).
 
     ``descriptive_info`` and ``details`` are the caller's dicts: the session's
     own when no body mapping was supplied (so the population persists, as it
     always has), or request-local copies when the browser's map was sent.
+    ``store_columns`` gives the store's columns per database.
     """
     if not mapping or not databases:
         return
@@ -295,7 +329,7 @@ def _populate_details_from_jsonld(
     # contain. Without filtering, those phantom variables would surface on
     # the details page even though the user never saw or chose them on
     # /describe/variables.
-    columns_by_database = rdf_store_service.get_column_info_by_database() or {}
+    columns_by_database = store_columns()
 
     for database in databases:
         if not database:
