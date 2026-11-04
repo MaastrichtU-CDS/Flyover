@@ -46,6 +46,7 @@ import pytest
 import requests
 import responses
 from flask import Flask
+from rdflib import Graph, Namespace
 
 # Make `data_descriptor` modules importable as top-level packages, mirroring
 # the existing test modules.
@@ -620,6 +621,19 @@ TABLE_COLUMNS: Dict[str, List[str]] = {
 
 CSV_BYTES = b"id,sex,age\nP1,M,45\nP2,F,60\nP3,M,32\n"
 """The CSV that produces TABLE_COLUMNS when triplified."""
+
+DBO = Namespace("http://um-cds/ontologies/databaseontology/")
+"""The database ontology the triplifier describes tables and columns in."""
+
+
+def column_positions(ontology_file: str) -> Dict[str, int]:
+    """Each column's recorded place in its source, read from an ontology file."""
+    graph = Graph()
+    graph.parse(ontology_file, format="xml")
+    return {
+        str(graph.value(column_class, DBO.column)): position.toPython()
+        for column_class, position in graph.subject_objects(DBO.column_position)
+    }
 
 
 def xlsx_bytes(sheets: Dict[str, List[List[str]]]) -> bytes:

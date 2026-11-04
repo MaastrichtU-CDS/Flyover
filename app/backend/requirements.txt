@@ -11,6 +11,8 @@ psycopg2-binary==2.9.10
 fastexcel>=0.12.0
 python-dateutil==2.9.0.post0
 pytz==2025.2
+# Also the triplifier's; Flyover adds column positions to its ontology files
+rdflib>=6.0.0
 requests==2.33.1
 six==1.17.0
 triplifier>=2.2.0
