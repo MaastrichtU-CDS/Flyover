@@ -100,6 +100,13 @@ class TestQueryBuilderColumnQueries(unittest.TestCase):
         self.assertIn("SELECT ?uri ?column", query)
         self.assertIn("dbo:column", query)
 
+    def test_column_info_query_asks_for_the_source_position_where_recorded(self):
+        """Columns without a recorded position must still come back."""
+        query = " ".join(QueryBuilder.column_info_query().split())
+
+        self.assertIn("SELECT ?uri ?column ?position", query)
+        self.assertIn("OPTIONAL { ?uri dbo:column_position ?position . }", query)
+
     def test_column_class_uri_query(self):
         """Test column class URI query generation."""
         query = QueryBuilder.column_class_uri_query("test_table", "test_column")
