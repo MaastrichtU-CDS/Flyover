@@ -15,14 +15,20 @@ export const DEFAULT_MAPPING_JSONLD = path.resolve(
 )
 
 /**
- * Drive the SPA through a complete CSV ingest. Leaves the page on /describe
- * with a populated GraphDB. Triplifier can take 30-60s+ on a cold start.
+ * Drive the SPA through a complete CSV ingest of one CSV, or of several in
+ * one upload. Leaves the page on /describe with a populated GraphDB.
+ * Triplifier can take 30-60s+ on a cold start.
  */
 export async function runIngestFlow(page, csvPath = DEFAULT_CSV) {
+  const csvPaths = [].concat(csvPath)
   await page.goto('/ingest')
   await page.locator('#CSV').check()
-  await page.locator('#csvFile').setInputFiles(csvPath)
-  await expect(page.locator('#csvPath')).toHaveValue(new RegExp(path.basename(csvPath).replace('.', '\\.')))
+  await page.locator('#csvFile').setInputFiles(csvPaths)
+  for (const file of csvPaths) {
+    await expect(page.locator('#csvPath')).toHaveValue(
+      new RegExp(path.basename(file).replace('.', '\\.'))
+    )
+  }
 
   const submit = page.getByRole('button', { name: /^\s*(?:Processing\.\.\.)?\s*Submit Files\s*$/i })
   await expect(submit).toBeEnabled()

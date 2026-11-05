@@ -3,6 +3,13 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runIngestFlow, watchConsoleErrors, DEFAULT_MAPPING_JSONLD } from './helpers/ingest.js'
+import {
+  disableSuggestionsViaStatus,
+  expandAllDatabases,
+  otherSiteMapping,
+  readMetadata,
+  uploadSemanticMapAndContinue,
+} from './helpers/suggestions.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // mapping_centre_a.jsonld references synthetic_english_150 — match it.
@@ -10,6 +17,26 @@ const ENGLISH_CSV = path.resolve(
   __dirname,
   '../../../../example_data/centre_a_english/synthetic_english_150.csv'
 )
+const DUTCH_CSV = path.resolve(
+  __dirname,
+  '../../../../example_data/centre_b_dutch/synthetic_dutch_150.csv'
+)
+
+// Pick a description on the variables page, paging through the table (ten
+// columns a page) to the column first.
+async function describeColumn(page, table, column, label) {
+  const heading = page.getByRole('heading', { level: 2, name: table, exact: true })
+  const section = heading.locator('xpath=..')
+  const select = page.locator(`[id="ncit_comment_${table}_${column}"]`)
+  const previous = section.locator('button.prev-btn')
+  while ((await previous.count()) && (await previous.isEnabled())) await previous.click()
+  const next = section.locator('button.next-btn')
+  for (let i = 0; i < 20 && !(await select.isVisible()); i++) {
+    if (!(await next.count()) || !(await next.isEnabled())) break
+    await next.click()
+  }
+  await select.selectOption({ label })
+}
 
 // Seed IndexedDB directly with a semantic map so the annotate review page has
 // something to consume. Going through the AnnotationLandingView upload form
@@ -96,5 +123,90 @@ test.describe('Annotate flow', () => {
     await page.waitForTimeout(3_000)
     // We should NOT have navigated to /annotate/verify.
     await expect(page).toHaveURL(/\/annotate\/review/)
+  })
+  // The describe pages used to save an answer whose variable key has capitals
+  // under a lower-cased key the map does not have, so the review page left
+  // it out (and a table whose answers were all of that kind), and a map table
+  // without a name took in every table's answers.
+  test('two described tables both reach the review page and are annotated', async ({ page }) => {
+    await disableSuggestionsViaStatus(page)
+    await runIngestFlow(page, [ENGLISH_CSV, DUTCH_CSV])
+
+    // The example map as another site's (none of its tables is ingested
+    // here) and without a database name, with T stage keyed 'T_stage'.
+    const mapping = await otherSiteMapping()
+    for (const db of Object.values(mapping.databases)) delete db.name
+    mapping.schema.variables.T_stage = mapping.schema.variables.t_stage
+    delete mapping.schema.variables.t_stage
+    for (const db of Object.values(mapping.databases)) {
+      for (const table of Object.values(db.tables)) {
+        for (const column of Object.values(table.columns)) {
+          if (column.mapsTo === 'schema:variable/t_stage') {
+            column.mapsTo = 'schema:variable/T_stage'
+          }
+        }
+      }
+    }
+    await uploadSemanticMapAndContinue(page, mapping)
+    await expandAllDatabases(page)
+
+    // The Dutch table's one answer has a capitalised key, like a table of
+    // EORTC scale scores in the AYA map.
+    const answers = {
+      synthetic_english_150: { biological_sex: 'Biological sex', clin_t: 'T stage' },
+      synthetic_dutch_150: { t_stad: 'T stage' },
+    }
+    for (const [table, columns] of Object.entries(answers)) {
+      for (const [column, label] of Object.entries(columns)) {
+        await describeColumn(page, table, column, label)
+      }
+    }
+
+    const toDetails = page.locator('form[action="/units"] button[type="submit"]')
+    await expect(toDetails).toBeEnabled()
+    await Promise.all([page.waitForURL(/\/describe\/variable-details/), toDetails.click()])
+    const toReview = page.locator('form[action="/end"] button[type="submit"]')
+    await expect(toReview).toBeEnabled({ timeout: 30_000 })
+    await Promise.all([page.waitForURL(/\/annotate\/review/), toReview.click()])
+
+    for (const table of Object.keys(answers)) {
+      await expect(
+        page.getByRole('heading', { level: 2, name: table, exact: true })
+      ).toBeVisible({ timeout: 30_000 })
+    }
+
+    // Each table's answers sit in that table's own entry, under the schema's
+    // own keys.
+    const stored = (await readMetadata(page, 'semantic_map')).data
+    const described = {}
+    for (const db of Object.values(stored.databases)) {
+      for (const [key, table] of Object.entries(db.tables)) {
+        const name = table.sourceFile || key
+        if (!(name in answers)) continue
+        described[name] = Object.fromEntries(
+          Object.values(table.columns).map((c) => [c.localColumn, c.mapsTo])
+        )
+      }
+    }
+    expect(described).toEqual({
+      synthetic_english_150: {
+        biological_sex: 'schema:variable/biological_sex',
+        clin_t: 'schema:variable/T_stage',
+      },
+      synthetic_dutch_150: { t_stad: 'schema:variable/T_stage' },
+    })
+
+    await page.getByRole('button', { name: /Start Annotation/i }).click()
+    await page.waitForURL(/\/annotate\/verify/, { timeout: 180_000 })
+    const state = await (await page.request.get('/api/v1/annotation-verify-state')).json()
+    const annotated = Object.entries(state.annotation_status)
+      .filter(([, status]) => status?.success)
+      .map(([key]) => key)
+      .sort()
+    expect(annotated).toEqual([
+      'synthetic_dutch_150.T_stage',
+      'synthetic_english_150.T_stage',
+      'synthetic_english_150.biological_sex',
+    ])
   })
 })
