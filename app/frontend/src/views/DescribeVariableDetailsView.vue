@@ -74,7 +74,8 @@ function buildCategoricalVariable(database, varName, categories, dbIdx, itemIdx)
   const localVariable = m
     ? m[1]
     : varName.toLowerCase().replace(/ /g, '_')
-  const globalVarName = varName.split(' (or')[0].toLowerCase().replace(/ /g, '_')
+  // The schema's own key: lower-casing the label would lose its capitals.
+  const globalVarName = jsonld.variableKeyForLabel(varName.split(' (or')[0])
   const isMissing = varName.startsWith('Missing Description')
   const displayLabel = varName.replace(' (or "', '<br>(or "')
 

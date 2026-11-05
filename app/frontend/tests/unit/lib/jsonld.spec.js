@@ -19,6 +19,8 @@ import {
   updateCategoryMapping,
   updateMappingFromForm,
   initializeEmptyMapping,
+  variableKeyForLabel,
+  termKeyForLabel,
 } from '@/lib/jsonld.js'
 
 describe('formatToTitleCase', () => {
@@ -587,5 +589,102 @@ describe('getCategoryOptionsForVariable', () => {
       databases: {},
     })
     expect(getCategoryOptionsForVariable('patients', 'age')).toEqual([])
+  })
+})
+
+// A map whose schema keys carry capitals, as the AYA map's EORTC scale scores
+// do ('eortc_qlq_c30_overall_qol_QL2') and its ISCED education terms.
+function capitalisedMapping() {
+  return {
+    schema: {
+      variables: {
+        eortc_qlq_c30_q16: { dataType: 'categorical' },
+        eortc_qlq_c30_overall_qol_QL2: { dataType: 'continuous' },
+        educational_level: {
+          dataType: 'categorical',
+          valueMapping: { terms: { 'ISCED-0': {}, 'ISCED-1': {} } },
+        },
+      },
+    },
+    databases: {},
+  }
+}
+
+describe('variableKeyForLabel and termKeyForLabel', () => {
+  beforeEach(() => {
+    setMapping(capitalisedMapping())
+  })
+
+  it('gives back the key a dropdown label was made from, capitals and all', () => {
+    expect(variableKeyForLabel('Eortc qlq c30 overall qol QL2')).toBe(
+      'eortc_qlq_c30_overall_qol_QL2'
+    )
+    expect(variableKeyForLabel('Eortc qlq c30 q16')).toBe('eortc_qlq_c30_q16')
+  })
+
+  it('accepts the key itself and a label titled word by word', () => {
+    expect(variableKeyForLabel('eortc_qlq_c30_overall_qol_QL2')).toBe(
+      'eortc_qlq_c30_overall_qol_QL2'
+    )
+    // The backend builds its labels with str.title().
+    expect(variableKeyForLabel('Eortc Qlq C30 Overall Qol Ql2')).toBe(
+      'eortc_qlq_c30_overall_qol_QL2'
+    )
+  })
+
+  it('snake-cases a label no schema variable answers to', () => {
+    expect(variableKeyForLabel('Body Weight')).toBe('body_weight')
+    expect(variableKeyForLabel(null)).toBe('')
+  })
+
+  it('resolves a value-mapping term within its variable', () => {
+    expect(termKeyForLabel('educational_level', 'ISCED-1')).toBe('ISCED-1')
+    expect(termKeyForLabel('educational_level', 'Isced-1')).toBe('ISCED-1')
+    expect(termKeyForLabel('educational_level', 'Other level')).toBe('other_level')
+    expect(termKeyForLabel('not_a_variable', 'Male')).toBe('male')
+  })
+})
+
+describe('describe answers keep capitalised schema keys', () => {
+  beforeEach(() => {
+    setMapping(capitalisedMapping())
+  })
+
+  it('maps a column to the capitalised variable and updates that variable', async () => {
+    await updateMappingFromForm({
+      survaya_ql: {
+        database: 'survaya',
+        description: 'Eortc qlq c30 overall qol QL2',
+        datatype: 'continuous',
+        comment: '',
+      },
+    })
+    const m = getMapping()
+    const columns = Object.values(m.databases.survaya.tables.data.columns)
+    expect(columns).toEqual([
+      expect.objectContaining({
+        mapsTo: 'schema:variable/eortc_qlq_c30_overall_qol_QL2',
+        localColumn: 'ql',
+      }),
+    ])
+    // No lower-cased twin appears next to the schema's own variable.
+    expect(Object.keys(m.schema.variables)).not.toContain('eortc_qlq_c30_overall_qol_ql2')
+  })
+
+  it('records a value under the capitalised term of the capitalised column', async () => {
+    await updateMappingFromForm({
+      cohort_opl: {
+        database: 'cohort',
+        description: 'Educational level',
+        datatype: 'categorical',
+        comment: '',
+      },
+    })
+    await updateCategoryMapping('cohort', 'opl', 'educational_level', '3', 'ISCED-1', null)
+    const column = getMapping().databases.cohort.tables.data.columns.educational_level
+    expect(column.localMappings).toEqual({ 'ISCED-1': ['3'] })
+
+    await updateCategoryMapping('cohort', 'opl', 'educational_level', '3', 'ISCED-0', 'ISCED-1')
+    expect(column.localMappings).toEqual({ 'ISCED-0': ['3'] })
   })
 })

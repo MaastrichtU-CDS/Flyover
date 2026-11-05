@@ -11,7 +11,10 @@ vi.mock('@/lib/db', () => ({
   getData: vi.fn(async () => null),
 }))
 
-vi.mock('@/lib/jsonld', () => ({
+// The real map helpers, with the IndexedDB and map look-ups stubbed: the view
+// resolves labels to keys through them against whatever map setMapping holds.
+vi.mock('@/lib/jsonld', async (importOriginal) => ({
+  ...(await importOriginal()),
   loadFromIndexedDB: vi.fn(async () => {}),
   getCategoryOptionsForVariable: vi.fn(() => []),
   getLocalMappingsForVariable: vi.fn(() => ({})),
@@ -87,6 +90,7 @@ describe('DescribeVariableDetailsView', () => {
     jsonld.updateCategoryMapping.mockClear()
     jsonld.getLocalMappingsForVariable.mockReturnValue({})
     jsonld.getCategoryOptionsForVariable.mockReturnValue([])
+    jsonld.setMapping(null)
   })
 
   it('renders the form posting to /end', async () => {
@@ -157,6 +161,41 @@ describe('DescribeVariableDetailsView', () => {
     expect(args[2]).toBe('sex') // globalVarName
     expect(args[3]).toBe('M') // categoryValue
     expect(args[4]).toBe('Male') // selected
+  })
+
+  it('names a capitalised schema variable by its own key when a category changes', async () => {
+    // The label reads 'Education ISCED'; lower-casing it would give
+    // 'education_isced', a variable the map does not have.
+    jsonld.setMapping({
+      schema: {
+        variables: {
+          Education_ISCED: {
+            dataType: 'categorical',
+            valueMapping: { terms: { 'ISCED-0': {}, 'ISCED-1': {} } },
+          },
+        },
+      },
+    })
+    jsonld.getCategoryOptionsForVariable.mockReturnValue(['ISCED-0', 'ISCED-1'])
+    api.post.mockResolvedValue({
+      data: {
+        descriptive_info: { patients: { opl: { type: 'categorical' } } },
+        descriptive_info_details: {
+          patients: [{ 'Education ISCED (or "opl")': [{ value: '1', count: 3 }] }],
+        },
+        preselected_values: {},
+      },
+    })
+    const w = mountView()
+    await flushPromises()
+
+    await w.findAll('select.category-select')[0].setValue('ISCED-1')
+
+    expect(jsonld.updateCategoryMapping).toHaveBeenCalledTimes(1)
+    const args = jsonld.updateCategoryMapping.mock.calls[0]
+    expect(args[1]).toBe('opl')
+    expect(args[2]).toBe('Education_ISCED')
+    expect(args[4]).toBe('ISCED-1')
   })
 
   it('keeps a preselected category cleared after the user deselects it', async () => {

@@ -154,6 +154,35 @@ export function getGlobalVariableNames() {
   return getAllVariableKeys().map(formatToTitleCase).concat(['Other'])
 }
 
+// The describe pages show a variable or value-mapping term by its label,
+// formatToTitleCase(key): 'eortc_qlq_c30_overall_qol_QL2' reads 'Eortc qlq
+// c30 overall qol QL2'. Lower-casing a label does not give the key back, so
+// a label is resolved against the keys it can stand for: the key itself, the
+// key it is the label of, then the key it matches ignoring case and spacing
+// (the backend titles labels word by word). Only a label no key answers to is
+// snake-cased.
+function keyForLabel(label, keys) {
+  if (label == null) return ''
+  const text = String(label)
+  if (keys.includes(text)) return text
+  const labelled = keys.find((key) => formatToTitleCase(key) === text)
+  if (labelled !== undefined) return labelled
+  const loose = formatToSnakeCase(text)
+  const matched = keys.find((key) => formatToSnakeCase(key) === loose)
+  return matched !== undefined ? matched : loose
+}
+
+/** The schema variable a description label stands for. */
+export function variableKeyForLabel(label) {
+  return keyForLabel(label, getAllVariableKeys())
+}
+
+/** The value-mapping term of `varKey` that an option label stands for. */
+export function termKeyForLabel(varKey, label) {
+  const terms = getVariable(varKey)?.valueMapping?.terms
+  return keyForLabel(label, terms ? Object.keys(terms) : [])
+}
+
 export function getCategoryOptionsForVariable(_database, globalVarName, localVariable = null) {
   if (!mapping?.schema?.variables) return []
   let varInfo = mapping.schema.variables[globalVarName]
@@ -229,8 +258,11 @@ export async function updateCategoryMapping(
 ) {
   if (!mapping?.databases) return false
   localValue = String(localValue)
-  const termKey = selectedOption ? formatToSnakeCase(selectedOption) : null
-  const previousTermKey = previousOption ? formatToSnakeCase(previousOption) : null
+  globalVarName = variableKeyForLabel(globalVarName)
+  const termKey = selectedOption ? termKeyForLabel(globalVarName, selectedOption) : null
+  const previousTermKey = previousOption
+    ? termKeyForLabel(globalVarName, previousOption)
+    : null
 
   const result = findColumnForVariable(
     mapping.databases,
@@ -342,7 +374,7 @@ export async function updateMappingFromForm(formData) {
       localColumnName,
       isActive
         ? {
-            varName: formatToSnakeCase(descriptionDisplay),
+            varName: variableKeyForLabel(descriptionDisplay),
             descriptionDisplay,
             dataType: data.datatype || null,
           }
