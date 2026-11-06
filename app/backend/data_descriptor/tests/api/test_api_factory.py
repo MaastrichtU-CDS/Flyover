@@ -101,8 +101,8 @@ class TestTheDefaultWiring:
         assert context["session_cache"].repo == REPO
         assert isinstance(context["rdf_store_service"], RDFStoreService)
         assert context["rdf_store_service"].repo == REPO
+        assert context["rdf_store_service"].rdf_store_url == STORE_URL
         assert isinstance(context["suggestion_service"], SuggestionService)
-        assert context["rdf_store_url"] == STORE_URL
         assert context["upload_folder"] == settings.upload_folder
         assert os.path.isdir(settings.upload_folder)
         assert app.config["rdf_store_url"] == STORE_URL
@@ -149,6 +149,9 @@ def wiring(tmp_path, monkeypatch):
     monkeypatch.setattr(app_factory.gevent, "spawn", lambda *a: spawned.append(a) or a)
     settings = api_settings(tmp_path)
     store = create_autospec(RDFStoreService, instance=True)
+    # Instance attributes set in __init__ are invisible to autospec.
+    store.rdf_store_url = STORE_URL
+    store.repo = REPO
     context = build_app_context(settings, {"rdf_store_service": store})
     return {
         "context": context,
@@ -182,6 +185,22 @@ class TestTheDefaultHelpers:
 
         wiring["ingest"].return_value.upload_ontology_then_data.assert_called_once_with(
             settings.root_dir, STORE_URL, REPO, data_background=False
+        )
+
+    def test_an_upload_goes_to_the_store_the_service_names_at_that_time(self, wiring):
+        # The store service, not the settings the app started with, says
+        # where the graphs go: an upload follows a store that changed since.
+        wiring["store"].rdf_store_url = "http://another-store:7200"
+        wiring["store"].repo = "projectRepo"
+
+        wiring["context"]["upload_func"]("CSV", ["a.ttl"])
+
+        wiring["ingest"].return_value.upload_multiple_graphs.assert_called_once_with(
+            wiring["settings"].root_dir,
+            "http://another-store:7200",
+            "projectRepo",
+            ["a.ttl"],
+            data_background=False,
         )
 
     def test_the_relationship_jobs_run_as_greenlets_on_the_store(self, wiring):

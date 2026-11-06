@@ -154,13 +154,15 @@ class TestOntologyDownload:
             session_cache, store, STORE_URL, "http://ontology.local/"
         )
 
-    def test_without_a_store_url_the_local_default_is_used(self, app, share_service):
-        del app.config["APP_CONTEXT"]["rdf_store_url"]
+    def test_the_download_names_the_store_the_service_works_on(
+        self, client, store, share_service
+    ):
+        store.rdf_store_url = "http://another-store:7200"
 
-        app.test_client().get("/downloadOntology")
+        client.get("/downloadOntology")
 
         assert share_service.download_ontology.call_args.args[2] == (
-            "http://localhost:7200"
+            "http://another-store:7200"
         )
 
     @pytest.mark.route("GET", "/downloadOntology", "failure")

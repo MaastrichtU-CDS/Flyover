@@ -26,7 +26,7 @@ annotate_bp = Blueprint("annotate", __name__)
 
 
 def get_app_context() -> dict:
-    """Get application context (session_cache, rdf_store_url, etc.)."""
+    """Get application context (session_cache, rdf_store_service, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
@@ -300,7 +300,6 @@ def start_annotation():
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
-    rdf_store_url = ctx.get("rdf_store_url")
     get_semantic_map = ctx.get("get_semantic_map")
     formulate_local_map = ctx.get("formulate_local_map")
     name_matcher = ctx.get("name_matcher")
@@ -331,8 +330,9 @@ def start_annotation():
         if not databases:
             return jsonify({"success": False, "error": "No databases available"})
 
+        # The annotations go to the store the reads above came from.
         endpoint = build_repository_endpoint(
-            rdf_store_url, session_cache.repo, "/statements"
+            rdf_store_service.rdf_store_url, rdf_store_service.repo, "/statements"
         )
         map_table_names = get_table_names(run_session)
 

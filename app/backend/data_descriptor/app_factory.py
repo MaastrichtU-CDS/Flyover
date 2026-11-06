@@ -191,8 +191,6 @@ def build_app_context(
         if "suggestion_service" in overrides
         else SuggestionService()
     )
-    rdf_store_url = settings.rdf_store_url
-    repo = settings.repo
     root_dir = settings.root_dir
     child_dir = settings.child_dir
 
@@ -208,24 +206,27 @@ def build_app_context(
         session_cache.output_files = result[2]
         return result[:2]
 
+    def upload_func(file_type: str, output_files: Optional[list]) -> tuple:
+        """Upload the triplifier's output to the store the service works on."""
+        store_url = rdf_store_service.rdf_store_url
+        repo = rdf_store_service.repo
+        if file_type in ("CSV", "Excel"):
+            return IngestService().upload_multiple_graphs(
+                root_dir, store_url, repo, output_files, data_background=False
+            )
+        return IngestService().upload_ontology_then_data(
+            root_dir, store_url, repo, data_background=False
+        )
+
     context: Dict[str, Any] = {
         "session_cache": session_cache,
         "rdf_store_service": rdf_store_service,
-        "rdf_store_url": rdf_store_url,
         "upload_folder": settings.upload_folder,
         "root_dir": root_dir,
         "child_dir": child_dir,
         "run_triplifier": run_triplifier,
         "suggestion_service": suggestion_service,
-        "upload_func": lambda file_type, output_files: (
-            IngestService().upload_multiple_graphs(
-                root_dir, rdf_store_url, repo, output_files, data_background=False
-            )
-            if file_type in ("CSV", "Excel")
-            else IngestService().upload_ontology_then_data(
-                root_dir, rdf_store_url, repo, data_background=False
-            )
-        ),
+        "upload_func": upload_func,
         "start_background": lambda sc: [
             gevent.spawn(
                 IngestService.background_pk_fk_processing, sc, rdf_store_service
