@@ -110,7 +110,8 @@ it asks which project to work on:
 - **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
-(red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it. Switching and leaving ask first and offer to download the
+(red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it.
+Flyover checks the connection every minute while its tab is visible, on every step, and when you click the status. Switching and leaving ask first and offer to download the
 current map, describe answers included. Working without a project lasts for the browser tab; an open project lasts
 until you switch or leave it.
 

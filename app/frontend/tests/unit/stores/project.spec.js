@@ -140,6 +140,8 @@ describe('the project store', () => {
   })
 
   afterEach(() => {
+    useProjectStore().stopStatusChecks()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -153,7 +155,7 @@ describe('the project store', () => {
       expect(project.picker).toEqual({ open: true, mode: 'startup' })
       expect(project.store).toEqual(CONFIGURED)
       expect(project.configuredStore).toEqual(CONFIGURED)
-      expect(project.storeStatus).toEqual({ state: 'reachable', reason: '' })
+      expect(project.storeStatus).toEqual({ state: 'reachable', reason: '', checking: false })
     })
 
     it('does not ask again in a tab that chose to work without a project', async () => {
@@ -693,6 +695,7 @@ describe('the project store', () => {
       expect(project.storeStatus).toEqual({
         state: 'unreachable',
         reason: 'The store cannot be reached from Flyover.',
+        checking: false,
       })
     })
 
@@ -720,7 +723,100 @@ describe('the project store', () => {
       answerFirst({ data: { reachable: true, reason: '', store: CONFIGURED } })
       await first
 
-      expect(project.storeStatus).toEqual({ state: 'unreachable', reason: 'down' })
+      expect(project.storeStatus).toEqual({ state: 'unreachable', reason: 'down', checking: false })
+    })
+
+    it('keeps showing the last answer while a new check is under way', async () => {
+      const project = useProjectStore()
+      await project.init()
+      let answer
+      api.get.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+
+      const checking = project.refreshStoreStatus()
+
+      expect(project.storeStatus).toEqual({ state: 'reachable', reason: '', checking: true })
+      answer({ data: { reachable: false, reason: 'down', store: CONFIGURED } })
+      await checking
+      expect(project.storeStatus).toEqual({ state: 'unreachable', reason: 'down', checking: false })
+    })
+  })
+
+  describe('checking the store again', () => {
+    function statusChecks() {
+      return api.get.mock.calls.filter(([url]) => url === '/api/v1/project/store-status').length
+    }
+
+    function setVisibility(state) {
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+      setVisibility('visible')
+    })
+
+    afterEach(() => {
+      setVisibility('visible')
+    })
+
+    it('happens every minute while the tab is visible', async () => {
+      const project = useProjectStore()
+      await project.init()
+      expect(statusChecks()).toBe(1)
+
+      await vi.advanceTimersByTimeAsync(59_000)
+      expect(statusChecks()).toBe(1)
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(statusChecks()).toBe(2)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(statusChecks()).toBe(3)
+    })
+
+    it('pauses in a hidden tab, and catches up when it is shown again', async () => {
+      const project = useProjectStore()
+      await project.init()
+      setVisibility('hidden')
+
+      await vi.advanceTimersByTimeAsync(180_000)
+      expect(statusChecks()).toBe(1)
+
+      setVisibility('visible')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(statusChecks()).toBe(2)
+    })
+
+    it('does not ask again on showing the tab when the last check is recent', async () => {
+      const project = useProjectStore()
+      await project.init()
+
+      setVisibility('hidden')
+      await vi.advanceTimersByTimeAsync(10_000)
+      setVisibility('visible')
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(statusChecks()).toBe(1)
+    })
+
+    it('starts once, however often Flyover starts', async () => {
+      const project = useProjectStore()
+      await project.init()
+      await project.init()
+
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(statusChecks()).toBe(3)
+    })
+
+    it('stops when told', async () => {
+      const project = useProjectStore()
+      await project.init()
+      project.stopStatusChecks()
+
+      await vi.advanceTimersByTimeAsync(120_000)
+      setVisibility('visible')
+
+      expect(statusChecks()).toBe(1)
     })
   })
 

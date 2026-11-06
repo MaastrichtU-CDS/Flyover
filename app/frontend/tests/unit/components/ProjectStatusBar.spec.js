@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { reactive } from 'vue'
+
+const route = reactive({ path: '/describe' })
+
+vi.mock('vue-router', () => ({ useRoute: () => route }))
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
@@ -37,14 +42,16 @@ function reads(wrapper) {
 function mountBar(state = {}) {
   const project = useProjectStore()
   project.store = CONFIGURED
-  project.storeStatus = { state: 'reachable', reason: '' }
+  project.storeStatus = { state: 'reachable', reason: '', checking: false }
   Object.assign(project, state)
+  vi.spyOn(project, 'refreshStoreStatus').mockResolvedValue()
   return { wrapper: mount(ProjectStatusBar), project }
 }
 
 describe('ProjectStatusBar', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    route.path = '/describe'
   })
 
   it('names the RDF store and its repository, and says it is connected', () => {
@@ -62,13 +69,52 @@ describe('ProjectStatusBar', () => {
 
   it('shows a store that cannot be reached, with the reason on hover', () => {
     const { wrapper } = mountBar({
-      storeStatus: { state: 'unreachable', reason: 'The store has no repository named \'aya\'.' },
+      storeStatus: {
+        state: 'unreachable',
+        reason: 'The store has no repository named \'aya\'.',
+        checking: false,
+      },
     })
     const storePart = wrapper.find('#statusbar-store')
 
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-unreachable')
     expect(wrapper.find('#statusbar-connection').text()).toMatch(/Not connected$/)
     expect(storePart.attributes('title')).toContain("no repository named 'aya'")
+  })
+
+  it('checks the connection again on a click', async () => {
+    const { wrapper, project } = mountBar()
+
+    const button = wrapper.find('#statusbar-connection')
+    expect(button.element.tagName).toBe('BUTTON')
+    expect(button.attributes('title')).toBe('Check the connection again')
+    await button.trigger('click')
+
+    expect(project.refreshStoreStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('checks the connection again on every step, but not before the first', async () => {
+    const { project } = mountBar()
+    await flushPromises()
+    expect(project.refreshStoreStatus).not.toHaveBeenCalled()
+
+    route.path = '/annotate'
+    await flushPromises()
+    route.path = '/share'
+    await flushPromises()
+
+    expect(project.refreshStoreStatus).toHaveBeenCalledTimes(2)
+  })
+
+  it('pulses the dot while a check is under way, keeping the last answer', () => {
+    const { wrapper } = mountBar({
+      storeStatus: { state: 'reachable', reason: '', checking: true },
+    })
+
+    expect(wrapper.find('.statusbar-dot').classes()).toEqual(
+      expect.arrayContaining(['is-reachable', 'is-checking'])
+    )
+    expect(wrapper.find('#statusbar-connection').text()).toMatch(/Connected$/)
   })
 
   it('lines up with the page content, not the step bar', () => {
@@ -95,7 +141,10 @@ describe('ProjectStatusBar', () => {
   })
 
   it('says when it has not heard from the server yet', () => {
-    const { wrapper } = mountBar({ store: null, storeStatus: { state: 'unknown', reason: '' } })
+    const { wrapper } = mountBar({
+      store: null,
+      storeStatus: { state: 'unknown', reason: '', checking: false },
+    })
     const storePart = wrapper.find('#statusbar-store')
 
     expect(reads(storePart)).toBe('RDF store · Connection to the store: Checking…')

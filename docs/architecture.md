@@ -104,12 +104,12 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 | `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use |
 | `DELETE /api/v1/project` | Work without a project again |
 | `POST /api/v1/project/check` | What opening a map would mean (can it be opened, which project, which store), changing nothing |
-| `GET /api/v1/project/store-status` | Whether the store in use answers one short `ASK`, and if not, why |
+| `GET /api/v1/project/store-status` | Whether the store in use answers one short `ASK`, and if not, why; the status bar asks every minute while its tab is visible |
 | `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB) |
 
 Two maps belong to the same project when their `schema` sections do: the same `schema.@id` when both have one, else the same `schema.name`. On every change of project, the server forgets the session state worked out for the previous map (the annotation status, pasted LLM answers, suggestion jobs, the describe answers the forms posted); on a change of store, also what it knew of the previous store's databases. The data in the stores is never touched.
 
-gunicorn runs one worker with `--preload` and replaces it every thousand or so requests; a new worker starts from the app as it was built. The open project is therefore also written to `state/open_project.json` beside the package (outside `static/`, readable by the app only, as an endpoint may carry credentials), and every request first catches up with that file (`ProjectService.sync`, one `stat` when nothing changed). When the container itself is recreated the file is gone, and the browser sends its project again, under the same token, the next time Flyover opens.
+gunicorn runs one worker with `--preload` and replaces it every thousand or so requests (the status bar's check adds about 60 an hour per visible tab); a new worker starts from the app as it was built, without the session's in-memory state. The open project is therefore also written to `state/open_project.json` beside the package (outside `static/`, readable by the app only, as an endpoint may carry credentials), and every request first catches up with that file (`ProjectService.sync`, one `stat` when nothing changed). When the container itself is recreated the file is gone, and the browser sends its project again, under the same token, the next time Flyover opens.
 
 ## What is `userRepo`?
 

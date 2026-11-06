@@ -157,6 +157,7 @@ describe('ProjectPicker', () => {
   afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
+    useProjectStore().stopStatusChecks()
     vi.unstubAllGlobals()
   })
 

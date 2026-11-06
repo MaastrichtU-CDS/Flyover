@@ -1,15 +1,27 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from '@/stores/project'
 
 // The strip above the step bar: which RDF store Flyover works on (and
 // whether it answers), which project is open, and the way to switch.
+// Whether the store answers is asked again on every step, every minute
+// while the tab is visible (see the project store), and on a click.
 
 const projectStore = useProjectStore()
+const route = useRoute()
 const { store, storeStatus, project, name, version } = storeToRefs(projectStore)
 
-const dotClass = computed(() => `is-${storeStatus.value.state}`)
+const dotClass = computed(() => [
+  `is-${storeStatus.value.state}`,
+  { 'is-checking': storeStatus.value.checking },
+])
+
+watch(
+  () => route.path,
+  () => projectStore.refreshStoreStatus()
+)
 
 // Said in words too, so the state never rests on the dot's colour alone.
 const connectionLabel = computed(
@@ -67,9 +79,12 @@ const projectTitle = computed(() => {
           · <strong>{{ store.repository }}</strong>
         </template>
         <span aria-hidden="true">·</span>
-        <span
+        <button
           id="statusbar-connection"
+          type="button"
           class="statusbar-connection"
+          title="Check the connection again"
+          @click="projectStore.refreshStoreStatus()"
         >
           <span
             class="statusbar-dot"
@@ -78,7 +93,7 @@ const projectTitle = computed(() => {
           />
           <span class="sr-only">Connection to the store:</span>
           {{ connectionLabel }}
-        </span>
+        </button>
       </span>
       <span
         id="statusbar-project"
@@ -166,6 +181,18 @@ const projectTitle = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.statusbar-connection:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* A thin dark edge sets the dot off the purple without the whitish halo a

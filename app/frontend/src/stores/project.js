@@ -35,6 +35,10 @@ const STORE_ROWS = [
 const WITHOUT_PROJECT = 'flyover.project.withoutProject'
 const NOTICE = 'flyover.project.notice'
 const CHANNEL = 'flyover-project'
+// How often the status bar asks whether the store answers while the tab is
+// visible. A hidden tab does not ask, and asks as soon as it is shown again
+// when a check is due. Each check is one short request.
+export const STORE_CHECK_INTERVAL_MS = 60_000
 
 function now() {
   return new Date().toISOString()
@@ -80,7 +84,9 @@ export const useProjectStore = defineStore('project', () => {
   // The store the app works on, and the one working without a project uses.
   const store = ref(null)
   const configuredStore = ref(null)
-  const storeStatus = ref({ state: 'unknown', reason: '' })
+  // The store's last answer (state: unknown | reachable | unreachable) and
+  // whether a check is under way.
+  const storeStatus = ref({ state: 'unknown', reason: '', checking: false })
   const picker = ref({ open: false, mode: 'startup' })
   // The question an upload in a step raises, while it waits for the user:
   // { kind, check, fileName, edited } (see planUpload).
@@ -91,6 +97,8 @@ export const useProjectStore = defineStore('project', () => {
   let serverToken = null
   let channel = null
   let statusRequest = 0
+  let lastStatusCheck = 0
+  let statusTimer = null
 
   const name = computed(() => (project.value ? projectName(project.value) : ''))
   const version = computed(() => (project.value ? projectVersion(project.value) : ''))
@@ -233,22 +241,58 @@ export const useProjectStore = defineStore('project', () => {
     if (!project.value && !tabSetting(WITHOUT_PROJECT)) openPicker('startup')
     listenToOtherTabs()
     refreshStoreStatus()
+    startStatusChecks()
   }
 
+  // Ask whether the store answers. Until the answer arrives, the last one
+  // stays shown; only the newest of overlapping checks counts.
   async function refreshStoreStatus() {
     const request = ++statusRequest
-    storeStatus.value = { state: 'checking', reason: '' }
+    lastStatusCheck = Date.now()
+    storeStatus.value = { ...storeStatus.value, checking: true }
     try {
       const { data } = await api.get('/api/v1/project/store-status')
       if (request !== statusRequest) return
       storeStatus.value = {
         state: data?.reachable ? 'reachable' : 'unreachable',
         reason: data?.reason || '',
+        checking: false,
       }
       if (data?.store) store.value = data.store
     } catch {
       if (request !== statusRequest) return
-      storeStatus.value = { state: 'unreachable', reason: 'Flyover could not check the store.' }
+      storeStatus.value = {
+        state: 'unreachable',
+        reason: 'Flyover could not check the store.',
+        checking: false,
+      }
+    }
+  }
+
+  function tabHidden() {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+  }
+
+  function checkIfDue() {
+    if (!tabHidden() && Date.now() - lastStatusCheck >= STORE_CHECK_INTERVAL_MS) {
+      refreshStoreStatus()
+    }
+  }
+
+  // Check the store every minute while the tab is visible.
+  function startStatusChecks() {
+    if (statusTimer || typeof document === 'undefined') return
+    statusTimer = setInterval(() => {
+      if (!tabHidden()) refreshStoreStatus()
+    }, STORE_CHECK_INTERVAL_MS)
+    document.addEventListener('visibilitychange', checkIfDue)
+  }
+
+  function stopStatusChecks() {
+    if (statusTimer) clearInterval(statusTimer)
+    statusTimer = null
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', checkIfDue)
     }
   }
 
@@ -453,6 +497,7 @@ export const useProjectStore = defineStore('project', () => {
     init,
     load,
     refreshStoreStatus,
+    stopStatusChecks,
     openProject,
     leaveProject,
     continueWithoutProject,
