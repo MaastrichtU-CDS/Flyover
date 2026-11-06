@@ -72,6 +72,14 @@ EXPECTED_ROUTES = {
     ("POST", "/api/v1/project/check"),
     ("GET", "/api/v1/project/store-status"),
     ("POST", "/api/v1/project/fetch-map"),
+    # store_controller
+    ("GET", "/api/v1/store/datasets"),
+    ("DELETE", "/api/v1/store/datasets"),
+    ("GET", "/api/v1/store/export"),
+    ("DELETE", "/api/v1/store/datasets/<name>"),
+    ("GET", "/api/v1/store/datasets/<name>/export"),
+    ("DELETE", "/api/v1/store/annotations"),
+    ("GET", "/api/v1/store/annotations/export"),
     # app_factory: the built SPA and Flask's static folder
     ("GET", "/"),
     ("GET", "/<path:subpath>"),
@@ -85,6 +93,8 @@ _EXAMPLE_PATHS = {
     "/api/v1/suggestions/<phase>/priority": "/api/v1/suggestions/values/priority",
     "/api/v1/suggestions/<phase>/ingest": "/api/v1/suggestions/values/ingest",
     "/<path:subpath>": "/describe/variables",
+    "/api/v1/store/datasets/<name>": "/api/v1/store/datasets/patients",
+    "/api/v1/store/datasets/<name>/export": "/api/v1/store/datasets/patients/export",
     "/static/<path:filename>": "/static/favicon.ico",
 }
 

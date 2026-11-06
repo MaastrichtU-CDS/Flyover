@@ -32,12 +32,14 @@ from controllers import (
     ingest_bp,
     project_bp,
     share_bp,
+    store_bp,
     suggestions_bp,
 )
 from services.describe_service import DescribeService
 from services.ingest_service import IngestService
 from services.project_service import ProjectService, fetch_map
 from services.rdf_store_service import RDFStoreService
+from services.store_datasets import StoreDatasets
 from services.store_selection import (
     SelectedStoreService,
     StoreAddress,
@@ -315,6 +317,8 @@ def build_app_context(
             get_semantic_map_for_annotation(sc, database_key)
         ),
         "fetch_map": fetch_map,
+        # The datasets of a store (a store service), for the status bar's panel.
+        "store_datasets": lambda store: StoreDatasets(store.rdf_store_url, store.repo),
     }
 
     unknown = set(overrides) - set(context)
@@ -440,6 +444,7 @@ def create_app(
         share_bp,
         suggestions_bp,
         project_bp,
+        store_bp,
     ):
         app.register_blueprint(blueprint)
     _register_spa(app, spa_dir)

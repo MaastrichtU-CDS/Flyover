@@ -12,6 +12,7 @@ from .annotate_controller import annotate_bp
 from .share_controller import share_bp
 from .suggestions_controller import suggestions_bp
 from .project_controller import project_bp
+from .store_controller import store_bp
 
 __all__ = [
     "ingest_bp",
@@ -20,4 +21,5 @@ __all__ = [
     "share_bp",
     "suggestions_bp",
     "project_bp",
+    "store_bp",
 ]
