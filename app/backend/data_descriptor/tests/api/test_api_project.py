@@ -15,6 +15,7 @@ import stat
 import pytest
 
 from app_factory import create_app
+from services.project_service import MapFetchError
 from services.store_selection import LOCALHOST_NOTE
 from tests.api.support import REPO, STORE_URL, build_api_app, valid_mapping
 
@@ -515,3 +516,70 @@ class TestTheStoreStatus:
 
         assert body["store"]["url"] == f"{PROJECT_STORE}/repositories/userRepo"
         assert body["store"]["source"] == "project"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/project/fetch-map
+# ---------------------------------------------------------------------------
+
+MAP_URL = "https://example.org/projects/aya.jsonld"
+
+
+class TestFetchingAMap:
+    @pytest.mark.route("POST", "/api/v1/project/fetch-map", "success")
+    def test_the_map_at_the_address_comes_back_unopened(
+        self, client, helpers, session_cache, selection
+    ):
+        helpers["fetch_map"].return_value = (valid_mapping(), "aya.jsonld")
+
+        response = client.post(
+            "/api/v1/project/fetch-map", json={"url": f"  {MAP_URL}  "}
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "mapping": valid_mapping(),
+            "fileName": "aya.jsonld",
+            "sourceUrl": MAP_URL,
+        }
+        helpers["fetch_map"].assert_called_once_with(f"  {MAP_URL}  ")
+        assert session_cache.jsonld_mapping is None
+        assert selection.current == selection.configured
+
+    @pytest.mark.route("POST", "/api/v1/project/fetch-map", "failure")
+    @pytest.mark.parametrize("body", [{}, {"url": ""}, {"url": "  "}, {"url": 7}])
+    def test_a_body_without_an_address_is_refused(self, client, helpers, body):
+        response = client.post("/api/v1/project/fetch-map", json=body)
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            "error": "No address was sent: the body needs a 'url'."
+        }
+        helpers["fetch_map"].assert_not_called()
+
+    @pytest.mark.parametrize(
+        "error, status",
+        [
+            (MapFetchError("Give a web address ...", upstream=False), 400),
+            (MapFetchError("The address answered with HTTP 404."), 502),
+        ],
+    )
+    def test_a_map_that_cannot_be_fetched_says_why(
+        self, client, helpers, error, status
+    ):
+        helpers["fetch_map"].side_effect = error
+
+        response = client.post("/api/v1/project/fetch-map", json={"url": MAP_URL})
+
+        assert response.status_code == status
+        assert response.get_json() == {"error": error.message}
+
+    def test_another_site_cannot_make_flyover_fetch_an_address(self, client, helpers):
+        response = client.post(
+            "/api/v1/project/fetch-map",
+            json={"url": MAP_URL},
+            headers={"Origin": "https://evil.example"},
+        )
+
+        assert response.status_code == 403
+        helpers["fetch_map"].assert_not_called()

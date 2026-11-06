@@ -31,6 +31,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import unquote, urlsplit
+
+import requests
 
 from loaders import JSONLDMapping
 from services.store_selection import StoreAddress, StoreSelection, store_for_endpoint
@@ -329,3 +332,85 @@ class ProjectService:
         except FileNotFoundError:
             pass
         self._seen = None
+
+
+# ---------------------------------------------------------------------------
+# A project's map from a web address
+# ---------------------------------------------------------------------------
+
+# A map of a few hundred variables is well under a megabyte.
+MAX_FETCHED_MAP_BYTES = 20 * 1024 * 1024
+# Seconds to connect, and to wait between bytes once connected.
+FETCH_TIMEOUT = (5, 30)
+FETCH_ACCEPT = "application/ld+json, application/json;q=0.9, */*;q=0.1"
+NOT_JSON_HINT = (
+    "If the file is on GitHub or a similar site, use the address of its " "raw version."
+)
+
+
+class MapFetchError(Exception):
+    """A map that could not be fetched, with the reason for the user."""
+
+    def __init__(self, message: str, *, upstream: bool = True):
+        super().__init__(message)
+        self.message = message
+        # False when the address itself is unusable, True when fetching failed.
+        self.upstream = upstream
+
+
+def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
+    """The JSON-LD map at ``url``, and a file name to show for it.
+
+    The server fetches the map, not the browser: a browser may only read
+    another site's file when that site allows it, which institutional
+    servers often do not. Only http(s) is fetched, with time and size
+    limits; what comes back still has to pass the project check.
+
+    Raises:
+        MapFetchError: the address is unusable, could not be fetched, or
+            did not return a JSON object.
+    """
+    url = (url or "").strip()
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise MapFetchError(
+            "Give a web address that starts with http:// or https://.",
+            upstream=False,
+        )
+    try:
+        with requests.get(
+            url, timeout=FETCH_TIMEOUT, stream=True, headers={"Accept": FETCH_ACCEPT}
+        ) as response:
+            if response.status_code != 200:
+                raise MapFetchError(
+                    f"The address answered with HTTP {response.status_code}."
+                )
+            declared = response.headers.get("Content-Length", "")
+            if declared.isdigit() and int(declared) > MAX_FETCHED_MAP_BYTES:
+                raise _too_large()
+            received = bytearray()
+            for chunk in response.iter_content(64 * 1024):
+                received.extend(chunk)
+                if len(received) > MAX_FETCHED_MAP_BYTES:
+                    raise _too_large()
+    except requests.Timeout:
+        raise MapFetchError("The address did not answer in time.") from None
+    except requests.RequestException as error:
+        # The error repeats the URL, which may carry credentials.
+        logger.info("Fetching a map failed (%s)", type(error).__name__)
+        raise MapFetchError("Flyover could not reach that address.") from None
+    try:
+        mapping = json.loads(bytes(received).decode("utf-8-sig"))
+    except (UnicodeDecodeError, ValueError):
+        raise MapFetchError(
+            f"What that address returned is not JSON. {NOT_JSON_HINT}"
+        ) from None
+    if not isinstance(mapping, dict):
+        raise MapFetchError("What that address returned is not a JSON-LD map.")
+    file_name = os.path.basename(unquote(parts.path)) or "map.jsonld"
+    return mapping, file_name
+
+
+def _too_large() -> MapFetchError:
+    limit = MAX_FETCHED_MAP_BYTES // (1024 * 1024)
+    return MapFetchError(f"The file at that address is larger than {limit} MB.")

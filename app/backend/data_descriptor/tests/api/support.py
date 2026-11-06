@@ -86,6 +86,7 @@ HELPER_NAMES = (
     "get_table_names",
     "name_matcher",
     "get_semantic_map",
+    "fetch_map",
 )
 
 ROUTE_OUTCOMES = ("success", "failure")
@@ -255,6 +256,7 @@ def make_helper_doubles(reference: Dict[str, Any]) -> Dict[str, Any]:
         map_db == target_db
     )
     helpers["get_semantic_map"].return_value = (None, None, False)
+    helpers["fetch_map"].return_value = (valid_mapping(), "map.jsonld")
     return helpers
 
 

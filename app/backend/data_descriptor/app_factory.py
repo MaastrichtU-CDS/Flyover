@@ -36,7 +36,7 @@ from controllers import (
 )
 from services.describe_service import DescribeService
 from services.ingest_service import IngestService
-from services.project_service import ProjectService
+from services.project_service import ProjectService, fetch_map
 from services.rdf_store_service import RDFStoreService
 from services.store_selection import (
     SelectedStoreService,
@@ -300,6 +300,7 @@ def build_app_context(
         "get_semantic_map": lambda sc, database_key=None: (
             get_semantic_map_for_annotation(sc, database_key)
         ),
+        "fetch_map": fetch_map,
     }
 
     unknown = set(overrides) - set(context)

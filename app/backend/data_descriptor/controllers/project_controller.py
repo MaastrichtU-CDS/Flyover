@@ -12,14 +12,16 @@ without one. Routes are the ``/api/v1/project`` surface:
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
   nothing, so the browser can ask the user before it switches;
 - ``GET /api/v1/project/store-status``: whether the store in use answers,
-  for the status bar's dot.
+  for the status bar's dot;
+- ``POST /api/v1/project/fetch-map``: a map from a web address, fetched by
+  the server, for the pop-up to check and open like an uploaded file.
 """
 
 import logging
 
 from flask import Blueprint, current_app, jsonify
 
-from services.project_service import ProjectError
+from services.project_service import MapFetchError, ProjectError
 from utils.mapping_request import json_object_body
 
 logger = logging.getLogger(__name__)
@@ -114,3 +116,24 @@ def store_status():
         logger.warning("Checking the store failed", exc_info=True)
         reachable, reason = False, "Flyover could not check the store."
     return jsonify({"reachable": reachable, "reason": reason, "store": store})
+
+
+@project_bp.route("/api/v1/project/fetch-map", methods=["POST"])
+def fetch_project_map():
+    """Fetch the map at the posted address: ``{"url": "https://..."}``.
+
+    Answers ``{"mapping": {...}, "fileName": "...", "sourceUrl": "..."}``.
+    Nothing is opened: the browser checks and opens the map as it would an
+    uploaded file. An unusable address is a 400; an address that could not
+    be fetched, or did not return a map, a 502.
+    """
+    url = json_object_body().get("url")
+    if not isinstance(url, str) or not url.strip():
+        return jsonify({"error": "No address was sent: the body needs a 'url'."}), 400
+    try:
+        mapping, file_name = _context()["fetch_map"](url)
+    except MapFetchError as error:
+        return jsonify({"error": error.message}), (502 if error.upstream else 400)
+    return jsonify(
+        {"mapping": mapping, "fileName": file_name, "sourceUrl": url.strip()}
+    )
