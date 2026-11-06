@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { watchConsoleErrors, DEFAULT_MAPPING_JSONLD } from './helpers/ingest.js'

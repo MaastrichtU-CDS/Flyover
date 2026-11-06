@@ -28,6 +28,12 @@ const CONFIGURED = {
   note: '',
 }
 
+// The text as it reads: the separators sit between flex items, so the
+// template's spaces around them are not kept.
+function reads(wrapper) {
+  return wrapper.text().replace(/\s*·\s*/g, ' · ').replace(/\s+/g, ' ').trim()
+}
+
 function mountBar(state = {}) {
   const project = useProjectStore()
   project.store = CONFIGURED
@@ -89,12 +95,23 @@ describe('ProjectStatusBar', () => {
     expect(storePart.attributes('title')).toBe('Flyover has not heard from the server yet.')
   })
 
-  it('shows "No project" without one', () => {
-    const { wrapper } = mountBar()
+  it('shows "No project" without one, and the way to choose one', async () => {
+    const { wrapper, project } = mountBar()
     const projectPart = wrapper.find('#statusbar-project')
 
-    expect(projectPart.text()).toBe('No project')
+    expect(reads(projectPart)).toBe('No project · Choose a project')
     expect(projectPart.attributes('title')).toContain('the standard RDF flow')
+
+    await wrapper.find('#statusbar-switch').trigger('click')
+    expect(project.picker).toEqual({ open: true, mode: 'switch' })
+  })
+
+  it('offers to switch an open project', async () => {
+    const { wrapper, project } = mountBar({ project: { name: 'AYA mapping' } })
+
+    expect(wrapper.find('#statusbar-switch').text()).toBe('Switch project')
+    await wrapper.find('#statusbar-switch').trigger('click')
+    expect(project.picker.open).toBe(true)
   })
 
   it('names the open project with its version, and tells more on hover', () => {
@@ -110,7 +127,7 @@ describe('ProjectStatusBar', () => {
     })
     const projectPart = wrapper.find('#statusbar-project')
 
-    expect(projectPart.text()).toMatch(/^Project: AYA mapping\s+· v1\.2\.0$/)
+    expect(reads(projectPart)).toBe('Project: AYA mapping · v1.2.0 · Switch project')
     expect(projectPart.attributes('title')).toBe(
       'AYA mapping · v1.2.0\nCentre A\nSchema: AYA schema\nFile: aya.jsonld'
     )
@@ -127,7 +144,7 @@ describe('ProjectStatusBar', () => {
     })
     const projectPart = wrapper.find('#statusbar-project')
 
-    expect(projectPart.text()).toBe('Project: AYA schema')
+    expect(reads(projectPart)).toBe('Project: AYA schema · Switch project')
     expect(projectPart.attributes('title')).toContain('From: https://example.org/aya.jsonld')
   })
 })

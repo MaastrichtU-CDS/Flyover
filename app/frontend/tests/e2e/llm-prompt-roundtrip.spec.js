@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures.js'
 import fs from 'node:fs/promises'
 import { DEFAULT_MAPPING_JSONLD, runIngestFlow, watchConsoleErrors } from './helpers/ingest.js'
 import {

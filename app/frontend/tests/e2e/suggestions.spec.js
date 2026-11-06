@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures.js'
 import { watchConsoleErrors } from './helpers/ingest.js'
 import {
   disableSuggestionsViaStatus,

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures.js'
 import { watchConsoleErrors } from './helpers/ingest.js'
 
 // Share-publish is mostly an informational landing page (codebook + DCAT-AP).

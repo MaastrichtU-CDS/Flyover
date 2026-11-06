@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useProjectStore } from '@/stores/project'
 
 // The strip above the step bar: which RDF store Flyover works on (and
-// whether it answers), and which project is open.
+// whether it answers), which project is open, and the way to switch.
 
 const projectStore = useProjectStore()
 const { store, storeStatus, project, name, version } = storeToRefs(projectStore)
@@ -89,6 +89,15 @@ const projectTitle = computed(() => {
         <template v-else>
           No project
         </template>
+        <span aria-hidden="true">·</span>
+        <button
+          id="statusbar-switch"
+          type="button"
+          class="statusbar-link"
+          @click="projectStore.openPicker('switch')"
+        >
+          {{ project ? 'Switch project' : 'Choose a project' }}
+        </button>
       </span>
     </div>
   </div>
@@ -122,6 +131,27 @@ const projectTitle = computed(() => {
 
 .statusbar-item strong {
   color: #fff;
+}
+
+.statusbar-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.statusbar-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.statusbar-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .statusbar-dot {

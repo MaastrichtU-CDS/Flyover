@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import AppNav from '@/components/AppNav.vue'
 import AppFooter from '@/components/AppFooter.vue'
+import ProjectPicker from '@/components/ProjectPicker.vue'
 import ProjectStatusBar from '@/components/ProjectStatusBar.vue'
 import StatusBanner from '@/components/StatusBanner.vue'
 import { useProjectStore } from '@/stores/project'
@@ -24,5 +25,6 @@ onMounted(() => {
       </div>
     </main>
     <AppFooter />
+    <ProjectPicker />
   </div>
 </template>
