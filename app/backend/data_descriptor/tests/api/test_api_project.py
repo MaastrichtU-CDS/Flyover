@@ -29,6 +29,13 @@ CONFIGURED_STORE = {
 }
 
 
+NO_PROJECT = {
+    "project": None,
+    "store": CONFIGURED_STORE,
+    "configuredStore": CONFIGURED_STORE,
+}
+
+
 def _put(client, mapping=None, **fields):
     body = {"mapping": valid_mapping() if mapping is None else mapping, **fields}
     return client.put("/api/v1/project", json=body)
@@ -64,7 +71,7 @@ class TestTheOpenProject:
         response = client.get("/api/v1/project")
 
         assert response.status_code == 200
-        assert response.get_json() == {"project": None, "store": CONFIGURED_STORE}
+        assert response.get_json() == NO_PROJECT
 
     def test_an_open_project_is_described_with_its_store(self, client):
         _put(client, fileName="aya.jsonld", token="browser-token-1")
@@ -90,6 +97,8 @@ class TestTheOpenProject:
             "source": "project",
             "note": "",
         }
+        # Working without a project would mean the configured store.
+        assert described["configuredStore"] == CONFIGURED_STORE
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +308,7 @@ class TestClosingTheProject:
         response = client.delete("/api/v1/project")
 
         assert response.status_code == 200
-        assert response.get_json() == {"project": None, "store": CONFIGURED_STORE}
+        assert response.get_json() == NO_PROJECT
         assert session_cache.jsonld_mapping is None
         assert session_cache.annotation_status is None
         assert session_cache.repo == REPO
@@ -314,7 +323,7 @@ class TestClosingTheProject:
 
         response = client.delete("/api/v1/project")
 
-        assert response.get_json() == {"project": None, "store": CONFIGURED_STORE}
+        assert response.get_json() == NO_PROJECT
         assert session_cache.jsonld_mapping == "a map the annotate upload set"
         assert session_cache.annotation_status == {"patients.age": {"success": True}}
 
@@ -407,7 +416,7 @@ class TestAProjectOutlivesItsWorker:
         closed = other_worker.test_client().get("/api/v1/project").get_json()
 
         assert opened["project"]["token"] == "t1"
-        assert closed == {"project": None, "store": CONFIGURED_STORE}
+        assert closed == NO_PROJECT
 
     def test_a_state_file_that_cannot_be_read_means_no_project(
         self, doubles, spa_dir, state_file, caplog
@@ -419,7 +428,7 @@ class TestAProjectOutlivesItsWorker:
         restarted = create_app(doubles.settings, spa_dir=str(spa_dir))
 
         described = restarted.test_client().get("/api/v1/project").get_json()
-        assert described == {"project": None, "store": CONFIGURED_STORE}
+        assert described == NO_PROJECT
         assert "could not be restored" in caplog.text
 
     @pytest.mark.parametrize(
@@ -445,7 +454,7 @@ class TestAProjectOutlivesItsWorker:
 
         assert restarted.config["APP_CONTEXT"]["project_service"].project is None
         described = restarted.test_client().get("/api/v1/project").get_json()
-        assert described == {"project": None, "store": CONFIGURED_STORE}
+        assert described == NO_PROJECT
 
     def test_an_app_with_its_own_project_service_uses_it(self, doubles, spa_dir):
         class Recording:
@@ -456,7 +465,7 @@ class TestAProjectOutlivesItsWorker:
                 self.synced += 1
 
             def describe(self):
-                return {"project": None, "store": {}}
+                return {"project": None, "store": {}, "configuredStore": {}}
 
         service = Recording()
         app = build_api_app(doubles, spa_dir, {"project_service": service})

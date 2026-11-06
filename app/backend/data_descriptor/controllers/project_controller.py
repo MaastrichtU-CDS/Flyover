@@ -6,7 +6,8 @@ start-up pop-up, switches through the status bar, or accepts the offer an
 upload in a step makes; it closes the project when the user continues
 without one. Routes are the ``/api/v1/project`` surface:
 
-- ``GET /api/v1/project``: the open project (or none) and the store in use;
+- ``GET /api/v1/project``: the open project (or none), the store in use and
+  the configured store (the one working without a project uses);
 - ``PUT /api/v1/project``: open a map as the project, replacing any other;
 - ``DELETE /api/v1/project``: work without a project again;
 - ``POST /api/v1/project/check``: what opening a map would mean, changing

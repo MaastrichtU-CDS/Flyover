@@ -141,10 +141,15 @@ class ProjectService:
         return self._project
 
     def describe(self) -> Dict[str, Any]:
-        """The open project (None without one) and the store the app is on."""
+        """The open project (None without one) and the store the app is on.
+
+        ``configuredStore`` is the store working without a project uses, so
+        the browser can say so while a project's own store is in use.
+        """
         return {
             "project": self._project.describe() if self._project else None,
             "store": self._selection.current.describe(),
+            "configuredStore": self._selection.configured.describe(),
         }
 
     def check(self, mapping: Any, file_name: str = "") -> Dict[str, Any]:
