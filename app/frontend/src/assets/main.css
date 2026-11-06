@@ -18,3 +18,77 @@ body {
   color: #888;
   font-style: italic;
 }
+
+/* Tooltips, as the home page's step tiles show them: dark and rounded, small
+   white text, an arrow pointing at what they explain. Above their anchor by
+   default; .is-below puts one under it, .is-start and .is-end line it up
+   with the anchor's left or right edge, and .is-wrapping lets longer text
+   wrap. The anchor needs position: relative. */
+.bootstrap-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  z-index: 1080;
+  line-height: 1.5;
+}
+
+.bootstrap-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0.4rem 0.4rem 0;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.9) transparent transparent;
+}
+
+.bootstrap-tooltip.is-below {
+  top: 100%;
+  bottom: auto;
+  margin-top: 0.45rem;
+}
+
+.bootstrap-tooltip.is-below::after {
+  top: auto;
+  bottom: 100%;
+  border-width: 0 0.4rem 0.4rem;
+  border-color: transparent transparent rgba(0, 0, 0, 0.9);
+}
+
+.bootstrap-tooltip.is-start {
+  left: 0;
+  transform: none;
+}
+
+.bootstrap-tooltip.is-start::after {
+  left: 0.75rem;
+  transform: none;
+}
+
+.bootstrap-tooltip.is-end {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.bootstrap-tooltip.is-end::after {
+  left: auto;
+  right: 0.75rem;
+  transform: none;
+}
+
+.bootstrap-tooltip.is-wrapping {
+  width: max-content;
+  max-width: min(26rem, calc(100vw - 2rem));
+  white-space: pre-line;
+  text-align: left;
+}

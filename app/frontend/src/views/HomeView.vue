@@ -195,35 +195,9 @@ function open(card) {
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
-/* Custom tooltip for disabled cards */
+/* The tooltip for disabled cards (.bootstrap-tooltip, in assets/main.css)
+   sits above the card. */
 .card-container {
   position: relative;
-}
-
-.bootstrap-tooltip {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 0;
-  padding: 0.25rem 0.5rem;
-  background-color: rgba(0, 0, 0, 0.9);
-  color: #fff;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  white-space: nowrap;
-  z-index: 1080;
-  line-height: 1.5;
-}
-
-.bootstrap-tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border-width: 0.4rem 0.4rem 0;
-  border-style: solid;
-  border-color: rgba(0, 0, 0, 0.9) transparent transparent;
 }
 </style>
