@@ -432,12 +432,6 @@ class TestOrphanCheckOnMalformedShapes:
         assert body["csv_checked"] is True
         assert body["validation_warnings"] == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="MappingValidator._collect_statistics calls .values() on `databases` and `tables` "
-        "before the schema verdict is used, so a list in either place raises AttributeError and "
-        "the validate endpoint answers 500 instead of a validation error",
-    )
     @pytest.mark.parametrize(
         "databases",
         [["not", "a", "dict"], {"db": {"name": TABLE, "tables": ["not", "a", "dict"]}}],

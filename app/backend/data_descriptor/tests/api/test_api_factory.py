@@ -248,20 +248,33 @@ class TestTheDefaultHelpers:
     ):
         assert wiring["context"]["name_matcher"](map_db, target) is expected
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect (pinned by the integration layer too): formulate_local_map "
-        "passes only the database to DescribeService.formulate_local_semantic_map, "
-        "whose signature is (global_semantic_map, database, descriptive_info=None)",
-    )
     def test_the_local_map_is_formulated_from_the_legacy_map_and_the_database(
         self, wiring
     ):
+        session_cache = wiring["context"]["session_cache"]
+        session_cache.global_semantic_map = {"database_name": "template"}
+        session_cache.descriptive_info = {
+            "patients": {"age": {"description": "Variable description: Age"}},
+            "visits": {},
+        }
+
         # The autospecced service refuses a call that misses an argument.
         wiring["context"]["formulate_local_map"]("patients")
 
+        wiring["describe"].formulate_local_semantic_map.assert_called_once_with(
+            {"database_name": "template"},
+            "patients",
+            {"age": {"description": "Variable description: Age"}},
+        )
+
+    def test_a_database_not_described_yet_gets_no_descriptions(self, wiring):
+        session_cache = wiring["context"]["session_cache"]
+        session_cache.global_semantic_map = {"database_name": "template"}
+
+        wiring["context"]["formulate_local_map"]("patients")
+
         call = wiring["describe"].formulate_local_semantic_map.call_args
-        assert call.args[1] == "patients"
+        assert call.args[2] is None
 
 
 class TestTheGunicornEntryPoint:

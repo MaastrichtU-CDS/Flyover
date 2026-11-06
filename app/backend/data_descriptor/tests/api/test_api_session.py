@@ -233,14 +233,6 @@ def _run(target, *args):
 
 
 class TestConcurrentRequests:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="defect: /start-annotation swaps a filtered map into the shared "
-        "session and restores 'the original' afterwards; when two filtered runs "
-        "overlap, the second saves the first's filter as its original and puts "
-        "it back last, so a filtered map stays in the session for good (the "
-        "Share page then exports it)",
-    )
     def test_overlapping_filtered_runs_leave_the_session_map_in_place(
         self, app, session_cache, helpers, store, annotate_service
     ):
@@ -253,10 +245,10 @@ class TestConcurrentRequests:
 
         def prepare(databases, cache, *rest):
             calls.append(cache.jsonld_mapping.name)
-            if len(calls) == 1:  # run A: hold until run B has applied its filter
+            if len(calls) == 1:  # run A: hold until run B is preparing too
                 a_preparing.set()
                 b_preparing.wait(timeout=5)
-            else:  # run B: hold until run A has finished and restored its map
+            else:  # run B: hold until run A has finished
                 b_preparing.set()
                 a_done.wait(timeout=5)
             return {}
