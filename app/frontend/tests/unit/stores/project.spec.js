@@ -741,6 +741,31 @@ describe('the project store', () => {
     })
   })
 
+  describe('a store that comes back', () => {
+    it('makes the step bar ask again which steps have data', async () => {
+      serve({ reachable: false })
+      const project = useProjectStore()
+      await project.init()
+      refreshDataExists.mockClear()
+
+      serve({ reachable: true })
+      await project.refreshStoreStatus()
+
+      expect(project.storeStatus.state).toBe('reachable')
+      expect(refreshDataExists).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves the step bar alone while nothing changed', async () => {
+      const project = useProjectStore()
+      await project.init()
+      refreshDataExists.mockClear()
+
+      await project.refreshStoreStatus()
+
+      expect(refreshDataExists).not.toHaveBeenCalled()
+    })
+  })
+
   describe('checking the store again', () => {
     function statusChecks() {
       return api.get.mock.calls.filter(([url]) => url === '/api/v1/project/store-status').length

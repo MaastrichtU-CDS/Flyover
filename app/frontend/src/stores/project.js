@@ -250,6 +250,7 @@ export const useProjectStore = defineStore('project', () => {
     const request = ++statusRequest
     lastStatusCheck = Date.now()
     storeStatus.value = { ...storeStatus.value, checking: true }
+    const before = storeStatus.value.state
     try {
       const { data } = await api.get('/api/v1/project/store-status')
       if (request !== statusRequest) return
@@ -267,6 +268,9 @@ export const useProjectStore = defineStore('project', () => {
         checking: false,
       }
     }
+    // A store that came back (or went) changes which steps have data to work
+    // on: the step bar asks again.
+    if (before !== 'unknown' && storeStatus.value.state !== before) refreshDataExists()
   }
 
   function tabHidden() {
