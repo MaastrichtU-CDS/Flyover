@@ -22,7 +22,7 @@ from typing import Any, Dict, Mapping, Optional
 from urllib.parse import urlsplit
 
 import gevent
-from flask import Flask, abort, request, send_from_directory
+from flask import Flask, abort, current_app, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import safe_join
 
@@ -30,11 +30,13 @@ from controllers import (
     annotate_bp,
     describe_bp,
     ingest_bp,
+    project_bp,
     share_bp,
     suggestions_bp,
 )
 from services.describe_service import DescribeService
 from services.ingest_service import IngestService
+from services.project_service import ProjectService
 from services.rdf_store_service import RDFStoreService
 from services.store_selection import (
     SelectedStoreService,
@@ -70,6 +72,15 @@ class AppSettings:
     root_dir: str
     child_dir: str
     upload_folder: str
+
+    @property
+    def state_file(self) -> str:
+        """Where the open project is kept for the next worker.
+
+        It sits next to the package's folders, never in ``static/`` (which
+        Flask serves): the map may name its store with credentials.
+        """
+        return os.path.join(self.root_dir, self.child_dir, "state", "open_project.json")
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "AppSettings":
@@ -201,6 +212,11 @@ def build_app_context(
         if "rdf_store_service" in overrides
         else SelectedStoreService(store_selection)
     )
+    project_service = (
+        overrides["project_service"]
+        if "project_service" in overrides
+        else ProjectService(session_cache, store_selection, settings.state_file)
+    )
     suggestion_service = (
         overrides["suggestion_service"]
         if "suggestion_service" in overrides
@@ -237,6 +253,7 @@ def build_app_context(
         "session_cache": session_cache,
         "store_selection": store_selection,
         "rdf_store_service": rdf_store_service,
+        "project_service": project_service,
         "upload_folder": settings.upload_folder,
         "root_dir": root_dir,
         "child_dir": child_dir,
@@ -310,6 +327,16 @@ def _refuse_requests_from_other_sites() -> None:
         return
     if urlsplit(source).netloc.lower() != request.host.lower():
         abort(403)
+
+
+def _catch_up_with_the_open_project() -> None:
+    """Work on the project the state file names before answering.
+
+    A worker gunicorn started after the project changed would otherwise
+    answer from the state the app had when it was built (see
+    ``services/project_service.py``).
+    """
+    current_app.config["APP_CONTEXT"]["project_service"].sync()
 
 
 def _is_api_path(path: str) -> bool:
@@ -387,14 +414,24 @@ def create_app(
     app.config["UPLOAD_FOLDER"] = settings.upload_folder
     os.makedirs(settings.upload_folder, exist_ok=True)
     app.before_request(_refuse_requests_from_other_sites)
+    app.before_request(_catch_up_with_the_open_project)
     app.register_error_handler(HTTPException, _answer_http_error)
     FlyoverCompress(app)
 
-    for blueprint in (ingest_bp, describe_bp, annotate_bp, share_bp, suggestions_bp):
+    for blueprint in (
+        ingest_bp,
+        describe_bp,
+        annotate_bp,
+        share_bp,
+        suggestions_bp,
+        project_bp,
+    ):
         app.register_blueprint(blueprint)
     _register_spa(app, spa_dir)
 
     app.config["rdf_store_url"] = settings.rdf_store_url
     app.config["repo"] = settings.repo
     app.config["APP_CONTEXT"] = build_app_context(settings, context)
+    # Reopen the project the previous run left open.
+    app.config["APP_CONTEXT"]["project_service"].sync()
     return app
