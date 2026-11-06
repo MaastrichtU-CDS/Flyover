@@ -36,6 +36,12 @@ from controllers import (
 from services.describe_service import DescribeService
 from services.ingest_service import IngestService
 from services.rdf_store_service import RDFStoreService
+from services.store_selection import (
+    SelectedStoreService,
+    StoreAddress,
+    StoreSelection,
+    pin_store,
+)
 from services.suggestions import SuggestionService
 from utils.response_compression import FlyoverCompress
 from utils.rdf_store_url import normalise_rdf_store_base_url
@@ -170,10 +176,14 @@ def build_app_context(
 ) -> Dict[str, Any]:
     """Build the ``APP_CONTEXT`` the controllers read.
 
-    ``overrides`` replaces entries of the default wiring. The session cache
-    and the two services are resolved first, so the default helpers act on
-    the ones that end up in the context. An unknown entry is an error: it
-    would otherwise sit unused next to the default it was meant to replace.
+    ``overrides`` replaces entries of the default wiring. The session cache,
+    the store selection and the two services are resolved first, so the
+    default helpers act on the ones that end up in the context. An unknown
+    entry is an error: it would otherwise sit unused next to the default it
+    was meant to replace.
+
+    The default store service is the selected store's: the configured store
+    until a project names another one (see ``services/store_selection.py``).
     """
     overrides = dict(overrides or {})
     session_cache = (
@@ -181,10 +191,15 @@ def build_app_context(
         if "session_cache" in overrides
         else SessionCache(settings.repo)
     )
+    store_selection = (
+        overrides["store_selection"]
+        if "store_selection" in overrides
+        else StoreSelection(StoreAddress(settings.rdf_store_url, settings.repo))
+    )
     rdf_store_service = (
         overrides["rdf_store_service"]
         if "rdf_store_service" in overrides
-        else RDFStoreService(settings.rdf_store_url, settings.repo)
+        else SelectedStoreService(store_selection)
     )
     suggestion_service = (
         overrides["suggestion_service"]
@@ -208,8 +223,8 @@ def build_app_context(
 
     def upload_func(file_type: str, output_files: Optional[list]) -> tuple:
         """Upload the triplifier's output to the store the service works on."""
-        store_url = rdf_store_service.rdf_store_url
-        repo = rdf_store_service.repo
+        store = pin_store(rdf_store_service)
+        store_url, repo = store.rdf_store_url, store.repo
         if file_type in ("CSV", "Excel"):
             return IngestService().upload_multiple_graphs(
                 root_dir, store_url, repo, output_files, data_background=False
@@ -220,6 +235,7 @@ def build_app_context(
 
     context: Dict[str, Any] = {
         "session_cache": session_cache,
+        "store_selection": store_selection,
         "rdf_store_service": rdf_store_service,
         "upload_folder": settings.upload_folder,
         "root_dir": root_dir,
@@ -227,12 +243,18 @@ def build_app_context(
         "run_triplifier": run_triplifier,
         "suggestion_service": suggestion_service,
         "upload_func": upload_func,
+        # The jobs run on after the request: each keeps the store the ingest
+        # wrote to, even if the project changes while it runs.
         "start_background": lambda sc: [
             gevent.spawn(
-                IngestService.background_pk_fk_processing, sc, rdf_store_service
+                IngestService.background_pk_fk_processing,
+                sc,
+                pin_store(rdf_store_service),
             ),
             gevent.spawn(
-                IngestService.background_cross_graph_processing, sc, rdf_store_service
+                IngestService.background_cross_graph_processing,
+                sc,
+                pin_store(rdf_store_service),
             ),
         ],
         "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (

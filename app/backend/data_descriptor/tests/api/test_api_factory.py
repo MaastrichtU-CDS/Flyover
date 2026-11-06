@@ -19,6 +19,7 @@ import app_factory
 from app_factory import AppSettings, SessionCache, build_app_context, create_app
 from services.ingest_service import IngestService
 from services.rdf_store_service import RDFStoreService
+from services.store_selection import SelectedStoreService, StoreAddress, StoreSelection
 from services.suggestions import SuggestionService
 from tests.api.support import REPO, STORE_URL, api_settings
 
@@ -99,7 +100,14 @@ class TestTheDefaultWiring:
         context = app.config["APP_CONTEXT"]
         assert isinstance(context["session_cache"], SessionCache)
         assert context["session_cache"].repo == REPO
-        assert isinstance(context["rdf_store_service"], RDFStoreService)
+        # The store service is the selected store's, and the configured
+        # store is selected until a project names another.
+        selection = context["store_selection"]
+        assert isinstance(selection, StoreSelection)
+        assert selection.current == StoreAddress(STORE_URL, REPO)
+        assert isinstance(context["rdf_store_service"], SelectedStoreService)
+        assert isinstance(context["rdf_store_service"].pinned(), RDFStoreService)
+        assert context["rdf_store_service"].pinned() is selection.service()
         assert context["rdf_store_service"].repo == REPO
         assert context["rdf_store_service"].rdf_store_url == STORE_URL
         assert isinstance(context["suggestion_service"], SuggestionService)
@@ -161,6 +169,64 @@ def wiring(tmp_path, monkeypatch):
         "spawned": spawned,
         "store": store,
     }
+
+
+@pytest.fixture
+def selected_wiring(tmp_path, monkeypatch):
+    """The default context, store service included, with the ingest replaced."""
+    ingest = create_autospec(IngestService)
+    spawned = []
+    monkeypatch.setattr(app_factory, "IngestService", ingest)
+    monkeypatch.setattr(app_factory.gevent, "spawn", lambda *a: spawned.append(a) or a)
+    context = build_app_context(api_settings(tmp_path))
+    return {
+        "context": context,
+        "ingest": ingest,
+        "spawned": spawned,
+        "selection": context["store_selection"],
+    }
+
+
+PROJECT_STORE = StoreAddress("http://project-store:7200", "projectRepo", "project")
+
+
+class TestTheSelectedStore:
+    def test_an_upload_goes_to_the_store_selected_at_that_time(self, selected_wiring):
+        selected_wiring["selection"].use(PROJECT_STORE)
+
+        selected_wiring["context"]["upload_func"]("CSV", ["a.ttl"])
+
+        upload = selected_wiring["ingest"].return_value.upload_multiple_graphs
+        assert upload.call_args.args[1:3] == (
+            "http://project-store:7200",
+            "projectRepo",
+        )
+
+    def test_the_relationship_jobs_keep_the_store_they_started_on(
+        self, selected_wiring
+    ):
+        selection = selected_wiring["selection"]
+        selection.use(PROJECT_STORE)
+
+        selected_wiring["context"]["start_background"](SessionCache(REPO))
+        selection.use_configured()
+
+        on_project_store = selection.service(PROJECT_STORE)
+        assert [job[2] for job in selected_wiring["spawned"]] == [
+            on_project_store,
+            on_project_store,
+        ]
+        assert on_project_store.rdf_store_url == "http://project-store:7200"
+
+    def test_a_store_selection_can_be_passed_in(self, tmp_path):
+        selection = StoreSelection(StoreAddress("http://elsewhere:7200", "other"))
+
+        context = build_app_context(
+            api_settings(tmp_path), {"store_selection": selection}
+        )
+
+        assert context["store_selection"] is selection
+        assert context["rdf_store_service"].rdf_store_url == "http://elsewhere:7200"
 
 
 class TestTheDefaultHelpers:
