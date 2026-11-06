@@ -70,6 +70,7 @@ EXPECTED_ROUTES = {
     ("PUT", "/api/v1/project"),
     ("DELETE", "/api/v1/project"),
     ("POST", "/api/v1/project/check"),
+    ("GET", "/api/v1/project/store-status"),
     # app_factory: the built SPA and Flask's static folder
     ("GET", "/"),
     ("GET", "/<path:subpath>"),

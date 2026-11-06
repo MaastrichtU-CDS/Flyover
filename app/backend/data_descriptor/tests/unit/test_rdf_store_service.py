@@ -431,3 +431,86 @@ class TestRDFStoreServiceVerifyAnnotation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# check_reachable: the status bar's question, answered in one short request
+# ---------------------------------------------------------------------------
+
+import logging  # noqa: E402
+
+import pytest  # noqa: E402
+import requests  # noqa: E402
+
+from services import rdf_store_service as service_module  # noqa: E402
+
+
+class _Answer:
+    def __init__(self, status_code, body=None, text="<html>not json</html>"):
+        self.status_code = status_code
+        self._body = body
+        self.text = text
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("No JSON object could be decoded")
+        return self._body
+
+
+def _reachability(monkeypatch, outcome):
+    """Run check_reachable with requests.get answering ``outcome``."""
+    sent = []
+
+    def fake_get(url, **kwargs):
+        sent.append((url, kwargs))
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(service_module.requests, "get", fake_get)
+    service = RDFStoreService("https://user:s3cret@store.example.org", "aya")
+    return service.check_reachable(), sent
+
+
+def test_the_check_is_one_short_ask_on_the_repository(monkeypatch):
+    result, sent = _reachability(monkeypatch, _Answer(200, {"boolean": True}))
+
+    assert result == (True, "")
+    [(url, kwargs)] = sent
+    assert url == "https://user:s3cret@store.example.org/repositories/aya"
+    assert kwargs["params"] == {"query": "ASK {}"}
+    assert "application/sparql-results+json" in kwargs["headers"]["Accept"]
+    assert kwargs["timeout"] == 3.0
+
+
+@pytest.mark.parametrize(
+    "answer, reason",
+    [
+        (_Answer(404), "The store has no repository named 'aya'."),
+        (_Answer(401), "refused Flyover's request (HTTP 401)"),
+        (_Answer(403), "check the credentials the endpoint carries"),
+        (_Answer(500), "The store answered with HTTP 500."),
+        (_Answer(200), "Something answered at that address, but not an RDF store."),
+        (_Answer(200, {"results": []}), "but not an RDF store."),
+        (_Answer(200, ["a", "list"]), "but not an RDF store."),
+        (requests.Timeout("slow"), "did not answer within 3 seconds."),
+        (requests.ConnectionError("refused"), "cannot be reached from Flyover."),
+    ],
+)
+def test_a_store_that_does_not_answer_says_why(monkeypatch, answer, reason):
+    (reachable, why), _ = _reachability(monkeypatch, answer)
+
+    assert reachable is False
+    assert reason in why
+
+
+def test_the_log_never_carries_the_stores_credentials(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger=service_module.logger.name)
+    error = requests.ConnectionError(
+        "Max retries exceeded with url: https://user:s3cret@store.example.org/"
+    )
+
+    _reachability(monkeypatch, error)
+
+    assert "s3cret" not in caplog.text
+    assert "ConnectionError" in caplog.text

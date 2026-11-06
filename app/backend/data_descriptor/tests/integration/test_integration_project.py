@@ -13,6 +13,7 @@ from io import BytesIO
 from urllib.parse import quote
 
 import pytest
+import requests
 import responses
 
 from tests.integration.support import (
@@ -163,3 +164,39 @@ class TestAProjectsStore:
         assert exists == {"exists": True}
         assert local_store.asks
         assert not rdf_store.calls and not project_store.calls
+
+
+class TestTheStoreStatus:
+    def test_the_configured_store_answers(self, client, rdf_store):
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body["reachable"] is True
+        assert body["store"]["url"] == rdf_store.repository_url
+        assert [(c.url.split("?")[0], c.query) for c in rdf_store.asks] == [
+            (rdf_store.repository_url, "ASK {}")
+        ]
+
+    def test_a_projects_store_without_its_repository_says_so(
+        self, client, rdf_store, project_store
+    ):
+        _open(client)
+        project_store.ask_status = 404
+
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body["reachable"] is False
+        assert body["reason"] == "The store has no repository named 'projectRepo'."
+        assert not rdf_store.calls
+
+    def test_a_projects_store_that_is_down_says_so(self, client, project_store):
+        _open(client)
+        project_store.outage = requests.ConnectionError("down")
+
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body == {
+            "reachable": False,
+            "reason": "The store cannot be reached from Flyover.",
+            "store": body["store"],
+        }
+        assert body["store"]["url"] == project_store.repository_url

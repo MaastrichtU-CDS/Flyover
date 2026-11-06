@@ -209,6 +209,7 @@ def make_store_double() -> Any:
     store.repository.download_ontology.return_value = ("", 404)
     store.repository.execute_query.return_value = ""
     store.check_data_exists.return_value = False
+    store.check_reachable.return_value = (True, "")
     store.get_databases.return_value = []
     store.get_column_info_by_database.return_value = {}
     store.get_categories.return_value = None

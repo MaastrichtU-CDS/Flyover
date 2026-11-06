@@ -8,12 +8,26 @@ providing higher-level business operations.
 import logging
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import requests
+
 try:
     from ..repositories import RDFStoreRepository
+    from ..repositories.rdf_store_repository import ASK_QUERY_ACCEPT
+    from ..utils.rdf_store_url import build_repository_endpoint
 except ImportError:
     from repositories import RDFStoreRepository  # type: ignore[no-redef]
+    from repositories.rdf_store_repository import (  # type: ignore[no-redef]
+        ASK_QUERY_ACCEPT,
+    )
+    from utils.rdf_store_url import (  # type: ignore[no-redef]
+        build_repository_endpoint,
+    )
 
 logger = logging.getLogger(__name__)
+
+# The status bar checks the store whenever a page opens: a store that is down
+# must not hold the page up for long.
+REACHABILITY_TIMEOUT_SECONDS = 3.0
 
 
 def _in_source_order(columns: Iterable[Tuple[str, Any]]) -> List[str]:
@@ -71,6 +85,56 @@ class RDFStoreService:
         self.repository = RDFStoreRepository(rdf_store_url, repo)
         self.rdf_store_url = rdf_store_url
         self.repo = repo
+
+    def check_reachable(
+        self, timeout: float = REACHABILITY_TIMEOUT_SECONDS
+    ) -> Tuple[bool, str]:
+        """
+        Whether the store answers a query on its repository, and if not, why.
+
+        One ``ASK {}`` with a short timeout and no retries. A 200 counts only
+        when it is a SPARQL answer, so a web server that answers every path
+        is not taken for a store.
+
+        Returns:
+            (True, "") when the store answered; (False, reason) otherwise,
+            the reason written for the user.
+        """
+        endpoint = build_repository_endpoint(self.rdf_store_url, self.repo)
+        try:
+            response = requests.get(
+                endpoint,
+                params={"query": "ASK {}"},
+                headers={"Accept": ASK_QUERY_ACCEPT},
+                timeout=timeout,
+            )
+        except requests.Timeout:
+            return False, f"The store did not answer within {timeout:g} seconds."
+        except requests.RequestException as error:
+            # The error names the URL, credentials and all: log its kind only.
+            logger.info(
+                "The store of repository %r cannot be reached (%s)",
+                self.repo,
+                type(error).__name__,
+            )
+            return False, "The store cannot be reached from Flyover."
+        status = response.status_code
+        if status == 404:
+            return False, f"The store has no repository named {self.repo!r}."
+        if status in (401, 403):
+            return False, (
+                f"The store refused Flyover's request (HTTP {status}); check "
+                "the credentials the endpoint carries."
+            )
+        if status != 200:
+            return False, f"The store answered with HTTP {status}."
+        try:
+            answered = isinstance(response.json().get("boolean"), bool)
+        except (ValueError, AttributeError):
+            answered = False
+        if not answered:
+            return False, "Something answered at that address, but not an RDF store."
+        return True, ""
 
     def check_data_exists(self) -> bool:
         """

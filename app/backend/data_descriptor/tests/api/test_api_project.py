@@ -464,3 +464,54 @@ class TestAProjectOutlivesItsWorker:
 
         # Once when the app is built, once before the request.
         assert service.synced == 2
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/project/store-status
+# ---------------------------------------------------------------------------
+
+
+class TestTheStoreStatus:
+    @pytest.mark.route("GET", "/api/v1/project/store-status", "success")
+    def test_a_store_that_answers_is_reachable(self, client, store):
+        response = client.get("/api/v1/project/store-status")
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "reachable": True,
+            "reason": "",
+            "store": CONFIGURED_STORE,
+        }
+        store.check_reachable.assert_called_once_with()
+
+    @pytest.mark.route("GET", "/api/v1/project/store-status", "failure")
+    def test_an_unreachable_store_is_an_answer_with_the_reason(self, client, store):
+        store.check_reachable.return_value = (
+            False,
+            "The store has no repository named 'userRepo'.",
+        )
+
+        response = client.get("/api/v1/project/store-status")
+
+        assert response.status_code == 200
+        assert response.get_json()["reachable"] is False
+        assert response.get_json()["reason"] == (
+            "The store has no repository named 'userRepo'."
+        )
+
+    def test_a_check_that_fails_reads_as_unreachable(self, client, store, caplog):
+        store.check_reachable.side_effect = RuntimeError("boom")
+
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body["reachable"] is False
+        assert body["reason"] == "Flyover could not check the store."
+        assert "Checking the store failed" in caplog.text
+
+    def test_with_a_project_open_its_store_is_the_one_described(self, client):
+        _put(client)
+
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body["store"]["url"] == f"{PROJECT_STORE}/repositories/userRepo"
+        assert body["store"]["source"] == "project"

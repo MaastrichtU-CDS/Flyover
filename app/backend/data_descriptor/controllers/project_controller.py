@@ -10,7 +10,9 @@ without one. Routes are the ``/api/v1/project`` surface:
 - ``PUT /api/v1/project``: open a map as the project, replacing any other;
 - ``DELETE /api/v1/project``: work without a project again;
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
-  nothing, so the browser can ask the user before it switches.
+  nothing, so the browser can ask the user before it switches;
+- ``GET /api/v1/project/store-status``: whether the store in use answers,
+  for the status bar's dot.
 """
 
 import logging
@@ -27,8 +29,12 @@ project_bp = Blueprint("project", __name__)
 NO_MAP = "No map was sent: the body needs a 'mapping' object."
 
 
+def _context() -> dict:
+    return current_app.config.get("APP_CONTEXT", {})
+
+
 def _project_service():
-    return current_app.config.get("APP_CONTEXT", {})["project_service"]
+    return _context()["project_service"]
 
 
 def _mapping_from_body():
@@ -92,3 +98,19 @@ def check_project_map():
     if mapping is None:
         return jsonify({"error": NO_MAP}), 400
     return jsonify(_project_service().check(mapping, file_name=body.get("fileName")))
+
+
+@project_bp.route("/api/v1/project/store-status", methods=["GET"])
+def store_status():
+    """Whether the store the app works on answers, and if not, why.
+
+    Answers ``{"reachable": bool, "reason": "...", "store": {...}}``; an
+    unreachable store is an answer, not an error.
+    """
+    store = _project_service().describe()["store"]
+    try:
+        reachable, reason = _context()["rdf_store_service"].check_reachable()
+    except Exception:
+        logger.warning("Checking the store failed", exc_info=True)
+        reachable, reason = False, "Flyover could not check the store."
+    return jsonify({"reachable": reachable, "reason": reason, "store": store})
