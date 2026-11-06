@@ -26,6 +26,18 @@ const root = ref(null)
 const toggleButton = ref(null)
 const panel = ref(null)
 
+// While a delete runs, its button reads "Deleting" with the dots counting
+// up, one to three, so it is plain that something is happening.
+const dots = ref(1)
+let dotsTimer = null
+
+watch(busy, (isBusy) => {
+  clearInterval(dotsTimer)
+  dotsTimer = null
+  dots.value = 1
+  if (isBusy) dotsTimer = setInterval(() => (dots.value = (dots.value % 3) + 1), 400)
+})
+
 const repository = computed(() => store.value?.repository || 'the store')
 
 const number = new Intl.NumberFormat('en-GB')
@@ -129,6 +141,7 @@ watch(open, async (isOpen) => {
 })
 
 onBeforeUnmount(() => {
+  clearInterval(dotsTimer)
   document.removeEventListener('pointerdown', onPointerDown)
   document.removeEventListener('keydown', onKeydown)
 })
@@ -208,6 +221,10 @@ onBeforeUnmount(() => {
           <p class="store-panel-consequence">
             {{ asked.consequence }}
           </p>
+          <span
+            class="sr-only"
+            aria-live="polite"
+          >{{ busy ? `${asked.confirm.replace(/^Delete/, 'Deleting')}…` : '' }}</span>
           <div class="store-panel-actions">
             <a
               class="btn btn-sm btn-outline-secondary"
@@ -218,14 +235,26 @@ onBeforeUnmount(() => {
             </a>
             <button
               type="button"
-              class="btn btn-sm btn-danger"
+              class="btn btn-sm btn-danger store-panel-confirm-button"
               :disabled="busy"
+              :aria-busy="busy ? 'true' : 'false'"
               @click="datasetsStore.confirm()"
             >
-              <i
-                class="fas"
-                :class="busy ? 'fa-spinner fa-spin' : 'fa-trash-alt'"
-              /> {{ asked.confirm }}
+              <template v-if="busy">
+                <i
+                  class="fas fa-trash-can fa-shake"
+                  aria-hidden="true"
+                /> Deleting<span
+                  class="store-panel-dots"
+                  aria-hidden="true"
+                >{{ '.'.repeat(dots) }}</span>
+              </template>
+              <template v-else>
+                <i
+                  class="fas fa-trash-can"
+                  aria-hidden="true"
+                /> {{ asked.confirm }}
+              </template>
             </button>
             <button
               type="button"
@@ -281,7 +310,7 @@ onBeforeUnmount(() => {
                 @click="datasetsStore.ask('dataset', dataset.name)"
               >
                 <i
-                  class="fas fa-trash-alt"
+                  class="fas fa-trash-can"
                   aria-hidden="true"
                 />
               </button>
@@ -301,18 +330,19 @@ onBeforeUnmount(() => {
         >
           <i class="fas fa-plus" /> Add a dataset
         </RouterLink>
+        <!-- Each shows only when there is something for it to delete. -->
         <button
+          v-if="!loading && anyAnnotated"
           type="button"
           class="btn btn-sm btn-outline-secondary"
-          :disabled="loading || !anyAnnotated"
           @click="datasetsStore.ask('annotations')"
         >
           Delete all annotations
         </button>
         <button
+          v-if="!loading && datasets.length"
           type="button"
           class="btn btn-sm btn-outline-danger"
-          :disabled="loading || !datasets.length"
           @click="datasetsStore.ask('all')"
         >
           Delete every dataset
@@ -459,6 +489,19 @@ onBeforeUnmount(() => {
 
 .store-panel-delete {
   flex-shrink: 0;
+}
+
+/* A delete under way stays in full colour, so it reads as working rather
+   than as unavailable; it still takes no clicks. */
+.store-panel-confirm-button[aria-busy='true'] {
+  opacity: 1;
+  cursor: progress;
+}
+
+.store-panel-dots {
+  display: inline-block;
+  width: 1.1em;
+  text-align: left;
 }
 
 .store-panel-question {

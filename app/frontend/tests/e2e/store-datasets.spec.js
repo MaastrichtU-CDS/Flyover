@@ -71,8 +71,9 @@ test.describe('The datasets in the store', () => {
     await panel(page).getByRole('button', { name: 'Cancel' }).click()
     await expect(panel(page).locator('.store-panel-item').first()).toBeVisible()
 
+    // Offered only when a dataset has annotations.
     const annotations = panel(page).getByRole('button', { name: 'Delete all annotations' })
-    if (await annotations.isEnabled()) {
+    if (await annotations.count()) {
       await annotations.click()
       await expect(panel(page)).toContainText('The data and the describe answers stay.')
       await panel(page).getByRole('button', { name: 'Cancel' }).click()

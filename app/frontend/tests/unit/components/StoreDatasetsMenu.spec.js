@@ -115,8 +115,35 @@ describe('StoreDatasetsMenu', () => {
 
     expect(panel.text()).toContain('No datasets in this store yet.')
     expect(panel.find('a[href="/ingest"]').text()).toContain('Add a dataset')
-    expect(button(wrapper, 'Delete every dataset').attributes('disabled')).toBeDefined()
-    expect(button(wrapper, 'Delete all annotations').attributes('disabled')).toBeDefined()
+    // Nothing to delete: no delete buttons at all.
+    expect(button(wrapper, 'Delete every dataset')).toBeUndefined()
+    expect(button(wrapper, 'Delete all annotations')).toBeUndefined()
+  })
+
+  it('offers to delete the annotations only when a dataset has some', async () => {
+    api.get.mockResolvedValue({
+      data: { datasets: [{ name: 'visits', rows: 1, described: true, annotated: false }] },
+    })
+    wrapper = mountMenu()
+
+    await openPanel(wrapper)
+
+    expect(button(wrapper, 'Delete every dataset')).toBeTruthy()
+    expect(button(wrapper, 'Delete all annotations')).toBeUndefined()
+  })
+
+  it('shows no delete buttons while it is still looking', async () => {
+    let answer
+    api.get.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+    wrapper = mountMenu()
+
+    await wrapper.find('#statusbar-store-button').trigger('click')
+
+    expect(wrapper.find('#store-datasets-panel').text()).toContain('Looking at the store')
+    expect(button(wrapper, 'Delete every dataset')).toBeUndefined()
+    answer({ data: { datasets: DATASETS } })
+    await flushPromises()
+    expect(button(wrapper, 'Delete every dataset')).toBeTruthy()
   })
 
   it('says why the store cannot be listed, and lets the user try again', async () => {
@@ -261,6 +288,35 @@ describe('StoreDatasetsMenu', () => {
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
     await flushPromises()
     expect(wrapper.find('#store-datasets-panel').exists()).toBe(false)
+  })
+
+  it('says "Deleting" with the dots moving while a delete runs', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let answer
+    api.delete.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)))
+    wrapper = mountMenu()
+    await openPanel(wrapper)
+    await wrapper.find('button[aria-label="Delete patients"]').trigger('click')
+
+    await button(wrapper, 'Delete patients').trigger('click')
+    const running = wrapper.find('.store-panel-confirm-button')
+    const said = () => running.text().replace(/\s+/g, ' ')
+
+    expect(running.attributes('aria-busy')).toBe('true')
+    expect(running.find('.fa-trash-can.fa-shake').exists()).toBe(true)
+    expect(said()).toBe('Deleting.')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(said()).toBe('Deleting..')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(said()).toBe('Deleting...')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(said()).toBe('Deleting.')
+    // Screen readers hear it once, without the dots.
+    expect(wrapper.find('[aria-live="polite"]').text()).toBe('Deleting patients…')
+
+    answer({ data: { deleted: ['patients'], datasets: [DATASETS[1]] } })
+    await flushPromises()
+    vi.useRealTimers()
   })
 
   it('stays open while a delete runs, whatever the user presses', async () => {
