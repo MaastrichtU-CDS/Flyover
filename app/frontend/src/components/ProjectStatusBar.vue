@@ -3,16 +3,21 @@ import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import HoverTip from '@/components/HoverTip.vue'
+import StoreDatasetsMenu from '@/components/StoreDatasetsMenu.vue'
 import { useProjectStore } from '@/stores/project'
+import { useStoreDatasetsStore } from '@/stores/storeDatasets'
 
 // The strip above the step bar: which RDF store Flyover works on (and
-// whether it answers), which project is open, and the way to switch.
+// whether it answers; a click on it opens its datasets), which project is
+// open, and the way to switch.
 // Whether the store answers is asked again on every step, every minute
 // while the tab is visible (see the project store), and on a click.
 
 const projectStore = useProjectStore()
 const route = useRoute()
 const { store, storeStatus, project, name, version } = storeToRefs(projectStore)
+// While the datasets panel is open, the store's tooltip stays away from it.
+const { open: datasetsOpen } = storeToRefs(useStoreDatasetsStore())
 
 const dotClass = computed(() => [
   `is-${storeStatus.value.state}`,
@@ -69,18 +74,20 @@ const projectTip = computed(() => {
         class="statusbar-item"
       >
         <HoverTip
-          :text="storeTip"
+          :text="datasetsOpen ? '' : storeTip"
           placement="below"
           align="start"
           wrap
         >
-          <i
-            class="fas fa-database"
-            aria-hidden="true"
-          />
-          RDF store<template v-if="store">
-            · <strong>{{ store.repository }}</strong>
-          </template>
+          <StoreDatasetsMenu>
+            <i
+              class="fas fa-database"
+              aria-hidden="true"
+            />
+            RDF store<template v-if="store">
+              · <strong>{{ store.repository }}</strong>
+            </template>
+          </StoreDatasetsMenu>
         </HoverTip>
         <span aria-hidden="true">·</span>
         <HoverTip

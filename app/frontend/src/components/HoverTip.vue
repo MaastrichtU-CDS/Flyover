@@ -38,9 +38,9 @@ function hide() {
     @focusout="hide"
     @keydown.esc="hide"
   >
-    <slot :describedby="shown ? id : undefined" />
+    <slot :describedby="shown && text ? id : undefined" />
     <span
-      v-if="shown"
+      v-if="shown && text"
       :id="id"
       role="tooltip"
       class="bootstrap-tooltip"

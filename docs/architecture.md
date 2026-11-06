@@ -107,6 +107,18 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 | `GET /api/v1/project/store-status` | Whether the store in use answers one short `ASK`, and if not, why; the status bar asks every minute while its tab is visible |
 | `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB) |
 
+**The store's datasets** ([`services/store_datasets.py`](../app/backend/data_descriptor/services/store_datasets.py)) behind [`controllers/store_controller.py`](../app/backend/data_descriptor/controllers/store_controller.py), for the status bar's panel. A dataset is one ingested table: `http://data.local/<name>/`, `http://ontology.local/<name>/` (columns, positions, describe answers), `http://annotation.local/<name>/`, `http://materialized.local/<name>/`, and its rows' links in the shared `http://relationships.local/`.
+
+| Route | What it does |
+|---|---|
+| `GET /api/v1/store/datasets` | Every dataset, with its rows and whether it was described and annotated |
+| `DELETE /api/v1/store/datasets/<name>` | One dataset: its links first (its data graph tells them apart), then its graphs |
+| `DELETE /api/v1/store/datasets` | Every graph Flyover writes, graph by graph; never `DROP ALL` |
+| `DELETE /api/v1/store/annotations` | Every annotation and materialised inference; data and describe answers stay |
+| `GET /api/v1/store/datasets/<name>/export`, `/api/v1/store/export`, `/api/v1/store/annotations/export` | What the matching delete removes, as one TriG file |
+
+They work on the store the request works on, go straight to its RDF4J-style endpoints (so a refusal surfaces with its status), and after a delete the session forgets what it knew of the deleted datasets.
+
 Two maps belong to the same project when their `schema` sections do: the same `schema.@id` when both have one, else the same `schema.name`. On every change of project, the server forgets the session state worked out for the previous map (the annotation status, pasted LLM answers, suggestion jobs, the describe answers the forms posted); on a change of store, also what it knew of the previous store's databases. The data in the stores is never touched.
 
 gunicorn runs one worker with `--preload` and replaces it every thousand or so requests (the status bar's check adds about 60 an hour per visible tab); a new worker starts from the app as it was built, without the session's in-memory state. The open project is therefore also written to `state/open_project.json` beside the package (outside `static/`, readable by the app only, as an endpoint may carry credentials), and every request first catches up with that file (`ProjectService.sync`, one `stat` when nothing changed). When the container itself is recreated the file is gone, and the browser sends its project again, under the same token, the next time Flyover opens.

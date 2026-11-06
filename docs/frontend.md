@@ -36,6 +36,8 @@ app/frontend/
     │   ├── ProjectStatusBar.vue     # strip above the steps: the store (with a reachability dot) and the project
     │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
+    │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
+    │   ├── HoverTip.vue             # the app's tooltip (the home tiles' style, .bootstrap-tooltip)
     │   ├── AppNav.vue               # breadcrumb / step navigator
     │   ├── AppFooter.vue
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
@@ -48,6 +50,7 @@ app/frontend/
     │   └── browser.js               # reloadPage(), kept apart so tests can stand in for it
     ├── stores/
     │   ├── project.js               # Pinia store: the open project, kept in step with the server
+    │   ├── storeDatasets.js         # Pinia store: the datasets panel's list, question and deletes
     │   └── status.js                # Pinia store: toast/banner messages
     └── services/
         └── api.js                   # axios instance, baseURL '/'
