@@ -3,9 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import JSZip from 'jszip'
 import api from '@/services/api'
 import * as db from '@/lib/db'
+import { useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
 const status = useStatusStore()
+const project = useProjectStore()
 
 const fileInput = ref(null)
 const selectedFileName = ref('')
@@ -82,11 +84,25 @@ async function handleFileUpload() {
     if (!mappingData?.databases && !mappingData?.variable_info) {
       throw new Error('Invalid JSON-LD structure: missing databases or variable_info')
     }
-    await db.saveData('metadata', {
-      key: 'semantic_map',
-      data: mappingData,
-      timestamp: new Date().toISOString(),
-    })
+    const plan = await project.planUpload(mappingData, file.name)
+    if (plan.invalid) {
+      status.error(
+        `This map cannot be opened as a project: ${plan.invalid.error || 'it is not valid.'}`
+      )
+      return
+    }
+    if (!plan.go) {
+      status.info(`The upload was set aside: Flyover keeps working on ${project.name}.`)
+      return
+    }
+    // An opened project's map is already its working copy.
+    if (!plan.opened) {
+      await db.saveData('metadata', {
+        key: 'semantic_map',
+        data: mappingData,
+        timestamp: new Date().toISOString(),
+      })
+    }
     uploadProgress.value = 100
     storedJsonldData.value = mappingData
     detectedJsonldData.value = null

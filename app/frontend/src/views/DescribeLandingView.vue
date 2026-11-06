@@ -2,12 +2,14 @@
 import { onMounted, ref } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
+import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import { useNavigation } from '@/composables/useNavigation'
 
 const status = useStatusStore()
 const suggestions = useSuggestionsStore()
+const project = useProjectStore()
 const { refreshDataExists } = useNavigation()
 
 const dataExists = ref(true)
@@ -60,6 +62,35 @@ async function uploadSemanticMap() {
       return
     }
 
+    // Which project the map belongs to comes first: opening it may move
+    // Flyover to another store, which the column check below must use.
+    let plan
+    try {
+      plan = await project.planUpload(jsonld, file.name)
+    } catch (e) {
+      status.error(`The map could not be checked: ${errorMessage(e)}`)
+      return
+    }
+    if (plan.invalid) {
+      validationErrors.value = plan.invalid.validation_errors?.length
+        ? plan.invalid.validation_errors
+        : [{ path: '(map)', severity: 'error', message: plan.invalid.error }]
+      return
+    }
+    if (!plan.go) {
+      status.info(`The upload was set aside: Flyover keeps working on ${project.name}.`)
+      return
+    }
+    if (plan.storeChanged) {
+      await checkDataExists()
+      if (!dataExists.value) {
+        status.info(
+          "Flyover now works on the project's RDF store, which holds no data yet. Ingest the data first."
+        )
+        return
+      }
+    }
+
     // Validate against the schema and check that every localColumn exists in
     // the loaded CSV. Gate IDB save on the result so the user sees a clear
     // problem list here instead of broken UI two screens later.
@@ -97,14 +128,18 @@ async function uploadSemanticMap() {
 
     // Use cleaned mapping if available, otherwise use the original
     const mappingToSave = validation.cleaned_mapping || jsonld
-    console.log(validation.cleaned_mapping)
 
-    await db.saveData('metadata', {
-      key: 'semantic_map',
-      data: mappingToSave,
-      filename: file.name,
-      timestamp: new Date().toISOString(),
-    })
+    if (plan.opened) {
+      // The project's working copy, as loaded: cleaned of absent columns.
+      await project.adoptWorkingCopy(mappingToSave, { fileName: file.name })
+    } else {
+      await db.saveData('metadata', {
+        key: 'semantic_map',
+        data: mappingToSave,
+        filename: file.name,
+        timestamp: new Date().toISOString(),
+      })
+    }
     // A new map resets the describe fields, so earlier suggestion reviews
     // no longer apply to them.
     await suggestions.resetMarks()
@@ -157,7 +192,9 @@ function continueToDescribe() {
   window.location.href = '/describe_variables'
 }
 
-onMounted(async () => {
+// Whether the store Flyover works on holds data: on arrival, and again when
+// an upload moved Flyover to a project's store.
+async function checkDataExists() {
   try {
     const { data } = await api.get('/api/check-graph-exists')
     dataExists.value = !!data?.exists
@@ -168,7 +205,9 @@ onMounted(async () => {
   } finally {
     checking.value = false
   }
-})
+}
+
+onMounted(checkDataExists)
 </script>
 
 <template>

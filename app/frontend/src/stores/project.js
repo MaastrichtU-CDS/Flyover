@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import {
@@ -82,6 +82,10 @@ export const useProjectStore = defineStore('project', () => {
   const configuredStore = ref(null)
   const storeStatus = ref({ state: 'unknown', reason: '' })
   const picker = ref({ open: false, mode: 'startup' })
+  // The question an upload in a step raises, while it waits for the user:
+  // { kind, check, fileName, edited } (see planUpload).
+  const uploadQuestion = shallowRef(null)
+  let answerUploadQuestion = null
 
   // The token of the project the server works on (null: none).
   let serverToken = null
@@ -371,6 +375,63 @@ export const useProjectStore = defineStore('project', () => {
     return 'same-project'
   }
 
+  // Ask the user what to do with an uploaded map; resolves to their answer.
+  function ask(question) {
+    if (answerUploadQuestion) answerUploadQuestion('keep')
+    return new Promise((resolve) => {
+      answerUploadQuestion = resolve
+      uploadQuestion.value = question
+    })
+  }
+
+  // The dialog's answer: 'open' (open the map as the project) or 'keep'
+  // (keep what Flyover works on now).
+  function answerUpload(choice) {
+    const resolve = answerUploadQuestion
+    answerUploadQuestion = null
+    uploadQuestion.value = null
+    resolve?.(choice)
+  }
+
+  // A map a step's upload brings (describe landing, annotate landing, share
+  // mock), checked against the open project before the step uses it.
+  //
+  // - Without a project, the map may belong to a project: Flyover offers to
+  //   open it as one. Kept without a project (or not openable as a project),
+  //   the step goes on as it always did.
+  // - The open project's own map replaces the working copy at once, unless
+  //   describe answers were added since it was loaded: then Flyover asks.
+  // - Another project's map, or the open project's map naming another
+  //   store, asks whether to switch or keep going with what is open.
+  //
+  // Resolves to { go, opened, storeChanged, invalid }: `go` false means
+  // the user kept what they had and the step must not use the map; `opened`
+  // means the map is now the project (and its working copy); `invalid`
+  // carries the server's check when a project cannot take the map.
+  async function planUpload(map, fileName = '') {
+    let check
+    try {
+      check = await checkMap(map, fileName)
+    } catch (e) {
+      if (!project.value) return { go: true, opened: false }
+      throw e
+    }
+    if (!project.value) {
+      if (!check?.valid) return { go: true, opened: false }
+      const choice = await ask({ kind: 'no-project', check, fileName, edited: false })
+      if (choice !== 'open') return { go: true, opened: false }
+      return { go: true, opened: true, ...(await openProject(map, { fileName })) }
+    }
+    if (!check?.valid) return { go: false, opened: false, invalid: check }
+    const kind = classify(check)
+    const edited = await isEdited()
+    if (kind !== 'same-project' || edited) {
+      const choice = await ask({ kind, check, fileName, edited })
+      if (choice !== 'open') return { go: false, opened: false }
+    }
+    return { go: true, opened: true, ...(await openProject(map, { fileName })) }
+  }
+
   function openPicker(mode = 'switch') {
     picker.value = { open: true, mode }
   }
@@ -386,6 +447,7 @@ export const useProjectStore = defineStore('project', () => {
     configuredStore,
     storeStatus,
     picker,
+    uploadQuestion,
     name,
     version,
     init,
@@ -401,6 +463,8 @@ export const useProjectStore = defineStore('project', () => {
     checkMap,
     fetchMap,
     classify,
+    planUpload,
+    answerUpload,
     openPicker,
     closePicker,
     noticeAfterReload,

@@ -92,7 +92,13 @@ function serve({ project = null, reachable = true } = {}) {
     throw new Error(`unexpected GET ${url}`)
   })
   api.put.mockImplementation(async (url, body) => {
-    current = details(body.token, { fileName: body.fileName, sourceUrl: body.sourceUrl })
+    current = details(body.token, {
+      fileName: body.fileName,
+      sourceUrl: body.sourceUrl,
+      name: body.mapping.name,
+      schemaId: body.mapping.schema['@id'],
+      schemaName: body.mapping.schema.name,
+    })
     return { data: serverWith(current) }
   })
   api.delete.mockImplementation(async () => {
@@ -492,6 +498,163 @@ describe('the project store', () => {
       const project = await withOpenProject()
 
       expect(project.classify({ project: details(''), store: CONFIGURED })).toBe('other-store')
+    })
+  })
+
+  describe('a map uploaded in a step', () => {
+    const OTHER = {
+      ...MAP,
+      name: 'Other mapping',
+      schema: { '@id': 'schema:other/v1', name: 'Other schema' },
+    }
+
+    // The server's check: valid, with the map's project and the store
+    // its endpoint names (`store`, the AYA store by default).
+    function checks(store = PROJECT_STORE) {
+      api.post.mockImplementation(async (url, body) => {
+        if (url !== '/api/v1/project/check') throw new Error(url)
+        const map = body.mapping
+        return {
+          data: {
+            valid: true,
+            project: {
+              ...details(''),
+              name: map.name,
+              schemaId: map.schema['@id'],
+              schemaName: map.schema.name,
+            },
+            store,
+          },
+        }
+      })
+    }
+
+    async function openStore({ withProject = true } = {}) {
+      if (withProject) {
+        holdProject('t1')
+        serve({ project: details('t1') })
+      }
+      const project = useProjectStore()
+      await project.init()
+      return project
+    }
+
+    it('without a project, offers to open it as one and goes on as before when kept', async () => {
+      checks()
+      const project = await openStore({ withProject: false })
+
+      const planned = project.planUpload(MAP, 'aya.jsonld')
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      expect(project.uploadQuestion.kind).toBe('no-project')
+      expect(project.uploadQuestion.fileName).toBe('aya.jsonld')
+      project.answerUpload('keep')
+
+      expect(await planned).toEqual({ go: true, opened: false })
+      expect(api.put).not.toHaveBeenCalled()
+      expect(project.uploadQuestion).toBe(null)
+    })
+
+    it('without a project, opens it as the project when the user says so', async () => {
+      checks()
+      const project = await openStore({ withProject: false })
+
+      const planned = project.planUpload(MAP, 'aya.jsonld')
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      project.answerUpload('open')
+
+      expect(await planned).toEqual({ go: true, opened: true, storeChanged: true })
+      expect(project.name).toBe('AYA mapping')
+      expect(rows.get('semantic_map').data).toEqual(MAP)
+    })
+
+    it('without a project, leaves a map no project can take to the step, as before', async () => {
+      api.post.mockResolvedValue({ data: { valid: false, error: 'not a project map' } })
+      const project = await openStore({ withProject: false })
+
+      expect(await project.planUpload(MAP)).toEqual({ go: true, opened: false })
+      expect(project.uploadQuestion).toBe(null)
+    })
+
+    it('without a project, goes on as before when the check cannot be made', async () => {
+      api.post.mockRejectedValue(new Error('offline'))
+      const project = await openStore({ withProject: false })
+
+      expect(await project.planUpload(MAP)).toEqual({ go: true, opened: false })
+    })
+
+    it('replaces the open project\'s unedited working copy without asking', async () => {
+      checks()
+      const project = await openStore()
+      const filledIn = { ...structuredClone(MAP), name: 'Centre A AYA', databases: { a: {} } }
+
+      const planned = await project.planUpload(filledIn, 'centre_a.jsonld')
+
+      expect(planned).toEqual({ go: true, opened: true, storeChanged: false })
+      expect(project.uploadQuestion).toBe(null)
+      expect(rows.get('semantic_map').data).toEqual(filledIn)
+      expect(project.name).toBe('Centre A AYA')
+    })
+
+    it('asks before replacing a working copy with describe answers in it', async () => {
+      checks()
+      const project = await openStore()
+      rows.get('semantic_map').data.databases = { answered: {} }
+
+      const planned = project.planUpload({ ...MAP, name: 'Centre A AYA' })
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      expect(project.uploadQuestion).toMatchObject({ kind: 'same-project', edited: true })
+      project.answerUpload('keep')
+
+      expect(await planned).toEqual({ go: false, opened: false })
+      expect(rows.get('semantic_map').data.databases).toEqual({ answered: {} })
+      expect(api.put).not.toHaveBeenCalled()
+    })
+
+    it('asks before switching to another project, and switches when told', async () => {
+      checks()
+      const project = await openStore()
+
+      const planned = project.planUpload(OTHER, 'other.jsonld')
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      expect(project.uploadQuestion.kind).toBe('other-project')
+      project.answerUpload('open')
+
+      expect(await planned).toMatchObject({ go: true, opened: true })
+      expect(project.name).toBe('Other mapping')
+    })
+
+    it('asks before moving the open project to another store', async () => {
+      checks(CONFIGURED)
+      const project = await openStore()
+
+      const planned = project.planUpload(MAP)
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      expect(project.uploadQuestion.kind).toBe('other-store')
+      project.answerUpload('keep')
+
+      expect(await planned).toEqual({ go: false, opened: false })
+      expect(project.store).toEqual(PROJECT_STORE)
+    })
+
+    it('hands the step the reasons when the open project cannot take the map', async () => {
+      const refusal = { valid: false, error: 'Flyover cannot use the store the map\'s endpoint names.' }
+      api.post.mockResolvedValue({ data: refusal })
+      const project = await openStore()
+
+      expect(await project.planUpload(MAP)).toEqual({ go: false, opened: false, invalid: refusal })
+    })
+
+    it('keeps what is open when a second question replaces an unanswered one', async () => {
+      checks()
+      const project = await openStore()
+      const first = project.planUpload(OTHER)
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+
+      const second = project.planUpload(OTHER)
+      expect(await first).toEqual({ go: false, opened: false })
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      project.answerUpload('keep')
+      expect(await second).toEqual({ go: false, opened: false })
     })
   })
 
