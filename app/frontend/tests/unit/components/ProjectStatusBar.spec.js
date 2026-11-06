@@ -39,6 +39,14 @@ function reads(wrapper) {
   return wrapper.text().replace(/\s*·\s*/g, ' · ').replace(/\s+/g, ' ').trim()
 }
 
+// The tooltip a part of the bar shows on hover, in the step tiles' style.
+async function tipOf(part) {
+  await part.find('.hover-tip').trigger('mouseenter')
+  const tip = part.find('[role="tooltip"]')
+  expect(tip.classes()).toEqual(expect.arrayContaining(['bootstrap-tooltip', 'is-below']))
+  return tip.text()
+}
+
 function mountBar(state = {}) {
   const project = useProjectStore()
   project.store = CONFIGURED
@@ -54,7 +62,7 @@ describe('ProjectStatusBar', () => {
     route.path = '/describe'
   })
 
-  it('names the RDF store and its repository, and says it is connected', () => {
+  it('names the RDF store and its repository, and says it is connected', async () => {
     const { wrapper } = mountBar()
     const storePart = wrapper.find('#statusbar-store')
 
@@ -62,12 +70,22 @@ describe('ProjectStatusBar', () => {
     expect(storePart.find('strong').text()).toBe('userRepo')
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-reachable')
     expect(storePart.find('.sr-only').text()).toBe('Connection to the store:')
-    expect(storePart.attributes('title')).toBe(
-      "RDF store: http://rdf-store:7200/repositories/userRepo\nFlyover's configured store."
-    )
+    // The hover is short: just where the store is.
+    expect(await tipOf(storePart)).toBe('http://rdf-store:7200/repositories/userRepo')
+    expect(storePart.attributes('title')).toBeUndefined()
   })
 
-  it('shows a store that cannot be reached, with the reason on hover', () => {
+  it('hides the hover again when the pointer leaves', async () => {
+    const { wrapper } = mountBar()
+    const storePart = wrapper.find('#statusbar-store')
+
+    await tipOf(storePart)
+    await storePart.find('.hover-tip').trigger('mouseleave')
+
+    expect(storePart.find('[role="tooltip"]').exists()).toBe(false)
+  })
+
+  it('shows a store that cannot be reached, with the reason on hover', async () => {
     const { wrapper } = mountBar({
       storeStatus: {
         state: 'unreachable',
@@ -79,7 +97,9 @@ describe('ProjectStatusBar', () => {
 
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-unreachable')
     expect(wrapper.find('#statusbar-connection').text()).toMatch(/Not connected$/)
-    expect(storePart.attributes('title')).toContain("no repository named 'aya'")
+    expect(await tipOf(storePart)).toBe(
+      "http://rdf-store:7200/repositories/userRepo\nThe store has no repository named 'aya'."
+    )
   })
 
   it('checks the connection again on a click', async () => {
@@ -87,7 +107,10 @@ describe('ProjectStatusBar', () => {
 
     const button = wrapper.find('#statusbar-connection')
     expect(button.element.tagName).toBe('BUTTON')
-    expect(button.attributes('title')).toBe('Check the connection again')
+    await button.trigger('focusin')
+    const tip = wrapper.find('[role="tooltip"]')
+    expect(tip.text()).toBe('Check the connection again')
+    expect(button.attributes('aria-describedby')).toBe(tip.attributes('id'))
     await button.trigger('click')
 
     expect(project.refreshStoreStatus).toHaveBeenCalledTimes(1)
@@ -125,22 +148,23 @@ describe('ProjectStatusBar', () => {
     )
   })
 
-  it('says whose store it is and why, for a project\'s store', () => {
+  it('says a project\'s map named the store, and nothing more', async () => {
     const { wrapper } = mountBar({
       store: {
         ...CONFIGURED,
+        url: 'http://localhost:7200/repositories/aya',
         repository: 'aya',
         source: 'project',
-        note: 'localhost is read as the configured store.',
+        note: 'The map\'s endpoint names this machine (localhost), …',
       },
     })
 
-    const title = wrapper.find('#statusbar-store').attributes('title')
-    expect(title).toContain("Named by the open project's map.")
-    expect(title).toContain('localhost is read as the configured store.')
+    expect(await tipOf(wrapper.find('#statusbar-store'))).toBe(
+      "http://localhost:7200/repositories/aya\nNamed by the open project's map."
+    )
   })
 
-  it('says when it has not heard from the server yet', () => {
+  it('says when it has not heard from the server yet', async () => {
     const { wrapper } = mountBar({
       store: null,
       storeStatus: { state: 'unknown', reason: '', checking: false },
@@ -149,7 +173,7 @@ describe('ProjectStatusBar', () => {
 
     expect(reads(storePart)).toBe('RDF store · Connection to the store: Checking…')
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-unknown')
-    expect(storePart.attributes('title')).toBe('Flyover has not heard from the server yet.')
+    expect(await tipOf(storePart)).toBe('Flyover has not heard from the server yet.')
   })
 
   it('shows "No project" without one, and the way to choose one', async () => {
@@ -157,7 +181,7 @@ describe('ProjectStatusBar', () => {
     const projectPart = wrapper.find('#statusbar-project')
 
     expect(reads(projectPart)).toBe('No project · Choose a project')
-    expect(projectPart.attributes('title')).toContain('the standard RDF flow')
+    expect(await tipOf(projectPart)).toContain('the standard RDF flow')
 
     await wrapper.find('#statusbar-switch').trigger('click')
     expect(project.picker).toEqual({ open: true, mode: 'switch' })
@@ -171,7 +195,7 @@ describe('ProjectStatusBar', () => {
     expect(project.picker.open).toBe(true)
   })
 
-  it('names the open project with its version, and tells more on hover', () => {
+  it('names the open project with its version, and tells more on hover', async () => {
     const { wrapper } = mountBar({
       project: {
         name: 'AYA mapping',
@@ -185,12 +209,12 @@ describe('ProjectStatusBar', () => {
     const projectPart = wrapper.find('#statusbar-project')
 
     expect(reads(projectPart)).toBe('Project: AYA mapping · v1.2.0 · Switch project')
-    expect(projectPart.attributes('title')).toBe(
+    expect(await tipOf(projectPart)).toBe(
       'AYA mapping · v1.2.0\nCentre A\nSchema: AYA schema\nFile: aya.jsonld'
     )
   })
 
-  it('names a project without a version or a name of its own after its schema', () => {
+  it('names a project without a version or a name of its own after its schema', async () => {
     const { wrapper } = mountBar({
       project: {
         name: 'REPLACE_WITH_YOUR_MAPPING_NAME',
@@ -202,6 +226,6 @@ describe('ProjectStatusBar', () => {
     const projectPart = wrapper.find('#statusbar-project')
 
     expect(reads(projectPart)).toBe('Project: AYA schema · Switch project')
-    expect(projectPart.attributes('title')).toContain('From: https://example.org/aya.jsonld')
+    expect(await tipOf(projectPart)).toContain('From: https://example.org/aya.jsonld')
   })
 })

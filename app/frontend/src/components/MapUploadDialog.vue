@@ -136,9 +136,6 @@ async function download() {
           <i class="fas fa-database" /> Its RDF store: repository
           <strong>{{ incomingStore.repository }}</strong> ·
           <span class="upload-question-url">{{ incomingStore.url }}</span>
-          <template v-if="incomingStore.note">
-            <br>{{ incomingStore.note }}
-          </template>
         </p>
 
         <div

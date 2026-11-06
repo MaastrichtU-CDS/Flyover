@@ -421,12 +421,6 @@ function back() {
             <strong>{{ pending.check.store.repository }}</strong> at
             <code>{{ pending.check.store.url }}</code>.
           </p>
-          <p
-            v-if="pending.check.store.note"
-            class="small text-muted"
-          >
-            {{ pending.check.store.note }}
-          </p>
           <div class="alert alert-warning">
             <template v-if="pending.kind === 'same-project'">
               This map belongs to the open project. It replaces the project's working copy,

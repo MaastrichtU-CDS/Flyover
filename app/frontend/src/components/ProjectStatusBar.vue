@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import HoverTip from '@/components/HoverTip.vue'
 import { useProjectStore } from '@/stores/project'
 
 // The strip above the step bar: which RDF store Flyover works on (and
@@ -32,22 +33,19 @@ const connectionLabel = computed(
     })[storeStatus.value.state] || 'Checking…'
 )
 
-const storeTitle = computed(() => {
+// The store's hover: where it is, whose map named it, and why it cannot be
+// reached when it cannot.
+const storeTip = computed(() => {
   if (!store.value) return 'Flyover has not heard from the server yet.'
-  const lines = [`RDF store: ${store.value.url}`]
-  lines.push(
-    store.value.source === 'project'
-      ? "Named by the open project's map."
-      : "Flyover's configured store."
-  )
-  if (store.value.note) lines.push(store.value.note)
+  const lines = [store.value.url]
+  if (store.value.source === 'project') lines.push("Named by the open project's map.")
   if (storeStatus.value.state === 'unreachable' && storeStatus.value.reason) {
     lines.push(storeStatus.value.reason)
   }
   return lines.join('\n')
 })
 
-const projectTitle = computed(() => {
+const projectTip = computed(() => {
   const open = project.value
   if (!open) return 'Flyover works without a project: the standard RDF flow.'
   const lines = [[name.value, version.value].filter(Boolean).join(' · ')]
@@ -69,49 +67,67 @@ const projectTitle = computed(() => {
       <span
         id="statusbar-store"
         class="statusbar-item"
-        :title="storeTitle"
       >
-        <i
-          class="fas fa-database"
-          aria-hidden="true"
-        />
-        RDF store<template v-if="store">
-          · <strong>{{ store.repository }}</strong>
-        </template>
-        <span aria-hidden="true">·</span>
-        <button
-          id="statusbar-connection"
-          type="button"
-          class="statusbar-connection"
-          title="Check the connection again"
-          @click="projectStore.refreshStoreStatus()"
+        <HoverTip
+          :text="storeTip"
+          placement="below"
+          align="start"
+          wrap
         >
-          <span
-            class="statusbar-dot"
-            :class="dotClass"
+          <i
+            class="fas fa-database"
             aria-hidden="true"
           />
-          <span class="sr-only">Connection to the store:</span>
-          {{ connectionLabel }}
-        </button>
+          RDF store<template v-if="store">
+            · <strong>{{ store.repository }}</strong>
+          </template>
+        </HoverTip>
+        <span aria-hidden="true">·</span>
+        <HoverTip
+          v-slot="{ describedby }"
+          text="Check the connection again"
+          placement="below"
+        >
+          <button
+            id="statusbar-connection"
+            type="button"
+            class="statusbar-connection"
+            :aria-describedby="describedby"
+            @click="projectStore.refreshStoreStatus()"
+          >
+            <span
+              class="statusbar-dot"
+              :class="dotClass"
+              aria-hidden="true"
+            />
+            <span class="sr-only">Connection to the store:</span>
+            {{ connectionLabel }}
+          </button>
+        </HoverTip>
       </span>
       <span
         id="statusbar-project"
         class="statusbar-item"
-        :title="projectTitle"
       >
-        <i
-          class="fas fa-folder-open"
-          aria-hidden="true"
-        />
-        <template v-if="project">
-          Project: <strong>{{ name }}</strong><template v-if="version">
-            · {{ version }}
+        <HoverTip
+          :text="projectTip"
+          placement="below"
+          align="end"
+          wrap
+        >
+          <i
+            class="fas fa-folder-open"
+            aria-hidden="true"
+          />
+          <template v-if="project">
+            Project: <strong>{{ name }}</strong><template v-if="version">
+              · {{ version }}
+            </template>
           </template>
-        </template>
-        <template v-else>
-          No project
-        </template>
+          <template v-else>
+            No project
+          </template>
+        </HoverTip>
         <span aria-hidden="true">·</span>
         <button
           id="statusbar-switch"

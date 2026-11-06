@@ -137,7 +137,8 @@ describe('MapUploadDialog', () => {
     ))
 
     expect(wrapper.find('#upload-question-title').text()).toBe('Switch to another RDF store?')
-    expect(wrapper.text()).toContain('localhost is read as the configured store.')
+    // The store reads as its users know it; how Flyover reaches it is not theirs to read.
+    expect(wrapper.text()).not.toContain('localhost is read as the configured store.')
     await button(wrapper, 'Switch store').trigger('click')
     expect(answers).toEqual(['open'])
   })

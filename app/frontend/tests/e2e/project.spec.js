@@ -91,8 +91,12 @@ test.describe('Projects', () => {
       new RegExp(`Project:\\s*${CENTRE_A}\\s*·\\s*v1\\.0\\.0`)
     )
     await expect(page.locator('.alert-success')).toContainText('Flyover now works on the project')
-    // The map names localhost, which Flyover reads as its configured store.
-    await expect(statusBar(page).locator('#statusbar-store')).toHaveAttribute('title', /localhost/)
+    // The map names localhost, which Flyover reads as its configured store:
+    // the hover shows it at the address users know, in the tiles' tooltip.
+    await statusBar(page).locator('#statusbar-store .hover-tip').first().hover()
+    await expect(statusBar(page).locator('[role="tooltip"]')).toHaveText(
+      'http://localhost:7200/repositories/userRepo'
+    )
 
     await page.reload()
     await expect(picker(page)).toHaveCount(0)
