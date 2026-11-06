@@ -60,6 +60,11 @@ After changing the preset, recreate the stack with `docker compose up -d --build
 See [`stores/rdf/README.md`](stores/rdf/README.md) for the differences between the
 backends and details of the QLever integration.
 
+Flyover reaches the store inside Docker as `http://rdf-store:7200`; its users reach
+it where the stack publishes it, `http://localhost:7200`, which is the address the
+status bar shows. If you publish the store elsewhere, set `FLYOVER_RDF_STORE_PUBLIC_URL`
+to the address your users know it by.
+
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
 on configuration and environment variables.
 

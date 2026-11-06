@@ -46,17 +46,22 @@ class StoreAddress:
     """Where an RDF store is: its server's base URL and the repository.
 
     Attributes:
-        base_url: The store server's base URL, credentials included.
+        base_url: The store server's base URL as the app reaches it,
+            credentials included.
         repository: The repository's name.
         source: ``configured`` for the store the settings name, ``project``
             for one an open project's map names.
         note: Anything worth telling the user about how the address was found.
+        public_base_url: The same server's base URL as its users reach it,
+            for showing; empty when that is ``base_url``. Inside Docker the
+            app reaches the configured store by its service name.
     """
 
     base_url: str
     repository: str
     source: str = CONFIGURED
     note: str = ""
+    public_base_url: str = ""
 
     @property
     def key(self) -> Tuple[str, str]:
@@ -73,11 +78,15 @@ class StoreAddress:
         return self.key == other.key
 
     def describe(self) -> Dict[str, str]:
-        """What the browser may be told: never the credentials."""
+        """What the browser may be told: the address its users know the
+        store by, never the credentials."""
+        shown = build_repository_endpoint(
+            self.public_base_url or self.base_url, self.repository
+        )
         return {
             "kind": "rdf-store",
             "repository": self.repository,
-            "url": without_credentials(self.repository_url),
+            "url": without_credentials(shown),
             "source": self.source,
             "note": self.note,
         }
@@ -99,12 +108,17 @@ def store_for_endpoint(
     if endpoint is None or not str(endpoint).strip():
         return configured
     base_url, repository = repository_of_endpoint(str(endpoint))
-    note = ""
+    note, public_base_url = "", ""
     if names_this_machine(base_url):
+        # Shown as its users know it: the configured store's public address,
+        # else the localhost address the map wrote.
+        public_base_url = configured.public_base_url or base_url
         base_url, note = configured.base_url, LOCALHOST_NOTE
-    found = StoreAddress(base_url, repository, PROJECT, note)
+    found = StoreAddress(base_url, repository, PROJECT, note, public_base_url)
     if found.same_store(configured):
-        return StoreAddress(configured.base_url, repository, CONFIGURED, note)
+        return StoreAddress(
+            configured.base_url, repository, CONFIGURED, note, public_base_url
+        )
     return found
 
 

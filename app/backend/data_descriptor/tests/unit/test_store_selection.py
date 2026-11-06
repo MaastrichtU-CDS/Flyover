@@ -103,6 +103,49 @@ class TestTheStoreAnEndpointNames:
             store_for_endpoint("http://store.example.org/sparql", CONFIGURED_STORE)
 
 
+class TestTheAddressShown:
+    PUBLIC = StoreAddress(
+        "http://rdf-store:7200", "userRepo", public_base_url="http://localhost:7200"
+    )
+
+    def test_the_configured_store_is_shown_at_its_public_address(self):
+        assert (
+            self.PUBLIC.describe()["url"]
+            == "http://localhost:7200/repositories/userRepo"
+        )
+
+    def test_without_a_public_address_the_stores_own_is_shown(self):
+        assert CONFIGURED_STORE.describe()["url"] == (
+            "http://rdf-store:7200/repositories/userRepo"
+        )
+
+    def test_a_localhost_endpoint_is_shown_at_the_configured_public_address(self):
+        address = store_for_endpoint(
+            "http://127.0.0.1:7200/repositories/aya/statements", self.PUBLIC
+        )
+
+        assert address.describe()["url"] == "http://localhost:7200/repositories/aya"
+        assert address.base_url == "http://rdf-store:7200"
+
+    def test_without_one_a_localhost_endpoint_is_shown_as_the_map_wrote_it(self):
+        address = store_for_endpoint(
+            "http://localhost:7200/repositories/aya/statements", CONFIGURED_STORE
+        )
+
+        assert address.describe()["url"] == "http://localhost:7200/repositories/aya"
+        assert address.base_url == "http://rdf-store:7200"
+
+    def test_another_server_is_shown_at_its_own_address(self):
+        address = store_for_endpoint(
+            "https://store.example.org/repositories/aya", self.PUBLIC
+        )
+
+        assert address.describe()["url"] == "https://store.example.org/repositories/aya"
+
+    def test_the_address_shown_does_not_make_another_store(self):
+        assert self.PUBLIC.same_store(CONFIGURED_STORE)
+
+
 class TestAStoreAddress:
     def test_the_browser_is_told_the_store_without_its_credentials(self):
         address = StoreAddress(

@@ -160,7 +160,10 @@ class TestAProjectsStore:
 
         exists = client.get("/api/check-graph-exists").get_json()
 
-        assert described["store"]["url"] == local_store.repository_url
+        # Shown as the map wrote it; reached at the configured server.
+        assert (
+            described["store"]["url"] == "http://localhost:7200/repositories/localRepo"
+        )
         assert exists == {"exists": True}
         assert local_store.asks
         assert not rdf_store.calls and not project_store.calls

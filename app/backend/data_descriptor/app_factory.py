@@ -60,11 +60,15 @@ class AppSettings:
     """Where the app finds the RDF store and keeps its working files.
 
     Attributes:
-        rdf_store_url: Base URL of the RDF store.
+        rdf_store_url: Base URL of the RDF store, as the app reaches it.
         repo: RDF store repository name.
         root_dir: Directory the triplifier output and uploads are read from.
         child_dir: The package directory below ``root_dir``.
         upload_folder: Where uploaded annotation maps are saved.
+        rdf_store_public_url: Base URL of the same store as its users reach
+            it, shown in the UI. Inside Docker the app reaches the store by
+            its service name (``rdf-store``), which means nothing to a user;
+            empty means the UI shows ``rdf_store_url``.
     """
 
     rdf_store_url: str
@@ -72,6 +76,7 @@ class AppSettings:
     root_dir: str
     child_dir: str
     upload_folder: str
+    rdf_store_public_url: str = ""
 
     @property
     def state_file(self) -> str:
@@ -90,6 +95,7 @@ class AppSettings:
             "FLYOVER_GRAPHDB_URL"
         )
         repo = env.get("FLYOVER_REPOSITORY_NAME")
+        public_url = (env.get("FLYOVER_RDF_STORE_PUBLIC_URL") or "").strip()
         if rdf_store_url and repo:
             # Assume it is running in Docker
             child_dir = "data_descriptor"
@@ -99,6 +105,7 @@ class AppSettings:
                 root_dir="/app/",
                 child_dir=child_dir,
                 upload_folder=os.path.join(child_dir, "static", "files"),
+                rdf_store_public_url=normalise_rdf_store_base_url(public_url, repo),
             )
         # Assume it is not running in Docker
         child_dir = "."
@@ -108,6 +115,7 @@ class AppSettings:
             root_dir="",
             child_dir=child_dir,
             upload_folder=os.path.join(child_dir, "static", "files"),
+            rdf_store_public_url=normalise_rdf_store_base_url(public_url, "userRepo"),
         )
 
 
@@ -205,7 +213,13 @@ def build_app_context(
     store_selection = (
         overrides["store_selection"]
         if "store_selection" in overrides
-        else StoreSelection(StoreAddress(settings.rdf_store_url, settings.repo))
+        else StoreSelection(
+            StoreAddress(
+                settings.rdf_store_url,
+                settings.repo,
+                public_base_url=settings.rdf_store_public_url,
+            )
+        )
     )
     rdf_store_service = (
         overrides["rdf_store_service"]

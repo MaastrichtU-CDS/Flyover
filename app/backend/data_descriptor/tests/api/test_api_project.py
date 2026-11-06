@@ -11,6 +11,7 @@ afterwards and what the state file holds are checked from the outside.
 import json
 import os
 import stat
+from dataclasses import replace
 
 import pytest
 
@@ -180,13 +181,38 @@ class TestOpeningAProject:
             client, _with_endpoint("http://localhost:7200/repositories/aya/statements")
         ).get_json()
 
+        # Shown as the map wrote it, which is how its users know the store...
         assert described["store"] == {
             "kind": "rdf-store",
             "repository": "aya",
-            "url": f"{STORE_URL}/repositories/aya",
+            "url": "http://localhost:7200/repositories/aya",
             "source": "project",
             "note": LOCALHOST_NOTE,
         }
+        # ...and reached at the configured store's address.
+        assert selection.current.base_url == STORE_URL
+        assert selection.current.repository == "aya"
+
+    def test_the_configured_stores_public_address_is_the_one_shown(
+        self, doubles, spa_dir
+    ):
+        # In Docker the app reaches the store as rdf-store; its users know
+        # it as localhost.
+        settings = replace(
+            doubles.settings, rdf_store_public_url="http://localhost:7200"
+        )
+        app = create_app(settings, context=doubles.context(), spa_dir=str(spa_dir))
+        client = app.test_client()
+
+        before = client.get("/api/v1/project").get_json()
+        opened = _put(
+            client, _with_endpoint("http://127.0.0.1:7200/repositories/aya/statements")
+        ).get_json()
+
+        assert before["store"]["url"] == "http://localhost:7200/repositories/userRepo"
+        assert before["configuredStore"]["url"] == before["store"]["url"]
+        assert opened["store"]["url"] == "http://localhost:7200/repositories/aya"
+        selection = app.config["APP_CONTEXT"]["store_selection"]
         assert selection.current.base_url == STORE_URL
 
     def test_the_store_is_described_without_its_credentials(self, client, selection):

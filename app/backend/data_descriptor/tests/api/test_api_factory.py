@@ -43,6 +43,34 @@ class TestSettingsFromTheEnvironment:
             upload_folder=os.path.join("data_descriptor", "static", "files"),
         )
 
+    @pytest.mark.parametrize(
+        "public_url, shown",
+        [
+            ("http://localhost:7200", "http://localhost:7200"),
+            ("http://localhost:7200/", "http://localhost:7200"),
+            ("http://localhost:7200/repositories/userRepo", "http://localhost:7200"),
+            ("  ", ""),
+        ],
+    )
+    def test_the_stores_public_address_is_read_and_normalised(self, public_url, shown):
+        settings = AppSettings.from_env(
+            {
+                "FLYOVER_RDF_STORE_URL": "http://rdf-store:7200",
+                "FLYOVER_REPOSITORY_NAME": "userRepo",
+                "FLYOVER_RDF_STORE_PUBLIC_URL": public_url,
+            }
+        )
+
+        assert settings.rdf_store_url == "http://rdf-store:7200"
+        assert settings.rdf_store_public_url == shown
+
+    def test_outside_docker_the_public_address_is_read_too(self):
+        settings = AppSettings.from_env(
+            {"FLYOVER_RDF_STORE_PUBLIC_URL": "http://graphdb.example.org"}
+        )
+
+        assert settings.rdf_store_public_url == "http://graphdb.example.org"
+
     def test_the_older_graphdb_variable_still_works(self):
         settings = AppSettings.from_env(
             {
