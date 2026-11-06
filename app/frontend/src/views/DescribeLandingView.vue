@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { errorMessage, useProjectStore } from '@/stores/project'
@@ -11,9 +12,24 @@ const status = useStatusStore()
 const suggestions = useSuggestionsStore()
 const project = useProjectStore()
 const { refreshDataExists } = useNavigation()
+const route = useRoute()
+const router = useRouter()
+
+// What brought the user here: an ingest that just finished ('done'), one
+// that went on without new data ('skipped'), or anything else (''). The
+// ingest's redirect says so; the address drops it at once, so a reload or
+// a later visit says nothing of an ingest.
+const INGEST_OUTCOMES = ['done', 'skipped']
+const arrival = INGEST_OUTCOMES.includes(route.query.ingest) ? route.query.ingest : ''
 
 const dataExists = ref(true)
 const checking = ref(true)
+// The datasets in the store Flyover works on, by name.
+const storeDatasets = ref([])
+const storeDatasetsText = computed(() => {
+  const count = storeDatasets.value.length
+  return `The RDF store holds ${count} dataset${count === 1 ? '' : 's'}: ${storeDatasets.value.join(', ')}.`
+})
 const semanticMapVisible = ref(true)
 const continueDisabled = ref(true)
 const fileInput = ref(null)
@@ -207,16 +223,59 @@ async function checkDataExists() {
   }
 }
 
-onMounted(checkDataExists)
+async function loadStoreDatasets() {
+  try {
+    const { data } = await api.get('/api/rdf-store-databases')
+    storeDatasets.value = [...(data?.databases || [])].sort((a, b) => a.localeCompare(b))
+  } catch {
+    storeDatasets.value = []
+  }
+}
+
+// Drop the ingest's word from the address: it was said once.
+function forgetArrival() {
+  if (!('ingest' in route.query)) return
+  const query = { ...route.query }
+  delete query.ingest
+  router.replace({ query, hash: route.hash })
+}
+
+onMounted(async () => {
+  forgetArrival()
+  await checkDataExists()
+  if (dataExists.value) await loadStoreDatasets()
+})
 </script>
 
 <template>
   <div>
-    <h1><i class="fas fa-clipboard-check" /> Data submission finalised</h1>
+    <h1><i class="fas fa-edit" /> Data Description</h1>
     <hr>
+    <p>
+      In this step you describe the variables in your data: what each one means, its
+      data type, and its units and categories. A semantic map can guide the
+      descriptions with the variables a project has agreed on.
+    </p>
 
-    <p v-if="dataExists">
-      Data uploaded successfully. You can now describe your variables.
+    <div
+      v-if="dataExists && arrival === 'done'"
+      class="alert alert-success alert-compact ingest-outcome"
+    >
+      <i class="fas fa-check-circle" /> Data uploaded successfully. You can now describe
+      your variables.
+    </div>
+    <div
+      v-else-if="dataExists && arrival === 'skipped'"
+      class="alert alert-info alert-compact ingest-outcome"
+    >
+      <i class="fas fa-info-circle" /> No new data was added. You can describe the data
+      already in the RDF store.
+    </div>
+    <p
+      v-else-if="dataExists && storeDatasets.length"
+      class="text-muted store-datasets"
+    >
+      {{ storeDatasetsText }}
     </p>
 
     <div

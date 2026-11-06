@@ -7,6 +7,10 @@ import { setActivePinia, createPinia } from 'pinia'
 // describe flow over: the fields are rebuilt from the uploaded map, so the
 // suggestion review marks of the previous run must go with them.
 
+const route = { query: {}, hash: '' }
+const router = { replace: vi.fn(), push: vi.fn() }
+
+vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => router }))
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
@@ -211,5 +215,89 @@ describe('DescribeLandingView — an upload and the open project', () => {
     expect(api.post).not.toHaveBeenCalledWith('/api/v1/validate-mapping', expect.anything())
     expect(wrapper.text()).toContain('No Data Found')
     expect(useStatusStore().messages.at(-1).text).toContain('holds no data yet')
+  })
+})
+
+describe('DescribeLandingView — what brought the user here', () => {
+  let databases
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    api.get.mockReset()
+    router.replace.mockClear()
+    route.query = {}
+    route.hash = ''
+    databases = ['visits', 'patients']
+    api.get.mockImplementation(async (url) =>
+      url === '/api/rdf-store-databases'
+        ? { data: { success: true, databases } }
+        : { data: { exists: true } }
+    )
+  })
+
+  it('says the data came in right after an ingest, once', async () => {
+    route.query = { ingest: 'done' }
+
+    const wrapper = mountLanding()
+    await flushPromises()
+
+    expect(wrapper.find('.ingest-outcome').text()).toContain('Data uploaded successfully')
+    // The address drops the word, so a reload says nothing of the ingest.
+    expect(router.replace).toHaveBeenCalledWith({ query: {}, hash: '' })
+  })
+
+  it('says no new data came in when the ingest went on without any', async () => {
+    route.query = { ingest: 'skipped', other: 'kept' }
+
+    const wrapper = mountLanding()
+    await flushPromises()
+
+    expect(wrapper.find('.ingest-outcome').text()).toContain('No new data was added')
+    expect(wrapper.text()).not.toContain('Data uploaded successfully')
+    expect(router.replace).toHaveBeenCalledWith({ query: { other: 'kept' }, hash: '' })
+  })
+
+  it('names the datasets in the store when the user came another way', async () => {
+    const wrapper = mountLanding()
+    await flushPromises()
+
+    expect(wrapper.find('.ingest-outcome').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Data uploaded successfully')
+    expect(wrapper.find('.store-datasets').text()).toBe(
+      'The RDF store holds 2 datasets: patients, visits.'
+    )
+    expect(router.replace).not.toHaveBeenCalled()
+  })
+
+  it('counts a single dataset as one', async () => {
+    databases = ['patients']
+
+    const wrapper = mountLanding()
+    await flushPromises()
+
+    expect(wrapper.find('.store-datasets').text()).toBe('The RDF store holds 1 dataset: patients.')
+  })
+
+  it('takes an unknown word in the address for no ingest', async () => {
+    route.query = { ingest: 'yes' }
+
+    const wrapper = mountLanding()
+    await flushPromises()
+
+    expect(wrapper.find('.ingest-outcome').exists()).toBe(false)
+    expect(wrapper.find('.store-datasets').exists()).toBe(true)
+    expect(router.replace).toHaveBeenCalledWith({ query: {}, hash: '' })
+  })
+
+  it('claims no ingest when the store turns out to hold no data', async () => {
+    route.query = { ingest: 'done' }
+    api.get.mockResolvedValue({ data: { exists: false } })
+
+    const wrapper = mountLanding()
+    await flushPromises()
+
+    expect(wrapper.find('.ingest-outcome').exists()).toBe(false)
+    expect(wrapper.text()).toContain('No Data Found')
+    expect(api.get).not.toHaveBeenCalledWith('/api/rdf-store-databases')
   })
 })

@@ -15,7 +15,7 @@ test.describe('Describe flow', () => {
     const errors = watchConsoleErrors(page)
     await runIngestFlow(page)
 
-    await expect(page.locator('h1').first()).toContainText(/Data submission finalised|Describe/)
+    await expect(page.locator('h1').first()).toContainText('Data Description')
 
     await page.getByRole('button', { name: /^\s*Skip\s*$/i }).click()
     await page.getByRole('button', { name: /Click here to describe the data/i }).click()
