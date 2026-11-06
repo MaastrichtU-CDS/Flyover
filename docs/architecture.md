@@ -113,11 +113,11 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 |---|---|
 | `GET /api/v1/store/datasets` | Every dataset, with its rows and whether it was described and annotated |
 | `DELETE /api/v1/store/datasets/<name>` | One dataset: its links first (its data graph tells them apart), then its graphs |
-| `DELETE /api/v1/store/datasets` | Every graph Flyover writes, graph by graph; never `DROP ALL` |
-| `DELETE /api/v1/store/annotations` | Every annotation and materialised inference; data and describe answers stay |
+| `DELETE /api/v1/store/datasets` | Every graph Flyover writes, dataset by dataset; never `DROP ALL` |
+| `DELETE /api/v1/store/annotations` | Every annotation and materialised inference, dataset by dataset; data and describe answers stay |
 | `GET /api/v1/store/datasets/<name>/export`, `/api/v1/store/export`, `/api/v1/store/annotations/export` | What the matching delete removes, as one TriG file |
 
-They work on the store the request works on, go straight to its RDF4J-style endpoints (so a refusal surfaces with its status), and after a delete the session forgets what it knew of the deleted datasets.
+They work on the store the request works on, go straight to its RDF4J-style endpoints (so a refusal surfaces with its status), and after a delete the session forgets what it knew of the deleted datasets. Each dataset's operations go in one update request, so GraphDB and RDF4J apply them as one transaction (a dataset goes entirely or not at all); a store that refuses a request of several operations (HTTP 400 or 501) gets them one by one. Datasets are deleted one after another, not in parallel: a repository commits one write at a time anyway.
 
 Two maps belong to the same project when their `schema` sections do: the same `schema.@id` when both have one, else the same `schema.name`. On every change of project, the server forgets the session state worked out for the previous map (the annotation status, pasted LLM answers, suggestion jobs, the describe answers the forms posted); on a change of store, also what it knew of the previous store's databases. The data in the stores is never touched.
 

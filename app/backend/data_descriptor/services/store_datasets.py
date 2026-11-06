@@ -214,29 +214,53 @@ class StoreDatasets:
         return header + "\n".join(block for block in blocks if block)
 
     # -- deletes -------------------------------------------------------------
+    #
+    # Each dataset goes in one update request: one transaction on GraphDB and
+    # RDF4J, so a dataset goes entirely or not at all. A store that refuses a
+    # request of several operations gets them one by one instead.
 
     def delete_dataset(self, name: str) -> None:
-        """Everything Flyover made for one dataset: its graphs and its links."""
-        self._update(
+        """Everything Flyover made for one dataset: its links, then its graphs."""
+        links = (
             f"DELETE {{ GRAPH <{RELATIONSHIPS}> {{ ?s ?p ?o . }} }} WHERE {{"
             + LINKS_FILTER.format(relationships=RELATIONSHIPS, data=f"{DATA}{name}/")
             + "}"
         )
-        for graph in dataset_graphs(name):
-            self._update(f"DROP SILENT GRAPH <{graph}>")
+        self._update_together(
+            [links] + [f"DROP SILENT GRAPH <{graph}>" for graph in dataset_graphs(name)]
+        )
 
     def delete_all(self) -> List[str]:
-        """Every graph Flyover writes; anything else in the repository stays."""
-        return self._drop(self._graphs(FLYOVER_GRAPHS))
+        """Every graph Flyover writes, dataset by dataset; anything else in the
+        repository stays."""
+        return self._drop_by_dataset(self._graphs(FLYOVER_GRAPHS))
 
     def delete_annotations(self) -> List[str]:
-        """Every annotation graph and every materialised inference."""
-        return self._drop(self._graphs(ANNOTATION_GRAPHS))
+        """Every annotation graph and every materialised inference, dataset by
+        dataset."""
+        return self._drop_by_dataset(self._graphs(ANNOTATION_GRAPHS))
 
-    def _drop(self, graphs: List[str]) -> List[str]:
-        for graph in graphs:
-            self._update(f"DROP SILENT GRAPH <{graph}>")
+    def _drop_by_dataset(self, graphs: List[str]) -> List[str]:
+        for group in _by_dataset(graphs):
+            self._update_together([f"DROP SILENT GRAPH <{graph}>" for graph in group])
         return graphs
+
+    def _update_together(self, operations: List[str]) -> None:
+        """The operations as one request, or one by one where it must."""
+        response = self._post_update(" ;\n".join(operations))
+        if response.status_code < 300:
+            return
+        if len(operations) > 1 and response.status_code in (400, 501):
+            logger.info(
+                "The store refused %d operations in one request (HTTP %s); "
+                "sending them one by one",
+                len(operations),
+                response.status_code,
+            )
+            for operation in operations:
+                self._update(operation)
+            return
+        raise self._refused(response, "delete")
 
     # -- the store's endpoints ---------------------------------------------
 
@@ -289,15 +313,32 @@ class StoreDatasets:
             raise self._refused(response, f"export {graph}")
         return response.text
 
-    def _update(self, update: str) -> None:
-        response = self._request(
+    def _post_update(self, update: str) -> requests.Response:
+        return self._request(
             "POST",
             self._update_url,
             data={"update": update},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
+
+    def _update(self, update: str) -> None:
+        response = self._post_update(update)
         if response.status_code >= 300:
             raise self._refused(response, "delete")
+
+
+def _by_dataset(graphs: List[str]) -> List[List[str]]:
+    """The graphs grouped by the dataset they hold, in name order; the graphs
+    of no one dataset (the relationships graph, older single graphs) last."""
+    groups: Dict[str, List[str]] = {}
+    for graph in graphs:
+        name = ""
+        for prefix in (DATA, ONTOLOGY, ANNOTATION, MATERIALISED):
+            if graph.startswith(prefix) and graph.endswith("/"):
+                name = graph[len(prefix) : -1]
+        groups.setdefault(name, []).append(graph)
+    named = sorted((n for n in groups if n), key=str.casefold)
+    return [groups[n] for n in named] + ([groups[""]] if "" in groups else [])
 
 
 def _count(value: str) -> int:

@@ -30,6 +30,11 @@ BASE = "http://rdf-store.unit:7200"
 QUERY_URL = f"{BASE}/repositories/userRepo"
 UPDATE_URL = f"{QUERY_URL}/statements"
 GRAPH_URL = f"{QUERY_URL}/rdf-graphs/service"
+SEPARATOR = " ;\n"
+
+
+def _operations(update):
+    return update.split(SEPARATOR)
 
 
 def _form(request):
@@ -49,6 +54,8 @@ class FakeStore:
         self.updates = []
         self.queries = []
         self.update_status = 204
+        # A store that takes one operation per request only.
+        self.refuse_combined = False
 
     def install(self, web):
         web.add_callback(responses.POST, QUERY_URL, callback=self._query)
@@ -77,7 +84,10 @@ class FakeStore:
         return 200, {"Content-Type": "text/csv"}, body
 
     def _update(self, request):
-        self.updates.append(_form(request)["update"])
+        update = _form(request)["update"]
+        self.updates.append(update)
+        if self.refuse_combined and SEPARATOR in update:
+            return 400, {}, "one operation per request, please"
         return self.update_status, {}, ""
 
     def _graph(self, request):
@@ -222,10 +232,13 @@ class TestTrigBlocks:
 
 
 class TestDeletes:
-    def test_a_dataset_goes_with_its_links_first_then_its_graphs(self, store, datasets):
+    def test_a_dataset_goes_in_one_request_its_links_first_then_its_graphs(
+        self, store, datasets
+    ):
         datasets.delete_dataset("patients")
 
-        links, *drops = store.updates
+        [update] = store.updates
+        links, *drops = _operations(update)
         assert links.startswith("DELETE { GRAPH <http://relationships.local/>")
         assert "GRAPH <http://data.local/patients/>" in links
         assert drops == [f"DROP SILENT GRAPH <{g}>" for g in dataset_graphs("patients")]
@@ -236,24 +249,34 @@ class TestDeletes:
             "http://materialized.local/patients/",
         ]
 
-    def test_every_dataset_goes_graph_by_graph_never_with_drop_all(
+    def test_every_dataset_goes_one_request_each_never_with_drop_all(
         self, store, datasets
     ):
         store.graph_contents = {
             "http://data.local/patients/": "",
             "http://ontology.local/patients/": "",
+            "http://data.local/Visits/": "",
             "http://relationships.local/": "",
         }
         store.extra_graphs = ["http://other-tool.example/graph"]
 
         dropped = datasets.delete_all()
 
-        assert dropped == [
+        assert sorted(dropped) == [
+            "http://data.local/Visits/",
             "http://data.local/patients/",
             "http://ontology.local/patients/",
             "http://relationships.local/",
         ]
-        assert store.updates == [f"DROP SILENT GRAPH <{g}>" for g in dropped]
+        # A request per dataset, in name order; the shared graphs last.
+        assert [_operations(u) for u in store.updates] == [
+            [
+                "DROP SILENT GRAPH <http://data.local/patients/>",
+                "DROP SILENT GRAPH <http://ontology.local/patients/>",
+            ],
+            ["DROP SILENT GRAPH <http://data.local/Visits/>"],
+            ["DROP SILENT GRAPH <http://relationships.local/>"],
+        ]
         assert not any("DROP ALL" in u or "other-tool" in u for u in store.updates)
 
     def test_the_annotations_go_with_their_inferences_and_nothing_else(
@@ -271,7 +294,31 @@ class TestDeletes:
             "http://annotation.local/patients/",
             "http://materialized.local/patients/",
         ]
-        assert store.updates == [f"DROP SILENT GRAPH <{g}>" for g in dropped]
+        assert store.updates == [
+            "DROP SILENT GRAPH <http://annotation.local/patients/> ;\n"
+            "DROP SILENT GRAPH <http://materialized.local/patients/>"
+        ]
+
+    def test_a_store_that_takes_one_operation_at_a_time_gets_them_so(
+        self, store, datasets
+    ):
+        store.refuse_combined = True
+
+        datasets.delete_dataset("patients")
+
+        combined, *singles = store.updates
+        assert singles == _operations(combined)
+        assert len(singles) == 5
+
+    def test_a_store_that_refuses_for_another_reason_is_not_asked_again(
+        self, store, datasets
+    ):
+        store.update_status = 403
+
+        with pytest.raises(StoreDatasetError, match=r"HTTP 403"):
+            datasets.delete_dataset("patients")
+
+        assert len(store.updates) == 1
 
 
 # ---------------------------------------------------------------------------

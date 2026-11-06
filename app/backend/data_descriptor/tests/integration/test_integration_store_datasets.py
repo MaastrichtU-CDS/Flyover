@@ -59,7 +59,9 @@ class TestTheDatasetsPanel:
         response = client.delete(f"/api/v1/store/datasets/{TABLE}")
 
         assert response.status_code == 200, response.get_json()
-        links, *drops = _updates(rdf_store)
+        # One request, so one transaction: the links first, then the graphs.
+        [update] = _updates(rdf_store)
+        links, *drops = update.split(" ;\n")
         assert "GRAPH <http://relationships.local/>" in links
         assert f"GRAPH <http://data.local/{TABLE}/>" in links
         assert drops == [
@@ -106,7 +108,7 @@ class TestTheDatasetsPanel:
             f"http://ontology.local/{TABLE}/",
         ]
 
-    def test_deleting_every_dataset_drops_flyovers_graphs_one_by_one(
+    def test_deleting_every_dataset_drops_flyovers_graphs_dataset_by_dataset(
         self, client, rdf_store
     ):
         _listing(
@@ -122,7 +124,7 @@ class TestTheDatasetsPanel:
 
         assert response.status_code == 200
         assert _updates(rdf_store) == [
-            f"DROP SILENT GRAPH <http://data.local/{TABLE}/>",
+            f"DROP SILENT GRAPH <http://data.local/{TABLE}/> ;\n"
             f"DROP SILENT GRAPH <http://ontology.local/{TABLE}/>",
             "DROP SILENT GRAPH <http://relationships.local/>",
         ]
