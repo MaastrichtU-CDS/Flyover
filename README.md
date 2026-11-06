@@ -110,8 +110,10 @@ A project is the JSON-LD semantic map a study shares with its sites. Its `schema
 site of the project uses; its `databases` section is the part each site fills in for its own data. When Flyover opens,
 it asks which project to work on:
 
-- **Open a project**: drop or browse for the project's JSON-LD map, or load it from a web address. You may start from
-  the project's empty template and upload your own filled-in map later, in any step.
+- **Open a project**: drop or browse for the project's JSON-LD map, or load it from a web address: the file's own, its
+  page on Codeberg, GitHub, GitLab or a similar site, or its Zenodo record or DOI. A Zenodo record that holds several
+  maps lists them to choose from. You may start from the project's empty template and upload your own filled-in map
+  later, in any step.
 - **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**

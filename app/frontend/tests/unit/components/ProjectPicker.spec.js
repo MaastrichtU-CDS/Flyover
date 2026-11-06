@@ -246,6 +246,116 @@ describe('ProjectPicker', () => {
       })
     })
 
+    it("says a file's page on a code hosting site, or a Zenodo record, will do", async () => {
+      ;({ wrapper } = await mountPicker())
+
+      const field = wrapper.find('#project-map-url')
+      const help = wrapper.find(`#${field.attributes('aria-describedby')}`)
+      expect(help.text().replace(/\s+/g, ' ')).toBe(
+        "The file's own address, its page on Codeberg, GitHub, GitLab or a similar " +
+          'site, or its Zenodo record or DOI.'
+      )
+    })
+
+    describe('a Zenodo record with several maps', () => {
+      const DOI = 'https://doi.org/10.5281/zenodo.1486992'
+      const FILES = 'https://zenodo.org/records/1486992/files'
+      const CHOICES = [
+        { name: 'mapping_centre_a.jsonld', url: `${FILES}/mapping_centre_a.jsonld`, size: 48210 },
+        { name: 'mapping_template.jsonld', url: `${FILES}/mapping_template.jsonld`, size: 860 },
+        { name: 'mapping_centre_b.jsonld', url: `${FILES}/mapping_centre_b.jsonld`, size: null },
+      ]
+
+      beforeEach(() => {
+        const opening = api.post.getMockImplementation()
+        api.post.mockImplementation(async (url, body) => {
+          if (url === '/api/v1/project/fetch-map' && body.url === DOI) {
+            return {
+              data: {
+                message: 'This Zenodo record holds 3 JSON-LD files.',
+                choices: CHOICES,
+                sourceUrl: DOI,
+              },
+            }
+          }
+          if (url === '/api/v1/project/fetch-map') {
+            return {
+              data: { mapping: AYA, fileName: body.url.split('/').pop(), sourceUrl: body.url },
+            }
+          }
+          return opening(url, body)
+        })
+      })
+
+      async function load(address) {
+        await wrapper.find('#project-map-url').setValue(address)
+        await wrapper.find('#project-map-url').element.form.dispatchEvent(new Event('submit'))
+        await flushPromises()
+      }
+
+      function rows(list) {
+        return list.findAll('.project-picker-choice').map((b) => b.text().replace(/\s+/g, ' '))
+      }
+
+      it('lists them with their sizes, and opens the one picked', async () => {
+        ;({ wrapper } = await mountPicker())
+
+        await load(DOI)
+
+        const list = wrapper.find('.project-picker-choices')
+        expect(list.text()).toContain('This Zenodo record holds 3 JSON-LD files. Choose the one to open:')
+        expect(rows(list)).toEqual([
+          'mapping_centre_a.jsonld 48 kB',
+          'mapping_template.jsonld 860 B',
+          'mapping_centre_b.jsonld',
+        ])
+        expect(api.put).not.toHaveBeenCalled()
+
+        await list.findAll('.project-picker-choice')[0].trigger('click')
+        await flushPromises()
+
+        expect(api.post).toHaveBeenCalledWith('/api/v1/project/fetch-map', {
+          url: `${FILES}/mapping_centre_a.jsonld`,
+        })
+        expect(api.put.mock.calls[0][1]).toMatchObject({
+          fileName: 'mapping_centre_a.jsonld',
+          sourceUrl: `${FILES}/mapping_centre_a.jsonld`,
+        })
+        expect(reloadPage).toHaveBeenCalled()
+      })
+
+      it('forgets them once another address is typed', async () => {
+        ;({ wrapper } = await mountPicker())
+        await load(DOI)
+        expect(wrapper.find('.project-picker-choices').exists()).toBe(true)
+
+        await wrapper.find('#project-map-url').setValue('https://example.org/aya.jsonld')
+
+        expect(wrapper.find('.project-picker-choices').exists()).toBe(false)
+      })
+
+      it('keeps them when the one picked cannot be loaded, to pick another', async () => {
+        ;({ wrapper } = await mountPicker())
+        await load(DOI)
+        const opening = api.post.getMockImplementation()
+        api.post.mockImplementation(async (url, body) => {
+          if (url === '/api/v1/project/fetch-map' && body.url !== DOI) {
+            throw { response: { status: 502, data: { error: 'The address answered with HTTP 404.' } } }
+          }
+          return opening(url, body)
+        })
+
+        await wrapper.findAll('.project-picker-choice')[1].trigger('click')
+        await flushPromises()
+
+        expect(wrapper.find('.project-picker-errors').text()).toContain(
+          'The address answered with HTTP 404.'
+        )
+        expect(wrapper.findAll('.project-picker-choice')).toHaveLength(3)
+        expect(api.put).not.toHaveBeenCalled()
+      })
+    })
+
     it('shows why a web address could not be loaded', async () => {
       ;({ wrapper } = await mountPicker())
       api.post.mockRejectedValueOnce({

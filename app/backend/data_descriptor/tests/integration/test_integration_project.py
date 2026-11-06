@@ -203,3 +203,88 @@ class TestTheStoreStatus:
             "store": body["store"],
         }
         assert body["store"]["url"] == project_store.repository_url
+
+
+class TestAMapFromAWebAddress:
+    def test_a_files_page_on_a_code_hosting_site_loads_through_its_raw_file(
+        self, client
+    ):
+        page = "https://github.com/o/r/blob/main/maps/aya.jsonld"
+        raw = "https://raw.githubusercontent.com/o/r/main/maps/aya.jsonld"
+        mapping = _project_map("http://localhost:7200/repositories/userRepo")
+        with responses.RequestsMock() as web:
+            web.get(raw, json=mapping)
+            response = client.post("/api/v1/project/fetch-map", json={"url": page})
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "mapping": mapping,
+            "fileName": "aya.jsonld",
+            "sourceUrl": page,
+        }
+
+    def test_a_page_whose_raw_file_is_missing_says_so(self, client):
+        page = "https://codeberg.org/o/r/src/branch/main/aya.jsonld"
+        raw = "https://codeberg.org/o/r/raw/branch/main/aya.jsonld"
+        with responses.RequestsMock() as web:
+            web.get(raw, status=404)
+            web.get(page, body="<!doctype html><html></html>")
+            response = client.post("/api/v1/project/fetch-map", json={"url": page})
+
+        assert response.status_code == 502
+        assert response.get_json()["error"].startswith(
+            f"The raw file behind that page, {raw}, answered with HTTP 404."
+        )
+
+    def test_a_zenodo_record_with_several_maps_offers_them(self, client):
+        record = "https://zenodo.org/records/1486992"
+        files = [
+            {"key": name, "size": size}
+            for name, size in (
+                ("mapping_template.jsonld", 12000),
+                ("mapping_centre_a.jsonld", 48000),
+                ("paper.pdf", 90000),
+            )
+        ]
+        with responses.RequestsMock() as web:
+            web.get(
+                "https://zenodo.org/api/records/1486992",
+                json={"id": 1486992, "files": files},
+            )
+            response = client.post("/api/v1/project/fetch-map", json={"url": record})
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "message": "This Zenodo record holds 2 JSON-LD files.",
+            "choices": [
+                {
+                    "name": "mapping_centre_a.jsonld",
+                    "url": "https://zenodo.org/records/1486992/files/mapping_centre_a.jsonld",
+                    "size": 48000,
+                },
+                {
+                    "name": "mapping_template.jsonld",
+                    "url": "https://zenodo.org/records/1486992/files/mapping_template.jsonld",
+                    "size": 12000,
+                },
+            ],
+            "sourceUrl": record,
+        }
+
+    def test_a_zenodo_doi_with_one_map_loads_it(self, client):
+        doi = "https://doi.org/10.5281/zenodo.1486992"
+        mapping = _project_map("http://localhost:7200/repositories/userRepo")
+        with responses.RequestsMock() as web:
+            web.get(
+                "https://zenodo.org/api/records/1486992",
+                json={"id": 1486992, "files": [{"key": "aya.jsonld", "size": 1}]},
+            )
+            web.get("https://zenodo.org/records/1486992/files/aya.jsonld", json=mapping)
+            response = client.post("/api/v1/project/fetch-map", json={"url": doi})
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "mapping": mapping,
+            "fileName": "aya.jsonld",
+            "sourceUrl": doi,
+        }

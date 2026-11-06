@@ -30,6 +30,9 @@ const validationErrors = ref([])
 // The map waiting to be opened: { map, fileName, sourceUrl, check, kind }.
 // Kept shallow: the map goes to IndexedDB and the server as it was read.
 const pending = shallowRef(null)
+// The maps an address offers to choose from (a Zenodo record that holds
+// several): { message, items: [{ name, url, size }] }.
+const choices = shallowRef(null)
 
 const isOpen = computed(() => picker.value.open)
 const canCancel = computed(() => picker.value.mode === 'switch')
@@ -54,6 +57,7 @@ function reset() {
   dragging.value = false
   url.value = ''
   pending.value = null
+  choices.value = null
   clearErrors()
 }
 
@@ -65,6 +69,10 @@ const { focusFirst } = useModalFocus(dialog, isOpen, {
 })
 
 watch(step, () => focusFirst())
+// Another address makes the last one's choices stale.
+watch(url, () => {
+  choices.value = null
+})
 
 function cancel() {
   if (canCancel.value) projectStore.closePicker()
@@ -152,8 +160,15 @@ function onDrop(event) {
 
 async function loadFromUrl() {
   clearErrors()
+  choices.value = null
   const address = url.value.trim()
   if (!address) return
+  await loadAddress(address)
+}
+
+// Fetch the map at `address` and consider it. An address that offers
+// several maps lists them to choose from instead.
+async function loadAddress(address) {
   busy.value = true
   let fetched
   try {
@@ -164,7 +179,30 @@ async function loadFromUrl() {
     return
   }
   busy.value = false
+  if (fetched?.choices?.length) {
+    choices.value = { message: fetched.message || '', items: fetched.choices }
+    return
+  }
   await consider(fetched.mapping, { fileName: fetched.fileName, sourceUrl: fetched.sourceUrl })
+}
+
+async function loadChoice(item) {
+  clearErrors()
+  await loadAddress(item.url)
+}
+
+// A file's size as the choices show it: "860 B", "4.2 kB", "48 kB".
+function formatSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1000) return `${bytes} B`
+  const units = ['kB', 'MB', 'GB']
+  let value = bytes / 1000
+  let unit = 0
+  while (value >= 999.5 && unit < units.length - 1) {
+    value /= 1000
+    unit += 1
+  }
+  return `${value < 9.95 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
 async function openPending() {
@@ -330,6 +368,7 @@ function back() {
                     v-model="url"
                     type="url"
                     class="form-control"
+                    aria-describedby="project-map-url-help"
                     placeholder="https://…/project-map.jsonld"
                     :disabled="busy"
                   >
@@ -343,7 +382,49 @@ function back() {
                     </button>
                   </div>
                 </div>
+                <small
+                  id="project-map-url-help"
+                  class="form-text text-muted"
+                >
+                  The file's own address, its page on Codeberg, GitHub, GitLab or a similar
+                  site, or its Zenodo record or DOI.
+                </small>
               </form>
+
+              <div
+                v-if="choices"
+                class="mt-3 project-picker-choices"
+              >
+                <p
+                  id="project-map-choices-label"
+                  class="small mb-1"
+                >
+                  {{ choices.message }} Choose the one to open:
+                </p>
+                <div
+                  class="list-group"
+                  role="group"
+                  aria-labelledby="project-map-choices-label"
+                >
+                  <button
+                    v-for="item in choices.items"
+                    :key="item.url"
+                    type="button"
+                    class="list-group-item list-group-item-action project-picker-choice"
+                    :disabled="busy"
+                    @click="loadChoice(item)"
+                  >
+                    <span class="project-picker-choice-name">
+                      <i class="fas fa-file-code" /> {{ item.name }}
+                    </span>
+                    <!-- The space keeps name and size apart for screen readers. -->
+                    <span
+                      v-if="formatSize(item.size)"
+                      class="small text-muted"
+                    >{{ ' ' + formatSize(item.size) }}</span>
+                  </button>
+                </div>
+              </div>
 
               <div
                 v-if="busy"
@@ -627,6 +708,25 @@ function back() {
 }
 
 .project-picker-url {
+  overflow-wrap: anywhere;
+}
+
+/* A record's maps: compact rows, the list scrolling when it is long. */
+.project-picker-choices .list-group {
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.project-picker-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.project-picker-choice-name {
   overflow-wrap: anywhere;
 }
 

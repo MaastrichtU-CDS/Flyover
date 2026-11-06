@@ -15,14 +15,15 @@ without one. Routes are the ``/api/v1/project`` surface:
 - ``GET /api/v1/project/store-status``: whether the store in use answers,
   for the status bar's dot;
 - ``POST /api/v1/project/fetch-map``: a map from a web address, fetched by
-  the server, for the pop-up to check and open like an uploaded file.
+  the server, for the pop-up to check and open like an uploaded file; or,
+  for a Zenodo record holding several, the maps to choose from.
 """
 
 import logging
 
 from flask import Blueprint, current_app, jsonify
 
-from services.project_service import MapFetchError, ProjectError
+from services.project_service import MapFetchError, MapFileChoice, ProjectError
 from utils.mapping_request import json_object_body
 
 logger = logging.getLogger(__name__)
@@ -125,14 +126,25 @@ def fetch_project_map():
 
     Answers ``{"mapping": {...}, "fileName": "...", "sourceUrl": "..."}``.
     Nothing is opened: the browser checks and opens the map as it would an
-    uploaded file. An unusable address is a 400; an address that could not
-    be fetched, or did not return a map, a 502.
+    uploaded file. An address that leads to several maps (a Zenodo record)
+    answers ``{"message": "...", "choices": [{"name", "url", "size"}, ...],
+    "sourceUrl": "..."}`` instead: the browser asks which one and fetches its
+    url. An unusable address is a 400; an address that could not be fetched,
+    or did not return a map, a 502.
     """
     url = json_object_body().get("url")
     if not isinstance(url, str) or not url.strip():
         return jsonify({"error": "No address was sent: the body needs a 'url'."}), 400
     try:
         mapping, file_name = _context()["fetch_map"](url)
+    except MapFileChoice as choice:
+        return jsonify(
+            {
+                "message": choice.message,
+                "choices": choice.choices,
+                "sourceUrl": url.strip(),
+            }
+        )
     except MapFetchError as error:
         return jsonify({"error": error.message}), (502 if error.upstream else 400)
     return jsonify(

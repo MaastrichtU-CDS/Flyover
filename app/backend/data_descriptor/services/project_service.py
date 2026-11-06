@@ -37,6 +37,12 @@ import requests
 
 from loaders import JSONLDMapping
 from services.store_selection import StoreAddress, StoreSelection, store_for_endpoint
+from utils.raw_file_address import (
+    ZenodoRecord,
+    raw_file_address,
+    shown_address,
+    zenodo_record,
+)
 from utils.rdf_store_url import without_credentials
 from validation.mapping_validator import MappingValidator
 
@@ -348,19 +354,72 @@ MAX_FETCHED_MAP_BYTES = 20 * 1024 * 1024
 # Seconds to connect, and to wait between bytes once connected.
 FETCH_TIMEOUT = (5, 30)
 FETCH_ACCEPT = "application/ld+json, application/json;q=0.9, */*;q=0.1"
+# Zenodo's API answers application/ld+json with the record's schema.org
+# description, which lists no files.
+ZENODO_ACCEPT = "application/json"
 NOT_JSON_HINT = (
-    "If the file is on GitHub or a similar site, use the address of its " "raw version."
+    "Give the address of the map file itself, of its page on a code hosting "
+    "site such as Codeberg, GitHub or GitLab, or of its Zenodo record."
 )
+PRIVATE_HINT = (
+    "If the repository is private, download the map from the site and open "
+    "the file instead."
+)
+RESTRICTED_HINT = (
+    "If the record's files are restricted, download the map from Zenodo and "
+    "open the file instead."
+)
+# The file a page or a record leads to, as the messages below name it.
+RAW_FILE = "the raw file behind that page"
+ZENODO_FILE = "the file in that Zenodo record"
+# What fetching that file met, worded about it.
+FILE_FAILURES = {
+    "status": "{The_file}, {address}, answered with HTTP {status}.",
+    "timeout": "{The_file}, {address}, did not answer in time.",
+    "unreachable": "Flyover could not reach {the_file}, {address}.",
+    "too-large": "{The_file}, {address}, is larger than {limit} MB.",
+    "not-json": "{The_file}, {address}, is not JSON.",
+    "not-map": "{The_file}, {address}, is not a JSON-LD map.",
+}
+# Answers a visitor without access gets: not found, refused, or a sign-in
+# page instead of the file.
+NO_ACCESS_ANSWERS = (401, 403, 404)
+# The files that may hold a map, by preference: JSON-LD, then plain JSON.
+MAP_FILE_KINDS = ((".jsonld", "JSON-LD"), (".json", "JSON"))
 
 
 class MapFetchError(Exception):
     """A map that could not be fetched, with the reason for the user."""
 
-    def __init__(self, message: str, *, upstream: bool = True):
+    def __init__(
+        self,
+        message: str,
+        *,
+        upstream: bool = True,
+        reason: str = "",
+        status: Optional[int] = None,
+    ):
         super().__init__(message)
         self.message = message
         # False when the address itself is unusable, True when fetching failed.
         self.upstream = upstream
+        # What went wrong (status, timeout, unreachable, too-large, not-json
+        # or not-map), and the HTTP status for "status".
+        self.reason = reason
+        self.status = status
+
+
+class MapFileChoice(Exception):
+    """An address that leads to several maps, of which the user picks one.
+
+    ``choices`` lists them by name, as ``{"name", "url", "size"}`` (size in
+    bytes, or None); fetching a choice's url gives that map.
+    """
+
+    def __init__(self, message: str, choices: List[Dict[str, Any]]):
+        super().__init__(message)
+        self.message = message
+        self.choices = choices
 
 
 def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
@@ -371,9 +430,20 @@ def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
     servers often do not. Only http(s) is fetched, with time and size
     limits; what comes back still has to pass the project check.
 
+    A link to a file's page on a code hosting site (Bitbucket, Forgejo,
+    Gitea, GitHub, GitLab, SourceHut; see utils.raw_file_address) is read
+    through the raw file behind the page. Should that fail, the address as
+    given is read too, in case it held the map after all; when it does not
+    either, the error is the raw file's.
+
+    A Zenodo record's page or DOI is looked up in Zenodo's API, and the
+    record's JSON-LD file read (plain JSON when it has none). A record that
+    holds several asks which one (MapFileChoice).
+
     Raises:
         MapFetchError: the address is unusable, could not be fetched, or
             did not return a JSON object.
+        MapFileChoice: the address names a Zenodo record with several maps.
     """
     url = (url or "").strip()
     parts = urlsplit(url)
@@ -382,13 +452,128 @@ def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
             "Give a web address that starts with http:// or https://.",
             upstream=False,
         )
+    record = zenodo_record(url)
+    if record is not None:
+        return _map_from_zenodo(record)
+    file_name = os.path.basename(unquote(parts.path)) or "map.jsonld"
+    raw = raw_file_address(url)
+    if raw is None:
+        return _fetch_json(url), file_name
+    try:
+        return _fetch_json(raw), file_name
+    except MapFetchError as error:
+        raw_error = error
+    # A host that did not answer for the raw file will not for the page.
+    if raw_error.reason not in ("timeout", "unreachable"):
+        try:
+            return _fetch_json(url), file_name
+        except MapFetchError:
+            pass
+    raise _about_the_file(raw_error, raw, RAW_FILE, PRIVATE_HINT)
+
+
+def _map_from_zenodo(record: ZenodoRecord) -> Tuple[Dict[str, Any], str]:
+    """The map in a Zenodo record, and its file name."""
+    files, shared = _zenodo_files(record)
+    for suffix, kind in MAP_FILE_KINDS:
+        maps = [f for f in files if f["name"].lower().endswith(suffix)]
+        if maps:
+            break
+    else:
+        if not shared:
+            raise MapFetchError(
+                f"Zenodo record {record.record_id} does not share its files "
+                "openly: download the map from Zenodo and open the file instead."
+            )
+        raise MapFetchError(f"Zenodo record {record.record_id} holds no JSON-LD file.")
+    if len(maps) > 1:
+        raise MapFileChoice(
+            f"This Zenodo record holds {len(maps)} {kind} files.",
+            sorted(maps, key=lambda f: f["name"].lower()),
+        )
+    [only] = maps
+    try:
+        mapping = _fetch_json(only["url"])
+    except MapFetchError as error:
+        raise _about_the_file(
+            error, only["url"], ZENODO_FILE, RESTRICTED_HINT
+        ) from None
+    return mapping, os.path.basename(only["name"])
+
+
+def _zenodo_files(record: ZenodoRecord) -> Tuple[List[Dict[str, Any]], bool]:
+    """The files of a Zenodo record, as ``{"name", "url", "size"}``, and
+    whether the record shares its files openly.
+
+    A concept record (every version) answers as its latest version, whose
+    files these are. Zenodo's own form lists the files; InvenioRDM's, which
+    Zenodo runs on, keeps them under ``entries``.
+    """
+    try:
+        body = _fetch_json(record.api_address, accept=ZENODO_ACCEPT)
+    except MapFetchError as error:
+        raise _about_zenodo(error, record) from None
+    version = str(body.get("id") or "")
+    if not version.isdigit():
+        version = record.record_id
+    listed = body.get("files")
+    if isinstance(listed, dict):
+        listed = list((listed.get("entries") or {}).values())
+    files = []
+    for entry in listed if isinstance(listed, list) else []:
+        name = entry.get("key") if isinstance(entry, dict) else None
+        if not isinstance(name, str) or not name:
+            continue
+        size = entry.get("size")
+        files.append(
+            {
+                "name": name,
+                "url": record.file_address(version, name),
+                "size": size if isinstance(size, int) else None,
+            }
+        )
+    metadata = body.get("metadata") if isinstance(body.get("metadata"), dict) else {}
+    access = body.get("access") if isinstance(body.get("access"), dict) else {}
+    shared = (
+        metadata.get("access_right", "open") == "open"
+        and access.get("files", "public") == "public"
+    )
+    return files, shared
+
+
+def _about_zenodo(error: MapFetchError, record: ZenodoRecord) -> MapFetchError:
+    """``error``, met asking Zenodo's API for ``record``, worded about it."""
+    number = record.record_id
+    if error.status == 404:
+        message = f"Zenodo has no record {number}."
+    elif error.status == 410:
+        message = f"Zenodo record {number} has been removed."
+    elif error.reason == "status":
+        message = f"Zenodo answered with HTTP {error.status} for record {number}."
+    elif error.reason == "timeout":
+        message = "Zenodo did not answer in time."
+    elif error.reason == "unreachable":
+        message = "Flyover could not reach Zenodo."
+    else:
+        message = f"Zenodo's answer for record {number} could not be read."
+    return MapFetchError(message, reason=error.reason, status=error.status)
+
+
+def _fetch_json(url: str, accept: str = FETCH_ACCEPT) -> Dict[str, Any]:
+    """The JSON object at ``url``.
+
+    Raises:
+        MapFetchError: with the reason, worded about "that address".
+    """
     try:
         with requests.get(
-            url, timeout=FETCH_TIMEOUT, stream=True, headers={"Accept": FETCH_ACCEPT}
+            url, timeout=FETCH_TIMEOUT, stream=True, headers={"Accept": accept}
         ) as response:
             if response.status_code != 200:
                 raise MapFetchError(
-                    f"The address answered with HTTP {response.status_code}."
+                    f"The address answered with HTTP {response.status_code}.",
+                    reason="status",
+                    status=response.status_code,
                 )
             declared = response.headers.get("Content-Length", "")
             if declared.isdigit() and int(declared) > MAX_FETCHED_MAP_BYTES:
@@ -399,23 +584,49 @@ def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
                 if len(received) > MAX_FETCHED_MAP_BYTES:
                     raise _too_large()
     except requests.Timeout:
-        raise MapFetchError("The address did not answer in time.") from None
+        raise MapFetchError(
+            "The address did not answer in time.", reason="timeout"
+        ) from None
     except requests.RequestException as error:
         # The error repeats the URL, which may carry credentials.
         logger.info("Fetching a map failed (%s)", type(error).__name__)
-        raise MapFetchError("Flyover could not reach that address.") from None
+        raise MapFetchError(
+            "Flyover could not reach that address.", reason="unreachable"
+        ) from None
     try:
         mapping = json.loads(bytes(received).decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError):
         raise MapFetchError(
-            f"What that address returned is not JSON. {NOT_JSON_HINT}"
+            f"What that address returned is not JSON. {NOT_JSON_HINT}",
+            reason="not-json",
         ) from None
     if not isinstance(mapping, dict):
-        raise MapFetchError("What that address returned is not a JSON-LD map.")
-    file_name = os.path.basename(unquote(parts.path)) or "map.jsonld"
-    return mapping, file_name
+        raise MapFetchError(
+            "What that address returned is not a JSON-LD map.", reason="not-map"
+        )
+    return mapping
+
+
+def _about_the_file(
+    error: MapFetchError, address: str, the_file: str, hint: str
+) -> MapFetchError:
+    """``error``, met fetching the file at ``address`` that a page or record
+    led to, worded about that file; ``hint`` follows when access was
+    refused."""
+    message = FILE_FAILURES[error.reason].format(
+        The_file=the_file[0].upper() + the_file[1:],
+        the_file=the_file,
+        address=shown_address(address),
+        status=error.status,
+        limit=MAX_FETCHED_MAP_BYTES // (1024 * 1024),
+    )
+    if error.status in NO_ACCESS_ANSWERS or error.reason == "not-json":
+        message = f"{message} {hint}"
+    return MapFetchError(message, reason=error.reason, status=error.status)
 
 
 def _too_large() -> MapFetchError:
     limit = MAX_FETCHED_MAP_BYTES // (1024 * 1024)
-    return MapFetchError(f"The file at that address is larger than {limit} MB.")
+    return MapFetchError(
+        f"The file at that address is larger than {limit} MB.", reason="too-large"
+    )

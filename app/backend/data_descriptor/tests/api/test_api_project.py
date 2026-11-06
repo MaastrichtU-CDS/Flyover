@@ -16,7 +16,7 @@ from dataclasses import replace
 import pytest
 
 from app_factory import create_app
-from services.project_service import MapFetchError
+from services.project_service import MapFetchError, MapFileChoice
 from services.store_selection import LOCALHOST_NOTE
 from tests.api.support import REPO, STORE_URL, build_api_app, valid_mapping
 
@@ -608,6 +608,36 @@ class TestFetchingAMap:
 
         assert response.status_code == status
         assert response.get_json() == {"error": error.message}
+
+    def test_a_record_with_several_maps_offers_them_to_choose_from(
+        self, client, helpers, session_cache
+    ):
+        record = "https://doi.org/10.5281/zenodo.1234567"
+        choices = [
+            {
+                "name": "mapping_centre_a.jsonld",
+                "url": "https://zenodo.org/records/1234567/files/mapping_centre_a.jsonld",
+                "size": 48000,
+            },
+            {
+                "name": "mapping_template.jsonld",
+                "url": "https://zenodo.org/records/1234567/files/mapping_template.jsonld",
+                "size": None,
+            },
+        ]
+        helpers["fetch_map"].side_effect = MapFileChoice(
+            "This Zenodo record holds 2 JSON-LD files.", choices
+        )
+
+        response = client.post("/api/v1/project/fetch-map", json={"url": record})
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "message": "This Zenodo record holds 2 JSON-LD files.",
+            "choices": choices,
+            "sourceUrl": record,
+        }
+        assert session_cache.jsonld_mapping is None
 
     def test_another_site_cannot_make_flyover_fetch_an_address(self, client, helpers):
         response = client.post(

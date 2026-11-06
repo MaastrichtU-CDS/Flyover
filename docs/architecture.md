@@ -105,7 +105,7 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 | `DELETE /api/v1/project` | Work without a project again |
 | `POST /api/v1/project/check` | What opening a map would mean (can it be opened, which project, which store), changing nothing |
 | `GET /api/v1/project/store-status` | Whether the store in use answers one short `ASK`, and if not, why; the status bar asks every minute while its tab is visible |
-| `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB) |
+| `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB); a file's page on Bitbucket, Forgejo, Gitea, GitHub, GitLab or SourceHut is read through its raw file, and a Zenodo record or DOI through Zenodo's API ([`utils/raw_file_address.py`](../app/backend/data_descriptor/utils/raw_file_address.py)); a record that holds several maps answers with them to choose from |
 
 **The store's datasets** ([`services/store_datasets.py`](../app/backend/data_descriptor/services/store_datasets.py)) behind [`controllers/store_controller.py`](../app/backend/data_descriptor/controllers/store_controller.py), for the status bar's panel. A dataset is one ingested table: `http://data.local/<name>/`, `http://ontology.local/<name>/` (columns, positions, describe answers), `http://annotation.local/<name>/`, `http://materialized.local/<name>/`, and its rows' links in the shared `http://relationships.local/`.
 
