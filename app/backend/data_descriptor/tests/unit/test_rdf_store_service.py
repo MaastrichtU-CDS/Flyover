@@ -27,6 +27,20 @@ def _make_service():
     return service
 
 
+def _column_info(table, rows):
+    """One table's column-info result as the repository parses it: every
+    value a string, and an empty position where the store has none."""
+    return pl.DataFrame(
+        {
+            "uri": [
+                f"http://data.local/rdf/ontology/{table}.{name}" for name, _ in rows
+            ],
+            "column": [name for name, _ in rows],
+            "position": [position for _, position in rows],
+        }
+    )
+
+
 class TestRDFStoreServiceCheckDataExists(unittest.TestCase):
     """Tests for check_data_exists."""
 
@@ -98,6 +112,53 @@ class TestRDFStoreServiceGetColumnInfoByDatabase(unittest.TestCase):
         self.assertIn("age", result["patients"])
         self.assertIn("sex", result["patients"])
         self.assertIn("result", result["labs"])
+
+    def test_columns_follow_their_place_in_the_source(self):
+        """The positions the ingest recorded override the store's order."""
+        service = _make_service()
+        service.repository.get_column_info.return_value = _column_info(
+            "patients", [("age", "3"), ("id", "1"), ("sex", "2")]
+        )
+
+        result = service.get_column_info_by_database()
+
+        self.assertEqual(result, {"patients": ["id", "sex", "age"]})
+
+    def test_a_table_ingested_before_positions_keeps_the_store_order(self):
+        """Without recorded positions every column is still listed."""
+        service = _make_service()
+        service.repository.get_column_info.return_value = _column_info(
+            "patients", [("sex", ""), ("id", ""), ("age", "")]
+        )
+
+        result = service.get_column_info_by_database()
+
+        self.assertEqual(result, {"patients": ["sex", "id", "age"]})
+
+    def test_columns_without_a_position_follow_in_the_store_order(self):
+        """A column no ingest numbered (one dropped from the source since)
+        comes after the numbered ones."""
+        service = _make_service()
+        service.repository.get_column_info.return_value = _column_info(
+            "patients", [("zeta", ""), ("age", "2"), ("alpha", ""), ("id", "1")]
+        )
+
+        result = service.get_column_info_by_database()
+
+        self.assertEqual(result, {"patients": ["id", "age", "zeta", "alpha"]})
+
+    def test_a_column_with_several_positions_is_listed_once_at_its_lowest(self):
+        """A table ingested again after its columns moved keeps both
+        positions in the store."""
+        service = _make_service()
+        service.repository.get_column_info.return_value = _column_info(
+            "patients",
+            [("sex", "4"), ("id", "1"), ("sex", "2"), ("age", "3"), ("sex", "5")],
+        )
+
+        result = service.get_column_info_by_database()
+
+        self.assertEqual(result, {"patients": ["id", "sex", "age"]})
 
 
 class TestRDFStoreServiceInsertEquivalencies(unittest.TestCase):

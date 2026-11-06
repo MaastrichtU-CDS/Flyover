@@ -8,7 +8,10 @@ vi.mock('@/lib/db', () => ({
 import {
   formatToTitleCase,
   formatToSnakeCase,
-  graphDatabaseFindNameMatch,
+  namesMatch,
+  mapTableMatches,
+  matchStoreTable,
+  computePreselectionsForDatabases,
   getVariableKeyFromColumn,
   normalizeLocalMappings,
   forEachColumn,
@@ -19,6 +22,8 @@ import {
   updateCategoryMapping,
   updateMappingFromForm,
   initializeEmptyMapping,
+  variableKeyForLabel,
+  termKeyForLabel,
 } from '@/lib/jsonld.js'
 
 describe('formatToTitleCase', () => {
@@ -47,23 +52,39 @@ describe('formatToSnakeCase', () => {
   })
 })
 
-describe('graphDatabaseFindNameMatch', () => {
+describe('namesMatch', () => {
   it('matches identical names', () => {
-    expect(graphDatabaseFindNameMatch('foo', 'foo')).toBe(true)
+    expect(namesMatch('foo', 'foo')).toBe(true)
   })
 
   it('matches with .csv stripped on either side', () => {
-    expect(graphDatabaseFindNameMatch('foo.csv', 'foo')).toBe(true)
-    expect(graphDatabaseFindNameMatch('foo', 'foo.csv')).toBe(true)
+    expect(namesMatch('foo.csv', 'foo')).toBe(true)
+    expect(namesMatch('foo', 'foo.csv')).toBe(true)
   })
 
-  it('returns true when mapDbName is empty (legacy "match anything" behavior)', () => {
-    expect(graphDatabaseFindNameMatch('', 'whatever')).toBe(true)
-    expect(graphDatabaseFindNameMatch(null, 'whatever')).toBe(true)
+  it('never matches an empty name, on either side', () => {
+    expect(namesMatch('', 'whatever')).toBe(false)
+    expect(namesMatch(null, 'whatever')).toBe(false)
+    expect(namesMatch(undefined, 'whatever')).toBe(false)
+    expect(namesMatch('foo', '')).toBe(false)
   })
 
   it('rejects unrelated names', () => {
-    expect(graphDatabaseFindNameMatch('foo', 'bar')).toBe(false)
+    expect(namesMatch('foo', 'bar')).toBe(false)
+  })
+})
+
+describe('mapTableMatches and matchStoreTable', () => {
+  it('matches a map table on its sourceFile, else on its key', () => {
+    expect(mapTableMatches('t', { sourceFile: 'patients.csv' }, 'patients')).toBe(true)
+    expect(mapTableMatches('patients', {}, 'patients')).toBe(true)
+    expect(mapTableMatches('t', { sourceFile: 'patients.csv' }, 't')).toBe(false)
+  })
+
+  it('finds the ingested table a map table name refers to', () => {
+    expect(matchStoreTable('visits.csv', ['patients', 'visits'])).toBe('visits')
+    expect(matchStoreTable('', ['patients', 'visits'])).toBeNull()
+    expect(matchStoreTable('labs', ['patients', 'visits'])).toBeNull()
   })
 })
 
@@ -167,6 +188,22 @@ describe('findColumnForVariable', () => {
   it('filters by matchingDatabase using csv-equivalence', () => {
     expect(findColumnForVariable(databases, 'age', null, 'data')?.colData).toBeTruthy()
     expect(findColumnForVariable(databases, 'age', null, 'unrelated')).toBeNull()
+  })
+
+  it("matches a table by its own name, never by its database's name alone", () => {
+    const named = {
+      db1: {
+        name: 'visits',
+        tables: {
+          t1: {
+            sourceFile: 'patients.csv',
+            columns: { c1: { mapsTo: 'schema:variable/age', localColumn: 'age_yrs' } },
+          },
+        },
+      },
+    }
+    expect(findColumnForVariable(named, 'age', null, 'patients')?.colData).toBeTruthy()
+    expect(findColumnForVariable(named, 'age', null, 'visits')).toBeNull()
   })
 })
 
@@ -587,5 +624,263 @@ describe('getCategoryOptionsForVariable', () => {
       databases: {},
     })
     expect(getCategoryOptionsForVariable('patients', 'age')).toEqual([])
+  })
+})
+
+// A map whose schema keys carry capitals, as the AYA map's EORTC scale scores
+// do ('eortc_qlq_c30_overall_qol_QL2') and its ISCED education terms.
+function capitalisedMapping() {
+  return {
+    schema: {
+      variables: {
+        eortc_qlq_c30_q16: { dataType: 'categorical' },
+        eortc_qlq_c30_overall_qol_QL2: { dataType: 'continuous' },
+        educational_level: {
+          dataType: 'categorical',
+          valueMapping: { terms: { 'ISCED-0': {}, 'ISCED-1': {} } },
+        },
+      },
+    },
+    databases: {},
+  }
+}
+
+describe('variableKeyForLabel and termKeyForLabel', () => {
+  beforeEach(() => {
+    setMapping(capitalisedMapping())
+  })
+
+  it('gives back the key a dropdown label was made from, capitals and all', () => {
+    expect(variableKeyForLabel('Eortc qlq c30 overall qol QL2')).toBe(
+      'eortc_qlq_c30_overall_qol_QL2'
+    )
+    expect(variableKeyForLabel('Eortc qlq c30 q16')).toBe('eortc_qlq_c30_q16')
+  })
+
+  it('accepts the key itself and a label titled word by word', () => {
+    expect(variableKeyForLabel('eortc_qlq_c30_overall_qol_QL2')).toBe(
+      'eortc_qlq_c30_overall_qol_QL2'
+    )
+    // The backend builds its labels with str.title().
+    expect(variableKeyForLabel('Eortc Qlq C30 Overall Qol Ql2')).toBe(
+      'eortc_qlq_c30_overall_qol_QL2'
+    )
+  })
+
+  it('snake-cases a label no schema variable answers to', () => {
+    expect(variableKeyForLabel('Body Weight')).toBe('body_weight')
+    expect(variableKeyForLabel(null)).toBe('')
+  })
+
+  it('resolves a value-mapping term within its variable', () => {
+    expect(termKeyForLabel('educational_level', 'ISCED-1')).toBe('ISCED-1')
+    expect(termKeyForLabel('educational_level', 'Isced-1')).toBe('ISCED-1')
+    expect(termKeyForLabel('educational_level', 'Other level')).toBe('other_level')
+    expect(termKeyForLabel('not_a_variable', 'Male')).toBe('male')
+  })
+})
+
+describe('describe answers keep capitalised schema keys', () => {
+  beforeEach(() => {
+    setMapping(capitalisedMapping())
+  })
+
+  it('maps a column to the capitalised variable and updates that variable', async () => {
+    await updateMappingFromForm({
+      survaya_ql: {
+        database: 'survaya',
+        description: 'Eortc qlq c30 overall qol QL2',
+        datatype: 'continuous',
+        comment: '',
+      },
+    })
+    const m = getMapping()
+    const columns = Object.values(m.databases.survaya.tables.data.columns)
+    expect(columns).toEqual([
+      expect.objectContaining({
+        mapsTo: 'schema:variable/eortc_qlq_c30_overall_qol_QL2',
+        localColumn: 'ql',
+      }),
+    ])
+    // No lower-cased twin appears next to the schema's own variable.
+    expect(Object.keys(m.schema.variables)).not.toContain('eortc_qlq_c30_overall_qol_ql2')
+  })
+
+  it('records a value under the capitalised term of the capitalised column', async () => {
+    await updateMappingFromForm({
+      cohort_opl: {
+        database: 'cohort',
+        description: 'Educational level',
+        datatype: 'categorical',
+        comment: '',
+      },
+    })
+    await updateCategoryMapping('cohort', 'opl', 'educational_level', '3', 'ISCED-1', null)
+    const column = getMapping().databases.cohort.tables.data.columns.educational_level
+    expect(column.localMappings).toEqual({ 'ISCED-1': ['3'] })
+
+    await updateCategoryMapping('cohort', 'opl', 'educational_level', '3', 'ISCED-0', 'ISCED-1')
+    expect(column.localMappings).toEqual({ 'ISCED-0': ['3'] })
+  })
+})
+
+describe('describing several tables', () => {
+  function answer(database, localColumn, description, datatype = '') {
+    return {
+      [`${database}_${localColumn}`]: { database, description, datatype, comment: '' },
+    }
+  }
+
+  // A map for another site: one database whose table has neither a sourceFile
+  // nor a key naming an ingested table, and a database with no name at all.
+  function otherSiteMapping() {
+    return {
+      schema: {
+        variables: {
+          biological_sex: { dataType: 'categorical' },
+          age_at_diagnosis: { dataType: 'continuous' },
+        },
+      },
+      databases: {
+        msci: {
+          name: 'MSCI_prospective_data',
+          tables: {
+            MSCI_prospective: {
+              sourceFile: 'MSCI_prospective_batch_1',
+              columns: {
+                sex: { mapsTo: 'schema:variable/biological_sex', localColumn: 'geslacht' },
+              },
+            },
+          },
+        },
+        template: {
+          tables: {
+            template_table: {
+              columns: {
+                age: { mapsTo: 'schema:variable/age_at_diagnosis', localColumn: 'leeftijd' },
+              },
+            },
+          },
+        },
+      },
+    }
+  }
+
+  function localColumns(table) {
+    return Object.fromEntries(
+      Object.values(table.columns).map((c) => [c.localColumn, c.mapsTo])
+    )
+  }
+
+  beforeEach(() => {
+    setMapping(otherSiteMapping())
+  })
+
+  it("gives each described table its own entry and leaves the map's other tables alone", async () => {
+    await updateMappingFromForm({
+      ...answer('compraya_t1', 'sex_t1', 'Biological sex', 'categorical'),
+      ...answer('survaya', 'leeft', 'Age at diagnosis', 'continuous'),
+      ...answer('survaya', 'geslacht', 'Biological sex', 'categorical'),
+    })
+    const dbs = getMapping().databases
+
+    expect(localColumns(dbs.compraya_t1.tables.data)).toEqual({
+      sex_t1: 'schema:variable/biological_sex',
+    })
+    expect(localColumns(dbs.survaya.tables.data)).toEqual({
+      leeft: 'schema:variable/age_at_diagnosis',
+      geslacht: 'schema:variable/biological_sex',
+    })
+    expect(dbs.survaya.name).toBe('survaya')
+    expect(dbs.survaya.tables.data.sourceFile).toBe('survaya')
+    // The other site's table, and the nameless one, keep their own columns.
+    expect(localColumns(dbs.msci.tables.MSCI_prospective)).toEqual({
+      geslacht: 'schema:variable/biological_sex',
+    })
+    expect(localColumns(dbs.template.tables.template_table)).toEqual({
+      leeftijd: 'schema:variable/age_at_diagnosis',
+    })
+  })
+
+  it('writes into the map table that names the ingested table by its key', async () => {
+    await updateMappingFromForm(answer('template_table', 'age', 'Age at diagnosis'))
+    const table = getMapping().databases.template.tables.template_table
+    expect(localColumns(table)).toEqual({ age: 'schema:variable/age_at_diagnosis' })
+  })
+
+  it('does not take in a table through a database named after it', async () => {
+    // The MSCI database is named like an ingested table, but its table is
+    // another file: describing that table makes the table its own entry.
+    await updateMappingFromForm(
+      answer('MSCI_prospective_data', 'gender', 'Biological sex', 'categorical')
+    )
+    const dbs = getMapping().databases
+    expect(localColumns(dbs.msci.tables.MSCI_prospective)).toEqual({
+      geslacht: 'schema:variable/biological_sex',
+    })
+    expect(localColumns(dbs.msci_prospective_data.tables.data)).toEqual({
+      gender: 'schema:variable/biological_sex',
+    })
+  })
+
+  it('never overwrites an unrelated entry or column that shares a name', async () => {
+    setMapping({
+      schema: { variables: { biological_sex: {}, age_at_diagnosis: {} } },
+      databases: {
+        patients: {
+          name: 'Clinic export',
+          tables: {
+            t: {
+              sourceFile: 'clinic_2024.csv',
+              columns: {
+                biological_sex: { mapsTo: 'schema:variable/biological_sex', localColumn: 'sex' },
+              },
+            },
+          },
+        },
+        visits: {
+          name: 'visits',
+          tables: {
+            data: {
+              sourceFile: 'visits',
+              columns: {
+                age_at_diagnosis: {
+                  mapsTo: 'schema:variable/biological_sex',
+                  localColumn: 'gender',
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    await updateMappingFromForm({
+      ...answer('patients', 'geslacht', 'Biological sex', 'categorical'),
+      ...answer('visits', 'age', 'Age at diagnosis', 'continuous'),
+    })
+    const dbs = getMapping().databases
+    expect(localColumns(dbs.patients.tables.t)).toEqual({
+      sex: 'schema:variable/biological_sex',
+    })
+    expect(localColumns(dbs.patients_2.tables.data)).toEqual({
+      geslacht: 'schema:variable/biological_sex',
+    })
+    expect(localColumns(dbs.visits.tables.data)).toEqual({
+      gender: 'schema:variable/biological_sex',
+      age: 'schema:variable/age_at_diagnosis',
+    })
+  })
+
+  it('preselects only the tables a map table names', () => {
+    const { preselectedDescriptions } = computePreselectionsForDatabases([
+      'MSCI_prospective_batch_1',
+      'MSCI_prospective_data',
+      'survaya',
+      'template_table',
+    ])
+    expect(preselectedDescriptions).toEqual({
+      MSCI_prospective_batch_1_geslacht: 'Biological sex',
+      template_table_leeftijd: 'Age at diagnosis',
+    })
   })
 })

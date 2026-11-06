@@ -107,14 +107,19 @@ class QueryBuilder:
         """
         Build query to retrieve column information from the graph.
 
+        Each column comes with its place in its source where the ingest
+        recorded one (dbo:column_position); a table ingested before that
+        has none.
+
         Returns:
             str: SPARQL SELECT query for column info.
         """
         return """
             PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
-            SELECT ?uri ?column
+            SELECT ?uri ?column ?position
             WHERE {
                 ?uri dbo:column ?column .
+                OPTIONAL { ?uri dbo:column_position ?position . }
             }
         """
 

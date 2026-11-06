@@ -21,6 +21,7 @@ import requests
 from tests.integration.support import (
     CSV_BYTES,
     TABLE,
+    column_positions,
     load_validation_fixture,
     xlsx_bytes,
 )
@@ -635,6 +636,25 @@ class TestUploadVariants:
         assert response.status_code == 302
         assert "Database+URL+is+required" in response.headers["Location"]
         assert fake_curl.invocations == []
+
+
+# ---------------------------------------------------------------------------
+# Column order: the ontology records where each column stood in the source
+# ---------------------------------------------------------------------------
+
+
+class TestColumnPositions:
+    def test_each_column_keeps_its_place_in_the_csv_under_its_cleaned_name(
+        self, client, session_cache, fake_curl
+    ):
+        _post_csv(client, b"zeta,Patient ID,age\nz1,P1,45\n", f"{TABLE}.csv")
+
+        (output,) = session_cache.output_files
+        assert column_positions(output["ontology_file"]) == {
+            "zeta": 1,
+            "Patient_ID": 2,
+            "age": 3,
+        }
 
 
 # ---------------------------------------------------------------------------

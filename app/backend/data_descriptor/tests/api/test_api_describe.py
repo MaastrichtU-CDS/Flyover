@@ -194,6 +194,17 @@ class TestDetailsStateWithoutAMap:
 
         assert response.status_code == 500
 
+    def test_the_described_variables_follow_the_source_order_of_their_columns(
+        self, client, session_cache, described_table
+    ):
+        stage = 'Stage (or "stage")'
+        session_cache.DescriptiveInfoDetails = {TABLE: [AGE, stage, {SEX: []}]}
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        # The store lists no stage column, so that entry comes last.
+        assert _names(body["descriptive_info_details"][TABLE]) == [SEX, AGE, stage]
+
 
 class TestDetailsStateFromTheSessionMap:
     def test_the_map_and_the_store_categories_fill_the_details(
@@ -363,6 +374,21 @@ class TestDetailsStateFromTheSessionMap:
             AGE,
         ]
         assert body["descriptive_info"][TABLE]["sex"] == {"type": "from the form"}
+
+    def test_the_form_and_map_entries_follow_the_source_order_of_their_columns(
+        self, client, session_cache, described_table
+    ):
+        # The variables form described age; the map adds sex after it.
+        age = 'Age as the user named it (or "age")'
+        _adopt(session_cache)
+        session_cache.descriptive_info = {TABLE: {"age": {"type": "from the form"}}}
+        session_cache.DescriptiveInfoDetails = {TABLE: [age]}
+
+        body = client.get(DETAILS_STATE).get_json()
+
+        assert _names(body["descriptive_info_details"][TABLE]) == [SEX, age]
+        assert session_cache.DescriptiveInfoDetails == body["descriptive_info_details"]
+        described_table.get_column_info_by_database.assert_called_once_with()
 
     def test_a_map_without_store_databases_populates_nothing(
         self, client, session_cache, store

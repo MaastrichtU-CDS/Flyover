@@ -76,12 +76,33 @@ export function forEachColumn(databases, callback) {
   }
 }
 
-export function graphDatabaseFindNameMatch(mapDbName, targetDb) {
-  if (!mapDbName || mapDbName === '') return true
-  if (mapDbName === targetDb) return true
-  const a = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName
-  const b = targetDb?.endsWith('.csv') ? targetDb.slice(0, -4) : targetDb
-  return a === b
+function withoutCsv(name) {
+  return name.endsWith('.csv') ? name.slice(0, -4) : name
+}
+
+// Whether a name in the map and an ingested table's name are the same table,
+// with or without a .csv extension. An empty name names no table.
+export function namesMatch(mapName, storeTable) {
+  if (!mapName || !storeTable) return false
+  return withoutCsv(String(mapName)) === withoutCsv(String(storeTable))
+}
+
+// The ingested table a map table describes: its sourceFile, else its key.
+export function mapTableName(tableKey, tableData) {
+  return tableData?.sourceFile || tableKey || ''
+}
+
+// Whether a map table describes the ingested table `storeTable`. Only the
+// table's own name decides, as on the annotate pages: a database's `name` is
+// a label (it may read 'Centre B Electronic Health Records'), so a database
+// named after one table never takes in another table's columns.
+export function mapTableMatches(tableKey, tableData, storeTable) {
+  return namesMatch(mapTableName(tableKey, tableData), storeTable)
+}
+
+// The ingested table, among `storeTables`, that a map table name refers to.
+export function matchStoreTable(mapName, storeTables) {
+  return (storeTables || []).find((table) => namesMatch(mapName, table)) || null
 }
 
 export function findColumnForVariable(
@@ -92,11 +113,7 @@ export function findColumnForVariable(
 ) {
   let found = null
   forEachColumn(databases, (colData, colKey, tableData, tableKey, dbData, dbKey) => {
-    if (
-      matchingDatabase &&
-      !graphDatabaseFindNameMatch(dbData.name, matchingDatabase) &&
-      !graphDatabaseFindNameMatch(tableData.sourceFile, matchingDatabase)
-    ) {
+    if (matchingDatabase && !mapTableMatches(tableKey, tableData, matchingDatabase)) {
       return
     }
     const varKey = getVariableKeyFromColumn(colData)
@@ -152,6 +169,35 @@ export function getVariable(varKey) {
 export function getGlobalVariableNames() {
   if (!mapping?.schema?.variables) return ['Other']
   return getAllVariableKeys().map(formatToTitleCase).concat(['Other'])
+}
+
+// The describe pages show a variable or value-mapping term by its label,
+// formatToTitleCase(key): 'eortc_qlq_c30_overall_qol_QL2' reads 'Eortc qlq
+// c30 overall qol QL2'. Lower-casing a label does not give the key back, so
+// a label is resolved against the keys it can stand for: the key itself, the
+// key it is the label of, then the key it matches ignoring case and spacing
+// (the backend titles labels word by word). Only a label no key answers to is
+// snake-cased.
+function keyForLabel(label, keys) {
+  if (label == null) return ''
+  const text = String(label)
+  if (keys.includes(text)) return text
+  const labelled = keys.find((key) => formatToTitleCase(key) === text)
+  if (labelled !== undefined) return labelled
+  const loose = formatToSnakeCase(text)
+  const matched = keys.find((key) => formatToSnakeCase(key) === loose)
+  return matched !== undefined ? matched : loose
+}
+
+/** The schema variable a description label stands for. */
+export function variableKeyForLabel(label) {
+  return keyForLabel(label, getAllVariableKeys())
+}
+
+/** The value-mapping term of `varKey` that an option label stands for. */
+export function termKeyForLabel(varKey, label) {
+  const terms = getVariable(varKey)?.valueMapping?.terms
+  return keyForLabel(label, terms ? Object.keys(terms) : [])
 }
 
 export function getCategoryOptionsForVariable(_database, globalVarName, localVariable = null) {
@@ -229,8 +275,11 @@ export async function updateCategoryMapping(
 ) {
   if (!mapping?.databases) return false
   localValue = String(localValue)
-  const termKey = selectedOption ? formatToSnakeCase(selectedOption) : null
-  const previousTermKey = previousOption ? formatToSnakeCase(previousOption) : null
+  globalVarName = variableKeyForLabel(globalVarName)
+  const termKey = selectedOption ? termKeyForLabel(globalVarName, selectedOption) : null
+  const previousTermKey = previousOption
+    ? termKeyForLabel(globalVarName, previousOption)
+    : null
 
   const result = findColumnForVariable(
     mapping.databases,
@@ -275,34 +324,39 @@ export async function updateCategoryMapping(
   return await saveMapping()
 }
 
-function ensureDatabaseExists(databaseName) {
+// The map table that holds an ingested table's columns: the first map table
+// describing it, or else a new database entry made for it, under a key no
+// other entry has (an unrelated entry may share the snake-cased name).
+function ensureMapTable(storeTable) {
   if (!mapping.databases) mapping.databases = {}
-  const dbKey = formatToSnakeCase(databaseName)
-  let exists = false
-  for (const [, dbData] of Object.entries(mapping.databases)) {
-    if (graphDatabaseFindNameMatch(dbData.name, databaseName)) {
-      exists = true
-      break
+  for (const dbData of Object.values(mapping.databases)) {
+    for (const [tableKey, tableData] of Object.entries(dbData?.tables || {})) {
+      if (tableData && mapTableMatches(tableKey, tableData, storeTable)) {
+        if (!tableData.columns) tableData.columns = {}
+        return tableData
+      }
     }
   }
-  if (!exists) {
-    const tableKey = 'data'
-    mapping.databases[dbKey] = {
-      '@id': `mapping:database/${dbKey}`,
-      '@type': 'mapping:Database',
-      name: databaseName,
-      description: '',
-      tables: {
-        [tableKey]: {
-          '@id': `mapping:table/${dbKey}/${tableKey}`,
-          '@type': 'mapping:Table',
-          sourceFile: databaseName,
-          description: '',
-          columns: {},
-        },
+  const baseKey = formatToSnakeCase(storeTable)
+  let dbKey = baseKey
+  for (let n = 2; mapping.databases[dbKey]; n++) dbKey = `${baseKey}_${n}`
+  const tableKey = 'data'
+  mapping.databases[dbKey] = {
+    '@id': `mapping:database/${dbKey}`,
+    '@type': 'mapping:Database',
+    name: storeTable,
+    description: '',
+    tables: {
+      [tableKey]: {
+        '@id': `mapping:table/${dbKey}/${tableKey}`,
+        '@type': 'mapping:Table',
+        sourceFile: storeTable,
+        description: '',
+        columns: {},
       },
-    }
+    },
   }
+  return mapping.databases[dbKey].tables[tableKey]
 }
 
 // Deterministic projection from the describe-variables form state onto the
@@ -342,7 +396,7 @@ export async function updateMappingFromForm(formData) {
       localColumnName,
       isActive
         ? {
-            varName: formatToSnakeCase(descriptionDisplay),
+            varName: variableKeyForLabel(descriptionDisplay),
             descriptionDisplay,
             dataType: data.datatype || null,
           }
@@ -353,12 +407,9 @@ export async function updateMappingFromForm(formData) {
   // Populate prevReferencedByFormDbs: collect all variables that are
   // currently referenced by columns in the databases covered by this form
   // update, BEFORE Pass 1 removes any columns.
-  forEachColumn(mapping.databases || {}, (colData, _colKey, tableData, _tableKey, dbData) => {
+  forEachColumn(mapping.databases || {}, (colData, _colKey, tableData, tableKey) => {
     for (const databaseName of Object.keys(targetsByDb)) {
-      if (
-        graphDatabaseFindNameMatch(dbData.name, databaseName) ||
-        graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
-      ) {
+      if (mapTableMatches(tableKey, tableData, databaseName)) {
         const k = getVariableKeyFromColumn(colData)
         if (k) prevReferencedByFormDbs.add(k)
         break
@@ -372,12 +423,8 @@ export async function updateMappingFromForm(formData) {
   for (const [databaseName, localColumns] of Object.entries(targetsByDb)) {
     forEachColumn(
       mapping.databases || {},
-      (colData, colKey, tableData, _tableKey, dbData) => {
-        if (
-          !graphDatabaseFindNameMatch(dbData.name, databaseName) &&
-          !graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
-        )
-          return
+      (colData, colKey, tableData, tableKey) => {
+        if (!mapTableMatches(tableKey, tableData, databaseName)) return
         const localCol = colData.localColumn
         if (localCol == null || !localColumns.has(localCol)) return
         const target = localColumns.get(localCol)
@@ -418,13 +465,9 @@ export async function updateMappingFromForm(formData) {
       let columnFound = false
       forEachColumn(
         mapping.databases || {},
-        (colData, _colKey, tableData, _tableKey, dbData) => {
+        (colData, _colKey, tableData, tableKey) => {
           if (columnFound) return false
-          if (
-            !graphDatabaseFindNameMatch(dbData.name, databaseName) &&
-            !graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
-          )
-            return
+          if (!mapTableMatches(tableKey, tableData, databaseName)) return
           const colVarKey = getVariableKeyFromColumn(colData)
           if (
             colVarKey === varName ||
@@ -438,34 +481,15 @@ export async function updateMappingFromForm(formData) {
       )
 
       if (!columnFound) {
-        let dbFound = false
-        forEachColumn(
-          mapping.databases || {},
-          (_colData, _colKey, tableData, _tableKey, dbData) => {
-            if (dbFound) return false
-            if (
-              !graphDatabaseFindNameMatch(dbData.name, databaseName) &&
-              !graphDatabaseFindNameMatch(tableData.sourceFile, databaseName)
-            )
-              return
-            dbFound = true
-            tableData.columns[varName] = {
-              mapsTo: `schema:variable/${varName}`,
-              variable: varName,
-              localColumn: localColumnName,
-            }
-            return false
-          }
-        )
-        if (!dbFound) {
-          ensureDatabaseExists(databaseName)
-          const dbKey = formatToSnakeCase(databaseName)
-          const tk = Object.keys(mapping.databases[dbKey].tables)[0]
-          mapping.databases[dbKey].tables[tk].columns[varName] = {
-            mapsTo: `schema:variable/${varName}`,
-            variable: varName,
-            localColumn: localColumnName,
-          }
+        // A new column, in the table's own map table. Its key is free-form, so
+        // a column for another variable may already hold this one's name.
+        const columns = ensureMapTable(databaseName).columns
+        let colKey = varName
+        for (let n = 2; columns[colKey]; n++) colKey = `${varName}_${n}`
+        columns[colKey] = {
+          mapsTo: `schema:variable/${varName}`,
+          variable: varName,
+          localColumn: localColumnName,
         }
       }
     }
@@ -512,18 +536,12 @@ export function computePreselectionsForDatabases(databases) {
       : null
     if (datatypeDisplay) descriptionToDatatype[descriptionDisplay] = datatypeDisplay
 
-    forEachColumn(mapping.databases || {}, (colData, _colKey, tableData, _tableKey, dbData) => {
+    forEachColumn(mapping.databases || {}, (colData, _colKey, tableData, tableKey) => {
       const colVarKey = getVariableKeyFromColumn(colData)
       if (colVarKey !== varName) return
       const localCol = colData.localColumn
       if (!localCol) return
-      const sourceFile = tableData.sourceFile
-      const dbName = dbData.name
-      const matchingDb = databases.find(
-        (d) =>
-          graphDatabaseFindNameMatch(sourceFile, d) ||
-          graphDatabaseFindNameMatch(dbName, d)
-      )
+      const matchingDb = matchStoreTable(mapTableName(tableKey, tableData), databases)
       if (matchingDb) {
         const key = `${matchingDb}_${localCol}`
         preselectedDescriptions[key] = descriptionDisplay

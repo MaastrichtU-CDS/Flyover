@@ -6,7 +6,7 @@ providing higher-level business operations.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
     from ..repositories import RDFStoreRepository
@@ -14,6 +14,42 @@ except ImportError:
     from repositories import RDFStoreRepository  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
+
+
+def _in_source_order(columns: Iterable[Tuple[str, Any]]) -> List[str]:
+    """
+    A table's column names in the order they have in its source.
+
+    The store keeps no order of its own; the ingest records each column's
+    1-based place as dbo:column_position. Columns without one (a table
+    ingested before positions were recorded) follow the others, in the
+    order the store returned them. A column with several positions (its
+    table ingested again after the columns moved) is listed once, at its
+    lowest.
+
+    Args:
+        columns: (name, position) per result row, in the store's order; a
+            position the store has none for is empty.
+    """
+    first_seen: Dict[str, int] = {}
+    lowest: Dict[str, int] = {}
+    for index, (name, position) in enumerate(columns):
+        first_seen.setdefault(name, index)
+        place = _as_position(position)
+        if place is not None and (name not in lowest or place < lowest[name]):
+            lowest[name] = place
+    return sorted(
+        first_seen,
+        key=lambda name: (name not in lowest, lowest.get(name, 0), first_seen[name]),
+    )
+
+
+def _as_position(value: Any) -> Optional[int]:
+    """A recorded position as a number, or None when there is none."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class RDFStoreService:
@@ -63,7 +99,8 @@ class RDFStoreService:
         Get columns organised by database.
 
         Returns:
-            Dict mapping database names to lists of column names.
+            Dict mapping database names to lists of column names, in the
+            order the columns have in their source (see _in_source_order).
         """
         df = self.repository.get_column_info()
         if df is None:
@@ -84,7 +121,13 @@ class RDFStoreService:
             if not db:
                 continue
             db_columns = df.filter(pl.col("database") == db)
-            columns_by_database[db] = db_columns.get_column("column").to_list()
+            names = db_columns.get_column("column").to_list()
+            positions = (
+                db_columns.get_column("position").to_list()
+                if "position" in db_columns.columns
+                else [None] * len(names)
+            )
+            columns_by_database[db] = _in_source_order(zip(names, positions))
 
         return columns_by_database
 

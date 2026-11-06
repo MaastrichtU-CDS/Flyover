@@ -10,14 +10,40 @@ SELECTs the query builder produces, and records the equivalency INSERTs the
 describe step writes into the ontology graph.
 """
 
+from io import BytesIO
+
 import pytest
 import requests
+from rdflib import Graph
 
-from tests.integration.support import TABLE
+from tests.integration.support import CSV_BYTES, DBO, TABLE
 from loaders import JSONLDMapping
+from repositories import QueryBuilder
 
 VARIABLES_STATE = "/api/v1/describe-variables-state"
 DETAILS_STATE = "/api/v1/describe-variable-details-state"
+
+
+def _ingest_csv(client, session_cache, content: bytes, filename: str) -> str:
+    """Ingest a CSV through the real triplifier; returns its ontology file."""
+    client.post(
+        "/upload",
+        data={"fileType": "CSV", "csvFile": (BytesIO(content), filename)},
+        content_type="multipart/form-data",
+    )
+    (output,) = session_cache.output_files
+    return output["ontology_file"]
+
+
+def _column_info_answer(graph: Graph) -> str:
+    """A store holding ``graph`` answering the column-info query.
+
+    SPARQL results come in no particular order: the rows are served
+    reversed, as a real store's order differs from the source's.
+    """
+    result = graph.query(QueryBuilder.column_info_query())
+    header, *rows = result.serialize(format="csv").decode("utf-8").splitlines()
+    return "\n".join([header, *reversed(rows)]) + "\n"
 
 
 def _units_form():
@@ -50,6 +76,26 @@ class TestVariablesState:
         (select,) = seeded_store.selects
         assert "?uri dbo:column ?column" in select.query
         assert select.accept == "text/csv"
+
+    def test_an_ingested_csv_is_listed_in_its_header_order(
+        self, client, session_cache, rdf_store, fake_curl
+    ):
+        visits = _ingest_csv(
+            client, session_cache, b"zeta,id,alpha,mid\nz1,P1,a1,m1\n", "visits.csv"
+        )
+        # The patients table was ingested before positions were recorded.
+        earlier = Graph().parse(
+            _ingest_csv(client, session_cache, CSV_BYTES, f"{TABLE}.csv"),
+            format="xml",
+        )
+        earlier.remove((None, DBO.column_position, None))
+        store = Graph().parse(visits, format="xml") + earlier
+        rdf_store.select_overrides["dbo:column_position"] = _column_info_answer(store)
+
+        column_info = client.get(VARIABLES_STATE).get_json()["column_info"]
+
+        assert column_info["visits"] == ["zeta", "id", "alpha", "mid"]
+        assert sorted(column_info[TABLE]) == ["age", "id", "sex"]
 
     def test_unreachable_store_yields_no_columns_and_no_databases(
         self, client, session_cache, rdf_store
