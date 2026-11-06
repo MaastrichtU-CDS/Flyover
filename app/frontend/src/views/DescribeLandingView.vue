@@ -1,8 +1,11 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
+import { loadPage } from '@/lib/browser'
+import { compareWithStore } from '@/lib/jsonld'
+import { mapDetails, projectName, projectVersion } from '@/lib/project'
 import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
@@ -24,13 +27,44 @@ const arrival = INGEST_OUTCOMES.includes(route.query.ingest) ? route.query.inges
 
 const dataExists = ref(true)
 const checking = ref(true)
-// The datasets in the store Flyover works on, by name.
+// Whether the map and the store's datasets were read: until then the page
+// shows neither the map's card nor the upload, so neither flickers.
+const loaded = ref(false)
+// The datasets in the store Flyover works on, by name, and whether the
+// store could list them.
 const storeDatasets = ref([])
+const storeListed = ref(false)
 const storeDatasetsText = computed(() => {
   const count = storeDatasets.value.length
   return `The RDF store holds ${count} dataset${count === 1 ? '' : 's'}: ${storeDatasets.value.join(', ')}.`
 })
-const semanticMapVisible = ref(true)
+// The semantic map this browser holds (its metadata row), if any: the open
+// project's working copy, or a map uploaded in a step.
+const held = shallowRef(null)
+const heldMap = computed(() => {
+  const row = held.value
+  if (!row?.data) return null
+  if (project.project) {
+    return {
+      ofProject: true,
+      name: project.name,
+      version: project.version,
+      fileName: project.project.fileName || row.filename || '',
+    }
+  }
+  const details = { ...mapDetails(row.data), fileName: row.filename || '' }
+  return {
+    ofProject: false,
+    name: projectName(details, 'Unnamed semantic map'),
+    version: projectVersion(details),
+    fileName: details.fileName,
+  }
+})
+// The held map's data sources against the store's datasets.
+const sources = computed(() =>
+  held.value?.data ? compareWithStore(held.value.data, storeDatasets.value) : null
+)
+const skipped = ref(false)
 const continueDisabled = ref(true)
 const fileInput = ref(null)
 const selectedFileName = ref('')
@@ -159,14 +193,12 @@ async function uploadSemanticMap() {
     // A new map resets the describe fields, so earlier suggestion reviews
     // no longer apply to them.
     await suggestions.resetMarks()
-    
-    // If there are warnings, keep the card visible so users can see the warnings in the box
-    // If no warnings, hide the card
-    const hasWarnings = validationWarnings.value.length > 0
-    if (hasWarnings) {
-      semanticMapVisible.value = true
-    } else {
-      semanticMapVisible.value = false
+
+    // The map's card now shows the new map, and the upload form is ready
+    // for another; its warnings, if any, stay under the form.
+    await Promise.all([loadHeldMap(), plan.storeChanged ? loadStoreDatasets() : null])
+    clearPickedFile()
+    if (!validationWarnings.value.length) {
       status.success(
         'Global semantic map uploaded successfully. This will guide the semantic mapping process and help standardise your data annotations.'
       )
@@ -179,8 +211,13 @@ async function uploadSemanticMap() {
   }
 }
 
+function clearPickedFile() {
+  selectedFileName.value = ''
+  if (fileInput.value) fileInput.value.value = ''
+}
+
 function skipSemanticMap() {
-  semanticMapVisible.value = false
+  skipped.value = true
   status.info(
     'Semantic map upload skipped. You can proceed to describe your data manually.'
   )
@@ -203,9 +240,10 @@ function formatWarnings() {
 }
 
 function continueToDescribe() {
-  // The describe-variables page is still the legacy Jinja flow until
-  // its SFC port lands; navigate out of the SPA on submit.
-  window.location.href = '/describe_variables'
+  // A full page load: lib/jsonld keeps the last map it read for the tab,
+  // so the describe pages must start from the map this browser holds now
+  // (or from none), not from one read earlier.
+  loadPage('/describe/variables')
 }
 
 // Whether the store Flyover works on holds data: on arrival, and again when
@@ -227,8 +265,18 @@ async function loadStoreDatasets() {
   try {
     const { data } = await api.get('/api/rdf-store-databases')
     storeDatasets.value = [...(data?.databases || [])].sort((a, b) => a.localeCompare(b))
+    storeListed.value = true
   } catch {
     storeDatasets.value = []
+    storeListed.value = false
+  }
+}
+
+async function loadHeldMap() {
+  try {
+    held.value = (await db.getData('metadata', 'semantic_map')) || null
+  } catch {
+    held.value = null
   }
 }
 
@@ -243,7 +291,8 @@ function forgetArrival() {
 onMounted(async () => {
   forgetArrival()
   await checkDataExists()
-  if (dataExists.value) await loadStoreDatasets()
+  if (dataExists.value) await Promise.all([loadStoreDatasets(), loadHeldMap()])
+  loaded.value = true
 })
 </script>
 
@@ -296,41 +345,148 @@ onMounted(async () => {
     </div>
 
     <div
-      v-if="dataExists && semanticMapVisible"
-      class="card mb-4"
+      v-if="loaded && dataExists && heldMap"
+      class="card mb-4 held-map"
     >
       <div class="card-header">
         <h5 class="mb-0">
+          <i class="fas fa-project-diagram" />
+          {{
+            heldMap.ofProject
+              ? "Continue with the project's semantic map"
+              : 'Continue with the semantic map in this browser'
+          }}
+        </h5>
+      </div>
+      <div class="card-body">
+        <!-- The spaces sit inside the spans: the template drops those between tags. -->
+        <p class="held-map-name mb-2">
+          <strong>{{ heldMap.name }}</strong>
+          <span v-if="heldMap.version">{{ ` · ${heldMap.version}` }}</span>
+          <span
+            v-if="heldMap.fileName && heldMap.fileName !== heldMap.name"
+            class="text-muted"
+          >{{ ` (${heldMap.fileName})` }}</span>
+        </p>
+
+        <div class="held-map-sources mb-3">
+          <template v-if="storeListed">
+            <div
+              v-if="!sources.matched.length && !sources.missing.length"
+              class="sources-none text-muted text-compact mb-2"
+            >
+              <i class="fas fa-info-circle" /> The map names no data sources yet: its
+              schema guides the descriptions.
+            </div>
+            <div
+              v-else-if="!sources.matched.length"
+              class="sources-none text-warning text-compact mb-2"
+            >
+              <i class="fas fa-exclamation-triangle" /> None of the map's data sources
+              is in the RDF store ({{ sources.missing.join(', ') }}): only its schema
+              guides the descriptions.
+            </div>
+            <template v-else>
+              <div class="sources-ready text-success text-compact mb-2">
+                <i class="fas fa-check-circle" />
+                <strong>{{ sources.matched.length }}</strong>
+                data source{{ sources.matched.length === 1 ? '' : 's' }} ready to
+                describe: {{ sources.matched.join(', ') }}
+              </div>
+              <div
+                v-if="sources.missing.length"
+                class="sources-missing text-warning text-compact mb-2"
+              >
+                <i class="fas fa-exclamation-triangle" />
+                <strong>Not in the RDF store:</strong> {{ sources.missing.join(', ') }}
+              </div>
+            </template>
+            <div
+              v-if="sources.others.length"
+              class="sources-other text-muted text-compact mb-2"
+            >
+              <i class="fas fa-info-circle" />
+              <strong>Other data in the RDF store:</strong> {{ sources.others.join(', ') }}
+            </div>
+          </template>
+          <div
+            v-else
+            class="text-muted text-compact mb-2"
+          >
+            <i class="fas fa-info-circle" /> Flyover could not list the datasets in the
+            RDF store to compare them with the map.
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-primary"
+          :disabled="uploading"
+          @click="continueToDescribe"
+        >
+          <i class="fas fa-arrow-right" /> Describe your data with this map
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-if="loaded && dataExists && (heldMap || !skipped)"
+      class="card mb-4 map-upload"
+    >
+      <div class="card-header">
+        <h5
+          v-if="heldMap"
+          class="mb-0"
+        >
+          <i class="fas fa-file-upload" /> Or upload another semantic map
+        </h5>
+        <h5
+          v-else
+          class="mb-0"
+        >
           <i class="fas fa-project-diagram" /> Optional: Upload Flyover Semantic Map
           Template
         </h5>
       </div>
       <div class="card-body">
-        <p class="text-muted">
-          You can optionally upload a Flyover semantic map JSON-LD file to guide the
-          mapping process. This will help provide better semantic annotations and
-          standardised mappings for your data variables. You can find an example
-          template
-          <a
-            href="https://github.com/MaastrichtU-CDS/Flyover/blob/main/example_data/mapping_template.jsonld"
-            target="_blank"
-            rel="noopener"
-          >here</a>.
+        <p
+          v-if="heldMap"
+          class="text-muted"
+        >
+          A map you upload here replaces the one above.
+          <template v-if="heldMap.ofProject">
+            Flyover asks first when it belongs to another project, names another store,
+            or would replace the descriptions you added.
+          </template>
         </p>
+        <template v-else>
+          <p class="text-muted">
+            You can optionally upload a Flyover semantic map JSON-LD file to guide the
+            mapping process. This will help provide better semantic annotations and
+            standardised mappings for your data variables. You can find an example
+            template
+            <a
+              href="https://github.com/MaastrichtU-CDS/Flyover/blob/main/example_data/mapping_template.jsonld"
+              target="_blank"
+              rel="noopener"
+            >here</a>.
+          </p>
 
-        <div class="alert alert-info info-purple">
-          <i class="fas fa-info-circle" />
-          <strong>What is a Global Semantic Map?</strong><br>
-          A global semantic map defines standardised variable definitions, data types,
-          and value mappings that can be consistently applied across different
-          datasets to ensure semantic interoperability.
-        </div>
+          <div class="alert alert-info info-purple">
+            <i class="fas fa-info-circle" />
+            <strong>What is a Global Semantic Map?</strong><br>
+            A global semantic map defines standardised variable definitions, data types,
+            and value mappings that can be consistently applied across different
+            datasets to ensure semantic interoperability.
+          </div>
+        </template>
 
         <form @submit.prevent="uploadSemanticMap">
           <div class="form-group">
             <label for="semanticMapPath">Global Semantic Map JSON-LD File:</label>
             <div class="input-group">
               <input
+                id="semanticMapPath"
                 type="text"
                 class="form-control"
                 :value="selectedFileName"
@@ -408,6 +564,7 @@ onMounted(async () => {
               {{ uploading ? ' Saving...' : ' Upload Semantic Map' }}
             </button>
             <button
+              v-if="!heldMap"
               type="button"
               class="btn btn-secondary"
               :disabled="uploading"
@@ -420,7 +577,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <p>
+    <p v-if="loaded && dataExists && !heldMap">
       <button
         type="button"
         class="btn btn-primary"

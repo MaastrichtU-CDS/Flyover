@@ -46,11 +46,12 @@ export function sameStore(a, b) {
 }
 
 // The name the status bar shows: the map's own name, else its schema's,
-// else the file's. The template's placeholder name counts as no name.
-export function projectName(details) {
+// else the file's, else `fallback`. The template's placeholder name counts
+// as no name.
+export function projectName(details, fallback = 'Unnamed project') {
   const own = text(details?.name)
   if (own && !PLACEHOLDER_NAME.test(own)) return own
-  return text(details?.schemaName) || text(details?.fileName) || 'Unnamed project'
+  return text(details?.schemaName) || text(details?.fileName) || fallback
 }
 
 // "v1.0.0" for a map that names its version, else ''.

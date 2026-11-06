@@ -11,6 +11,7 @@ import {
   namesMatch,
   mapTableMatches,
   matchStoreTable,
+  compareWithStore,
   computePreselectionsForDatabases,
   getVariableKeyFromColumn,
   normalizeLocalMappings,
@@ -85,6 +86,52 @@ describe('mapTableMatches and matchStoreTable', () => {
     expect(matchStoreTable('visits.csv', ['patients', 'visits'])).toBe('visits')
     expect(matchStoreTable('', ['patients', 'visits'])).toBeNull()
     expect(matchStoreTable('labs', ['patients', 'visits'])).toBeNull()
+  })
+})
+
+describe('compareWithStore', () => {
+  const MAP = {
+    databases: {
+      centre: {
+        tables: {
+          t1: { sourceFile: 'patients.csv' },
+          visits: {},
+          labs: { sourceFile: 'labs.csv' },
+        },
+      },
+      // The same table named twice counts once.
+      again: { tables: { p: { sourceFile: 'patients' }, l: { sourceFile: 'labs.csv' } } },
+    },
+  }
+
+  it("sorts the map's tables into found and missing, and the store's other datasets", () => {
+    expect(compareWithStore(MAP, ['patients', 'visits', 'nki_t2'])).toEqual({
+      matched: ['patients', 'visits'],
+      missing: ['labs.csv'],
+      others: ['nki_t2'],
+    })
+  })
+
+  it('finds nothing in a map without data sources, as a template has', () => {
+    expect(compareWithStore({ schema: {}, databases: {} }, ['patients'])).toEqual({
+      matched: [],
+      missing: [],
+      others: ['patients'],
+    })
+    expect(compareWithStore({}, [])).toEqual({ matched: [], missing: [], others: [] })
+  })
+
+  it('takes a store that lists nothing as holding none of the map', () => {
+    expect(compareWithStore(MAP, null)).toEqual({
+      matched: [],
+      missing: ['patients.csv', 'visits', 'labs.csv', 'patients'],
+      others: [],
+    })
+  })
+
+  it('skips databases and tables that are not objects', () => {
+    const map = { databases: { a: null, b: { tables: null }, c: { tables: { x: null } } } }
+    expect(compareWithStore(map, ['x'])).toEqual({ matched: ['x'], missing: [], others: [] })
   })
 })
 

@@ -148,6 +148,16 @@ test.describe('Projects', () => {
     await expect(statusBar(page)).toContainText(CENTRE_A)
 
     await runIngestFlow(page)
+    // The landing knows the project's map, and which of its data sources the
+    // store holds.
+    const held = page.locator('.held-map')
+    await expect(held).toContainText("Continue with the project's semantic map")
+    await expect(held.locator('.held-map-name')).toHaveText(
+      `${CENTRE_A} · v1.0.0 (mapping_centre_a.jsonld)`
+    )
+    await expect(held.locator('.sources-ready')).toHaveText(
+      /ready to\s+describe:\s+(.*,\s+)?synthetic_english_150\s*$/
+    )
     await uploadOnDescribeLanding(page, await otherProject(), 'other.jsonld')
 
     const question = page.getByRole('dialog', { name: new RegExp(`Switch to ${OTHER}`) })
@@ -171,9 +181,14 @@ test.describe('Projects', () => {
     await expect(offer).toContainText('standard RDF flow')
     await offer.getByRole('button', { name: 'Open as the project' }).click()
     await expect(statusBar(page)).toContainText(CENTRE_A)
+    // The landing now goes on with the project's map.
+    await expect(page.locator('.held-map')).toContainText(
+      "Continue with the project's semantic map"
+    )
     await expect(
-      page.getByRole('button', { name: /Click here to describe the data/i })
+      page.getByRole('button', { name: 'Describe your data with this map' })
     ).toBeEnabled()
+    await expect(page.getByRole('button', { name: /^\s*Skip\s*$/ })).toHaveCount(0)
   })
 
   test('a map that cannot be fetched from a web address says why', async ({ page }) => {

@@ -135,6 +135,10 @@ A map uploaded in a step is checked against the open project. The project's own 
 working copy, after asking if you added describe answers since it was loaded; another project's map asks whether to
 switch. Without a project, a map that belongs to a project offers to open it as one.
 
+The describe and annotate landings show the map the browser holds, the open project's or one uploaded in a step, and
+which of its data sources the RDF store holds, so you can go on with it or upload another. The describe landing says
+the data was uploaded only right after an ingest; any other visit names the datasets in the store.
+
 ### Example Data
 
 The `example_data/` folder contains synthetic datasets and JSON-LD mapping files for two fictitious centres,

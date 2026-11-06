@@ -105,6 +105,29 @@ export function matchStoreTable(mapName, storeTables) {
   return (storeTables || []).find((table) => namesMatch(mapName, table)) || null
 }
 
+// How a map's data sources line up with the datasets in the store:
+// `matched` are the store's datasets the map describes, `missing` the map's
+// tables the store lacks (by the map's name), and `others` the store's
+// datasets the map does not name. Each name is listed once.
+export function compareWithStore(map, storeTables) {
+  const tables = storeTables || []
+  const matched = []
+  const missing = []
+  for (const dbData of Object.values(map?.databases || {})) {
+    for (const [tableKey, tableData] of Object.entries(dbData?.tables || {})) {
+      const name = mapTableName(tableKey, tableData)
+      const match = matchStoreTable(name, tables)
+      if (match) {
+        if (!matched.includes(match)) matched.push(match)
+      } else if (name && !missing.includes(name)) {
+        missing.push(name)
+      }
+    }
+  }
+  const others = tables.filter((table) => !matched.includes(table))
+  return { matched, missing, others }
+}
+
 export function findColumnForVariable(
   databases,
   globalVarName,

@@ -82,7 +82,8 @@ export async function uploadSemanticMapAndContinue(page, mapping) {
   })
   await page.getByRole('button', { name: /Upload Semantic Map/i }).click()
 
-  const continueButton = page.getByRole('button', { name: /Click here to describe the data/i })
+  // The landing shows the uploaded map in its card, with the way on.
+  const continueButton = page.getByRole('button', { name: 'Describe your data with this map' })
   await expect(continueButton).toBeEnabled({ timeout: 30_000 })
   await continueButton.click()
   await page.waitForURL(/\/describe\/variables(?:[?#].*)?$/, { timeout: 30_000 })
