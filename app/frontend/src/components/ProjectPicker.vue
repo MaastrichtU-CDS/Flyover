@@ -1,7 +1,8 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
+import { useModalFocus } from '@/composables/useModalFocus'
 import { reloadPage } from '@/lib/browser'
 import { projectName, projectVersion } from '@/lib/project'
 import { errorMessage, useProjectStore } from '@/stores/project'
@@ -56,56 +57,12 @@ function reset() {
   clearErrors()
 }
 
-function focusables() {
-  return Array.from(
-    dialog.value?.querySelectorAll(
-      'button:not([disabled]), input:not([disabled]):not([type="file"]), a[href], [tabindex]:not([tabindex="-1"])'
-    ) || []
-  )
-}
-
-async function focusFirst() {
-  await nextTick()
-  focusables()[0]?.focus()
-}
-
-function onKeydown(event) {
-  if (event.key === 'Escape') {
-    event.preventDefault()
+const { focusFirst } = useModalFocus(dialog, isOpen, {
+  onEscape: () => {
     if (canCancel.value && !busy.value) cancel()
-    return
-  }
-  if (event.key !== 'Tab') return
-  // Keep the focus inside the pop-up while it is open.
-  const items = focusables()
-  if (!items.length) return
-  const first = items[0]
-  const last = items[items.length - 1]
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
-}
-
-watch(
-  isOpen,
-  (open) => {
-    if (typeof document === 'undefined') return
-    if (open) {
-      reset()
-      document.addEventListener('keydown', onKeydown)
-      focusFirst()
-    } else {
-      document.removeEventListener('keydown', onKeydown)
-    }
   },
-  { immediate: true }
-)
-
-onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
+  onOpen: reset,
+})
 
 watch(step, () => focusFirst())
 
