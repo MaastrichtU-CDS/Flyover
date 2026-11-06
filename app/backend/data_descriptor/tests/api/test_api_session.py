@@ -52,7 +52,7 @@ class TestAWorkflowThroughTheSession:
                 "csvFile": (io.BytesIO(b"id\n1\n"), "patients.csv"),
             },
         )
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         assert session_cache.csvTableNames == [TABLE]
         assert session_cache.StatusToDisplay == "Triplification completed"
 

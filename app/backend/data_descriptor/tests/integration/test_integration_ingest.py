@@ -55,7 +55,7 @@ class TestCsvUploadFlow:
 
         # Assert: the controller finished the step
         assert response.status_code == 302
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=done")
         assert "triplified successfully" in session_cache.StatusToDisplay
 
         # The service parsed the CSV into the session with cleaned column names
@@ -572,7 +572,7 @@ class TestUploadVariants:
         )
 
         assert response.status_code == 302
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=skipped")
         assert "opted to not submit any new data" in session_cache.StatusToDisplay
         assert fake_curl.invocations == []
         assert app.config["BACKGROUND_JOBS"] == []
@@ -872,7 +872,7 @@ class TestEncodings:
             client, "id,city\nP1,Zürich\n".encode("latin-1"), f"{TABLE}.csv"
         )
 
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=done")
         assert session_cache.csvData[0]["city"].to_list() == ["Zürich"]
 
     def test_latin1_csv_is_currently_rejected_with_the_parse_error(

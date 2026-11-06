@@ -50,8 +50,8 @@ sequenceDiagram
     G-->>R: 204
     R-->>S: ok
     S-->>F: result dict
-    F-->>B: JSON response
-    Note over B: Pinia store + StatusBanner show success
+    F-->>B: 302 to /describe?ingest=done
+    Note over B: the describe landing says the data came in, once
 ```
 
 Two things to notice:
