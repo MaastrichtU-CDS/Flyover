@@ -199,7 +199,7 @@ class TestTheStoreStatus:
 
         assert body == {
             "reachable": False,
-            "reason": "The store cannot be reached from Flyover.",
+            "reason": "Currently, the store cannot be reached by Flyover.",
             "store": body["store"],
         }
         assert body["store"]["url"] == project_store.repository_url

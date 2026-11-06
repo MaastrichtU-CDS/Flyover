@@ -117,7 +117,7 @@ class RDFStoreService:
                 self.repo,
                 type(error).__name__,
             )
-            return False, "The store cannot be reached from Flyover."
+            return False, "Currently, the store cannot be reached by Flyover."
         status = response.status_code
         if status == 404:
             return False, f"The store has no repository named {self.repo!r}."

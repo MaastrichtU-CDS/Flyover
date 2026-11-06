@@ -84,7 +84,7 @@ function serve({ project = null, reachable = true } = {}) {
       return {
         data: {
           reachable,
-          reason: reachable ? '' : 'The store cannot be reached from Flyover.',
+          reason: reachable ? '' : 'Currently, the store cannot be reached by Flyover.',
           store: current ? PROJECT_STORE : CONFIGURED,
         },
       }
@@ -694,7 +694,7 @@ describe('the project store', () => {
 
       expect(project.storeStatus).toEqual({
         state: 'unreachable',
-        reason: 'The store cannot be reached from Flyover.',
+        reason: 'Currently, the store cannot be reached by Flyover.',
         checking: false,
       })
     })

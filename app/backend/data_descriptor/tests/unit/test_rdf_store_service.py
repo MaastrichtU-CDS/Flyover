@@ -494,7 +494,7 @@ def test_the_check_is_one_short_ask_on_the_repository(monkeypatch):
         (_Answer(200, {"results": []}), "but not an RDF store."),
         (_Answer(200, ["a", "list"]), "but not an RDF store."),
         (requests.Timeout("slow"), "did not answer within 3 seconds."),
-        (requests.ConnectionError("refused"), "cannot be reached from Flyover."),
+        (requests.ConnectionError("refused"), "cannot be reached by Flyover."),
     ],
 )
 def test_a_store_that_does_not_answer_says_why(monkeypatch, answer, reason):
