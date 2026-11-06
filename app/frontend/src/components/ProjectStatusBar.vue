@@ -11,13 +11,13 @@ const { store, storeStatus, project, name, version } = storeToRefs(projectStore)
 
 const dotClass = computed(() => `is-${storeStatus.value.state}`)
 
-const dotLabel = computed(
+// Said in words too, so the state never rests on the dot's colour alone.
+const connectionLabel = computed(
   () =>
     ({
-      reachable: 'answers',
-      unreachable: 'cannot be reached',
-      checking: 'is being checked',
-    })[storeStatus.value.state] || 'has not been checked yet'
+      reachable: 'Connected',
+      unreachable: 'Not connected',
+    })[storeStatus.value.state] || 'Checking…'
 )
 
 const storeTitle = computed(() => {
@@ -52,18 +52,13 @@ const projectTitle = computed(() => {
     id="project-status-bar"
     class="flyover-statusbar"
   >
-    <div class="container statusbar-inner">
+    <!-- The page content's container, so the strip lines up with it. -->
+    <div class="container container-flyover statusbar-inner">
       <span
         id="statusbar-store"
         class="statusbar-item"
         :title="storeTitle"
       >
-        <span
-          class="statusbar-dot"
-          :class="dotClass"
-          aria-hidden="true"
-        />
-        <span class="sr-only">The store {{ dotLabel }}.</span>
         <i
           class="fas fa-database"
           aria-hidden="true"
@@ -71,6 +66,19 @@ const projectTitle = computed(() => {
         RDF store<template v-if="store">
           · <strong>{{ store.repository }}</strong>
         </template>
+        <span aria-hidden="true">·</span>
+        <span
+          id="statusbar-connection"
+          class="statusbar-connection"
+        >
+          <span
+            class="statusbar-dot"
+            :class="dotClass"
+            aria-hidden="true"
+          />
+          <span class="sr-only">Connection to the store:</span>
+          {{ connectionLabel }}
+        </span>
       </span>
       <span
         id="statusbar-project"
@@ -154,13 +162,21 @@ const projectTitle = computed(() => {
   border-radius: 2px;
 }
 
+.statusbar-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* A thin dark edge sets the dot off the purple without the whitish halo a
+   light ring gave it. */
 .statusbar-dot {
   display: inline-block;
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 50%;
   background: #adb5bd;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .statusbar-dot.is-reachable {

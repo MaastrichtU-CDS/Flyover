@@ -47,14 +47,14 @@ describe('ProjectStatusBar', () => {
     setActivePinia(createPinia())
   })
 
-  it('names the RDF store and its repository, and says it answers', () => {
+  it('names the RDF store and its repository, and says it is connected', () => {
     const { wrapper } = mountBar()
     const storePart = wrapper.find('#statusbar-store')
 
-    expect(storePart.text()).toContain('RDF store')
+    expect(reads(storePart)).toBe('RDF store · userRepo · Connection to the store: Connected')
     expect(storePart.find('strong').text()).toBe('userRepo')
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-reachable')
-    expect(storePart.find('.sr-only').text()).toBe('The store answers.')
+    expect(storePart.find('.sr-only').text()).toBe('Connection to the store:')
     expect(storePart.attributes('title')).toBe(
       "RDF store: http://rdf-store:7200/repositories/userRepo\nFlyover's configured store."
     )
@@ -67,8 +67,16 @@ describe('ProjectStatusBar', () => {
     const storePart = wrapper.find('#statusbar-store')
 
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-unreachable')
-    expect(storePart.find('.sr-only').text()).toBe('The store cannot be reached.')
+    expect(wrapper.find('#statusbar-connection').text()).toMatch(/Not connected$/)
     expect(storePart.attributes('title')).toContain("no repository named 'aya'")
+  })
+
+  it('lines up with the page content, not the step bar', () => {
+    const { wrapper } = mountBar()
+
+    expect(wrapper.find('.statusbar-inner').classes()).toEqual(
+      expect.arrayContaining(['container', 'container-flyover'])
+    )
   })
 
   it('says whose store it is and why, for a project\'s store', () => {
@@ -90,7 +98,7 @@ describe('ProjectStatusBar', () => {
     const { wrapper } = mountBar({ store: null, storeStatus: { state: 'unknown', reason: '' } })
     const storePart = wrapper.find('#statusbar-store')
 
-    expect(storePart.text()).not.toContain('·')
+    expect(reads(storePart)).toBe('RDF store · Connection to the store: Checking…')
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-unknown')
     expect(storePart.attributes('title')).toBe('Flyover has not heard from the server yet.')
   })

@@ -70,6 +70,7 @@ test.describe('Projects', () => {
     await expect(statusBar(page)).toContainText('No project')
     await expect(statusBar(page)).toContainText(/RDF store\s*·\s*userRepo/)
     await expect(statusBar(page).locator('.statusbar-dot')).toHaveClass(/is-reachable/)
+    await expect(statusBar(page).locator('#statusbar-connection')).toHaveText(/Connected$/)
 
     // The choice lasts for the tab: a reload does not ask again...
     await page.reload()

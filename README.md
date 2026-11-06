@@ -109,8 +109,8 @@ it asks which project to work on:
   the project's empty template and upload your own filled-in map later, in any step.
 - **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
 
-A strip above the steps shows the RDF store Flyover works on (with a green dot when it answers) and the open project,
-with **Switch project** to open another one or to leave it. Switching and leaving ask first and offer to download the
+A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
+(red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it. Switching and leaving ask first and offer to download the
 current map, describe answers included. Working without a project lasts for the browser tab; an open project lasts
 until you switch or leave it.
 
