@@ -80,6 +80,19 @@ jobs:
         exit $EXIT_CODE
       continue-on-error: false
 
+    - name: Run store launcher tests
+      id: launcher-tests
+      run: |
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🚀 Store Launcher Tests" >> $GITHUB_STEP_SUMMARY
+        python -m pytest stores/launcher/ --tb=short -q 2>&1 | tee launcher-test-output.txt
+        EXIT_CODE=${PIPESTATUS[0]}
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -5 launcher-test-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        exit $EXIT_CODE
+      continue-on-error: false
+
     - name: Run integration tests
       id: integration-tests
       run: |
