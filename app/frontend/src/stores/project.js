@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import {
@@ -39,6 +39,15 @@ const CHANNEL = 'flyover-project'
 // visible. A hidden tab does not ask, and asks as soon as it is shown again
 // when a check is due. Each check is one short request.
 export const STORE_CHECK_INTERVAL_MS = 60_000
+// How often it asks while the store starts, so the pages open soon after.
+export const STORE_START_CHECK_MS = 2_000
+// The states the server reports for the store (see store_lifecycle.py):
+// nobody chose yet, starting, it answers, it does not, or no database is in
+// use (none yet; a later workflow may keep everything in memory).
+const STORE_STATES = ['waiting', 'starting', 'reachable', 'unreachable', 'none']
+// States in which the store is not yet settled; 'unknown' is the browser's
+// own, until the first answer.
+const UNSETTLED_STATES = ['unknown', 'starting']
 
 function now() {
   return new Date().toISOString()
@@ -84,9 +93,15 @@ export const useProjectStore = defineStore('project', () => {
   // The store the app works on, and the one working without a project uses.
   const store = ref(null)
   const configuredStore = ref(null)
-  // The store's last answer (state: unknown | reachable | unreachable) and
-  // whether a check is under way.
+  // What a user chose on the server: 'project', 'standard' (the standard RDF
+  // flow, without a project) or null while nobody has chosen.
+  const route = ref(null)
+  // The store's last answer (state: unknown until the first one, then
+  // waiting | starting | reachable | unreachable | none) and whether a check
+  // is under way.
   const storeStatus = ref({ state: 'unknown', reason: '', checking: false })
+  // How many answers about the store have come in, to wait for a fresh one.
+  const storeAnswers = ref(0)
   const picker = ref({ open: false, mode: 'startup' })
   // The question an upload in a step raises, while it waits for the user:
   // { kind, check, fileName, edited } (see planUpload).
@@ -99,6 +114,7 @@ export const useProjectStore = defineStore('project', () => {
   let statusRequest = 0
   let lastStatusCheck = 0
   let statusTimer = null
+  let quickTimer = null
 
   const name = computed(() => (project.value ? projectName(project.value) : ''))
   const version = computed(() => (project.value ? projectVersion(project.value) : ''))
@@ -107,6 +123,7 @@ export const useProjectStore = defineStore('project', () => {
     if (!answer) return
     store.value = answer.store ?? store.value
     configuredStore.value = answer.configuredStore ?? configuredStore.value
+    if ('route' in answer) route.value = answer.route ?? null
     serverToken = answer.project?.token ?? null
   }
 
@@ -189,12 +206,15 @@ export const useProjectStore = defineStore('project', () => {
         }
       }
     }
-    if (settle && !mine && server?.project && tabSetting(WITHOUT_PROJECT)) {
+    // This tab chose the standard RDF flow: tell a server that has another
+    // project open, or that forgot the choice (a restart), so it closes the
+    // project and starts the store.
+    if (settle && !mine && server && server.route !== 'standard' && tabSetting(WITHOUT_PROJECT)) {
       try {
         const { data } = await api.delete('/api/v1/project')
         server = data
       } catch {
-        // The server keeps its project; the status bar shows its store.
+        // The server keeps what it had; the status bar shows its store.
       }
     }
     project.value = mine
@@ -252,8 +272,9 @@ export const useProjectStore = defineStore('project', () => {
     startStatusChecks()
   }
 
-  // Ask whether the store answers. Until the answer arrives, the last one
-  // stays shown; only the newest of overlapping checks counts.
+  // Ask where the store stands. Until the answer arrives, the last one
+  // stays shown; only the newest of overlapping checks counts. While the
+  // store starts, the next check follows soon.
   async function refreshStoreStatus() {
     const request = ++statusRequest
     lastStatusCheck = Date.now()
@@ -262,11 +283,12 @@ export const useProjectStore = defineStore('project', () => {
     try {
       const { data } = await api.get('/api/v1/project/store-status')
       if (request !== statusRequest) return
-      storeStatus.value = {
-        state: data?.reachable ? 'reachable' : 'unreachable',
-        reason: data?.reason || '',
-        checking: false,
-      }
+      const state = STORE_STATES.includes(data?.state)
+        ? data.state
+        : data?.reachable
+          ? 'reachable'
+          : 'unreachable'
+      storeStatus.value = { state, reason: data?.reason || '', checking: false }
       if (data?.store) store.value = data.store
     } catch {
       if (request !== statusRequest) return
@@ -276,9 +298,36 @@ export const useProjectStore = defineStore('project', () => {
         checking: false,
       }
     }
+    storeAnswers.value += 1
     // A store that came back (or went) changes which steps have data to work
     // on: the step bar asks again.
     if (before !== 'unknown' && storeStatus.value.state !== before) refreshDataExists()
+    if (storeStatus.value.state === 'starting') checkAgainSoon()
+  }
+
+  function checkAgainSoon() {
+    if (quickTimer) return
+    quickTimer = setTimeout(() => {
+      quickTimer = null
+      refreshStoreStatus()
+    }, STORE_START_CHECK_MS)
+  }
+
+  // Resolves, with the state, once a fresh answer says the store has
+  // settled: it answers, it does not, or nothing is to start. A step that
+  // moved Flyover to another store waits for it this way. A check under way
+  // counts as fresh: the change that came before it started it.
+  function whenStoreReady() {
+    const since = storeAnswers.value
+    if (!storeStatus.value.checking) refreshStoreStatus()
+    return new Promise((resolve) => {
+      const stop = watch(storeAnswers, (count) => {
+        if (count > since && !UNSETTLED_STATES.includes(storeStatus.value.state)) {
+          stop()
+          resolve(storeStatus.value.state)
+        }
+      })
+    })
   }
 
   function tabHidden() {
@@ -303,6 +352,8 @@ export const useProjectStore = defineStore('project', () => {
   function stopStatusChecks() {
     if (statusTimer) clearInterval(statusTimer)
     statusTimer = null
+    if (quickTimer) clearTimeout(quickTimer)
+    quickTimer = null
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', checkIfDue)
     }
@@ -347,16 +398,21 @@ export const useProjectStore = defineStore('project', () => {
     return settleChange(previousStore)
   }
 
-  // The start-up choice to work without a project, for this tab. A project
-  // the server still has open from elsewhere is closed.
+  // The start-up choice to work without a project, for this tab: the server
+  // hears it, closes a project still open from elsewhere, and starts the
+  // standard RDF flow's store if it is not running. The pop-up closes at
+  // once; the pages wait for the store.
   async function continueWithoutProject() {
     setTabSetting(WITHOUT_PROJECT, '1')
+    const hadProject = Boolean(serverToken)
+    const previousStore = store.value
+    const { data } = await api.delete('/api/v1/project')
+    applyServer(data)
     let storeChanged = false
-    if (serverToken) {
-      const previousStore = store.value
-      const { data } = await api.delete('/api/v1/project')
-      applyServer(data)
+    if (hadProject) {
       storeChanged = (await settleChange(previousStore, { mapChanged: false })).storeChanged
+    } else {
+      refreshStoreStatus()
     }
     closePicker()
     return { storeChanged }
@@ -476,7 +532,7 @@ export const useProjectStore = defineStore('project', () => {
       if (!check?.valid) return { go: true, opened: false }
       const choice = await ask({ kind: 'no-project', check, fileName, edited: false })
       if (choice !== 'open') return { go: true, opened: false }
-      return { go: true, opened: true, ...(await openProject(map, { fileName })) }
+      return openFromStep(map, fileName)
     }
     if (!check?.valid) return { go: false, opened: false, invalid: check }
     const kind = classify(check)
@@ -485,7 +541,15 @@ export const useProjectStore = defineStore('project', () => {
       const choice = await ask({ kind, check, fileName, edited })
       if (choice !== 'open') return { go: false, opened: false }
     }
-    return { go: true, opened: true, ...(await openProject(map, { fileName })) }
+    return openFromStep(map, fileName)
+  }
+
+  // A step goes on with what it uploaded: on the project's store, which may
+  // first have to start.
+  async function openFromStep(map, fileName) {
+    const changed = await openProject(map, { fileName })
+    if (changed.storeChanged) await whenStoreReady()
+    return { go: true, opened: true, ...changed }
   }
 
   function openPicker(mode = 'switch') {
@@ -501,6 +565,7 @@ export const useProjectStore = defineStore('project', () => {
     project,
     store,
     configuredStore,
+    route,
     storeStatus,
     picker,
     uploadQuestion,
@@ -509,6 +574,7 @@ export const useProjectStore = defineStore('project', () => {
     init,
     load,
     refreshStoreStatus,
+    whenStoreReady,
     stopStatusChecks,
     openProject,
     leaveProject,
