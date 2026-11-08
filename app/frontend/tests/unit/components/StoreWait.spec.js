@@ -34,6 +34,10 @@ function detail(wrapper) {
 }
 
 describe('StoreWait', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('says Flyover waits for a project choice, without dots', () => {
     const wrapper = mount(StoreWait, { props: { reason: 'waiting' } })
 
@@ -63,6 +67,20 @@ describe('StoreWait', () => {
 
     expect(title(wrapper)).toBe('Connecting to the RDF store.')
     expect(detail(wrapper)).toBe('')
+    expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('offers to start a store someone stopped', async () => {
+    const project = useProjectStore()
+    const start = vi.spyOn(project, 'startStore').mockResolvedValue()
+    const wrapper = mount(StoreWait, { props: { reason: 'stopped' } })
+
+    expect(title(wrapper)).toBe('The RDF store is not running')
+    expect(detail(wrapper)).toBe(
+      'It was stopped, and Flyover leaves a stopped store alone. Start it to open this page.'
+    )
+    await wrapper.get('button').trigger('click')
+    expect(start).toHaveBeenCalledOnce()
   })
 })
 
@@ -127,10 +145,26 @@ describe('useStoreGate', () => {
     expect(wrapper.text()).toBe('waiting')
   })
 
-  it('lets a page open on a store that does not answer: it says so itself', () => {
-    state('unreachable')
+  it('lets a page open on a store that does not answer, and says why above it', () => {
+    project.storeStatus = { state: 'unreachable', reason: 'No answer.', checking: false }
+    const TroubleHarness = {
+      setup() {
+        return useStoreGate()
+      },
+      template: '<p>{{ waitingFor }}|{{ trouble }}</p>',
+    }
 
-    expect(mount(Harness).text()).toBe('')
+    expect(mount(TroubleHarness).text()).toBe('|No answer.')
+  })
+
+  it('holds a page while someone has stopped the store', async () => {
+    state('stopped')
+    const wrapper = mount(Harness)
+    expect(wrapper.text()).toBe('stopped')
+
+    state('starting')
+    await nextTick()
+    expect(wrapper.text()).toBe('starting')
   })
 
   it('keeps an open page open when the store starts again, and the next page waits', async () => {

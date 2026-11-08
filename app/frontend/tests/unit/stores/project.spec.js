@@ -876,6 +876,38 @@ describe('the project store', () => {
       expect(api.delete).not.toHaveBeenCalled()
     })
 
+    it('starts a store someone stopped when the user asks, and follows it', async () => {
+      serveStates(['stopped'], { route: 'standard' })
+      api.post.mockImplementation(async (url) => {
+        if (url !== '/api/v1/project/store-start') throw new Error(url)
+        return { data: { state: 'starting', reachable: false, reason: '', store: CONFIGURED } }
+      })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('stopped'))
+
+      await project.startStore()
+
+      expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-start')
+      expect(project.storeStatus).toEqual({ state: 'starting', reason: '', checking: false })
+    })
+
+    it('says so when the store cannot be started, and keeps what it knew', async () => {
+      serveStates(['stopped'], { route: 'standard' })
+      api.post.mockRejectedValue({ response: { status: 409, data: { error: 'Choose first.' } } })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('stopped'))
+
+      await project.startStore()
+
+      expect(project.storeStatus.state).toBe('stopped')
+      expect(project.storeStatus.checking).toBe(false)
+      expect(useStatusStore().messages.at(-1).text).toBe(
+        'Flyover could not start the store: Choose first.'
+      )
+    })
+
     it('lets a step wait until a fresh answer says the store has settled', async () => {
       serveStates(['reachable'], { route: 'standard' })
       const project = useProjectStore()

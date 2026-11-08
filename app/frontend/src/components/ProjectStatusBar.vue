@@ -51,8 +51,11 @@ const connectionLabel = computed(
       reachable: 'Connected',
       unreachable: 'Not connected',
       starting: 'Starting',
+      stopped: 'Stopped',
     })[storeStatus.value.state] || 'Connecting'
 )
+// Someone stopped Flyover's store: it stays so until the user starts it.
+const stopped = computed(() => storeStatus.value.state === 'stopped')
 const connectionUnderWay = computed(() =>
   ['starting', 'unknown'].includes(storeStatus.value.state)
 )
@@ -67,7 +70,7 @@ const storeTip = computed(() => {
   if (storeStatus.value.state === 'starting') {
     lines.push('Flyover is starting the store; this can take a minute.')
   }
-  if (storeStatus.value.state === 'unreachable' && storeStatus.value.reason) {
+  if (['unreachable', 'stopped'].includes(storeStatus.value.state) && storeStatus.value.reason) {
     lines.push(storeStatus.value.reason)
   }
   return lines.join('\n')
@@ -170,6 +173,18 @@ const projectTip = computed(() => {
             >{{ '.'.repeat(dots) }}</span></span>
           </button>
         </HoverTip>
+        <template v-if="stopped">
+          <span aria-hidden="true">·</span>
+          <button
+            id="statusbar-start"
+            type="button"
+            class="statusbar-link"
+            :disabled="storeStatus.checking"
+            @click="projectStore.startStore()"
+          >
+            Start
+          </button>
+        </template>
       </span>
       <span
         id="statusbar-project"

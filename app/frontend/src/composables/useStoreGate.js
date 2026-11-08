@@ -11,8 +11,12 @@ import { useProjectStore } from '@/stores/project'
 // open, stays open whatever the store does next: it may hold the user's
 // work. The next page waits again while the store is not there.
 //
-// `waitingFor` is 'waiting', 'starting' or 'connecting', or '' when the page
-// may open.
+// A store someone stopped holds the page too, with a button to start it. A
+// store that cannot be reached for another reason lets the page open, and
+// `trouble` says why, above it.
+//
+// `waitingFor` is 'waiting', 'starting', 'connecting' or 'stopped', or ''
+// when the page may open.
 export function useStoreGate() {
   const route = useRoute()
   const { ready, picker, storeStatus } = storeToRefs(useProjectStore())
@@ -24,9 +28,12 @@ export function useStoreGate() {
     if (!ready.value) return 'connecting'
     if (picker.value.open && picker.value.mode === 'startup') return 'waiting'
     return (
-      { waiting: 'waiting', starting: 'starting', unknown: 'connecting' }[
-        storeStatus.value.state
-      ] || ''
+      {
+        waiting: 'waiting',
+        starting: 'starting',
+        unknown: 'connecting',
+        stopped: 'stopped',
+      }[storeStatus.value.state] || ''
     )
   })
 
@@ -44,5 +51,10 @@ export function useStoreGate() {
   const waitingFor = computed(() =>
     route.meta?.needsStore && !opened.value ? notYet.value : ''
   )
-  return { waitingFor }
+  const trouble = computed(() =>
+    route.meta?.needsStore && storeStatus.value.state === 'unreachable'
+      ? storeStatus.value.reason
+      : ''
+  )
+  return { waitingFor, trouble }
 }

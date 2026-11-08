@@ -41,9 +41,14 @@ docker compose up -d flyover
 
 Flyover starts the RDF store once you choose to work on it, in the pop-up it opens with: a project whose map names
 the store, or the standard RDF flow. Until then the store's container exists but does not run, so it takes no memory.
-Once started, the store comes back after a restart of the machine, until you stop it yourself. You can also start it
-without Flyover, with `docker compose start rdf-store-graphdb` (or `docker start rdf-store`), or start everything at
-once with `docker compose up -d`, as before.
+Once started, the store comes back after a restart of the machine, until you stop it yourself; Flyover leaves a store
+someone stopped alone until you click **Start** in the strip at the top. You can also start it without Flyover, with
+`docker compose start rdf-store-graphdb` (or `docker start rdf-store`), or start everything at once with
+`docker compose up -d`, as before.
+
+To stop Flyover, use `docker compose stop`. `docker compose down` removes the containers, the store's too, and Flyover
+can start a store but never create one: after a `down`, run `docker compose create` again before
+`docker compose up -d flyover`.
 
 | Service        | URL                                            | Description                                     |
 |----------------|------------------------------------------------|-------------------------------------------------|
@@ -129,7 +134,7 @@ A strip above the steps shows the RDF store Flyover works on, marked **Connected
 (red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it.
 Until you choose, it says **Waiting for a project choice**. While the store starts it says **Starting** (amber dot),
 and the step pages that use the store wait in their place, opening once it answers; a page already open stays as it
-is. Flyover checks the connection every minute while its tab is visible (every two seconds while the store starts), on
+is. A store someone stopped reads **Stopped**, with a **Start** button there and on the pages that need it. Flyover checks the connection every minute while its tab is visible (every two seconds while the store starts), on
 every step, and when you click the status.
 Switching and leaving ask first and offer to download the current map, describe answers included. Working without a
 project lasts for the browser tab; an open project lasts until you switch or leave it.

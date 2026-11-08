@@ -227,6 +227,34 @@ describe('ProjectStatusBar', () => {
     }
   })
 
+  it('says the store was stopped, with its reason and a button to start it', async () => {
+    const { wrapper, project } = mountBar({
+      storeStatus: {
+        state: 'stopped',
+        reason: 'The RDF store is not running: it was stopped.',
+        checking: false,
+      },
+    })
+    const start = vi.spyOn(project, 'startStore').mockResolvedValue()
+    const storePart = wrapper.find('#statusbar-store')
+
+    expect(reads(storePart)).toBe('RDF store · userRepo · Connection to the store: Stopped · Start')
+    expect(await tipOf(storePart)).toBe(
+      'http://rdf-store:7200/repositories/userRepo\nThe RDF store is not running: it was stopped.'
+    )
+    await wrapper.get('#statusbar-start').trigger('click')
+    expect(start).toHaveBeenCalledOnce()
+  })
+
+  it('offers no Start for a store that runs or that Flyover cannot start', () => {
+    for (const state of ['reachable', 'unreachable', 'starting']) {
+      setActivePinia(createPinia())
+      const { wrapper } = mountBar({ storeStatus: { state, reason: '', checking: false } })
+      expect(wrapper.find('#statusbar-start').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  })
+
   it('says when the work uses no database', () => {
     const { wrapper } = mountBar({ storeStatus: { state: 'none', reason: '', checking: false } })
 

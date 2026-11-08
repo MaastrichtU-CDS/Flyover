@@ -11,8 +11,9 @@ import { useStoreGate } from '@/composables/useStoreGate'
 import { useProjectStore } from '@/stores/project'
 
 const project = useProjectStore()
-// A page that needs the store waits for it in its place (see useStoreGate).
-const { waitingFor } = useStoreGate()
+// A page that needs the store waits for it in its place, or says above it
+// why the store cannot be reached (see useStoreGate).
+const { waitingFor, trouble } = useStoreGate()
 
 onMounted(() => {
   project.init()
@@ -26,6 +27,13 @@ onMounted(() => {
     <main class="app-main">
       <div class="container container-flyover">
         <StatusBanner />
+        <div
+          v-if="trouble && !waitingFor"
+          class="alert alert-warning alert-compact store-trouble"
+          role="alert"
+        >
+          <i class="fas fa-exclamation-triangle" /> {{ trouble }}
+        </div>
         <StoreWait
           v-if="waitingFor"
           :reason="waitingFor"

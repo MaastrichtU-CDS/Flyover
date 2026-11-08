@@ -1,15 +1,21 @@
 <script setup>
 import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useCyclingDots } from '@/composables/useCyclingDots'
+import { useProjectStore } from '@/stores/project'
 
 // What a page that needs the store shows in its place until the store is
-// there: Flyover waits for a project choice, the store starts, or Flyover
-// connects to it. The page opens once the store has settled (see App.vue).
+// there: Flyover waits for a project choice, the store starts, Flyover
+// connects to it, or someone stopped it (then with a button to start it).
+// The page opens once the store has settled (see App.vue).
 
 const props = defineProps({
-  // waiting | starting | connecting
+  // waiting | starting | connecting | stopped
   reason: { type: String, required: true },
 })
+
+const projectStore = useProjectStore()
+const { storeStatus } = storeToRefs(projectStore)
 
 const MESSAGES = {
   waiting: {
@@ -29,6 +35,12 @@ const MESSAGES = {
     title: 'Connecting to the RDF store',
     detail: '',
     underWay: true,
+  },
+  stopped: {
+    icon: 'fa-circle-stop',
+    title: 'The RDF store is not running',
+    detail: 'It was stopped, and Flyover leaves a stopped store alone. Start it to open this page.',
+    underWay: false,
   },
 }
 
@@ -60,6 +72,15 @@ const dots = useCyclingDots(() => message.value.underWay)
       >
         {{ message.detail }}
       </p>
+      <button
+        v-if="reason === 'stopped'"
+        type="button"
+        class="btn btn-primary btn-sm mt-2"
+        :disabled="storeStatus.checking"
+        @click="projectStore.startStore()"
+      >
+        <i class="fas fa-play" /> Start the RDF store
+      </button>
     </div>
   </div>
 </template>

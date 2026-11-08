@@ -42,9 +42,10 @@ export const STORE_CHECK_INTERVAL_MS = 60_000
 // How often it asks while the store starts, so the pages open soon after.
 export const STORE_START_CHECK_MS = 2_000
 // The states the server reports for the store (see store_lifecycle.py):
-// nobody chose yet, starting, it answers, it does not, or no database is in
-// use (none yet; a later workflow may keep everything in memory).
-const STORE_STATES = ['waiting', 'starting', 'reachable', 'unreachable', 'none']
+// nobody chose yet, starting, someone stopped it, it answers, it does not,
+// or no database is in use (none yet; a later workflow may keep everything
+// in memory).
+const STORE_STATES = ['waiting', 'starting', 'stopped', 'reachable', 'unreachable', 'none']
 // States in which the store is not yet settled; 'unknown' is the browser's
 // own, until the first answer.
 const UNSETTLED_STATES = ['unknown', 'starting']
@@ -97,8 +98,8 @@ export const useProjectStore = defineStore('project', () => {
   // flow, without a project) or null while nobody has chosen.
   const route = ref(null)
   // The store's last answer (state: unknown until the first one, then
-  // waiting | starting | reachable | unreachable | none) and whether a check
-  // is under way.
+  // waiting | starting | stopped | reachable | unreachable | none) and
+  // whether a check is under way.
   const storeStatus = ref({ state: 'unknown', reason: '', checking: false })
   // How many answers about the store have come in, to wait for a fresh one.
   const storeAnswers = ref(0)
@@ -283,13 +284,7 @@ export const useProjectStore = defineStore('project', () => {
     try {
       const { data } = await api.get('/api/v1/project/store-status')
       if (request !== statusRequest) return
-      const state = STORE_STATES.includes(data?.state)
-        ? data.state
-        : data?.reachable
-          ? 'reachable'
-          : 'unreachable'
-      storeStatus.value = { state, reason: data?.reason || '', checking: false }
-      if (data?.store) store.value = data.store
+      takeStoreAnswer(data)
     } catch {
       if (request !== statusRequest) return
       storeStatus.value = {
@@ -298,6 +293,40 @@ export const useProjectStore = defineStore('project', () => {
         checking: false,
       }
     }
+    afterStoreAnswer(before)
+  }
+
+  // Start the store in use at the user's request (the Start button): a store
+  // someone stopped stays stopped until a user asks.
+  async function startStore() {
+    const request = ++statusRequest
+    storeStatus.value = { ...storeStatus.value, checking: true }
+    const before = storeStatus.value.state
+    try {
+      const { data } = await api.post('/api/v1/project/store-start')
+      if (request !== statusRequest) return
+      takeStoreAnswer(data)
+    } catch (e) {
+      if (request !== statusRequest) return
+      storeStatus.value = { ...storeStatus.value, checking: false }
+      status.error(`Flyover could not start the store: ${errorMessage(e)}`)
+      return
+    }
+    afterStoreAnswer(before)
+  }
+
+  // The server's answer about the store: its state, why, and the store.
+  function takeStoreAnswer(data) {
+    const state = STORE_STATES.includes(data?.state)
+      ? data.state
+      : data?.reachable
+        ? 'reachable'
+        : 'unreachable'
+    storeStatus.value = { state, reason: data?.reason || '', checking: false }
+    if (data?.store) store.value = data.store
+  }
+
+  function afterStoreAnswer(before) {
     storeAnswers.value += 1
     // A store that came back (or went) changes which steps have data to work
     // on: the step bar asks again.
@@ -574,6 +603,7 @@ export const useProjectStore = defineStore('project', () => {
     init,
     load,
     refreshStoreStatus,
+    startStore,
     whenStoreReady,
     stopStatusChecks,
     openProject,
