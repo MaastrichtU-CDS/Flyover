@@ -71,6 +71,7 @@ EXPECTED_ROUTES = {
     ("DELETE", "/api/v1/project"),
     ("POST", "/api/v1/project/check"),
     ("GET", "/api/v1/project/store-status"),
+    ("POST", "/api/v1/project/store-start"),
     ("POST", "/api/v1/project/fetch-map"),
     # store_controller
     ("GET", "/api/v1/store/datasets"),

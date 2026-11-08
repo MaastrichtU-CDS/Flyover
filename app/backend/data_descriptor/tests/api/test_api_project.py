@@ -604,6 +604,58 @@ class TestTheStoreStatus:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/v1/project/store-start
+# ---------------------------------------------------------------------------
+
+
+class TestStartingTheStoreOnRequest:
+    @pytest.mark.route("POST", "/api/v1/project/store-start", "success")
+    def test_a_user_starts_the_chosen_store_and_hears_where_it_stands(
+        self, make_app, lifecycle
+    ):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+        selection = client.application.config["APP_CONTEXT"]["store_selection"]
+        client.delete("/api/v1/project")
+        lifecycle.ensure_started.reset_mock()
+        lifecycle.status.return_value = ("starting", "")
+
+        response = client.post("/api/v1/project/store-start")
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "state": "starting",
+            "reachable": False,
+            "reason": "",
+            "store": CONFIGURED_STORE,
+        }
+        lifecycle.ensure_started.assert_called_once_with(selection.configured)
+
+    @pytest.mark.route("POST", "/api/v1/project/store-start", "failure")
+    def test_before_anyone_chooses_there_is_nothing_to_start(self, make_app, lifecycle):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+
+        response = client.post("/api/v1/project/store-start")
+
+        assert response.status_code == 409
+        assert response.get_json() == {
+            "error": "Choose a project, or continue without one, first."
+        }
+        lifecycle.ensure_started.assert_not_called()
+
+    def test_another_site_cannot_start_the_store(self, make_app, lifecycle):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+        client.delete("/api/v1/project")
+        lifecycle.ensure_started.reset_mock()
+
+        response = client.post(
+            "/api/v1/project/store-start", headers={"Origin": "https://evil.example"}
+        )
+
+        assert response.status_code == 403
+        lifecycle.ensure_started.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Starting the store a user chooses
 # ---------------------------------------------------------------------------
 

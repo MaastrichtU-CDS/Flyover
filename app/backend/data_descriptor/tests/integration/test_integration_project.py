@@ -18,7 +18,7 @@ import pytest
 import requests
 import responses
 
-from services.store_lifecycle import STORE_MISSING
+from services.store_lifecycle import STORE_MISSING, STORE_STOPPED
 from tests.integration.support import (
     _MAPPING,
     CSV_BYTES,
@@ -318,6 +318,7 @@ class FakeLauncher:
     def __init__(self, state="stopped"):
         self.state = state
         self.started_at = None
+        self.never_started = True
         self.starts = 0
 
     def install(self, web):
@@ -330,6 +331,7 @@ class FakeLauncher:
             "module": "rdf-store",
             "state": self.state,
             "startedAt": self.started_at,
+            "neverStarted": self.never_started and self.state != "missing",
         }
         return 200, {}, json.dumps(body)
 
@@ -338,6 +340,7 @@ class FakeLauncher:
         if self.state != "missing":
             self.state = "running"
             self.started_at = datetime.now(timezone.utc).isoformat()
+            self.never_started = False
         return self._report(request)
 
 
@@ -405,3 +408,34 @@ class TestStartingTheLocalStore:
 
         assert _state(launching_client)["state"] == "unreachable"
         assert _state(launching_client)["reason"] == STORE_MISSING
+
+    def test_a_store_created_after_the_choice_starts_at_the_next_check(
+        self, launching_client, launcher
+    ):
+        launcher.state = "missing"
+        launching_client.delete("/api/v1/project")
+        assert _state(launching_client)["reason"] == STORE_MISSING
+
+        # The user runs docker compose create: the container exists, never ran.
+        launcher.state = "stopped"
+        assert _state(launching_client)["state"] == "starting"
+        assert launcher.starts == 2
+
+    def test_a_store_someone_stopped_waits_until_a_user_starts_it(
+        self, launching_client, launcher, rdf_store
+    ):
+        launching_client.delete("/api/v1/project")
+        rdf_store.outage = None
+        assert _state(launching_client)["state"] == "reachable"
+
+        # Someone stops it: Flyover leaves it stopped.
+        rdf_store.outage = requests.ConnectionError("stopped")
+        launcher.state, launcher.started_at = "stopped", None
+        assert _state(launching_client)["state"] == "stopped"
+        assert _state(launching_client)["reason"] == STORE_STOPPED
+        assert launcher.starts == 1
+
+        started = launching_client.post("/api/v1/project/store-start").get_json()
+
+        assert launcher.starts == 2
+        assert started["state"] == "starting"

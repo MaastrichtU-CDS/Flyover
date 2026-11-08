@@ -454,4 +454,4 @@ class TestTheGunicornEntryPoint:
         assert built["compress"] is True
         assert "/api/v1/suggestions/status" in built["routes"]
         assert "/<path:subpath>" in built["routes"]
-        assert len(built["routes"]) == 51
+        assert len(built["routes"]) == 52

@@ -7,11 +7,17 @@ by continuing without a project, in the standard RDF flow. Until someone
 chooses, Flyover waits. A store on another server is not Flyover's to start.
 Flyover never stops a store: the store may serve others than Flyover too.
 
+While the chosen store is not running, Flyover starts it at its next check
+when its container never ran (it was created after the choice), but it
+leaves alone one that someone stopped: that one starts again when a user
+asks (the status bar's Start) or chooses again.
+
 The states the status bar shows (see ``StoreLifecycle.status``):
 
 - ``waiting``: nobody has chosen a project, or the standard RDF flow, yet;
 - ``starting``: Flyover started the store a moment ago, and it does not
   answer yet;
+- ``stopped``: the store is Flyover's to start, but someone stopped it;
 - ``reachable`` and ``unreachable``: the store answers, or it does not, and
   why not;
 - ``none``: the work uses no database. Nothing does yet; a later workflow
@@ -30,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 WAITING = "waiting"
 STARTING = "starting"
+STOPPED = "stopped"
 REACHABLE = "reachable"
 UNREACHABLE = "unreachable"
 NO_DATABASE = "none"
@@ -45,8 +52,8 @@ STORE_MISSING = (
     "update it."
 )
 STORE_STOPPED = (
-    "The RDF store is not running. Start it with Docker, or choose it again "
-    "under Switch project."
+    "The RDF store is not running: it was stopped. Start it with the Start "
+    "button, or with Docker."
 )
 LAUNCHER_UNREACHABLE = (
     "Flyover cannot reach its store launcher, so it cannot start the RDF store."
@@ -136,4 +143,14 @@ class StoreLifecycle:
             return UNREACHABLE, reason
         if module.state == "missing":
             return UNREACHABLE, STORE_MISSING
-        return UNREACHABLE, STORE_STOPPED
+        if module.never_started:
+            # Created after the choice (docker compose create): start it now.
+            try:
+                self._launcher.start(self._module)
+            except LauncherError as error:
+                return (
+                    UNREACHABLE,
+                    f"Flyover could not start the RDF store. {error.message}",
+                )
+            return STARTING, ""
+        return STOPPED, STORE_STOPPED

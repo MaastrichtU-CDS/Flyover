@@ -54,10 +54,13 @@ class ModuleState:
             restarting), ``stopped`` (one is not running) or ``missing`` (the
             stack has no container for the module).
         started_at: When the module's latest running container started.
+        never_started: Whether none of its containers has ever run, as
+            after ``docker compose create``.
     """
 
     state: str
     started_at: Optional[datetime] = None
+    never_started: bool = False
 
     @classmethod
     def from_answer(cls, body: Any) -> "ModuleState":
@@ -67,7 +70,11 @@ class ModuleState:
             raise LauncherError(
                 "The store launcher gave an answer Flyover cannot read."
             )
-        return cls(state=state, started_at=_timestamp(body.get("startedAt")))
+        return cls(
+            state=state,
+            started_at=_timestamp(body.get("startedAt")),
+            never_started=body.get("neverStarted") is True,
+        )
 
 
 class StoreLauncher:

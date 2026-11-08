@@ -49,6 +49,17 @@ def test_starting_a_module_answers_with_its_state(web):
     assert call.request.method == "POST"
 
 
+@pytest.mark.parametrize(
+    "never, expected", [(True, True), (False, False), (None, False), ("yes", False)]
+)
+def test_a_module_that_never_ran_says_so(web, never, expected):
+    web.get(
+        MODULE_URL, json={"state": "stopped", "startedAt": None, "neverStarted": never}
+    )
+
+    assert StoreLauncher(LAUNCHER).state("rdf-store").never_started is expected
+
+
 @pytest.mark.parametrize("started", [None, "", "not a time", "2026-11-08T10:00:05"])
 def test_a_start_time_that_cannot_be_read_is_none(web, started):
     web.get(MODULE_URL, json={"state": "stopped", "startedAt": started})

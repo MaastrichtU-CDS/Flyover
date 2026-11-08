@@ -137,7 +137,7 @@ def test_a_silent_store_flyover_does_not_start_is_unreachable_with_its_reason():
         ),
         (ModuleState("running", None), ("unreachable", "No answer.")),
         (ModuleState("missing", None), ("unreachable", STORE_MISSING)),
-        (ModuleState("stopped", None), ("unreachable", STORE_STOPPED)),
+        (ModuleState("stopped", None), ("stopped", STORE_STOPPED)),
     ],
     ids=[
         "restarting",
@@ -157,3 +157,45 @@ def test_a_silent_local_store_is_starting_for_a_while_then_unreachable(
         )
         == expected
     )
+
+
+def test_a_chosen_store_whose_container_never_ran_is_started_at_the_check():
+    # Created after the choice, with docker compose create.
+    launcher = FakeLauncher(ModuleState("stopped", None, never_started=True))
+
+    assert lifecycle(launcher).status(LOCAL, True, answers(False, "No answer.")) == (
+        "starting",
+        "",
+    )
+    assert launcher.started == ["rdf-store"]
+
+
+def test_a_store_someone_stopped_is_left_alone():
+    launcher = FakeLauncher(ModuleState("stopped", None, never_started=False))
+
+    assert lifecycle(launcher).status(LOCAL, True, answers(False, "No answer.")) == (
+        "stopped",
+        STORE_STOPPED,
+    )
+    assert launcher.started == []
+
+
+def test_a_never_ran_store_that_cannot_be_started_says_why():
+    class Refusing(FakeLauncher):
+        def start(self, module):
+            self.started.append(module)
+            raise LauncherError("The store launcher refused: Conflict.")
+
+    launcher = Refusing(ModuleState("stopped", None, never_started=True))
+
+    assert lifecycle(launcher).status(LOCAL, True, answers(False, "No answer.")) == (
+        "unreachable",
+        "Flyover could not start the RDF store. The store launcher refused: Conflict.",
+    )
+
+
+def test_nothing_is_started_before_someone_chooses_even_if_it_never_ran():
+    launcher = FakeLauncher(ModuleState("stopped", None, never_started=True))
+
+    assert lifecycle(launcher).status(LOCAL, False, answers(False)) == ("waiting", "")
+    assert launcher.started == []

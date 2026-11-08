@@ -15,7 +15,10 @@ without one. Routes are the ``/api/v1/project`` surface:
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
   nothing, so the browser can ask the user before it switches;
 - ``GET /api/v1/project/store-status``: where the store in use stands
-  (waiting for a choice, starting, reachable or not), for the status bar;
+  (waiting for a choice, starting, stopped, reachable or not), for the
+  status bar;
+- ``POST /api/v1/project/store-start``: start the store in use at a user's
+  request (the status bar's Start, for a store someone stopped);
 - ``POST /api/v1/project/fetch-map``: a map from a web address, fetched by
   the server, for the pop-up to check and open like an uploaded file; or,
   for a Zenodo record holding several, the maps to choose from.
@@ -122,10 +125,33 @@ def store_status():
     Answers ``{"state": "...", "reachable": bool, "reason": "...",
     "store": {...}}``. The state is ``waiting`` (nobody has chosen a project
     or the standard RDF flow yet, so no store was started), ``starting``,
-    ``reachable`` or ``unreachable`` (see services/store_lifecycle.py; a
-    later ``none`` will mean the work uses no database). An unreachable
-    store is an answer, not an error.
+    ``stopped`` (Flyover's to start, but someone stopped it), ``reachable``
+    or ``unreachable`` (see services/store_lifecycle.py; a later ``none``
+    will mean the work uses no database). An unreachable store is an answer,
+    not an error. A chosen store whose container never ran is started.
     """
+    return _store_status_answer()
+
+
+@project_bp.route("/api/v1/project/store-start", methods=["POST"])
+def start_store():
+    """Start the store the app works on, at a user's request.
+
+    For the status bar's Start: a store someone stopped stays stopped until
+    a user asks. Only a store Flyover may start is started (the local one,
+    where the stack runs a launcher). Answers as the store status does.
+    Before anyone has chosen what to work on, there is nothing to start.
+    """
+    if _project_service().route is None:
+        return (
+            jsonify({"error": "Choose a project, or continue without one, first."}),
+            409,
+        )
+    _start_the_chosen_store()
+    return _store_status_answer()
+
+
+def _store_status_answer():
     service = _project_service()
     store = service.describe()["store"]
 
