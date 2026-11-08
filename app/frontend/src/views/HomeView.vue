@@ -1,7 +1,7 @@
 <script setup>
 // Flyover's home page: the workflows, each a tile. Choosing one enters it;
-// RDF opens with its own landing page (RdfLandingView, "RDF home"), where
-// Flyover first asks for the project's JSON-LD. OMOP and CSV are under
+// RDF has its own landing page (RdfLandingView, "RDF home"), where Flyover
+// first asks for the project's JSON-LD (see App.vue). OMOP and CSV are under
 // development, and say so.
 import { useRouter } from 'vue-router'
 import { WORKFLOWS } from '@/lib/workflows'

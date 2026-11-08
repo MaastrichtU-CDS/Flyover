@@ -2,10 +2,11 @@ import { test, expect } from '@playwright/test'
 import fs from 'node:fs/promises'
 import { DEFAULT_MAPPING_JSONLD, runIngestFlow } from './helpers/ingest.js'
 
-// Projects: the pop-up Flyover shows when it opens, the status bar above the
-// steps, switching and leaving, and a step's map upload that belongs to a
-// project. Unlike the other specs, this one answers the pop-up itself, so it
-// uses Playwright's own `test` rather than the shared fixture.
+// Projects: the home page that offers the workflows, the pop-up that asks
+// for the project as a tab enters the RDF workflow, the status bar above the
+// steps (with Exit RDF), switching and leaving, and a step's map upload that
+// belongs to a project. Unlike the other specs, this one answers the pop-up
+// itself, so it uses Playwright's own `test` rather than the shared fixture.
 //
 // The Centre A example map names localhost's userRepo as its endpoint,
 // which Flyover reads as its configured store: opening it keeps the stack's
@@ -16,6 +17,7 @@ const OTHER = 'E2E other project mapping'
 
 const picker = (page) => page.getByRole('dialog', { name: 'Choose a project' })
 const statusBar = (page) => page.locator('#project-status-bar')
+const heading = (page) => page.locator('h1').first()
 
 async function centreA() {
   return JSON.parse(await fs.readFile(DEFAULT_MAPPING_JSONLD, 'utf8'))
@@ -49,24 +51,53 @@ test.describe('Projects', () => {
     await request.delete('/api/v1/project')
   })
 
-  test('Flyover asks which project to work on, and names the standard RDF flow', async ({
+  test('the home page offers the workflows and asks nothing', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(heading(page)).toContainText('Welcome to Flyover')
+    for (const tile of ['#rdf-card', '#omop-card', '#csv-card']) {
+      await expect(page.locator(tile)).toBeVisible()
+    }
+    await expect(page.locator('.nav-step .step-text')).toHaveText(['Home', 'RDF', 'OMOP', 'CSV'])
+    await expect(statusBar(page)).toHaveText(/Home\s*·\s*Choose a workflow to begin/)
+    await expect(picker(page)).toHaveCount(0)
+
+    // The workflows still under development say so, from a tile or the bar.
+    await page.locator('#omop-card').click()
+    const soon = page.getByRole('dialog', { name: 'The OMOP workflow' })
+    await expect(soon).toContainText('This workflow is under development.')
+    await soon.getByRole('button', { name: 'Close' }).click()
+    await expect(soon).toBeHidden()
+    await page.locator('#csv-workflow-step').click()
+    await expect(page.getByRole('dialog', { name: 'The CSV workflow' })).toBeVisible()
+    await expect(page).toHaveURL(/\/$/)
+  })
+
+  test('entering the RDF workflow asks for the project, and cancelling goes home', async ({
     page,
     context,
   }) => {
     await page.goto('/')
+    await page.locator('#rdf-card').click()
+    await expect(page).toHaveURL(/\/rdf$/)
     const dialog = picker(page)
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText('standard RDF flow')
     await expect(dialog).toContainText("Flyover's configured RDF store")
     await expect(dialog).toContainText(/Repository\s+userRepo/)
 
-    // At start-up only a choice leaves it.
-    await expect(dialog.getByRole('button', { name: 'Close' })).toHaveCount(0)
-    await page.keyboard.press('Escape')
-    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(dialog).toBeHidden()
 
+    // The start button enters it too.
+    await page.locator('#home-start').click()
+    await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: 'Continue without a project' }).click()
     await expect(dialog).toBeHidden()
+    await expect(heading(page)).toContainText('The RDF workflow')
+    await expect(page.locator('#rdf-home-step')).toBeVisible()
+    await expect(page.locator('#ingest-step')).toBeVisible()
     await expect(statusBar(page)).toContainText('No project')
     await expect(statusBar(page)).toContainText(/RDF store\s*·\s*userRepo/)
     await expect(statusBar(page).locator('.statusbar-dot')).toHaveClass(/is-reachable/)
@@ -76,17 +107,43 @@ test.describe('Projects', () => {
     await page.reload()
     await expect(statusBar(page)).toContainText('No project')
     await expect(picker(page)).toHaveCount(0)
-    // ...but Flyover opened in another tab does.
+    // ...but a new tab that comes by a link to a step asks.
     const otherTab = await context.newPage()
-    await otherTab.goto('/')
+    await otherTab.goto('/describe')
     await expect(picker(otherTab)).toBeVisible()
+  })
+
+  test('Exit RDF goes home; entering again offers the remembered project first', async ({
+    page,
+  }) => {
+    await page.goto('/rdf')
+    await openFromPicker(page, await centreA(), 'mapping_centre_a.jsonld')
+    await expect(statusBar(page)).toContainText(CENTRE_A)
+
+    await statusBar(page).getByRole('button', { name: 'Exit RDF' }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(statusBar(page)).toHaveText(/Choose a workflow to begin/)
+    // Leaving the workflow keeps the project open on the server.
+    let server = await (await page.request.get('/api/v1/project')).json()
+    expect(server.project.name).toBe(CENTRE_A)
+
+    await page.locator('#rdf-card').click()
+    const remembered = picker(page).locator('.project-picker-remembered')
+    await expect(remembered).toContainText('The project this browser remembers')
+    await expect(remembered).toContainText(new RegExp(`${CENTRE_A}\\s*·\\s*v1\\.0\\.0`))
+    await remembered.getByRole('button', { name: `Continue with ${CENTRE_A}` }).click()
+    await expect(picker(page)).toBeHidden()
+    await expect(statusBar(page)).toContainText(new RegExp(`Project:\\s*${CENTRE_A}`))
+    server = await (await page.request.get('/api/v1/project')).json()
+    expect(server.project.name).toBe(CENTRE_A)
   })
 
   test('an opened project shows in the status bar and survives a reload', async ({ page }) => {
     await page.goto('/describe')
     await openFromPicker(page, await centreA(), 'mapping_centre_a.jsonld')
 
-    // The step page reloads to read the project afresh, then says so.
+    // The step page opens once the project's store answers, and says so.
+    await expect(heading(page)).toContainText('Data Description')
     await expect(statusBar(page)).toContainText(
       new RegExp(`Project:\\s*${CENTRE_A}\\s*·\\s*v1\\.0\\.0`)
     )
@@ -109,7 +166,7 @@ test.describe('Projects', () => {
   test('switching asks first and offers the download; leaving goes back to the standard flow', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto('/rdf')
     await openFromPicker(page, await centreA(), 'mapping_centre_a.jsonld')
     await expect(statusBar(page)).toContainText(CENTRE_A)
 
@@ -143,7 +200,7 @@ test.describe('Projects', () => {
     page,
   }) => {
     test.setTimeout(240_000)
-    await page.goto('/')
+    await page.goto('/rdf')
     await openFromPicker(page, await centreA(), 'mapping_centre_a.jsonld')
     await expect(statusBar(page)).toContainText(CENTRE_A)
 
@@ -171,8 +228,11 @@ test.describe('Projects', () => {
 
   test('without a project, a step upload offers to open the map as one', async ({ page }) => {
     test.setTimeout(240_000)
-    await page.goto('/')
+    await page.goto('/rdf')
     await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
+    // The tab is in the workflow once the server has the choice; a page
+    // loaded before that asks again.
+    await expect(picker(page)).toBeHidden()
 
     await runIngestFlow(page)
     await uploadOnDescribeLanding(page, await centreA(), 'mapping_centre_a.jsonld')
@@ -269,7 +329,7 @@ test.describe('Projects', () => {
   })
 
   test('a map that cannot be fetched from a web address says why', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/rdf')
     const dialog = picker(page)
 
     await dialog.locator('#project-map-url').fill('http://localhost:5000/static/no-such-map.jsonld')

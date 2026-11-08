@@ -245,7 +245,8 @@ class ProjectService:
         """Work without a project, in the standard RDF flow: the configured
         store, no project's map.
 
-        It is also how a user chooses the standard RDF flow at start-up.
+        It is also how a user chooses the standard RDF flow on entering the
+        RDF workflow.
         Without an open project there is nothing to close: the session keeps
         what the steps worked out without one (a map an upload put there).
         """

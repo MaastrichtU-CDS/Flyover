@@ -115,6 +115,11 @@ function holdProject(token = 'browser-token', map = MAP) {
   })
 }
 
+// A tab that entered the RDF workflow before this load (a reload).
+function inRdf() {
+  sessionStorage.setItem('flyover.workflow', 'rdf')
+}
+
 class FakeChannel {
   static all = []
   constructor(name) {
@@ -146,28 +151,33 @@ describe('the project store', () => {
   })
 
   describe('when Flyover opens', () => {
-    it('asks which project to work on when there is none', async () => {
+    it('asks nothing and sends nothing: a new tab starts on the home page', async () => {
       const project = useProjectStore()
 
       await project.init()
 
       expect(project.project).toBe(null)
-      expect(project.picker).toEqual({ open: true, mode: 'startup' })
+      expect(project.workflow).toBe(null)
+      expect(project.picker.open).toBe(false)
+      expect(api.put).not.toHaveBeenCalled()
+      expect(api.delete).not.toHaveBeenCalled()
       expect(project.store).toEqual(CONFIGURED)
       expect(project.configuredStore).toEqual(CONFIGURED)
       expect(project.storeStatus).toEqual({ state: 'reachable', reason: '', checking: false })
     })
 
-    it('does not ask again in a tab that chose to work without a project', async () => {
-      sessionStorage.setItem('flyover.project.withoutProject', '1')
+    it('knows the workflow a reloaded tab is in', async () => {
+      inRdf()
       const project = useProjectStore()
 
       await project.init()
 
+      expect(project.workflow).toBe('rdf')
       expect(project.picker.open).toBe(false)
     })
 
     it('reopens the project it still holds without asking', async () => {
+      inRdf()
       holdProject('t1')
       serve({ project: details('t1') })
       const project = useProjectStore()
@@ -182,7 +192,8 @@ describe('the project store', () => {
     })
 
     it('hands the project back to a server that lost it, under the same token', async () => {
-      // A restart: the server works without a project, the browser has one.
+      // A restart: the server works without a project, the tab had one.
+      inRdf()
       holdProject('t1')
       const project = useProjectStore()
 
@@ -198,6 +209,7 @@ describe('the project store', () => {
     })
 
     it('sends the working copy as it is now, describe answers included', async () => {
+      inRdf()
       holdProject('t1')
       const answered = { ...structuredClone(MAP), databases: { a: { tables: {} } } }
       rows.get('semantic_map').data = answered
@@ -209,6 +221,7 @@ describe('the project store', () => {
     })
 
     it('keeps the map, without a project, when the server no longer opens it', async () => {
+      inRdf()
       holdProject('t1')
       api.put.mockRejectedValue({
         response: { status: 400, data: { error: 'The map is not a valid Flyover semantic map.' } },
@@ -220,8 +233,20 @@ describe('the project store', () => {
       expect(project.project).toBe(null)
       expect(rows.has('project')).toBe(false)
       expect(rows.has('semantic_map')).toBe(true)
-      expect(project.picker.open).toBe(true)
       expect(useStatusStore().messages[0].text).toContain('could not reopen the project')
+      // The tab goes on in the standard RDF flow, which the server hears.
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+    })
+
+    it('hands nothing back for a tab outside the workflow, and offers the project later', async () => {
+      holdProject('t1')
+      const project = useProjectStore()
+
+      await project.init()
+
+      expect(api.put).not.toHaveBeenCalled()
+      expect(project.name).toBe('AYA mapping')
+      expect(project.store).toEqual(CONFIGURED)
     })
 
     it('forgets a project whose map is no longer in the browser', async () => {
@@ -237,7 +262,7 @@ describe('the project store', () => {
     })
 
     it('closes a project the server holds for someone else when this tab works without one', async () => {
-      sessionStorage.setItem('flyover.project.withoutProject', '1')
+      inRdf()
       serve({ project: details('elsewhere') })
       const project = useProjectStore()
 
@@ -247,14 +272,14 @@ describe('the project store', () => {
       expect(project.store).toEqual(CONFIGURED)
     })
 
-    it('leaves such a project to the pop-up when the tab has not chosen yet', async () => {
+    it('leaves such a project alone in a tab outside the workflow', async () => {
       serve({ project: details('elsewhere') })
       const project = useProjectStore()
 
       await project.init()
 
       expect(api.delete).not.toHaveBeenCalled()
-      expect(project.picker.open).toBe(true)
+      expect(project.store).toEqual(PROJECT_STORE)
     })
 
     it('says what it had to say before the page reloaded', async () => {
@@ -335,16 +360,17 @@ describe('the project store', () => {
       await expect(project.openProject(MAP)).rejects.toBeTruthy()
       expect(rows.has('semantic_map')).toBe(false)
       expect(project.project).toBe(null)
+      expect(project.workflow).toBe(null)
     })
 
-    it('ends the tab\'s choice to work without a project', async () => {
-      sessionStorage.setItem('flyover.project.withoutProject', '1')
+    it('enters the RDF workflow for the tab', async () => {
       const project = useProjectStore()
       await project.init()
 
       await project.openProject(MAP)
 
-      expect(sessionStorage.getItem('flyover.project.withoutProject')).toBe(null)
+      expect(project.workflow).toBe('rdf')
+      expect(sessionStorage.getItem('flyover.workflow')).toBe('rdf')
     })
   })
 
@@ -362,22 +388,24 @@ describe('the project store', () => {
       expect(rows.has('project')).toBe(false)
       expect(project.project).toBe(null)
       expect(project.store).toEqual(CONFIGURED)
-      expect(sessionStorage.getItem('flyover.project.withoutProject')).toBe('1')
+      expect(project.workflow).toBe('rdf')
       expect(result).toEqual({ storeChanged: true })
     })
   })
 
   describe('continuing without a project', () => {
-    it('tells the server, remembers the choice for the tab and closes the pop-up', async () => {
+    it('tells the server, enters the RDF workflow for the tab and closes the pop-up', async () => {
       const project = useProjectStore()
       await project.init()
+      project.openPicker('enter')
       api.get.mockClear()
 
       await project.continueWithoutProject()
 
       // The server starts the standard RDF flow's store when it hears it.
       expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
-      expect(sessionStorage.getItem('flyover.project.withoutProject')).toBe('1')
+      expect(project.workflow).toBe('rdf')
+      expect(sessionStorage.getItem('flyover.workflow')).toBe('rdf')
       expect(project.picker.open).toBe(false)
       expect(api.get).toHaveBeenCalledWith('/api/v1/project/store-status')
       // Nothing changed for other tabs: no project was open.
@@ -397,6 +425,138 @@ describe('the project store', () => {
       expect(rows.get('semantic_map').data).toEqual(MAP)
       expect(reset).not.toHaveBeenCalled()
       expect(result).toEqual({ storeChanged: true })
+    })
+
+    it('stays outside the workflow when the server does not hear the choice', async () => {
+      const project = useProjectStore()
+      await project.init()
+      api.delete.mockRejectedValue(new Error('Network Error'))
+
+      await expect(project.continueWithoutProject()).rejects.toThrow('Network Error')
+
+      expect(project.workflow).toBe(null)
+      expect(sessionStorage.getItem('flyover.workflow')).toBe(null)
+    })
+  })
+
+  describe('continuing with the project this browser remembers', () => {
+    function serveStoreStart() {
+      api.post.mockImplementation(async (url) => {
+        if (url !== '/api/v1/project/store-start') throw new Error(url)
+        return { data: { state: 'starting', reachable: false, reason: '', store: PROJECT_STORE } }
+      })
+    }
+
+    it('only makes sure the store runs on a server that still has it', async () => {
+      holdProject('t1')
+      serve({ project: details('t1') })
+      serveStoreStart()
+      const reset = vi.spyOn(useSuggestionsStore(), 'resetMarks')
+      const project = useProjectStore()
+      await project.init()
+
+      const result = await project.continueWithProject()
+
+      expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-start')
+      expect(api.put).not.toHaveBeenCalled()
+      expect(project.storeStatus.state).toBe('starting')
+      expect(project.workflow).toBe('rdf')
+      expect(reset).not.toHaveBeenCalled()
+      expect(result).toEqual({ storeChanged: false })
+    })
+
+    it('opens it again, under the same token, on a server that lost it', async () => {
+      // A restart since the tab was last in the workflow.
+      holdProject('t1')
+      const reset = vi.spyOn(useSuggestionsStore(), 'resetMarks')
+      const project = useProjectStore()
+      await project.init()
+
+      const result = await project.continueWithProject()
+
+      expect(api.put).toHaveBeenCalledWith('/api/v1/project', {
+        mapping: MAP,
+        fileName: 'aya.jsonld',
+        sourceUrl: '',
+        token: 't1',
+      })
+      expect(project.store).toEqual(PROJECT_STORE)
+      expect(project.workflow).toBe('rdf')
+      // The working copy stays, and with it what the steps worked out.
+      expect(reset).not.toHaveBeenCalled()
+      expect(rows.get('project').data.token).toBe('t1')
+      expect(result).toEqual({ storeChanged: true })
+    })
+
+    it('stays outside the workflow, still remembering it, when the server refuses it', async () => {
+      holdProject('t1')
+      api.put.mockRejectedValue({ response: { status: 400, data: { error: 'nope' } } })
+      const project = useProjectStore()
+      await project.init()
+
+      await expect(project.continueWithProject()).rejects.toBeTruthy()
+
+      expect(project.workflow).toBe(null)
+      expect(project.name).toBe('AYA mapping')
+      expect(rows.has('project')).toBe(true)
+    })
+
+    it("says so when the browser no longer holds the project's map", async () => {
+      holdProject('t1')
+      serve({ project: details('t1') })
+      const project = useProjectStore()
+      await project.init()
+      rows.delete('semantic_map')
+
+      await expect(project.continueWithProject()).rejects.toThrow(
+        "This browser no longer holds the project's map."
+      )
+      expect(project.workflow).toBe(null)
+    })
+  })
+
+  describe('the workflow a tab is in', () => {
+    it('lasts for the tab, and counts each time the tab enters it', async () => {
+      const project = useProjectStore()
+      await project.init()
+      expect(project.entries).toBe(0)
+
+      project.enterWorkflow('rdf')
+      project.enterWorkflow('rdf')
+
+      expect(project.workflow).toBe('rdf')
+      expect(sessionStorage.getItem('flyover.workflow')).toBe('rdf')
+      expect(project.entries).toBe(1)
+    })
+
+    it('is left for the home page, the project and its store kept', async () => {
+      inRdf()
+      holdProject('t1')
+      serve({ project: details('t1') })
+      const project = useProjectStore()
+      await project.init()
+      project.openPicker('switch')
+
+      project.exitWorkflow()
+
+      expect(project.workflow).toBe(null)
+      expect(sessionStorage.getItem('flyover.workflow')).toBe(null)
+      expect(project.picker.open).toBe(false)
+      expect(project.name).toBe('AYA mapping')
+      expect(rows.has('semantic_map')).toBe(true)
+      expect(api.delete).not.toHaveBeenCalled()
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('counts entering again after an exit', async () => {
+      inRdf()
+      const project = useProjectStore()
+      await project.init()
+
+      project.exitWorkflow()
+      project.enterWorkflow('rdf')
+
+      expect(project.entries).toBe(1)
     })
   })
 
@@ -856,7 +1016,7 @@ describe('the project store', () => {
     })
 
     it("tells a server that forgot this tab's choice again, so its store starts", async () => {
-      sessionStorage.setItem('flyover.project.withoutProject', '1')
+      inRdf()
       serveStates(['starting'], { route: null })
       const project = useProjectStore()
 
@@ -867,8 +1027,18 @@ describe('the project store', () => {
       expect(project.picker.open).toBe(false)
     })
 
+    it('tells a server nothing for a tab that has not entered the workflow', async () => {
+      serveStates(['waiting'], { route: null })
+      const project = useProjectStore()
+
+      await project.init()
+
+      expect(api.delete).not.toHaveBeenCalled()
+      expect(project.storeStatus.state).toBe('waiting')
+    })
+
     it('leaves a server that knows the choice as it is', async () => {
-      sessionStorage.setItem('flyover.project.withoutProject', '1')
+      inRdf()
       serveStates(['reachable'], { route: 'standard' })
 
       await useProjectStore().init()
@@ -1011,18 +1181,20 @@ describe('the project store', () => {
   })
 
   describe('another tab', () => {
-    it('opening a project closes this tab\'s start-up pop-up and says so', async () => {
+    it('opening a project is followed, and offered to a tab still choosing', async () => {
       const project = useProjectStore()
       await project.init()
-      expect(project.picker.open).toBe(true)
+      project.openPicker('enter')
       // The other tab opened a project: IndexedDB and the server have it.
       holdProject('t9')
       serve({ project: details('t9') })
 
       await FakeChannel.all[0].onmessage({ data: { type: 'project-changed' } })
 
-      expect(project.picker.open).toBe(false)
+      // The pop-up stays, now offering the project first (see ProjectPicker).
+      expect(project.picker).toEqual({ open: true, mode: 'enter' })
       expect(project.name).toBe('AYA mapping')
+      expect(project.workflow).toBe(null)
       expect(api.put).not.toHaveBeenCalled()
       expect(useStatusStore().messages.at(-1).text).toContain('changed in another tab')
     })

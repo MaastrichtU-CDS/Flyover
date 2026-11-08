@@ -112,25 +112,37 @@ describe('useStoreGate', () => {
     const wrapper = mount(Harness)
     expect(wrapper.text()).toBe('connecting')
 
-    // Loaded with nothing chosen in this tab: the start-up pop-up opens.
+    // Loaded on a page of the RDF workflow the tab has not entered yet:
+    // the pop-up asks for the project.
     project.ready = true
-    project.picker = { open: true, mode: 'startup' }
+    project.picker = { open: true, mode: 'enter' }
     await nextTick()
     expect(wrapper.text()).toBe('waiting')
   })
 
   it('keeps a store page waiting until someone chooses and the store has started', async () => {
-    project.picker = { open: true, mode: 'startup' }
+    project.picker = { open: true, mode: 'enter' }
     state('reachable')
     const wrapper = mount(Harness)
     expect(wrapper.text()).toBe('waiting')
 
-    project.picker = { open: false, mode: 'startup' }
+    project.picker = { open: false, mode: 'enter' }
     state('starting')
     await nextTick()
     expect(wrapper.text()).toBe('starting')
 
     state('reachable')
+    await nextTick()
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('waits on a page of a workflow the tab has not entered, before the pop-up opens', async () => {
+    route.meta = { needsStore: true, workflow: 'rdf' }
+    state('reachable')
+    const wrapper = mount(Harness)
+    expect(wrapper.text()).toBe('waiting')
+
+    project.workflow = 'rdf'
     await nextTick()
     expect(wrapper.text()).toBe('')
   })
@@ -181,9 +193,9 @@ describe('useStoreGate', () => {
   })
 
   it('never holds up a page that works without the store', () => {
-    route.path = '/'
-    route.meta = {}
-    project.picker = { open: true, mode: 'startup' }
+    route.path = '/rdf'
+    route.meta = { workflow: 'rdf' }
+    project.picker = { open: true, mode: 'enter' }
     state('starting')
 
     expect(mount(Harness).text()).toBe('')

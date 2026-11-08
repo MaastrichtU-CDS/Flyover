@@ -12,7 +12,8 @@
 #   ./flyover.sh status          which containers run, and where the store stands
 #
 # Flyover starts the RDF store itself once you choose to work on it, in the
-# pop-up it opens with, but it can only start a store container that exists.
+# pop-up that asks for the project as you enter the RDF workflow, but it can
+# only start a store container that exists.
 # `start` therefore creates every container (without starting the store)
 # before it starts Flyover, so a `docker compose down` never leaves Flyover
 # without a store to start. It never recreates or stops a container that
@@ -86,7 +87,7 @@ describe_store() {
   state=$(printf '%s\n' "$lines" | sed -n 1p)
   reason=$(printf '%s\n' "$lines" | sed -n 2p)
   case "$state" in
-    waiting) say "Choose a project there, or continue without one: Flyover then starts the RDF store." ;;
+    waiting) say "Enter the RDF workflow there and choose a project, or continue without one: Flyover then starts the RDF store." ;;
     starting) say "Flyover is starting the RDF store for what you chose; it takes a minute." ;;
     reachable) say "The RDF store answers." ;;
     stopped) say "The RDF store was stopped: start it from Flyover's status bar, or with: docker start rdf-store" ;;

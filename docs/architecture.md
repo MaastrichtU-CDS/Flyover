@@ -107,7 +107,7 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 |---|---|
 | `GET /api/v1/project` | The open project (or none), the route chosen (`project`, `standard` or none yet), the store in use and the configured store |
 | `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use, started if Flyover may |
-| `DELETE /api/v1/project` | Work without a project, in the standard RDF flow (also how a user chooses it at start-up); starts the configured store if Flyover may |
+| `DELETE /api/v1/project` | Work without a project, in the standard RDF flow (also how a user chooses it on entering the RDF workflow); starts the configured store if Flyover may |
 | `POST /api/v1/project/check` | What opening a map would mean (can it be opened, which project, which store), changing nothing |
 | `GET /api/v1/project/store-status` | Where the store in use stands: `waiting` (nobody chose yet), `starting`, `stopped` (someone stopped Flyover's store), `reachable` or `unreachable` (with why), from one short `ASK` and the launcher; a chosen store whose container never ran is started; the status bar asks every minute while its tab is visible |
 | `POST /api/v1/project/store-start` | Start the store in use at a user's request (the status bar's Start, for a store someone stopped); a 409 before anyone chose what to work on |
@@ -133,7 +133,7 @@ They work on the store the request works on, go straight to its RDF4J-style endp
 
 Two maps belong to the same project when their `schema` sections do: the same `schema.@id` when both have one, else the same `schema.name`. On every change of project, the server forgets the session state worked out for the previous map (the annotation status, pasted LLM answers, suggestion jobs, the describe answers the forms posted); on a change of store, also what it knew of the previous store's databases. The data in the stores is never touched.
 
-gunicorn runs one worker with `--preload` and replaces it every thousand or so requests (the status bar's check adds about 60 an hour per visible tab); a new worker starts from the app as it was built, without the session's in-memory state. The open project is therefore also written to `state/open_project.json` beside the package (outside `static/`, readable by the app only, as an endpoint may carry credentials), and every request first catches up with that file (`ProjectService.sync`, one `stat` when nothing changed). When the container itself is recreated the file is gone, and the browser sends its project again, under the same token, the next time Flyover opens.
+gunicorn runs one worker with `--preload` and replaces it every thousand or so requests (the status bar's check adds about 60 an hour per visible tab); a new worker starts from the app as it was built, without the session's in-memory state. The open project is therefore also written to `state/open_project.json` beside the package (outside `static/`, readable by the app only, as an endpoint may carry credentials), and every request first catches up with that file (`ProjectService.sync`, one `stat` when nothing changed). When the container itself is recreated the file is gone, and the browser sends its project again, under the same token, when a tab inside the RDF workflow reloads or a user continues with the project on entering the workflow.
 
 ## What is `userRepo`?
 

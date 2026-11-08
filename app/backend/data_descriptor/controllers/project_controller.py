@@ -2,16 +2,16 @@
 Project controller: the project the server works on.
 
 The browser opens a project when the user picks a JSON-LD map in the
-start-up pop-up, switches through the status bar, or accepts the offer an
-upload in a step makes; it closes the project when the user continues
-without one. Routes are the ``/api/v1/project`` surface:
+pop-up that asks for it on entering the RDF workflow, switches through the
+status bar, or accepts the offer an upload in a step makes; it closes the
+project when the user continues without one. Routes are the ``/api/v1/project`` surface:
 
 - ``GET /api/v1/project``: the open project (or none), the route chosen (a
   project, the standard RDF flow, or none yet), the store in use and the
   configured store (the one working without a project uses);
 - ``PUT /api/v1/project``: open a map as the project, replacing any other;
 - ``DELETE /api/v1/project``: work without a project, in the standard RDF
-  flow (also how a user chooses it at start-up);
+  flow (also how a user chooses it on entering the RDF workflow);
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
   nothing, so the browser can ask the user before it switches;
 - ``GET /api/v1/project/store-status``: where the store in use stands

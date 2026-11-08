@@ -35,7 +35,7 @@ app/frontend/
     │   └── SharePublishView.vue
     ├── components/                  # shared bits used across views
     │   ├── WorkflowSoonDialog.vue   # the pop-up of a workflow under development (OMOP, CSV)
-    │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), and the project
+    │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), the project, Exit RDF
     │   ├── StoreWait.vue            # what a page that needs the store shows in its place until the store is there (Start for a stopped one)
     │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
@@ -93,8 +93,9 @@ flowchart TD
 The project store ([`src/stores/project.js`](../app/frontend/src/stores/project.js)) keeps the browser and the server on the same project (see [architecture.md](architecture.md#projects-and-the-store-in-use) for the server side):
 
 - IndexedDB `FlyoverDB` → `metadata` holds the working copy (`semantic_map`, the row the describe pages fill in) and, next to it, the record of the open project (`project`: what the server reported, the token, and the fingerprint of the working copy as it was loaded, which tells whether describe answers were added since).
-- `sessionStorage` holds `flyover.project.withoutProject` (this tab chose to work without a project) and `flyover.project.notice` (a message to show after the reload that follows a change).
-- When the app starts, `init()` reopens the browser's project on a server that lost it (same token), and opens the pop-up when there is no project and the tab has not chosen. A `BroadcastChannel` (`flyover-project`) tells other tabs about a change.
+- `sessionStorage` holds `flyover.workflow` (the workflow this tab entered, `rdf`; gone once the tab is back on the home page) and `flyover.project.notice` (a message to show after the reload that follows a change).
+- When the app starts, `init()` reads the server's project and sends nothing, unless the tab is inside the RDF workflow already (a reload): then it reopens the browser's project on a server that lost it (same token), or tells a server that forgot it that the tab works without one. A `BroadcastChannel` (`flyover-project`) tells other tabs about a change.
+- [`App.vue`](../app/frontend/src/App.vue) opens the pop-up in `enter` mode when a tab comes to a page of the workflow (`meta.workflow`) without having entered it, and calls `exitWorkflow()` when the tab comes back to the home page. The pop-up offers the project the browser remembers first (`continueWithProject()`: on a server that still has it, only `POST /api/v1/project/store-start`; on one that lost it, the same `PUT` under the same token); cancelled, it goes back to the home page. A tab enters the workflow (`enterWorkflow('rdf')`) only once the server has its choice, and each entry counts up `entries`, on which App.vue keys the `RouterView`, so a page that opened under the pop-up opens afresh. The status bar's **Switch project** opens the pop-up in `switch` mode, and **Exit RDF** leaves the workflow; the project stays remembered and its store keeps running.
 - Whether the store answers (`/api/v1/project/store-status`) is asked when the app starts, after a change of project, every minute while the tab is visible (`STORE_CHECK_INTERVAL_MS`; a hidden tab asks as soon as it is shown again, if a check is due), on every route change, and when the user clicks the status. A re-check keeps the last answer on screen until the new one arrives.
 - A view that takes a map upload calls `project.planUpload(map, fileName)` before it uses the map, and follows the answer: `go: false` means the user kept what was open; `opened: true` means the map is now the project's working copy, so a cleaned copy goes through `project.adoptWorkingCopy(...)` instead of a direct IndexedDB write.
 
@@ -165,13 +166,15 @@ Concrete example: adding `/describe/units`.
 
    ```js
    { path: '/describe/units', name: 'describe-units',
-     component: () => import('@/views/DescribeUnitsView.vue') },
+     component: () => import('@/views/DescribeUnitsView.vue'), meta: RDF_STORE },
    ```
 
-   Keep the lazy-import pattern — it keeps the initial bundle small. A page that reads or writes the store also gets
-   `meta: STORE` (`{ needsStore: true }`): it then waits in its place while nobody has chosen a project, while the
-   store starts and until the first answer about it ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)),
-   so its own checks on mount always meet a store that is there.
+   Keep the lazy-import pattern — it keeps the initial bundle small. A page of the RDF workflow gets `meta: RDF`
+   (`{ workflow: 'rdf' }`), so a tab that comes to it by a link is asked for the project first; one that reads or writes
+   the store gets `meta: RDF_STORE` (`{ workflow: 'rdf', needsStore: true }`) instead: it then waits in its place until
+   the tab has chosen, while the store starts and until the first answer about it
+   ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)), so its own checks on mount always
+   meet a store that is there.
 
 3. **(Optional) Surface it in the nav** by adding an entry to `STEPS` in [`composables/useNavigation.js`](../app/frontend/src/composables/useNavigation.js) if it's a top-level workflow step, or just link to it from another view with `<RouterLink to="/describe/units">`.
 

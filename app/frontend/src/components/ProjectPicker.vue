@@ -1,22 +1,32 @@
 <script setup>
 import { computed, ref, shallowRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useModalFocus } from '@/composables/useModalFocus'
 import { reloadPage } from '@/lib/browser'
 import { projectName, projectVersion } from '@/lib/project'
+import { workflowById } from '@/lib/workflows'
 import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
-// The pop-up that asks which project to work on. Flyover shows it when it
-// opens without a project (unless this tab chose to work without one), and
-// "Switch project" in the status bar opens it again. At start-up it can only
-// be left by choosing; opened from the status bar it can be cancelled.
+// The pop-up that asks which project to work on. It opens when a tab enters
+// the RDF workflow (from the home page, or a link to one of its pages), with
+// the project this browser remembers as its first choice; "Switch project"
+// in the status bar opens it again inside the workflow. Cancelled while
+// entering, it goes back to the home page.
 
 const projectStore = useProjectStore()
 const status = useStatusStore()
 const route = useRoute()
-const { picker, project, configuredStore, store, name: openName } = storeToRefs(projectStore)
+const router = useRouter()
+const {
+  picker,
+  project,
+  configuredStore,
+  store,
+  name: openName,
+  version: openVersion,
+} = storeToRefs(projectStore)
 
 const dialog = ref(null)
 const fileInput = ref(null)
@@ -35,7 +45,11 @@ const pending = shallowRef(null)
 const choices = shallowRef(null)
 
 const isOpen = computed(() => picker.value.open)
-const canCancel = computed(() => picker.value.mode === 'switch')
+const entering = computed(() => picker.value.mode === 'enter')
+// The project this browser remembers, offered first when entering.
+const rememberedLabel = computed(() =>
+  [openName.value, openVersion.value].filter(Boolean).join(' · ')
+)
 // The store working without a project uses.
 const standardStore = computed(() => configuredStore.value || (project.value ? null : store.value))
 
@@ -62,9 +76,7 @@ function reset() {
 }
 
 const { focusFirst } = useModalFocus(dialog, isOpen, {
-  onEscape: () => {
-    if (canCancel.value && !busy.value) cancel()
-  },
+  onEscape: cancel,
   onOpen: reset,
 })
 
@@ -74,15 +86,28 @@ watch(url, () => {
   choices.value = null
 })
 
+// Cancelled while entering a workflow, the pop-up leaves it for the home
+// page; opened to switch, it leaves everything as it was. A choice under
+// way finishes first.
 function cancel() {
-  if (canCancel.value) projectStore.closePicker()
+  if (busy.value) return
+  if (entering.value && route.meta?.workflow) {
+    projectStore.exitWorkflow()
+    router.push('/')
+    return
+  }
+  projectStore.closePicker()
 }
 
-// After a change: a step page reloads so it reads the project and the store
-// afresh; the message waits for the reload. Home has nothing to reload.
+// After a change. Entering, nothing reloads: the page under the pop-up
+// opens afresh (see App.vue), and one that needs the store waits for it.
+// Switching, a step page reloads so it reads the project and the store
+// afresh; the message waits for the reload. The workflow's home page reads
+// neither, so it does not reload.
 function finish(message) {
+  const switching = !entering.value
   projectStore.closePicker()
-  if (route.path !== '/') {
+  if (switching && route.path !== workflowById(route.meta?.workflow)?.to) {
     projectStore.noticeAfterReload(message)
     reloadPage()
     return
@@ -205,6 +230,19 @@ function formatSize(bytes) {
   return `${value < 9.95 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
+async function continueWithRemembered() {
+  clearErrors()
+  busy.value = true
+  try {
+    await projectStore.continueWithProject()
+    finish(openedMessage())
+  } catch (e) {
+    error.value = errorMessage(e)
+  } finally {
+    busy.value = false
+  }
+}
+
 async function openPending() {
   busy.value = true
   try {
@@ -289,7 +327,6 @@ function back() {
           /> Choose a project
         </h5>
         <button
-          v-if="canCancel"
           type="button"
           class="project-picker-close"
           aria-label="Close"
@@ -308,11 +345,34 @@ function back() {
             store the map names.
           </p>
           <p
-            v-if="project"
+            v-if="project && !entering"
             class="project-picker-current"
           >
             Open now: <strong>{{ openName }}</strong>
           </p>
+
+          <div
+            v-if="project && entering"
+            class="card mb-3 project-picker-remembered"
+          >
+            <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
+              <div class="mr-3">
+                <div class="small text-muted">
+                  The project this browser remembers
+                </div>
+                <strong>{{ rememberedLabel }}</strong>
+              </div>
+              <button
+                id="project-picker-continue"
+                type="button"
+                class="btn btn-primary"
+                :disabled="busy"
+                @click="continueWithRemembered"
+              >
+                <i class="fas fa-play" /> Continue with {{ openName }}
+              </button>
+            </div>
+          </div>
 
           <div class="card mb-3">
             <div class="card-header bg-light">
@@ -593,7 +653,7 @@ function back() {
       </div>
 
       <div
-        v-if="canCancel && step === 'choose'"
+        v-if="step === 'choose'"
         class="project-picker-footer"
       >
         <button

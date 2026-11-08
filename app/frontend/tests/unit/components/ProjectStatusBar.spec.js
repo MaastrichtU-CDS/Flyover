@@ -3,9 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { reactive } from 'vue'
 
-const route = reactive({ path: '/describe' })
+const route = reactive({ path: '/describe', meta: { workflow: 'rdf' } })
+const router = { push: vi.fn() }
 
-vi.mock('vue-router', () => ({ useRoute: () => route }))
+vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => router }))
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
@@ -23,7 +24,8 @@ import ProjectStatusBar from '@/components/ProjectStatusBar.vue'
 import { useProjectStore } from '@/stores/project'
 
 // The strip above the step bar says which RDF store Flyover works on,
-// whether it answers, and which project is open.
+// whether it answers, and which project is open; on the home page, that no
+// workflow is chosen yet.
 
 const CONFIGURED = {
   kind: 'rdf-store',
@@ -60,6 +62,8 @@ describe('ProjectStatusBar', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     route.path = '/describe'
+    route.meta = { workflow: 'rdf' }
+    router.push.mockClear()
   })
 
   it('names the RDF store and its repository, and says it is connected', async () => {
@@ -188,8 +192,8 @@ describe('ProjectStatusBar', () => {
     )
   })
 
-  it("waits while this tab's start-up pop-up is open, whatever the server chose", () => {
-    const { wrapper } = mountBar({ picker: { open: true, mode: 'startup' } })
+  it('waits while the pop-up asks this tab for its project, whatever the server chose', () => {
+    const { wrapper } = mountBar({ picker: { open: true, mode: 'enter' } })
 
     expect(reads(wrapper.find('#statusbar-store'))).toBe('Waiting for a project choice')
   })
@@ -265,7 +269,7 @@ describe('ProjectStatusBar', () => {
     const { wrapper, project } = mountBar()
     const projectPart = wrapper.find('#statusbar-project')
 
-    expect(reads(projectPart)).toBe('No project · Choose a project')
+    expect(reads(projectPart)).toBe('No project · Choose a project · Exit RDF')
     expect(await tipOf(projectPart)).toContain('the standard RDF flow')
 
     await wrapper.find('#statusbar-switch').trigger('click')
@@ -293,7 +297,7 @@ describe('ProjectStatusBar', () => {
     })
     const projectPart = wrapper.find('#statusbar-project')
 
-    expect(reads(projectPart)).toBe('Project: AYA mapping · v1.2.0 · Switch project')
+    expect(reads(projectPart)).toBe('Project: AYA mapping · v1.2.0 · Switch project · Exit RDF')
     expect(await tipOf(projectPart)).toBe(
       'AYA mapping · v1.2.0\nCentre A\nSchema: AYA schema\nFile: aya.jsonld'
     )
@@ -310,7 +314,44 @@ describe('ProjectStatusBar', () => {
     })
     const projectPart = wrapper.find('#statusbar-project')
 
-    expect(reads(projectPart)).toBe('Project: AYA schema · Switch project')
+    expect(reads(projectPart)).toBe('Project: AYA schema · Switch project · Exit RDF')
     expect(await tipOf(projectPart)).toContain('From: https://example.org/aya.jsonld')
+  })
+
+  it('exits the RDF workflow for the home page, keeping the project and its store', async () => {
+    const { wrapper, project } = mountBar({ project: { name: 'AYA mapping' } })
+    const exit = vi.spyOn(project, 'exitWorkflow')
+
+    await wrapper.get('#statusbar-exit').trigger('click')
+
+    expect(exit).toHaveBeenCalledOnce()
+    expect(router.push).toHaveBeenCalledWith('/')
+    expect(project.project).toEqual({ name: 'AYA mapping' })
+    expect(project.store).toEqual(CONFIGURED)
+  })
+
+  describe('on the home page', () => {
+    beforeEach(() => {
+      route.path = '/'
+      route.meta = {}
+    })
+
+    it('names neither store nor project, and asks for a workflow', () => {
+      const { wrapper } = mountBar({ project: { name: 'AYA mapping' } })
+
+      expect(reads(wrapper)).toBe('Home · Choose a workflow to begin')
+      expect(wrapper.find('#statusbar-home').exists()).toBe(true)
+      expect(wrapper.find('#statusbar-store').exists()).toBe(false)
+      expect(wrapper.find('#statusbar-project').exists()).toBe(false)
+      expect(wrapper.find('#statusbar-exit').exists()).toBe(false)
+    })
+
+    it('does not wait for a store, whatever the server says', () => {
+      const { wrapper } = mountBar({
+        storeStatus: { state: 'waiting', reason: '', checking: false },
+      })
+
+      expect(reads(wrapper)).toBe('Home · Choose a workflow to begin')
+    })
   })
 })
