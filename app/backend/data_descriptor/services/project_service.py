@@ -20,7 +20,10 @@ stores is never touched.
 gunicorn replaces its worker every thousand or so requests, and a new worker
 starts from the state the app had when it was built. The open project is
 therefore also written to a file outside the folders Flask serves, and every
-request first catches up with that file (``sync``).
+request first catches up with that file (``sync``). The file names the run
+that wrote it: when Flyover itself restarts, the choice of the run before is
+forgotten, so no store starts until a user chooses again (the browser still
+remembers the project, and offers it first).
 """
 
 import json
@@ -49,6 +52,11 @@ from validation.mapping_validator import MappingValidator
 logger = logging.getLogger(__name__)
 
 STATE_FILE_VERSION = 1
+
+# This process's run of Flyover. gunicorn (with --preload) builds the app
+# before it forks its worker, so the worker it starts after every thousand or
+# so requests shares the run; a restart of Flyover starts a new one.
+RUN_ID = uuid.uuid4().hex
 
 # What a user chose to work on: a project, or the standard RDF flow without
 # one. Until someone chooses, there is no route and Flyover waits.
@@ -138,10 +146,17 @@ class OpenProject:
 class ProjectService:
     """Opens, replaces and closes the project the server works on."""
 
-    def __init__(self, session_cache: Any, selection: StoreSelection, state_file: str):
+    def __init__(
+        self,
+        session_cache: Any,
+        selection: StoreSelection,
+        state_file: str,
+        run_id: Optional[str] = None,
+    ):
         self._session_cache = session_cache
         self._selection = selection
         self._state_file = state_file
+        self._run_id = run_id or RUN_ID
         self._project: Optional[OpenProject] = None
         # The standard RDF flow, once chosen without a project.
         self._standard = False
@@ -344,17 +359,23 @@ class ProjectService:
         # The map may name its store with credentials: readable by the app only.
         descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
+            json.dump({**payload, "run": self._run_id}, handle)
         os.replace(partial, self._state_file)
         self._seen = self._signature()
 
     def _read(self) -> Tuple[Optional[OpenProject], bool]:
         """The project the file keeps, or (None, True) for the standard RDF
-        flow chosen without one."""
+        flow chosen without one; (None, False) for a choice an earlier run of
+        Flyover made, which a user has to make again."""
         with open(self._state_file, encoding="utf-8") as handle:
             payload = json.load(handle)
         if payload.get("version") != STATE_FILE_VERSION:
             raise ValueError(f"unknown state file version {payload.get('version')!r}")
+        if payload.get("run") != self._run_id:
+            logger.info(
+                "The choice in %s is from an earlier run of Flyover", self._state_file
+            )
+            return None, False
         if "mapping" not in payload and payload.get("route") == STANDARD_ROUTE:
             return None, True
         store, parsed = self._examine(payload.get("mapping"))

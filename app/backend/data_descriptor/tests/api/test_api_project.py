@@ -17,6 +17,7 @@ from unittest.mock import ANY, create_autospec
 import pytest
 
 from app_factory import create_app
+from services import project_service
 from services.project_service import MapFetchError, MapFileChoice
 from services.store_lifecycle import StoreLifecycle
 from services.store_selection import LOCALHOST_NOTE
@@ -355,7 +356,8 @@ class TestClosingTheProject:
         assert selection.current == selection.configured
         # The next worker must know the standard RDF flow was chosen.
         with open(state_file, encoding="utf-8") as handle:
-            assert json.load(handle) == {"version": 1, "route": "standard"}
+            saved = json.load(handle)
+        assert saved == {"version": 1, "route": "standard", "run": saved["run"]}
 
     def test_without_a_project_the_sessions_own_map_stays(self, client, session_cache):
         # A map an upload put in the session while no project was open is
@@ -459,6 +461,19 @@ class TestAProjectOutlivesItsWorker:
 
         assert opened["project"]["token"] == "t1"
         assert closed == STANDARD_FLOW
+
+    def test_a_restart_of_flyover_forgets_the_choice_of_the_run_before(
+        self, doubles, spa_dir, client, monkeypatch
+    ):
+        # Nothing starts until a user chooses again; the browser still holds
+        # the project, and offers it first.
+        _put(client, token="t1")
+        monkeypatch.setattr(project_service, "RUN_ID", "the-next-run")
+
+        restarted = create_app(doubles.settings, spa_dir=str(spa_dir))
+
+        assert restarted.test_client().get("/api/v1/project").get_json() == NO_PROJECT
+        assert restarted.config["APP_CONTEXT"]["project_service"].route is None
 
     def test_a_new_worker_remembers_the_standard_rdf_flow(
         self, doubles, spa_dir, client
