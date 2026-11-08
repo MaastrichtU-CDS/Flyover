@@ -19,9 +19,10 @@ app/frontend/
     ├── main.js                      # app entry: createApp → use(pinia, router) → mount('#app')
     ├── App.vue                      # shell: ProjectStatusBar, AppNav, <RouterView/> (or StoreWait), AppFooter, StatusBanner, the project pop-ups
     ├── assets/main.css              # the only Vue-owned CSS (layout overrides)
-    ├── router/index.js              # the 11 routes (lazy-loaded), base path /app/; meta.needsStore on the pages that use the store
+    ├── router/index.js              # the 12 routes (lazy-loaded); meta.workflow on the RDF pages, meta.needsStore on those that use the store
     ├── views/                       # one component per route
-    │   ├── HomeView.vue
+    │   ├── HomeView.vue             # the home page: the workflows (RDF; OMOP and CSV under development)
+    │   ├── RdfLandingView.vue       # "RDF home": the RDF workflow's four steps, as tiles
     │   ├── IngestView.vue
     │   ├── DescribeLandingView.vue
     │   ├── DescribeVariablesView.vue
@@ -33,13 +34,14 @@ app/frontend/
     │   ├── ShareMockView.vue
     │   └── SharePublishView.vue
     ├── components/                  # shared bits used across views
+    │   ├── WorkflowSoonDialog.vue   # the pop-up of a workflow under development (OMOP, CSV)
     │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), and the project
     │   ├── StoreWait.vue            # what a page that needs the store shows in its place until the store is there (Start for a stopped one)
     │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
     │   ├── HoverTip.vue             # the app's tooltip (the home tiles' style, .bootstrap-tooltip)
-    │   ├── AppNav.vue               # breadcrumb / step navigator
+    │   ├── AppNav.vue               # the workflows on the home page; RDF home and the steps inside RDF
     │   ├── AppFooter.vue
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
     │   └── MigrationStub.vue        # legacy placeholder, gone soon
@@ -49,10 +51,12 @@ app/frontend/
     │   ├── useStoreGate.js          # whether the page on screen waits for the store, and why
     │   └── useNavigation.js         # workflow-step state (which steps are completed, disabled)
     ├── lib/
+    │   ├── workflows.js             # the workflows the home page offers, and which are built
     │   ├── project.js               # which project a map belongs to, its name, a map fingerprint
     │   └── browser.js               # reloadPage() and loadPage(), kept apart so tests can stand in for them
     ├── stores/
     │   ├── project.js               # Pinia store: the open project, kept in step with the server
+    │   ├── workflows.js             # Pinia store: the note a workflow under development shows
     │   ├── storeDatasets.js         # Pinia store: the datasets panel's list, question and deletes
     │   └── status.js                # Pinia store: toast/banner messages
     └── services/

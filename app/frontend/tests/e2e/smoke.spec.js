@@ -5,6 +5,7 @@ import { test, expect } from './helpers/fixtures.js'
 
 const ROUTES = [
   { path: '/', heading: /Welcome to Flyover/ },
+  { path: '/rdf', heading: /The RDF workflow/ },
   { path: '/ingest', heading: /Ingest your data/ },
   { path: '/describe', heading: /Data Description/ },
   { path: '/describe/variables', heading: /Describe your data/ },
@@ -52,6 +53,8 @@ test('legacy URLs redirect into the SPA', async ({ page }) => {
 
 test('navigation between SPA pages works without full reload', async ({ page }) => {
   await page.goto('/')
+  await page.locator('#rdf-workflow-step').click()
+  await expect(page).toHaveURL(/\/rdf$/)
   await page.getByRole('link', { name: /Ingest/ }).first().click()
   await expect(page).toHaveURL(/\/ingest$/)
   await expect(page.locator('h1').first()).toContainText(/Ingest your data/)

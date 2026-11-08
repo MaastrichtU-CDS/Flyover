@@ -7,6 +7,7 @@ import ProjectPicker from '@/components/ProjectPicker.vue'
 import ProjectStatusBar from '@/components/ProjectStatusBar.vue'
 import StatusBanner from '@/components/StatusBanner.vue'
 import StoreWait from '@/components/StoreWait.vue'
+import WorkflowSoonDialog from '@/components/WorkflowSoonDialog.vue'
 import { useStoreGate } from '@/composables/useStoreGate'
 import { useProjectStore } from '@/stores/project'
 
@@ -44,5 +45,6 @@ onMounted(() => {
     <AppFooter />
     <ProjectPicker />
     <MapUploadDialog />
+    <WorkflowSoonDialog />
   </div>
 </template>
