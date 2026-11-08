@@ -12,11 +12,13 @@ import json
 import os
 import stat
 from dataclasses import replace
+from unittest.mock import ANY, create_autospec
 
 import pytest
 
 from app_factory import create_app
 from services.project_service import MapFetchError, MapFileChoice
+from services.store_lifecycle import StoreLifecycle
 from services.store_selection import LOCALHOST_NOTE
 from tests.api.support import REPO, STORE_URL, build_api_app, valid_mapping
 
@@ -30,11 +32,15 @@ CONFIGURED_STORE = {
 }
 
 
+# Nobody has chosen yet: no project, and not the standard RDF flow either.
 NO_PROJECT = {
     "project": None,
+    "route": None,
     "store": CONFIGURED_STORE,
     "configuredStore": CONFIGURED_STORE,
 }
+# The standard RDF flow, chosen without a project.
+STANDARD_FLOW = {**NO_PROJECT, "route": "standard"}
 
 
 def _put(client, mapping=None, **fields):
@@ -59,6 +65,14 @@ def selection(app):
 @pytest.fixture
 def state_file(doubles):
     return doubles.settings.state_file
+
+
+@pytest.fixture
+def lifecycle():
+    """A store lifecycle that starts nothing, for the routes to call."""
+    double = create_autospec(StoreLifecycle, instance=True)
+    double.status.return_value = ("reachable", "")
+    return double
 
 
 # ---------------------------------------------------------------------------
@@ -334,12 +348,14 @@ class TestClosingTheProject:
         response = client.delete("/api/v1/project")
 
         assert response.status_code == 200
-        assert response.get_json() == NO_PROJECT
+        assert response.get_json() == STANDARD_FLOW
         assert session_cache.jsonld_mapping is None
         assert session_cache.annotation_status is None
         assert session_cache.repo == REPO
         assert selection.current == selection.configured
-        assert not os.path.exists(state_file)
+        # The next worker must know the standard RDF flow was chosen.
+        with open(state_file, encoding="utf-8") as handle:
+            assert json.load(handle) == {"version": 1, "route": "standard"}
 
     def test_without_a_project_the_sessions_own_map_stays(self, client, session_cache):
         # A map an upload put in the session while no project was open is
@@ -349,7 +365,7 @@ class TestClosingTheProject:
 
         response = client.delete("/api/v1/project")
 
-        assert response.get_json() == NO_PROJECT
+        assert response.get_json() == STANDARD_FLOW
         assert session_cache.jsonld_mapping == "a map the annotate upload set"
         assert session_cache.annotation_status == {"patients.age": {"success": True}}
 
@@ -442,7 +458,18 @@ class TestAProjectOutlivesItsWorker:
         closed = other_worker.test_client().get("/api/v1/project").get_json()
 
         assert opened["project"]["token"] == "t1"
-        assert closed == NO_PROJECT
+        assert closed == STANDARD_FLOW
+
+    def test_a_new_worker_remembers_the_standard_rdf_flow(
+        self, doubles, spa_dir, client
+    ):
+        client.delete("/api/v1/project")
+
+        restarted = create_app(doubles.settings, spa_dir=str(spa_dir))
+
+        assert (
+            restarted.test_client().get("/api/v1/project").get_json() == STANDARD_FLOW
+        )
 
     def test_a_state_file_that_cannot_be_read_means_no_project(
         self, doubles, spa_dir, state_file, caplog
@@ -510,10 +537,13 @@ class TestAProjectOutlivesItsWorker:
 class TestTheStoreStatus:
     @pytest.mark.route("GET", "/api/v1/project/store-status", "success")
     def test_a_store_that_answers_is_reachable(self, client, store):
+        client.delete("/api/v1/project")
+
         response = client.get("/api/v1/project/store-status")
 
         assert response.status_code == 200
         assert response.get_json() == {
+            "state": "reachable",
             "reachable": True,
             "reason": "",
             "store": CONFIGURED_STORE,
@@ -522,6 +552,7 @@ class TestTheStoreStatus:
 
     @pytest.mark.route("GET", "/api/v1/project/store-status", "failure")
     def test_an_unreachable_store_is_an_answer_with_the_reason(self, client, store):
+        client.delete("/api/v1/project")
         store.check_reachable.return_value = (
             False,
             "The store has no repository named 'userRepo'.",
@@ -530,19 +561,84 @@ class TestTheStoreStatus:
         response = client.get("/api/v1/project/store-status")
 
         assert response.status_code == 200
+        assert response.get_json()["state"] == "unreachable"
         assert response.get_json()["reachable"] is False
         assert response.get_json()["reason"] == (
             "The store has no repository named 'userRepo'."
         )
 
     def test_a_check_that_fails_reads_as_unreachable(self, client, store, caplog):
+        client.delete("/api/v1/project")
         store.check_reachable.side_effect = RuntimeError("boom")
 
         body = client.get("/api/v1/project/store-status").get_json()
 
-        assert body["reachable"] is False
+        assert body["state"] == "unreachable"
         assert body["reason"] == "Flyover could not check the store."
         assert "Checking the store failed" in caplog.text
+
+    def test_before_anyone_chooses_the_status_waits_and_asks_no_store(
+        self, client, store
+    ):
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body == {
+            "state": "waiting",
+            "reachable": False,
+            "reason": "",
+            "store": CONFIGURED_STORE,
+        }
+        store.check_reachable.assert_not_called()
+
+    def test_the_stores_lifecycle_says_where_it_stands(self, make_app, lifecycle):
+        lifecycle.status.return_value = ("starting", "")
+        client = make_app(store_lifecycle=lifecycle).test_client()
+        client.delete("/api/v1/project")
+        selection = client.application.config["APP_CONTEXT"]["store_selection"]
+
+        body = client.get("/api/v1/project/store-status").get_json()
+
+        assert body["state"] == "starting"
+        assert body["reachable"] is False
+        lifecycle.status.assert_called_once_with(selection.configured, True, ANY)
+
+
+# ---------------------------------------------------------------------------
+# Starting the store a user chooses
+# ---------------------------------------------------------------------------
+
+
+class TestStartingTheChosenStore:
+    def test_choosing_the_standard_rdf_flow_starts_the_configured_store(
+        self, make_app, lifecycle
+    ):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+        selection = client.application.config["APP_CONTEXT"]["store_selection"]
+
+        client.delete("/api/v1/project")
+
+        lifecycle.ensure_started.assert_called_once_with(selection.configured)
+
+    def test_opening_a_project_starts_its_store(self, make_app, lifecycle):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+        selection = client.application.config["APP_CONTEXT"]["store_selection"]
+
+        _put(client)
+
+        [(store,), _] = lifecycle.ensure_started.call_args
+        assert store == selection.current
+        assert store.base_url == PROJECT_STORE
+
+    def test_looking_checking_or_a_refused_map_starts_nothing(
+        self, make_app, lifecycle
+    ):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+
+        client.get("/api/v1/project")
+        client.post("/api/v1/project/check", json={"mapping": valid_mapping()})
+        _put(client, mapping={"not": "a map"})
+
+        lifecycle.ensure_started.assert_not_called()
 
     def test_with_a_project_open_its_store_is_the_one_described(self, client):
         _put(client)

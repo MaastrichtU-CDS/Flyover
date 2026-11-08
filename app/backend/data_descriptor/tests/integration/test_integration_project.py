@@ -9,6 +9,8 @@ request that went to the wrong store shows.
 """
 
 import copy
+import json
+from datetime import datetime, timezone
 from io import BytesIO
 from urllib.parse import quote
 
@@ -16,12 +18,14 @@ import pytest
 import requests
 import responses
 
+from services.store_lifecycle import STORE_MISSING
 from tests.integration.support import (
     _MAPPING,
     CSV_BYTES,
     TABLE,
     TABLE_COLUMNS,
     FakeRdfStore,
+    build_app,
 )
 
 PROJECT_BASE_URL = "http://project-store.test:7200"
@@ -55,14 +59,20 @@ def local_store() -> FakeRdfStore:
 
 
 @pytest.fixture
-def rdf_store(project_store, local_store):
+def web():
+    """The faked network the stores (and a launcher) answer on."""
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        yield mock
+
+
+@pytest.fixture
+def rdf_store(web, project_store, local_store):
     """The configured store (empty), with the other two answering beside it."""
     store = FakeRdfStore()
     store.data_graph_exists = False
-    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
-        for each in (store, project_store, local_store):
-            each.install(mock)
-        yield store
+    for each in (store, project_store, local_store):
+        each.install(web)
+    return store
 
 
 def _project_map(endpoint: str) -> dict:
@@ -171,8 +181,11 @@ class TestAProjectsStore:
 
 class TestTheStoreStatus:
     def test_the_configured_store_answers(self, client, rdf_store):
+        client.delete("/api/v1/project")
+
         body = client.get("/api/v1/project/store-status").get_json()
 
+        assert body["state"] == "reachable"
         assert body["reachable"] is True
         assert body["store"]["url"] == rdf_store.repository_url
         assert [(c.url.split("?")[0], c.query) for c in rdf_store.asks] == [
@@ -198,6 +211,7 @@ class TestTheStoreStatus:
         body = client.get("/api/v1/project/store-status").get_json()
 
         assert body == {
+            "state": "unreachable",
             "reachable": False,
             "reason": "Currently, the store cannot be reached by Flyover.",
             "store": body["store"],
@@ -288,3 +302,106 @@ class TestAMapFromAWebAddress:
             "fileName": "aya.jsonld",
             "sourceUrl": doi,
         }
+
+
+# ---------------------------------------------------------------------------
+# Starting the local store once a user chooses it
+# ---------------------------------------------------------------------------
+
+LAUNCHER = "http://store-launcher.test:7290"
+
+
+class FakeLauncher:
+    """The stack's store launcher: starting the module starts the container
+    of the configured store, which then takes a while to answer."""
+
+    def __init__(self, state="stopped"):
+        self.state = state
+        self.started_at = None
+        self.starts = 0
+
+    def install(self, web):
+        module = f"{LAUNCHER}/modules/rdf-store"
+        web.add_callback(responses.GET, module, callback=self._report)
+        web.add_callback(responses.POST, f"{module}/start", callback=self._start)
+
+    def _report(self, request):
+        body = {
+            "module": "rdf-store",
+            "state": self.state,
+            "startedAt": self.started_at,
+        }
+        return 200, {}, json.dumps(body)
+
+    def _start(self, request):
+        self.starts += 1
+        if self.state != "missing":
+            self.state = "running"
+            self.started_at = datetime.now(timezone.utc).isoformat()
+        return self._report(request)
+
+
+@pytest.fixture
+def launcher(web):
+    fake = FakeLauncher()
+    fake.install(web)
+    return fake
+
+
+@pytest.fixture
+def launching_client(tmp_path, rdf_store, launcher):
+    """The app of a stack that runs a store launcher, before anyone chose."""
+    rdf_store.outage = requests.ConnectionError("not started")
+    return build_app(tmp_path, rdf_store, store_launcher_url=LAUNCHER).test_client()
+
+
+def _state(client):
+    return client.get("/api/v1/project/store-status").get_json()
+
+
+class TestStartingTheLocalStore:
+    def test_nothing_starts_before_someone_chooses(self, launching_client, launcher):
+        assert _state(launching_client)["state"] == "waiting"
+        launching_client.get("/api/v1/project")
+        assert launcher.starts == 0
+
+    def test_the_standard_rdf_flow_starts_the_store_which_starts_until_it_answers(
+        self, launching_client, launcher, rdf_store
+    ):
+        launching_client.delete("/api/v1/project")
+
+        assert launcher.starts == 1
+        assert _state(launching_client) == {
+            "state": "starting",
+            "reachable": False,
+            "reason": "",
+            "store": _state(launching_client)["store"],
+        }
+
+        rdf_store.outage = None
+        assert _state(launching_client)["state"] == "reachable"
+
+    def test_a_project_on_the_local_server_starts_the_store(
+        self, launching_client, launcher
+    ):
+        _open(launching_client, endpoint="http://localhost:7200/repositories/localRepo")
+
+        assert launcher.starts == 1
+
+    def test_a_project_on_another_server_starts_nothing(
+        self, launching_client, launcher
+    ):
+        _open(launching_client)
+
+        assert launcher.starts == 0
+        assert _state(launching_client)["state"] == "reachable"
+
+    def test_a_store_without_its_container_says_how_to_create_it(
+        self, launching_client, launcher
+    ):
+        launcher.state = "missing"
+
+        launching_client.delete("/api/v1/project")
+
+        assert _state(launching_client)["state"] == "unreachable"
+        assert _state(launching_client)["reason"] == STORE_MISSING

@@ -6,14 +6,16 @@ start-up pop-up, switches through the status bar, or accepts the offer an
 upload in a step makes; it closes the project when the user continues
 without one. Routes are the ``/api/v1/project`` surface:
 
-- ``GET /api/v1/project``: the open project (or none), the store in use and
-  the configured store (the one working without a project uses);
+- ``GET /api/v1/project``: the open project (or none), the route chosen (a
+  project, the standard RDF flow, or none yet), the store in use and the
+  configured store (the one working without a project uses);
 - ``PUT /api/v1/project``: open a map as the project, replacing any other;
-- ``DELETE /api/v1/project``: work without a project again;
+- ``DELETE /api/v1/project``: work without a project, in the standard RDF
+  flow (also how a user chooses it at start-up);
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
   nothing, so the browser can ask the user before it switches;
-- ``GET /api/v1/project/store-status``: whether the store in use answers,
-  for the status bar's dot;
+- ``GET /api/v1/project/store-status``: where the store in use stands
+  (waiting for a choice, starting, reachable or not), for the status bar;
 - ``POST /api/v1/project/fetch-map``: a map from a web address, fetched by
   the server, for the pop-up to check and open like an uploaded file; or,
   for a Zenodo record holding several, the maps to choose from.
@@ -39,6 +41,11 @@ def _context() -> dict:
 
 def _project_service():
     return _context()["project_service"]
+
+
+def _start_the_chosen_store() -> None:
+    """A user chose what to work on: start its store if Flyover may."""
+    _context()["store_lifecycle"].ensure_started(_context()["store_selection"].current)
 
 
 def _mapping_from_body():
@@ -81,13 +88,17 @@ def open_project():
             400,
         )
     logger.info("Opened project %r", described["project"]["name"])
+    _start_the_chosen_store()
     return jsonify(described)
 
 
 @project_bp.route("/api/v1/project", methods=["DELETE"])
 def close_project():
-    """Work without a project: the configured store, no project's map."""
-    return jsonify(_project_service().close())
+    """Work without a project, in the standard RDF flow: the configured
+    store, no project's map. Starts that store if Flyover may."""
+    described = _project_service().close()
+    _start_the_chosen_store()
+    return jsonify(described)
 
 
 @project_bp.route("/api/v1/project/check", methods=["POST"])
@@ -106,18 +117,36 @@ def check_project_map():
 
 @project_bp.route("/api/v1/project/store-status", methods=["GET"])
 def store_status():
-    """Whether the store the app works on answers, and if not, why.
+    """Where the store the app works on stands, and if it does not answer, why.
 
-    Answers ``{"reachable": bool, "reason": "...", "store": {...}}``; an
-    unreachable store is an answer, not an error.
+    Answers ``{"state": "...", "reachable": bool, "reason": "...",
+    "store": {...}}``. The state is ``waiting`` (nobody has chosen a project
+    or the standard RDF flow yet, so no store was started), ``starting``,
+    ``reachable`` or ``unreachable`` (see services/store_lifecycle.py; a
+    later ``none`` will mean the work uses no database). An unreachable
+    store is an answer, not an error.
     """
-    store = _project_service().describe()["store"]
-    try:
-        reachable, reason = _context()["rdf_store_service"].check_reachable()
-    except Exception:
-        logger.warning("Checking the store failed", exc_info=True)
-        reachable, reason = False, "Flyover could not check the store."
-    return jsonify({"reachable": reachable, "reason": reason, "store": store})
+    service = _project_service()
+    store = service.describe()["store"]
+
+    def check():
+        try:
+            return _context()["rdf_store_service"].check_reachable()
+        except Exception:
+            logger.warning("Checking the store failed", exc_info=True)
+            return False, "Flyover could not check the store."
+
+    state, reason = _context()["store_lifecycle"].status(
+        _context()["store_selection"].current, service.route is not None, check
+    )
+    return jsonify(
+        {
+            "state": state,
+            "reachable": state == "reachable",
+            "reason": reason,
+            "store": store,
+        }
+    )
 
 
 @project_bp.route("/api/v1/project/fetch-map", methods=["POST"])

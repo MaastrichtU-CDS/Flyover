@@ -32,16 +32,23 @@ https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 
 ## Quick Start
 
-Clone the repository and start the services:
+Clone the repository, create the services and start Flyover:
 
 ```bash
-docker compose up -d --pull always
+docker compose create --pull always
+docker compose up -d flyover
 ```
 
-| Service        | URL                                            | Description                             |
-|----------------|------------------------------------------------|-----------------------------------------|
-| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data           |
-| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (active store)|
+Flyover starts the RDF store once you choose to work on it, in the pop-up it opens with: a project whose map names
+the store, or the standard RDF flow. Until then the store's container exists but does not run, so it takes no memory.
+Once started, the store comes back after a restart of the machine, until you stop it yourself. You can also start it
+without Flyover, with `docker compose start rdf-store-graphdb` (or `docker start rdf-store`), or start everything at
+once with `docker compose up -d`, as before.
+
+| Service        | URL                                            | Description                                     |
+|----------------|------------------------------------------------|-------------------------------------------------|
+| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data                   |
+| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store, once it has started  |
 
 > **Note:** On Windows, please use WSL2 with Docker. On macOS/Linux, Docker can be used directly.
 
@@ -56,7 +63,8 @@ behaves identically with any of them. The backend is selected with a single
 COMPOSE_PROFILES=qlever   # or: graphdb | rdf4j
 ```
 
-After changing the preset, recreate the stack with `docker compose up -d --build`.
+After changing the preset, recreate the stack: `docker compose down`, then `docker compose create --build` and
+`docker compose up -d flyover`.
 See [`stores/rdf/README.md`](stores/rdf/README.md) for the differences between the
 backends and details of the QLever integration.
 
@@ -76,6 +84,7 @@ Top-level directories are named after the *role* a container plays in the stack,
 docker-compose.yml     # orchestration: the flyover app + `include:` of every module
 app/                   # the Flyover application (Flask backend + Vue frontend, one image)
 stores/rdf/            # RDF store backends (graphdb/, rdf4j/, qlever/) + their compose.yml
+stores/launcher/       # starts a store's containers once a user chooses to work on it
 docs/                  # developer documentation
 example_data/          # synthetic datasets and JSON-LD mappings
 scripts/               # helper scripts (test stack, clearing GraphDB, ...)
@@ -132,6 +141,12 @@ While a project is open, every step works on the RDF store its map's top-level `
 An endpoint on `localhost` or `127.0.0.1` means the configured store with the repository the map names, because inside
 Flyover's container `localhost` is the container itself. Flyover never creates repositories: one the store lacks shows
 as unreachable in the strip.
+
+Flyover starts its own store only when you choose to work on it: by opening a project on it, or by continuing without
+a project. A store on another server is not Flyover's to start. Flyover never stops a store, as other tools may use it
+too. Flyover has no access to Docker itself: a small launcher service (`stores/launcher/`) starts only the containers
+the stack labels as a store. If the store runs elsewhere, set `FLYOVER_STORE_LAUNCHER_URL` empty and Flyover takes the
+store as running.
 
 A map uploaded in a step is checked against the open project. The project's own map (the same schema) replaces the
 working copy, after asking if you added describe answers since it was loaded; another project's map asks whether to

@@ -452,11 +452,12 @@ class FakeCurl:
 # ---------------------------------------------------------------------------
 
 
-def build_app(work_dir: Path, store: FakeRdfStore) -> Flask:
+def build_app(work_dir: Path, store: FakeRdfStore, **settings: Any) -> Flask:
     """Build the app ``create_app()`` builds, pointed at the fake store.
 
     ``work_dir`` replaces the ``/app/`` root the Docker image uses: the
     triplifier writes its output there and uploads are saved under it.
+    ``settings`` sets more of the app's settings (a store launcher's URL).
     """
     root_dir = str(work_dir / "root") + os.sep
     child_dir = "data_descriptor"
@@ -469,6 +470,7 @@ def build_app(work_dir: Path, store: FakeRdfStore) -> Flask:
         root_dir=root_dir,
         child_dir=child_dir,
         upload_folder=str(upload_folder),
+        **settings,
     )
 
     # main spawns the PK/FK and cross-graph jobs as gevent greenlets that

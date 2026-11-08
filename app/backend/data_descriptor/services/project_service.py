@@ -50,6 +50,11 @@ logger = logging.getLogger(__name__)
 
 STATE_FILE_VERSION = 1
 
+# What a user chose to work on: a project, or the standard RDF flow without
+# one. Until someone chooses, there is no route and Flyover waits.
+PROJECT_ROUTE = "project"
+STANDARD_ROUTE = "standard"
+
 # Session state worked out against one map. It goes when the map changes.
 MAP_TIED_STATE = (
     "global_semantic_map",
@@ -138,6 +143,8 @@ class ProjectService:
         self._selection = selection
         self._state_file = state_file
         self._project: Optional[OpenProject] = None
+        # The standard RDF flow, once chosen without a project.
+        self._standard = False
         # (mtime, size) of the state file as this process last read or wrote
         # it; None while there is none.
         self._seen: Optional[Tuple[int, int]] = None
@@ -146,14 +153,25 @@ class ProjectService:
     def project(self) -> Optional[OpenProject]:
         return self._project
 
+    @property
+    def route(self) -> Optional[str]:
+        """What a user chose to work on: ``project``, ``standard`` (the
+        standard RDF flow, without a project), or None while nobody has
+        chosen. Flyover starts no store before someone chooses."""
+        if self._project is not None:
+            return PROJECT_ROUTE
+        return STANDARD_ROUTE if self._standard else None
+
     def describe(self) -> Dict[str, Any]:
-        """The open project (None without one) and the store the app is on.
+        """The open project (None without one), the route chosen and the
+        store the app is on.
 
         ``configuredStore`` is the store working without a project uses, so
         the browser can say so while a project's own store is in use.
         """
         return {
             "project": self._project.describe() if self._project else None,
+            "route": self.route,
             "store": self._selection.current.describe(),
             "configuredStore": self._selection.configured.describe(),
         }
@@ -204,18 +222,22 @@ class ProjectService:
             parsed=parsed,
         )
         self._apply(project)
+        self._standard = False
         self._write(project)
         return self.describe()
 
     def close(self) -> Dict[str, Any]:
-        """Work without a project: the configured store, no project's map.
+        """Work without a project, in the standard RDF flow: the configured
+        store, no project's map.
 
+        It is also how a user chooses the standard RDF flow at start-up.
         Without an open project there is nothing to close: the session keeps
         what the steps worked out without one (a map an upload put there).
         """
         if self._project is not None:
             self._apply(None)
-        self._remove_file()
+        self._standard = True
+        self._write_payload({"version": STATE_FILE_VERSION, "route": STANDARD_ROUTE})
         return self.describe()
 
     def sync(self) -> None:
@@ -230,19 +252,20 @@ class ProjectService:
         if seen == self._seen:
             return
         self._seen = seen
-        project = None
+        project, standard = None, False
         if seen is not None:
             try:
-                project = self._read()
+                project, standard = self._read()
             except Exception:
                 logger.warning(
-                    "The open project in %s could not be restored; working "
-                    "without a project",
+                    "The open project in %s could not be restored; waiting "
+                    "for a user to choose again",
                     self._state_file,
                     exc_info=True,
                 )
         if project != self._project:
             self._apply(project)
+        self._standard = standard
 
     # ------------------------------------------------------------------
 
@@ -304,14 +327,18 @@ class ProjectService:
         return status.st_mtime_ns, status.st_size
 
     def _write(self, project: OpenProject) -> None:
-        payload = {
-            "version": STATE_FILE_VERSION,
-            "token": project.token,
-            "fileName": project.file_name,
-            "sourceUrl": project.source_url,
-            "openedAt": project.opened_at,
-            "mapping": project.mapping,
-        }
+        self._write_payload(
+            {
+                "version": STATE_FILE_VERSION,
+                "token": project.token,
+                "fileName": project.file_name,
+                "sourceUrl": project.source_url,
+                "openedAt": project.opened_at,
+                "mapping": project.mapping,
+            }
+        )
+
+    def _write_payload(self, payload: Dict[str, Any]) -> None:
         os.makedirs(os.path.dirname(self._state_file) or ".", exist_ok=True)
         partial = f"{self._state_file}.partial"
         # The map may name its store with credentials: readable by the app only.
@@ -321,13 +348,17 @@ class ProjectService:
         os.replace(partial, self._state_file)
         self._seen = self._signature()
 
-    def _read(self) -> OpenProject:
+    def _read(self) -> Tuple[Optional[OpenProject], bool]:
+        """The project the file keeps, or (None, True) for the standard RDF
+        flow chosen without one."""
         with open(self._state_file, encoding="utf-8") as handle:
             payload = json.load(handle)
         if payload.get("version") != STATE_FILE_VERSION:
             raise ValueError(f"unknown state file version {payload.get('version')!r}")
+        if "mapping" not in payload and payload.get("route") == STANDARD_ROUTE:
+            return None, True
         store, parsed = self._examine(payload.get("mapping"))
-        return OpenProject(
+        project = OpenProject(
             token=_token(payload.get("token")),
             mapping=payload["mapping"],
             file_name=_text(payload.get("fileName")),
@@ -336,13 +367,7 @@ class ProjectService:
             store=store,
             parsed=parsed,
         )
-
-    def _remove_file(self) -> None:
-        try:
-            os.remove(self._state_file)
-        except FileNotFoundError:
-            pass
-        self._seen = None
+        return project, False
 
 
 # ---------------------------------------------------------------------------
