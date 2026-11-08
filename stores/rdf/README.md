@@ -18,8 +18,7 @@ top-level [`.env`](../.env) file. Pick **one** preset, then recreate the stack:
 
 ```bash
 docker compose down
-docker compose create --build
-docker compose up -d flyover
+./flyover.sh start --build      # or: docker compose create --build, then docker compose up -d flyover
 ```
 
 `docker compose create` creates the store's container without starting it. Flyover's

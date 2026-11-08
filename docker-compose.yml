@@ -14,6 +14,8 @@
 # which implementation is running behind that name.
 #
 # Quick start (GraphDB is the default profile, see .env):
+#     ./flyover.sh                     # all of the below (also: stop, status)
+# or by hand:
 #     docker compose create            # every container, none started yet
 #     docker compose up -d flyover     # Flyover (and its store launcher)
 # Flyover starts the store once a user chooses to work on it: a project whose

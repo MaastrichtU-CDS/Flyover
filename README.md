@@ -32,12 +32,17 @@ https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 
 ## Quick Start
 
-Clone the repository, create the services and start Flyover:
+Clone the repository and start Flyover:
 
 ```bash
-docker compose create --pull always
-docker compose up -d flyover
+./flyover.sh                    # or: ./flyover.sh start --pull always, for the newest images
 ```
+
+The script works on Linux and macOS, and on Windows in WSL2 or Git Bash (`sh flyover.sh`). It creates every
+container, starts Flyover, and says where to find it. `./flyover.sh stop` stops Flyover and leaves the RDF store
+running for anything else that uses it (`--all` stops the store too, which then stays off until you click **Start** in
+Flyover), and `./flyover.sh status` shows which containers run and where the store stands. By hand, the same start is `docker compose create` followed by
+`docker compose up -d flyover`.
 
 Flyover starts the RDF store once you choose to work on it, in the pop-up it opens with: a project whose map names
 the store, or the standard RDF flow. Until then the store's container exists but does not run, so it takes no memory.
@@ -46,9 +51,9 @@ someone stopped alone until you click **Start** in the strip at the top. You can
 `docker compose start rdf-store-graphdb` (or `docker start rdf-store`), or start everything at once with
 `docker compose up -d`, as before.
 
-To stop Flyover, use `docker compose stop`. `docker compose down` removes the containers, the store's too, and Flyover
-can start a store but never create one: after a `down`, run `docker compose create` again before
-`docker compose up -d flyover`.
+To stop Flyover, use `./flyover.sh stop` (or `docker compose stop`). `docker compose down` removes the containers, the
+store's too, and Flyover can start a store but never create one: after a `down`, start Flyover with `./flyover.sh`,
+which creates them again.
 
 | Service        | URL                                            | Description                                     |
 |----------------|------------------------------------------------|-------------------------------------------------|
@@ -86,6 +91,7 @@ on configuration and environment variables.
 Top-level directories are named after the *role* a container plays in the stack, not after the technology behind it:
 
 ```
+flyover.sh             # starts, stops and checks Flyover (Linux, macOS, Windows in WSL2 or Git Bash)
 docker-compose.yml     # orchestration: the flyover app + `include:` of every module
 app/                   # the Flyover application (Flask backend + Vue frontend, one image)
 stores/rdf/            # RDF store backends (graphdb/, rdf4j/, qlever/) + their compose.yml
