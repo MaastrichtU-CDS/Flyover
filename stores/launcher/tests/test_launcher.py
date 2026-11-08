@@ -191,6 +191,34 @@ class FakeDocker:
         raise DockerError("No such container")
 
 
+@pytest.mark.parametrize(
+    "containers, never_started",
+    [
+        # Fresh from `docker compose create`: nothing ever ran.
+        ([container("rdf-store", "created")], True),
+        ([container("qlever-engine"), container("rdf-store")], True),
+        # Someone stopped it: it ran before.
+        ([container("rdf-store", "exited", started=EARLIER)], False),
+        (
+            [
+                container("qlever-engine", "exited", started=EARLIER),
+                container("rdf-store"),
+            ],
+            False,
+        ),
+        ([container("rdf-store", "running", started=LATER)], False),
+        # Nothing to say of a module without containers.
+        ([], False),
+    ],
+)
+def test_a_module_says_whether_any_of_its_containers_ever_ran(
+    containers, never_started
+):
+    state = Launcher(FakeDocker(containers), PROJECT).state("rdf-store")
+
+    assert state["neverStarted"] is never_started
+
+
 def test_a_module_runs_when_every_container_runs():
     docker = FakeDocker(
         [
@@ -256,6 +284,7 @@ def test_a_module_without_containers_is_missing_and_nothing_starts():
         "module": "rdf-store",
         "state": "missing",
         "startedAt": None,
+        "neverStarted": False,
         "containers": [],
     }
     assert docker.started == []

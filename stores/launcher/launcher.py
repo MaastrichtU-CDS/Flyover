@@ -17,8 +17,10 @@ stops, removes or runs anything in a container.
 
 A module's state is ``running`` (every container runs), ``starting`` (one is
 restarting), ``stopped`` (one was created but not started, or has stopped)
-or ``missing`` (the project has no container with that label). With it comes
-``startedAt``: when the module's latest running container started, or null.
+or ``missing`` (the project has no container with that label). With it come
+``startedAt``, when the module's latest running container started (or null),
+and ``neverStarted``: whether none of its containers has ever run, as after
+``docker compose create``.
 
 Standard library only: the image needs nothing but Python.
 """
@@ -199,17 +201,20 @@ class Launcher:
     def state(self, module: str) -> Dict[str, Any]:
         members = self._members(module)
         started = []
+        ever_ran = False
         for member in members:
-            if member["status"] != "running":
-                continue
             details = self._docker.inspect(member["id"]) or {}
             started_at = (details.get("State") or {}).get("StartedAt") or ""
-            if started_at and started_at != NEVER_STARTED:
+            if not started_at or started_at == NEVER_STARTED:
+                continue
+            ever_ran = True
+            if member["status"] == "running":
                 started.append(started_at)
         return {
             "module": module,
             "state": _aggregate([member["status"] for member in members]),
             "startedAt": max(started) if started else None,
+            "neverStarted": bool(members) and not ever_ran,
             "containers": [
                 {"name": member["name"], "state": member["status"]}
                 for member in members
