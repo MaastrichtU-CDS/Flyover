@@ -43,6 +43,10 @@ describe('RdfLandingView', () => {
       'Flyover × RDF',
       'Transform your data into Resource Description Framework (RDF) triples through our guided four-step process',
     ])
+    // The × is set apart from the names either side of it, so it can sit
+    // at the centre of the page, at about half their size.
+    expect(hero.findAll('h1 > span').map((part) => part.text())).toEqual(['Flyover', '×', 'RDF'])
+    expect(hero.find('h1 .hero-times').text()).toBe('×')
   })
 
   it('shows the four steps in order', () => {

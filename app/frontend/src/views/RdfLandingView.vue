@@ -97,8 +97,8 @@ function open(card) {
 <template>
   <div>
     <div class="hero-section">
-      <h1 class="hero-title">
-        Flyover × RDF
+      <h1 class="hero-title hero-title-centred">
+        <span class="hero-before">Flyover</span> <span class="hero-times">×</span> <span class="hero-after">RDF</span>
       </h1>
       <p class="hero-subtitle mb-0">
         Transform your data into Resource Description Framework (RDF) triples through our
@@ -178,6 +178,34 @@ function open(card) {
 <style scoped>
 .hero-section::before {
   background-image: url('/static/image-flyover.svg');
+}
+
+/* "Flyover × RDF" with the × at the centre of the page: the names take
+   the room either side of it, so the longer one reaches further left. The
+   gap after "Flyover" is a little wider, as the R of RDF stands further
+   from its edge than the r does; measured, both gaps are 17 px. */
+.hero-title-centred {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  column-gap: 0.2em;
+}
+
+.hero-before {
+  justify-self: end;
+  margin-right: 0.07em;
+}
+
+.hero-after {
+  justify-self: start;
+}
+
+/* The × between the names: about half their size, raised to the middle
+   of their capitals (Roboto sets it low; measured on a 4x render). */
+.hero-times {
+  position: relative;
+  top: -0.313em;
+  font-size: 0.55em;
 }
 .workflow-card {
   cursor: pointer;
