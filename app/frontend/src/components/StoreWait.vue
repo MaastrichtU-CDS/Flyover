@@ -1,7 +1,9 @@
 <script setup>
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useCyclingDots } from '@/composables/useCyclingDots'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 
 // What a page that needs the store shows in its place until the store is
@@ -16,35 +18,41 @@ const props = defineProps({
 
 const projectStore = useProjectStore()
 const { storeStatus } = storeToRefs(projectStore)
+const route = useRoute()
 
-const MESSAGES = {
-  waiting: {
-    icon: 'fa-hourglass-half',
-    title: 'Waiting for a project choice',
-    detail: 'Choose a project, or continue without one, and this page opens.',
-    underWay: false,
-  },
-  starting: {
-    icon: 'fa-power-off',
-    title: 'Starting the RDF store',
-    detail: 'This can take a minute. The page opens once the store answers.',
-    underWay: true,
-  },
-  connecting: {
-    icon: 'fa-plug',
-    title: 'Connecting to the RDF store',
-    detail: '',
-    underWay: true,
-  },
-  stopped: {
-    icon: 'fa-circle-stop',
-    title: 'The RDF store is not running',
-    detail: 'It was stopped, and Flyover leaves a stopped store alone. Start it to open this page.',
-    underWay: false,
-  },
-}
+// The store of the workflow whose page waits, as the workflow list names it.
+const storeLabel = computed(() => workflowById(route.meta?.workflow)?.storeLabel || 'store')
 
-const message = computed(() => MESSAGES[props.reason] || MESSAGES.connecting)
+const message = computed(() => {
+  const messages = {
+    waiting: {
+      icon: 'fa-hourglass-half',
+      title: 'Waiting for a project choice',
+      detail: 'Choose a project, or continue without one, and this page opens.',
+      underWay: false,
+    },
+    starting: {
+      icon: 'fa-power-off',
+      title: `Starting the ${storeLabel.value}`,
+      detail: 'This can take a minute. The page opens once the store answers.',
+      underWay: true,
+    },
+    connecting: {
+      icon: 'fa-plug',
+      title: `Connecting to the ${storeLabel.value}`,
+      detail: '',
+      underWay: true,
+    },
+    stopped: {
+      icon: 'fa-circle-stop',
+      title: `The ${storeLabel.value} is not running`,
+      detail:
+        'It was stopped, and Flyover leaves a stopped store alone. Start it to open this page.',
+      underWay: false,
+    },
+  }
+  return messages[props.reason] || messages.connecting
+})
 const dots = useCyclingDots(() => message.value.underWay)
 </script>
 
@@ -79,7 +87,7 @@ const dots = useCyclingDots(() => message.value.underWay)
         :disabled="storeStatus.checking"
         @click="projectStore.startStore()"
       >
-        <i class="fas fa-play" /> Start the RDF store
+        <i class="fas fa-play" /> Start the {{ storeLabel }}
       </button>
     </div>
   </div>

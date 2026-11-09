@@ -81,6 +81,9 @@ const currentWorkflow = computed(
 const rememberedFits = computed(
   () => Boolean(project.value) && targetStandard(project.value) === currentWorkflow.value.id
 )
+// What the workflow and its store are called, from the workflow list.
+const workflowLabel = computed(() => currentWorkflow.value.label)
+const storeLabel = computed(() => currentWorkflow.value.storeLabel || 'store')
 const pendingWorkflow = computed(() => workflowById(pending.value?.standard) || {})
 
 function clearErrors() {
@@ -158,14 +161,15 @@ function finish(message) {
 function openedMessage() {
   const label = [projectStore.name, projectStore.version].filter(Boolean).join(' · ')
   const repository = store.value?.repository
-  const opened = `Flyover now works on the project ${label}${repository ? `, on the RDF store's repository ${repository}` : ''}.`
+  const opened = `Flyover now works on the project ${label}${repository ? `, on the ${storeLabel.value}'s repository ${repository}` : ''}.`
   // A map that names no standard is taken as RDF, and the user hears so.
   return project.value?.targetStandardDeclared === false ? `${opened} ${ASSUMED_RDF_NOTE}` : opened
 }
 
 function withoutProjectMessage() {
   const repository = standardStore.value?.repository
-  return `Flyover now works without a project: the standard RDF flow${repository ? ` on the configured RDF store's repository ${repository}` : ''}.`
+  const where = repository ? ` on the configured ${storeLabel.value}'s repository ${repository}` : ''
+  return `Flyover now works without a project: the standard ${workflowLabel.value} flow${where}.`
 }
 
 async function needsConfirmation(kind) {
@@ -480,8 +484,8 @@ function back() {
                 aria-hidden="true"
               /></span>
               <strong class="project-picker-option-title">Continue without a project</strong>
-              <span class="project-picker-option-text">The standard RDF flow, on Flyover's configured RDF
-                store<template v-if="standardStore">{{ ' (repository ' }}<strong>{{ standardStore.repository }}</strong>)</template></span>
+              <span class="project-picker-option-text">The standard {{ workflowLabel }} flow, on Flyover's
+                configured {{ storeLabel }}<template v-if="standardStore">{{ ' (repository ' }}<strong>{{ standardStore.repository }}</strong>)</template></span>
             </button>
           </div>
         </template>
@@ -504,7 +508,7 @@ function back() {
               Open a project
             </h6>
             <p class="small text-muted mb-2">
-              Flyover then works on the RDF store that the project's map names.
+              Flyover then works on the {{ storeLabel }} that the project's map names.
             </p>
             <div
               class="card p-3 border text-center project-drop"
@@ -627,7 +631,7 @@ function back() {
             </template>?
           </h6>
           <p>
-            Flyover will work on the RDF store's repository
+            Flyover will work on the {{ storeLabel }}'s repository
             <strong>{{ pending.check.store.repository }}</strong> at
             <code>{{ pending.check.store.url }}</code>.
           </p>
@@ -637,7 +641,7 @@ function back() {
               with the describe answers added since it was loaded.
             </template>
             <template v-else-if="pending.kind === 'other-store'">
-              This map belongs to the open project, but it names another RDF store. Flyover
+              This map belongs to the open project, but it names another {{ storeLabel }}. Flyover
               switches to that store; the data in the current one stays where it is. The map
               replaces the project's working copy.
             </template>
@@ -715,8 +719,8 @@ function back() {
             <i class="fas fa-sign-out-alt" /> Leave {{ openName }}?
           </h6>
           <p>
-            Flyover goes back to the standard RDF flow, on its configured RDF
-            store<template v-if="standardStore">
+            Flyover goes back to the standard {{ workflowLabel }} flow, on its configured
+            {{ storeLabel }}<template v-if="standardStore">
               — repository <strong>{{ standardStore.repository }}</strong>
             </template>.
           </p>

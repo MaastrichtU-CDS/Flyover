@@ -278,6 +278,18 @@ describe('ProjectStatusBar', () => {
     expect(project.picker).toEqual({ open: true, mode: 'switch', workflow: 'rdf', target: null })
   })
 
+  it("names the workflow's own store and standard flow, as the workflow list does", async () => {
+    // Only RDF is built; nothing in the strip is RDF's own.
+    route.path = '/omop'
+    route.meta = { workflow: 'omop' }
+    const { wrapper } = mountBar()
+    const projectPart = wrapper.find('#statusbar-project')
+
+    expect(reads(wrapper.find('#statusbar-store'))).toMatch(/^OMOP database · userRepo · /)
+    expect(reads(projectPart)).toBe('No project · Choose a project · Exit OMOP')
+    expect(await tipOf(projectPart)).toContain('the standard OMOP flow')
+  })
+
   it('offers to switch an open project', async () => {
     const { wrapper, project } = mountBar({ project: { name: 'AYA mapping' } })
 

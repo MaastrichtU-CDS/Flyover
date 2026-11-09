@@ -179,6 +179,15 @@ describe('MapUploadDialog', () => {
     expect(answers).toEqual(['open'])
   })
 
+  it("names the tab's workflow and its store, as the workflow list does", () => {
+    // Only RDF is built; nothing in the question's words is RDF's own.
+    useProjectStore().enterWorkflow('omop')
+    ;({ wrapper } = setUp(question('other-store')))
+
+    expect(wrapper.find('#upload-question-title').text()).toBe('Switch to another OMOP database?')
+    expect(wrapper.text()).toContain('Its OMOP database: repository aya')
+  })
+
   it('asks before replacing a working copy with describe answers in it', () => {
     ;({ wrapper } = setUp(question('same-project')))
 

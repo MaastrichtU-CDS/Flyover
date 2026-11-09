@@ -38,13 +38,15 @@ const otherWorkflow = computed(() => workflowById(question.value?.standard) || {
 const thisWorkflow = computed(
   () => workflowById(tabWorkflow.value || DEFAULT_TARGET_STANDARD) || {}
 )
+// The tab's store, as the workflow list names it.
+const storeLabel = computed(() => thisWorkflow.value.storeLabel || 'store')
 
 const title = computed(
   () =>
     ({
       'no-project': `Open ${incomingLabel.value} as a project?`,
       'other-project': `Switch to ${incomingLabel.value}?`,
-      'other-store': 'Switch to another RDF store?',
+      'other-store': `Switch to another ${storeLabel.value}?`,
       'other-standard': `This JSON-LD is for the ${otherWorkflow.value.label} workflow`,
     })[kind.value] || "Replace the project's working copy?"
 )
@@ -127,11 +129,11 @@ async function download() {
           <p>
             <strong>{{ fileName }}</strong> belongs to the project
             <strong>{{ incomingLabel }}</strong>. Open it as the project, and Flyover works
-            on the RDF store its map names.
+            on the {{ storeLabel }} its map names.
           </p>
           <p>
-            Or keep going without a project: the standard RDF flow on Flyover's configured
-            RDF store<template v-if="configuredStore">
+            Or keep going without a project: the standard {{ thisWorkflow.label }} flow on
+            Flyover's configured {{ storeLabel }}<template v-if="configuredStore">
               (repository <strong>{{ configuredStore.repository }}</strong>)
             </template>, with this map, as before.
           </p>
@@ -156,8 +158,8 @@ async function download() {
         </template>
         <template v-else-if="kind === 'other-store'">
           <p>
-            <strong>{{ fileName }}</strong> belongs to the open project, but names another RDF
-            store. Switching moves Flyover to that store, where the data in the current one
+            <strong>{{ fileName }}</strong> belongs to the open project, but names another
+            {{ storeLabel }}. Switching moves Flyover to that store, where the data in the current one
             stays, and replaces the project's working copy.
           </p>
           <p>Keeping the current store sets this upload aside.</p>
@@ -174,7 +176,7 @@ async function download() {
           v-if="kind !== 'other-standard'"
           class="small text-muted upload-question-store"
         >
-          <i class="fas fa-database" /> Its RDF store: repository
+          <i class="fas fa-database" /> Its {{ storeLabel }}: repository
           <strong>{{ incomingStore.repository }}</strong> ·
           <span class="upload-question-url">{{ incomingStore.url }}</span>
         </p>

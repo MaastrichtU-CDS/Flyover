@@ -36,6 +36,9 @@ function detail(wrapper) {
 describe('StoreWait', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    // A step of the RDF workflow, as the route table has it.
+    route.path = '/describe'
+    route.meta = { workflow: 'rdf', needsStore: true }
   })
 
   it('says Flyover waits for a project choice, without dots', () => {
@@ -81,6 +84,17 @@ describe('StoreWait', () => {
     )
     await wrapper.get('button').trigger('click')
     expect(start).toHaveBeenCalledOnce()
+  })
+
+  it("names the store of the workflow whose page waits, as the workflow list does", () => {
+    route.meta = { workflow: 'omop', needsStore: true }
+
+    const starting = mount(StoreWait, { props: { reason: 'starting' } })
+    const stopped = mount(StoreWait, { props: { reason: 'stopped' } })
+
+    expect(title(starting)).toMatch(/^Starting the OMOP database/)
+    expect(title(stopped)).toBe('The OMOP database is not running')
+    expect(stopped.get('button').text()).toBe('Start the OMOP database')
   })
 })
 

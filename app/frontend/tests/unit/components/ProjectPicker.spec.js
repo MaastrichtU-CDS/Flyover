@@ -709,6 +709,26 @@ describe('ProjectPicker', () => {
     })
   })
 
+  it("names the workflow it asks for, and that workflow's store", async () => {
+    // Only RDF is built; nothing in the pop-up's words is RDF's own.
+    route.path = '/'
+    route.meta = {}
+    const project = useProjectStore()
+    await project.init()
+    project.openPicker('enter', { workflow: 'omop', target: '/omop' })
+    wrapper = mount(ProjectPicker, { attachTo: document.body })
+    await flushPromises()
+
+    const standard = wrapper.find('.project-picker-standard .project-picker-option-text')
+    expect(standard.text().replace(/\s+/g, ' ')).toBe(
+      "The standard OMOP flow, on Flyover's configured OMOP database (repository userRepo)"
+    )
+    await wrapper.find('#project-picker-open').trigger('click')
+    expect(wrapper.text()).toContain(
+      "Flyover then works on the OMOP database that the project's map names."
+    )
+  })
+
   it('makes every choice for the workflow it was opened for', async () => {
     // Only RDF is built, but nothing in the choice is RDF's own.
     route.path = '/'
