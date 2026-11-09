@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { reactive, ref } from 'vue'
 
-// The bar under the status strip: the workflows on the home page, and
-// "RDF home" with the steps inside the RDF workflow.
+// The bar under the status strip: the workflows on the home page, and Home
+// (the RDF landing) with the steps inside the RDF workflow.
 
 const route = reactive({ path: '/', meta: {} })
 const router = { push: vi.fn() }
@@ -49,6 +49,7 @@ function labels(wrapper) {
 describe('AppNav', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
   })
 
   it('offers the workflows on the home page, and no steps or Home', () => {
@@ -102,14 +103,31 @@ describe('AppNav', () => {
     expect(router.push).not.toHaveBeenCalled()
   })
 
-  it('shows RDF home and the steps inside the RDF workflow', () => {
+  it('shows Home, the RDF landing, and the steps inside the RDF workflow', () => {
     route.path = '/rdf'
     route.meta = { workflow: 'rdf' }
     const wrapper = mount(AppNav)
 
-    expect(labels(wrapper)).toEqual(['RDF home', 'Ingest', 'Describe', 'Annotate', 'Share'])
-    expect(wrapper.find('#rdf-home-step').attributes('href')).toBe('/rdf')
-    expect(wrapper.find('#rdf-home-step').classes()).toContain('active')
+    expect(labels(wrapper)).toEqual(['Home', 'Ingest', 'Describe', 'Annotate', 'Share'])
+    const home = wrapper.find('#rdf-home-step')
+    expect(home.attributes('href')).toBe('/rdf')
+    expect(home.find('i').classes()).toContain('fa-home')
+    expect(home.classes()).toContain('active')
     expect(wrapper.find('#home-step').exists()).toBe(false)
+  })
+
+  it('points to Exit RDF when Home is clicked, as Home stays in the workflow', async () => {
+    route.path = '/ingest'
+    route.meta = { workflow: 'rdf' }
+    const wrapper = mount(AppNav)
+    const workflows = useWorkflowsStore()
+
+    await wrapper.find('#rdf-home-step').trigger('click')
+    expect(workflows.exitNotice).toBe(true)
+
+    // Once the user clicked "Got it", Home is just Home.
+    workflows.closeExitNotice({ acknowledged: true })
+    await wrapper.find('#rdf-home-step').trigger('click')
+    expect(workflows.exitNotice).toBe(false)
   })
 })

@@ -1,7 +1,8 @@
 <script setup>
-// The RDF workflow's own landing page ("RDF home"): its four steps, each a
-// tile. The home page (HomeView) offers the workflows; this one opens once
-// a user chose RDF there.
+// The RDF workflow's own landing page, "Flyover × RDF" (Home in the
+// workflow's navigation bar): its four steps, each a tile. The home page
+// (HomeView) offers the workflows; this one opens once a user chose RDF
+// there.
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNavigation } from '@/composables/useNavigation'
@@ -97,14 +98,11 @@ function open(card) {
   <div>
     <div class="hero-section">
       <h1 class="hero-title">
-        The RDF workflow
+        Flyover × RDF
       </h1>
-      <p class="hero-subtitle">
-        Transform your data into F.A.I.R. semantically interoperable resources
-      </p>
-      <p class="mb-0">
-        Transform your data into F.A.I.R. semantically interoperable Resource Description
-        Framework (RDF) triples through our guided four-step process
+      <p class="hero-subtitle mb-0">
+        Transform your data into Resource Description Framework (RDF) triples through our
+        guided four-step process
       </p>
     </div>
 

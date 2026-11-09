@@ -105,8 +105,11 @@ test.describe('Projects', () => {
     await dialog.getByRole('button', { name: 'Continue without a project' }).click()
     await expect(dialog).toBeHidden()
     await expect(page).toHaveURL(/\/rdf$/)
-    await expect(heading(page)).toContainText('The RDF workflow')
-    await expect(page.locator('#rdf-home-step')).toBeVisible()
+    await expect(heading(page)).toHaveText('Flyover × RDF')
+    await expect(page.locator('.hero-section p')).toHaveText(
+      'Transform your data into Resource Description Framework (RDF) triples through our guided four-step process'
+    )
+    await expect(page.locator('#rdf-home-step')).toHaveText('Home')
     await expect(page.locator('#ingest-step')).toBeVisible()
     await expect(statusBar(page)).toContainText('No project')
     await expect(statusBar(page)).toContainText(/RDF store\s*·\s*userRepo/)
@@ -122,6 +125,34 @@ test.describe('Projects', () => {
     await otherTab.goto('/describe')
     await expect(picker(otherTab)).toBeVisible()
     await expect(otherTab.locator('.store-wait')).toContainText('Waiting for a project choice')
+  })
+
+  test('Home inside RDF points to Exit RDF, until the user clicks "Got it"', async ({ page }) => {
+    await page.goto('/rdf')
+    await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
+    await expect(picker(page)).toBeHidden()
+
+    await page.locator('#ingest-step').click()
+    await page.locator('#rdf-home-step').click()
+    await expect(page).toHaveURL(/\/rdf$/)
+    const notice = statusBar(page).locator('.statusbar-exit .suggestion-coachmark')
+    await expect(notice).toBeVisible()
+    await expect(notice).toContainText("This is the RDF workflow's home")
+    await expect(notice).toContainText('click Exit RDF')
+
+    // Moving on hides it; it shows again from Home, until acknowledged.
+    await page.locator('#ingest-step').click()
+    await expect(notice).toHaveCount(0)
+    await page.locator('#rdf-home-step').click()
+    await expect(notice).toBeVisible()
+    await notice.getByRole('button', { name: 'Got it' }).click()
+    await expect(notice).toHaveCount(0)
+
+    await page.locator('#ingest-step').click()
+    await page.locator('#rdf-home-step').click()
+    await expect(page).toHaveURL(/\/rdf$/)
+    await expect(heading(page)).toHaveText('Flyover × RDF')
+    await expect(notice).toHaveCount(0)
   })
 
   test('Exit RDF goes home; entering again offers the remembered project first', async ({

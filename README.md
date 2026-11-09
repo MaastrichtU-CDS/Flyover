@@ -111,7 +111,8 @@ pattern: a directory, a `compose.yml` pulled in via `include:`, and a Compose pr
 ## Workflow
 
 Flyover's home page offers its workflows: **RDF**, and **OMOP** and **CSV**, which are under development. The RDF
-workflow has its own home page, **RDF home**, and guides you through four distinct steps:
+workflow has its own landing page, **Flyover × RDF** (**Home** in its navigation bar), and guides you through four
+distinct steps:
 
 1. **Ingest** — Upload your data (CSV files or connect to a relational database). Flyover converts your data into a
    structured, semantic representation and stores it in the graph database.
@@ -147,7 +148,9 @@ Cancelling leaves you on the home page, or takes you back to it.
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
 (red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it,
 and **Exit RDF**, which goes back to the home page: the project stays remembered, to be offered first when you enter
-again, and its store keeps running. On the home page the strip names neither store nor project. Until you choose, it says **Waiting for a project choice**. While the store starts it says **Starting** (amber dot),
+again, and its store keeps running. **Home** in the workflow's navigation bar stays inside the workflow, so clicking it
+shows a small notice beside **Exit RDF** on how to leave, each time until you click **Got it**. On the home page the
+strip names neither store nor project. Until you choose, it says **Waiting for a project choice**. While the store starts it says **Starting** (amber dot),
 and the step pages that use the store wait in their place, opening once it answers; a page already open stays as it
 is. A store someone stopped reads **Stopped**, with a **Start** button there and on the pages that need it. Flyover checks the connection every minute while its tab is visible (every two seconds while the store starts), on
 every step, and when you click the status.

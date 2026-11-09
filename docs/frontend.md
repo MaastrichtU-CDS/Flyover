@@ -22,7 +22,7 @@ app/frontend/
     ├── router/index.js              # the 12 routes (lazy-loaded); meta.workflow on the RDF pages, meta.needsStore on those that use the store
     ├── views/                       # one component per route
     │   ├── HomeView.vue             # the home page: the workflows (RDF; OMOP and CSV under development)
-    │   ├── RdfLandingView.vue       # "RDF home": the RDF workflow's four steps, as tiles
+    │   ├── RdfLandingView.vue       # "Flyover × RDF", the RDF workflow's landing: its four steps, as tiles
     │   ├── IngestView.vue
     │   ├── DescribeLandingView.vue
     │   ├── DescribeVariablesView.vue
@@ -41,7 +41,7 @@ app/frontend/
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
     │   ├── HoverTip.vue             # the app's tooltip (the home tiles' style, .bootstrap-tooltip)
-    │   ├── AppNav.vue               # the workflows on the home page; RDF home and the steps inside RDF
+    │   ├── AppNav.vue               # the workflows on the home page; Home (the RDF landing) and the steps inside RDF
     │   ├── AppFooter.vue
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
     │   └── MigrationStub.vue        # legacy placeholder, gone soon
@@ -57,7 +57,7 @@ app/frontend/
     │   └── browser.js               # reloadPage() and loadPage(), kept apart so tests can stand in for them
     ├── stores/
     │   ├── project.js               # Pinia store: the open project, kept in step with the server
-    │   ├── workflows.js             # Pinia store: the note a workflow under development shows
+    │   ├── workflows.js             # Pinia store: the note a workflow under development shows, the notice beside Exit
     │   ├── storeDatasets.js         # Pinia store: the datasets panel's list, question and deletes
     │   └── status.js                # Pinia store: toast/banner messages
     └── services/

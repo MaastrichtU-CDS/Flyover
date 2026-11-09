@@ -4,16 +4,20 @@ import { RouterLink, useRoute } from 'vue-router'
 import { useNavigation } from '@/composables/useNavigation'
 import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
 import { WORKFLOWS } from '@/lib/workflows'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 // The bar under the status strip. On the home page it offers the workflows,
 // which ask for the project before they open (see useWorkflowEntry), and no
 // Home item: every item leads away from the page it would point to. Inside
-// the RDF workflow it shows "RDF home" and the workflow's steps, which
-// another workflow may not share.
+// the RDF workflow it shows Home, the workflow's own landing page, and the
+// workflow's steps, which another workflow may not share. As Home stays
+// inside the workflow, a click on it shows the notice beside Exit RDF (see
+// the workflows store).
 
 const route = useRoute()
 const { stepStates } = useNavigation()
 const { enter } = useWorkflowEntry()
+const workflows = useWorkflowsStore()
 
 const inRdf = computed(() => route.meta?.workflow === 'rdf')
 </script>
@@ -30,11 +34,12 @@ const inRdf = computed(() => route.meta?.workflow === 'rdf')
           to="/rdf"
           class="nav-step"
           :class="{ active: route.path === '/rdf' }"
+          @click="workflows.showExitNotice()"
         >
           <span class="step-number">
-            <i class="fas fa-project-diagram step-icon-header" />
+            <i class="fas fa-home step-icon-header" />
           </span>
-          <span class="step-text">RDF home</span>
+          <span class="step-text">Home</span>
         </RouterLink>
 
         <span class="step-separator">|</span>

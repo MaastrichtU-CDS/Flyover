@@ -22,6 +22,7 @@ vi.mock('@/composables/useNavigation', () => ({
 
 import ProjectStatusBar from '@/components/ProjectStatusBar.vue'
 import { useProjectStore } from '@/stores/project'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 // The strip above the step bar says which RDF store Flyover works on,
 // whether it answers, and which project is open; on the home page, that no
@@ -61,6 +62,7 @@ function mountBar(state = {}) {
 describe('ProjectStatusBar', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
     route.path = '/describe'
     route.meta = { workflow: 'rdf' }
     router.push.mockClear()
@@ -328,6 +330,54 @@ describe('ProjectStatusBar', () => {
     expect(router.push).toHaveBeenCalledWith('/')
     expect(project.project).toEqual({ name: 'AYA mapping' })
     expect(project.store).toEqual(CONFIGURED)
+  })
+
+  describe('the notice beside Exit RDF', () => {
+    beforeEach(() => {
+      route.path = '/rdf'
+    })
+
+    it('says how to leave the workflow, in the mapping suggestions\' callout', async () => {
+      const { wrapper } = mountBar()
+      useWorkflowsStore().showExitNotice()
+      await flushPromises()
+
+      const notice = wrapper.find('.statusbar-exit .suggestion-coachmark')
+      expect(notice.exists()).toBe(true)
+      expect(notice.classes()).toContain('is-end')
+      expect(notice.find('.coachmark-title').text()).toBe("This is the RDF workflow's home")
+      expect(notice.find('.coachmark-body').text()).toBe(
+        "To leave the workflow and go back to Flyover's home page, click Exit RDF."
+      )
+    })
+
+    it('stays away once the user clicked "Got it"', async () => {
+      const { wrapper } = mountBar()
+      const workflows = useWorkflowsStore()
+      workflows.showExitNotice()
+      await flushPromises()
+
+      await wrapper.get('.statusbar-exit .coachmark-confirm').trigger('click')
+
+      expect(wrapper.find('.suggestion-coachmark').exists()).toBe(false)
+      workflows.showExitNotice()
+      await flushPromises()
+      expect(wrapper.find('.suggestion-coachmark').exists()).toBe(false)
+    })
+
+    it('goes once the user moves on to a step, to show again next time', async () => {
+      const { wrapper } = mountBar()
+      const workflows = useWorkflowsStore()
+      workflows.showExitNotice()
+      await flushPromises()
+
+      route.path = '/ingest'
+      await flushPromises()
+
+      expect(wrapper.find('.suggestion-coachmark').exists()).toBe(false)
+      workflows.showExitNotice()
+      expect(workflows.exitNotice).toBe(true)
+    })
   })
 
   describe('on the home page', () => {

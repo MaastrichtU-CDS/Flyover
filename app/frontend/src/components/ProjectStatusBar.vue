@@ -4,9 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import HoverTip from '@/components/HoverTip.vue'
 import StoreDatasetsMenu from '@/components/StoreDatasetsMenu.vue'
+import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 import { useCyclingDots } from '@/composables/useCyclingDots'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 import { useStoreDatasetsStore } from '@/stores/storeDatasets'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 // The strip above the step bar: which RDF store Flyover works on (and
 // where it stands; a click on it opens its datasets), which project is
@@ -42,6 +45,21 @@ function exitWorkflow() {
   projectStore.exitWorkflow()
   router.push('/')
 }
+
+// The notice beside Exit (see the workflows store): "Home" in the
+// navigation bar shows it on the workflow's landing page, and it goes once
+// the user moves on.
+const workflows = useWorkflowsStore()
+const { exitNotice } = storeToRefs(workflows)
+const workflowName = computed(() => workflowById(route.meta?.workflow)?.label || '')
+watch(
+  () => route.path,
+  (path) => {
+    if (exitNotice.value && path !== workflowById(route.meta?.workflow)?.to) {
+      workflows.closeExitNotice()
+    }
+  }
+)
 // The work uses no database (none does yet: a later workflow may keep
 // everything in memory).
 const noDatabase = computed(() => storeStatus.value.state === 'none')
@@ -246,17 +264,26 @@ const projectTip = computed(() => {
           {{ project ? 'Switch project' : 'Choose a project' }}
         </button>
         <span aria-hidden="true">·</span>
-        <button
-          id="statusbar-exit"
-          type="button"
-          class="statusbar-link"
-          @click="exitWorkflow"
-        >
-          <i
-            class="fas fa-right-from-bracket"
-            aria-hidden="true"
-          /> Exit RDF
-        </button>
+        <span class="statusbar-exit">
+          <button
+            id="statusbar-exit"
+            type="button"
+            class="statusbar-link"
+            @click="exitWorkflow"
+          >
+            <i
+              class="fas fa-right-from-bracket"
+              aria-hidden="true"
+            /> Exit {{ workflowName }}
+          </button>
+          <SuggestionCoachmark
+            v-if="exitNotice"
+            align="end"
+            :title="`This is the ${workflowName} workflow's home`"
+            :body="`To leave the workflow and go back to Flyover's home page, click Exit ${workflowName}.`"
+            @close="workflows.closeExitNotice($event)"
+          />
+        </span>
       </span>
     </div>
   </div>
@@ -290,6 +317,12 @@ const projectTip = computed(() => {
 
 .statusbar-item strong {
   color: #fff;
+}
+
+/* The anchor of the notice beside Exit. */
+.statusbar-exit {
+  position: relative;
+  display: inline-flex;
 }
 
 .statusbar-link {
