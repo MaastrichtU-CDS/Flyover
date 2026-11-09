@@ -64,7 +64,7 @@ describe('HomeView', () => {
     const features = (id) => tile(id).findAll('.step-features li').map((item) => item.text())
 
     expect(tile('rdf').find('.step-description').text()).toBe(
-      'Transform your data to F.A.I.R. resources using the flexibility of RDF, coupled with an RDF store.'
+      'Transform your data into knowledge graphs using the flexibility of RDF, coupled with an RDF store.'
     )
     // RDF's flexibility against OMOP's standards, point for point.
     expect(features('rdf')).toEqual([

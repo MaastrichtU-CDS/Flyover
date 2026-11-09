@@ -28,7 +28,7 @@ export const WORKFLOWS = [
       whiten: true,
     },
     description:
-      'Transform your data to F.A.I.R. resources using the flexibility of RDF, coupled with an RDF store.',
+      'Transform your data into knowledge graphs using the flexibility of RDF, coupled with an RDF store.',
     features: ['Flexible vocabularies', 'Flexible data schemas', 'Enables complex reasoning'],
     note: [
       [
