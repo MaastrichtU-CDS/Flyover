@@ -14,6 +14,12 @@ body {
   flex: 1;
 }
 
+/* The start buttons' long label wraps on a narrow screen instead of running
+   past its card: Bootstrap's .btn never wraps. */
+.cta-section .btn {
+  white-space: normal;
+}
+
 .placeholder-note {
   color: #888;
   font-style: italic;
