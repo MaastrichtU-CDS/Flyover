@@ -107,6 +107,9 @@ export const useProjectStore = defineStore('project', () => {
   // waiting | starting | stopped | reachable | unreachable | none) and
   // whether a check is under way.
   const storeStatus = ref({ state: 'unknown', reason: '', checking: false })
+  // Whether Flyover may start and stop the store in use: its own local
+  // store, where the stack runs a launcher.
+  const storeManaged = ref(false)
   // How many answers about the store have come in, to wait for a fresh one.
   const storeAnswers = ref(0)
   // The pop-up: 'enter' when a tab enters the RDF workflow, 'switch' from
@@ -323,7 +326,26 @@ export const useProjectStore = defineStore('project', () => {
     afterStoreAnswer(before)
   }
 
-  // The server's answer about the store: its state, why, and the store.
+  // Stop the store in use at the user's request, as they leave the workflow
+  // (see ExitWorkflowDialog): Flyover never stops a store on its own. Throws
+  // the API error, so the dialog can say why.
+  async function stopStore() {
+    const request = ++statusRequest
+    storeStatus.value = { ...storeStatus.value, checking: true }
+    const before = storeStatus.value.state
+    try {
+      const { data } = await api.post('/api/v1/project/store-stop')
+      if (request !== statusRequest) return
+      takeStoreAnswer(data)
+    } catch (e) {
+      if (request === statusRequest) storeStatus.value = { ...storeStatus.value, checking: false }
+      throw e
+    }
+    afterStoreAnswer(before)
+  }
+
+  // The server's answer about the store: its state, why, whether Flyover
+  // runs it, and the store.
   function takeStoreAnswer(data) {
     const state = STORE_STATES.includes(data?.state)
       ? data.state
@@ -331,6 +353,7 @@ export const useProjectStore = defineStore('project', () => {
         ? 'reachable'
         : 'unreachable'
     storeStatus.value = { state, reason: data?.reason || '', checking: false }
+    storeManaged.value = Boolean(data?.managed)
     if (data?.store) store.value = data.store
   }
 
@@ -640,6 +663,7 @@ export const useProjectStore = defineStore('project', () => {
     configuredStore,
     route,
     storeStatus,
+    storeManaged,
     picker,
     workflow,
     uploadQuestion,
@@ -649,6 +673,7 @@ export const useProjectStore = defineStore('project', () => {
     load,
     refreshStoreStatus,
     startStore,
+    stopStore,
     whenStoreReady,
     stopStatusChecks,
     openProject,

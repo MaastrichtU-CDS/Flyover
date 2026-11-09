@@ -39,10 +39,10 @@ const waiting = computed(
     (picker.value.open && picker.value.mode === 'enter')
 )
 
-// Leave the workflow for the home page; the store keeps running and the
+// Leave the workflow for the home page. App.vue asks first whether to keep
+// the store running, and the tab leaves the workflow once it is there; the
 // project stays remembered.
 function exitWorkflow() {
-  projectStore.exitWorkflow()
   router.push('/')
 }
 

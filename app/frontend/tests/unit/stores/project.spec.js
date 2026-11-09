@@ -1072,6 +1072,64 @@ describe('the project store', () => {
       expect(project.storeStatus).toEqual({ state: 'starting', reason: '', checking: false })
     })
 
+    it('knows whether Flyover runs the store, from every answer about it', async () => {
+      serveStates(['reachable'], { route: 'standard' })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('reachable'))
+      expect(project.storeManaged).toBe(false)
+
+      api.get.mockImplementation(async (url) => {
+        if (url === '/api/v1/project') {
+          return { data: { project: null, route: 'standard', store: CONFIGURED, configuredStore: CONFIGURED } }
+        }
+        return { data: { state: 'reachable', reachable: true, reason: '', managed: true, store: CONFIGURED } }
+      })
+      await project.refreshStoreStatus()
+
+      expect(project.storeManaged).toBe(true)
+    })
+
+    it('stops the store when the user asks, as they leave, and follows it', async () => {
+      serveStates(['reachable'], { route: 'standard' })
+      api.post.mockImplementation(async (url) => {
+        if (url !== '/api/v1/project/store-stop') throw new Error(url)
+        return {
+          data: {
+            state: 'stopped',
+            reachable: false,
+            reason: 'The RDF store is not running.',
+            managed: true,
+            store: CONFIGURED,
+          },
+        }
+      })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('reachable'))
+
+      await project.stopStore()
+
+      expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-stop')
+      expect(project.storeStatus).toEqual({
+        state: 'stopped',
+        reason: 'The RDF store is not running.',
+        checking: false,
+      })
+    })
+
+    it('hands a refused stop to the one asking, and keeps what it knew', async () => {
+      serveStates(['reachable'], { route: 'standard' })
+      api.post.mockRejectedValue({ response: { status: 502, data: { error: 'Docker is busy' } } })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('reachable'))
+
+      await expect(project.stopStore()).rejects.toBeTruthy()
+
+      expect(project.storeStatus).toEqual({ state: 'reachable', reason: '', checking: false })
+    })
+
     it('says so when the store cannot be started, and keeps what it knew', async () => {
       serveStates(['stopped'], { route: 'standard' })
       api.post.mockRejectedValue({ response: { status: 409, data: { error: 'Choose first.' } } })

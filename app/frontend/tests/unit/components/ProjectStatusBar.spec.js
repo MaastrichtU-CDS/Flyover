@@ -320,16 +320,17 @@ describe('ProjectStatusBar', () => {
     expect(await tipOf(projectPart)).toContain('From: https://example.org/aya.jsonld')
   })
 
-  it('exits the RDF workflow for the home page, keeping the project and its store', async () => {
+  it('exits the RDF workflow for the home page, keeping the project', async () => {
     const { wrapper, project } = mountBar({ project: { name: 'AYA mapping' } })
     const exit = vi.spyOn(project, 'exitWorkflow')
 
     await wrapper.get('#statusbar-exit').trigger('click')
 
-    expect(exit).toHaveBeenCalledOnce()
+    // App.vue asks about the store on the way, and leaves the workflow once
+    // the home page shows: the button only goes there.
     expect(router.push).toHaveBeenCalledWith('/')
+    expect(exit).not.toHaveBeenCalled()
     expect(project.project).toEqual({ name: 'AYA mapping' })
-    expect(project.store).toEqual(CONFIGURED)
   })
 
   describe('the notice beside Exit RDF', () => {

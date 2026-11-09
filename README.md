@@ -147,8 +147,10 @@ Cancelling leaves you on the home page, or takes you back to it.
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
 (red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it,
-and **Exit RDF**, which goes back to the home page: the project stays remembered, to be offered first when you enter
-again, and its store keeps running. **Home** in the workflow's navigation bar stays inside the workflow, so clicking it
+and **Exit RDF**, which goes back to the home page. Leaving the workflow, by **Exit RDF** or the browser's Back button,
+asks whether to keep the RDF store running or stop it, when the store is Flyover's own and runs: **Keep it running**,
+**Stop the RDF store** (its data stays, but nothing can query it until it starts again), or **Stay**. The project stays remembered, to be offered first when you
+enter again. **Home** in the workflow's navigation bar stays inside the workflow, so clicking it
 shows a small notice beside **Exit RDF** on how to leave, each time until you click **Got it**. On the home page the
 strip names neither store nor project. Until you choose, it says **Waiting for a project choice**. While the store starts it says **Starting** (amber dot),
 and the step pages that use the store wait in their place, opening once it answers; a page already open stays as it

@@ -13,16 +13,20 @@ function exitNoticeSeen() {
   }
 }
 
-// The notes the workflows show:
+// The notes and questions of the workflows:
 // - `soon`: the note a workflow that is not built yet (OMOP, CSV) shows,
 //   from its tile on the home page or its item in the navigation bar;
 // - `exitNotice`: the notice beside Exit in the status bar, which says how
 //   to leave the workflow. "Home" in a workflow's navigation bar leads to
 //   the workflow's own landing page, so a click on it shows the notice,
-//   every time, until the user clicks "Got it".
+//   every time, until the user clicks "Got it";
+// - `exitQuestion`: leaving a workflow for the home page asks whether to
+//   keep its store running or stop it (see App.vue and ExitWorkflowDialog):
+//   `{ workflow, resolve }` while it waits for the answer.
 export const useWorkflowsStore = defineStore('workflows', () => {
   const soon = shallowRef(null)
   const exitNotice = ref(false)
+  const exitQuestion = shallowRef(null)
 
   function showSoon(id) {
     soon.value = workflowById(id)
@@ -47,5 +51,33 @@ export const useWorkflowsStore = defineStore('workflows', () => {
     }
   }
 
-  return { soon, showSoon, closeSoon, exitNotice, showExitNotice, closeExitNotice }
+  // Resolves with the answer: 'keep' (the store keeps running), 'stopped'
+  // (the dialog stopped it) or 'stay' (the user stays in the workflow). The
+  // notice beside Exit closes: the user did what it says, and it would sit
+  // over the question. It does not count as "Got it".
+  function askExit(workflow) {
+    closeExitNotice()
+    exitQuestion.value?.resolve('stay')
+    return new Promise((resolve) => {
+      exitQuestion.value = { workflow, resolve }
+    })
+  }
+
+  function answerExit(answer) {
+    const question = exitQuestion.value
+    exitQuestion.value = null
+    question?.resolve(answer)
+  }
+
+  return {
+    soon,
+    showSoon,
+    closeSoon,
+    exitNotice,
+    showExitNotice,
+    closeExitNotice,
+    exitQuestion,
+    askExit,
+    answerExit,
+  }
 })

@@ -53,6 +53,42 @@ describe('the workflows store', () => {
     expect(later.exitNotice).toBe(false)
   })
 
+  it('asks whether to keep the store running as a user leaves, and hands on the answer', async () => {
+    const workflows = useWorkflowsStore()
+
+    const asked = workflows.askExit({ id: 'rdf', label: 'RDF' })
+    expect(workflows.exitQuestion.workflow.label).toBe('RDF')
+
+    workflows.answerExit('keep')
+    expect(await asked).toBe('keep')
+    expect(workflows.exitQuestion).toBe(null)
+  })
+
+  it('closes the notice beside Exit as it asks, without counting it as read', () => {
+    const workflows = useWorkflowsStore()
+    workflows.showExitNotice()
+
+    // The user did what the notice says: it must not sit over the question.
+    workflows.askExit({ id: 'rdf', label: 'RDF' })
+    expect(workflows.exitNotice).toBe(false)
+
+    workflows.answerExit('stay')
+    workflows.showExitNotice()
+    expect(workflows.exitNotice).toBe(true)
+    expect(localStorage.getItem('flyover.exitNoticeSeen')).toBe(null)
+  })
+
+  it('lets a second question replace one still open, which then stays', async () => {
+    const workflows = useWorkflowsStore()
+
+    const first = workflows.askExit({ id: 'rdf', label: 'RDF' })
+    const second = workflows.askExit({ id: 'rdf', label: 'RDF' })
+    workflows.answerExit('stopped')
+
+    expect(await first).toBe('stay')
+    expect(await second).toBe('stopped')
+  })
+
   it('still shows and closes the notice where the browser keeps nothing', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('SecurityError')

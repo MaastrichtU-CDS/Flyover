@@ -1,8 +1,9 @@
 <script setup>
-import { onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import AppFooter from '@/components/AppFooter.vue'
+import ExitWorkflowDialog from '@/components/ExitWorkflowDialog.vue'
 import MapUploadDialog from '@/components/MapUploadDialog.vue'
 import ProjectPicker from '@/components/ProjectPicker.vue'
 import ProjectStatusBar from '@/components/ProjectStatusBar.vue'
@@ -10,10 +11,14 @@ import StatusBanner from '@/components/StatusBanner.vue'
 import StoreWait from '@/components/StoreWait.vue'
 import WorkflowSoonDialog from '@/components/WorkflowSoonDialog.vue'
 import { useStoreGate } from '@/composables/useStoreGate'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 const project = useProjectStore()
+const workflows = useWorkflowsStore()
 const route = useRoute()
+const router = useRouter()
 // A page that needs the store waits for it in its place, or says above it
 // why the store cannot be reached (see useStoreGate).
 const { waitingFor, trouble } = useStoreGate()
@@ -43,6 +48,21 @@ watch(
   },
   { immediate: true }
 )
+
+// Leaving the workflow for the home page, by Exit RDF, the Back button or
+// otherwise, first asks whether to keep the workflow's store running or stop
+// it (see ExitWorkflowDialog): only for a tab inside the workflow, and only
+// when the store is Flyover's own and runs. The navigation waits for the
+// answer; "Stay" cancels it.
+const RUNNING = ['reachable', 'starting', 'unreachable']
+const removeExitGuard = router.beforeEach(async (to, from) => {
+  const workflow = from.meta?.workflow
+  if (!workflow || to.meta?.workflow || project.workflow !== workflow) return true
+  if (!project.storeManaged || !RUNNING.includes(project.storeStatus.state)) return true
+  const answer = await workflows.askExit(workflowById(workflow))
+  return answer !== 'stay'
+})
+onBeforeUnmount(removeExitGuard)
 
 // A tab that comes back to the home page, by Exit RDF or otherwise, has left
 // the workflow, and is asked again when it enters it again. Only arriving
@@ -82,5 +102,6 @@ watch(
     <ProjectPicker />
     <MapUploadDialog />
     <WorkflowSoonDialog />
+    <ExitWorkflowDialog />
   </div>
 </template>

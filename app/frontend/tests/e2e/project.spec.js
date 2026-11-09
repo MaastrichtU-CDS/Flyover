@@ -127,6 +127,42 @@ test.describe('Projects', () => {
     await expect(otherTab.locator('.store-wait')).toContainText('Waiting for a project choice')
   })
 
+  test('leaving RDF asks whether to keep the RDF store running, the Back button too', async ({
+    page,
+  }) => {
+    // The stack's real store keeps running for the specs that follow: the
+    // stop is answered here, as the server would.
+    let stops = 0
+    await page.route('**/api/v1/project/store-stop', async (route) => {
+      stops += 1
+      await route.fulfill({
+        json: { state: 'stopped', reachable: false, reason: '', managed: true },
+      })
+    })
+    await page.goto('/')
+    await page.locator('#rdf-card').click()
+    await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
+    await expect(page).toHaveURL(/\/rdf$/)
+    const question = page.getByRole('dialog', { name: 'Leave the RDF workflow?' })
+
+    // The Back button asks; Stay keeps the user in the workflow.
+    await page.goBack()
+    await expect(question).toBeVisible()
+    await expect(question).toContainText('Do you want to keep the RDF store running')
+    await expect(question).toContainText('Once stopped, the RDF store cannot be queried')
+    await question.getByRole('button', { name: 'Stay' }).click()
+    await expect(question).toBeHidden()
+    await expect(page).toHaveURL(/\/rdf$/)
+    await expect(heading(page)).toHaveText('Flyover × RDF')
+
+    // Exit RDF asks too; stopping the store goes home.
+    await statusBar(page).getByRole('button', { name: 'Exit RDF' }).click()
+    await question.getByRole('button', { name: 'Stop the RDF store' }).click()
+    await expect(question).toBeHidden()
+    await expect(page).toHaveURL(/\/$/)
+    expect(stops).toBe(1)
+  })
+
   test('Home inside RDF points to Exit RDF, until the user clicks "Got it"', async ({ page }) => {
     await page.goto('/rdf')
     await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
@@ -163,6 +199,11 @@ test.describe('Projects', () => {
     await expect(statusBar(page)).toContainText(CENTRE_A)
 
     await statusBar(page).getByRole('button', { name: 'Exit RDF' }).click()
+    // Flyover runs this stack's store, so leaving asks about it.
+    await page
+      .getByRole('dialog', { name: 'Leave the RDF workflow?' })
+      .getByRole('button', { name: 'Keep it running' })
+      .click()
     await expect(page).toHaveURL(/\/$/)
     await expect(statusBar(page)).toHaveText(/Choose a workflow to begin/)
     // Leaving the workflow keeps the project open on the server.

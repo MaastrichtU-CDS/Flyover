@@ -21,6 +21,7 @@ vi.mock('@/composables/useNavigation', () => ({ refreshDataExists: vi.fn(async (
 import api from '@/services/api'
 import App from '@/App.vue'
 import { useProjectStore } from '@/stores/project'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 const CONFIGURED = {
   kind: 'rdf-store',
@@ -31,8 +32,10 @@ const CONFIGURED = {
 }
 
 let mounts = 0
-// What the server says of its store: 'reachable' when another tab chose.
+// What the server says of its store: 'reachable' when another tab chose;
+// `storeManaged`: whether Flyover runs it (the stack has a launcher).
 let storeState = 'waiting'
+let storeManaged = false
 const Page = (name) => ({
   name,
   mounted() {
@@ -70,6 +73,7 @@ function mountShell(router) {
       stubs: {
         AppNav: true,
         AppFooter: true,
+        ExitWorkflowDialog: true,
         MapUploadDialog: true,
         ProjectPicker: true,
         ProjectStatusBar: true,
@@ -100,6 +104,7 @@ describe('App', () => {
     vi.stubGlobal('BroadcastChannel', undefined)
     mounts = 0
     storeState = 'waiting'
+    storeManaged = false
     api.get.mockImplementation(async (url) => {
       if (url === '/api/v1/project') {
         return {
@@ -111,6 +116,7 @@ describe('App', () => {
           state: storeState,
           reachable: storeState === 'reachable',
           reason: '',
+          managed: storeManaged,
           store: CONFIGURED,
         },
       }
@@ -255,5 +261,81 @@ describe('App', () => {
     expect(project.workflow).toBe('rdf')
     expect(project.picker.open).toBe(false)
     expect(wrapper.find('.page').text()).toBe('rdf')
+  })
+
+  describe('leaving the workflow with its store running', () => {
+    beforeEach(() => {
+      sessionStorage.setItem('flyover.workflow', 'rdf')
+      storeState = 'reachable'
+      storeManaged = true
+    })
+
+    it('asks whether to keep the store running, and goes home once answered', async () => {
+      let project, router
+      ;({ wrapper, project, router } = await mountApp('/rdf'))
+      const workflows = useWorkflowsStore()
+
+      const going = router.push('/')
+      await flushPromises()
+      expect(workflows.exitQuestion.workflow.id).toBe('rdf')
+      expect(wrapper.find('.page').text()).toBe('rdf')
+
+      workflows.answerExit('keep')
+      await going
+      await flushPromises()
+      expect(wrapper.find('.page').text()).toBe('home')
+      expect(project.workflow).toBe(null)
+    })
+
+    it('stays in the workflow when the user chooses to stay', async () => {
+      let project, router
+      ;({ wrapper, project, router } = await mountApp('/rdf'))
+      const workflows = useWorkflowsStore()
+
+      const going = router.push('/')
+      await flushPromises()
+      workflows.answerExit('stay')
+      await going
+      await flushPromises()
+
+      expect(router.currentRoute.value.path).toBe('/rdf')
+      expect(project.workflow).toBe('rdf')
+    })
+
+    it('asks nothing for a store Flyover does not run, or one that is not running', async () => {
+      for (const [state, managed] of [
+        ['reachable', false],
+        ['stopped', true],
+      ]) {
+        setActivePinia(createPinia())
+        storeState = state
+        storeManaged = managed
+        let router
+        ;({ wrapper, router } = await mountApp('/rdf'))
+
+        await router.push('/')
+        await flushPromises()
+
+        expect(useWorkflowsStore().exitQuestion).toBe(null)
+        expect(wrapper.find('.page').text()).toBe('home')
+        wrapper.unmount()
+      }
+      wrapper = undefined
+    })
+
+    it('asks nothing of a tab that only came by a link and went back without choosing', async () => {
+      sessionStorage.clear()
+      let project, router
+      ;({ wrapper, project, router } = await mountApp('/rdf'))
+      expect(project.picker.open).toBe(true)
+
+      // As the pop-up's Cancel does.
+      project.exitWorkflow()
+      await router.push('/')
+      await flushPromises()
+
+      expect(useWorkflowsStore().exitQuestion).toBe(null)
+      expect(wrapper.find('.page').text()).toBe('home')
+    })
   })
 })

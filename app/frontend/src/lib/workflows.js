@@ -8,6 +8,7 @@
 //   app/backend/data_descriptor/static/logos/README.md for its source and
 //   terms; W3C asks for the cube's alt text as given).
 // - `icon`: the Font Awesome icon used where there is no logo.
+// - `storeLabel`: what the workflow's store is called, where it has one.
 // - `note`: small print on the tile, as lines of text and links.
 
 export const WORKFLOWS = [
@@ -17,6 +18,7 @@ export const WORKFLOWS = [
     to: '/rdf',
     icon: 'fa-project-diagram',
     iconClass: 'share-icon',
+    storeLabel: 'RDF store',
     logo: {
       src: '/static/logos/w3c-semantic-web-cube.svg',
       alt: 'W3C Semantic Web Logo',
@@ -40,6 +42,7 @@ export const WORKFLOWS = [
     label: 'OMOP',
     icon: 'fa-database',
     iconClass: 'describe-icon',
+    storeLabel: 'OMOP database',
     logo: { src: '/static/logos/ohdsi-logo-only-white.png', alt: 'OHDSI logo' },
     description:
       'Transform your data into OMOP CDM-conformant schemas, coupled with an OMOP database.',
