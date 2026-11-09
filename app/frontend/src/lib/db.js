@@ -66,7 +66,7 @@ async function tx(storeName, mode, fn) {
   let t
   try {
     t = await startTransaction(db, storeName, mode)
-  } catch (err) {
+  } catch {
     // Likely InvalidStateError because the cached connection was closed by a
     // versionchange we didn't observe (e.g., the user deleted the IDB from
     // DevTools). Drop the cache and re-open once.

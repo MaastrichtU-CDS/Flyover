@@ -354,7 +354,7 @@ function validateTableSelection() {
 
 function getSelectedTableNames() {
   return Object.entries(selectedTables)
-    .filter(([tableName, isSelected]) => isSelected)
+    .filter(([, isSelected]) => isSelected)
     .map(([tableName]) => tableName)
 }
 
@@ -509,10 +509,13 @@ onMounted(load)
               <i class="fas fa-database" /> {{ dbData.rdfStoreName }}
               <span 
                 class="table-selector"
-                @click.stop="toggleTableSelection(dbName)"
                 :class="{ selected: selectedTables[dbName] }"
+                @click.stop="toggleTableSelection(dbName)"
               >
-                <i class="fas" :class="selectedTables[dbName] ? 'fa-check' : 'fa-times'" />
+                <i
+                  class="fas"
+                  :class="selectedTables[dbName] ? 'fa-check' : 'fa-times'"
+                />
                 <span class="selector-tooltip">
                   {{ selectedTables[dbName] ? 'Deselect for annotation' : 'Select for annotation' }}
                 </span>
@@ -524,17 +527,17 @@ onMounted(load)
               :class="{ open: expandedDatabases[dbData.rdfStoreName] }"
               @click="toggleDatabase(dbData.rdfStoreName)"
             >
-            <span class="toggle-text">{{
-              expandedDatabases[dbData.rdfStoreName] ? 'Show less' : 'Show more'
-            }}</span>
-            <i
-              class="fas"
-              :class="
-                expandedDatabases[dbData.rdfStoreName]
-                  ? 'fa-chevron-down'
-                  : 'fa-chevron-up'
-              "
-            />
+              <span class="toggle-text">{{
+                expandedDatabases[dbData.rdfStoreName] ? 'Show less' : 'Show more'
+              }}</span>
+              <i
+                class="fas"
+                :class="
+                  expandedDatabases[dbData.rdfStoreName]
+                    ? 'fa-chevron-down'
+                    : 'fa-chevron-up'
+                "
+              />
             </button>
           </div>
 

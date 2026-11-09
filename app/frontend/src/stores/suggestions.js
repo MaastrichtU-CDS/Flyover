@@ -9,7 +9,7 @@
 // snapshot replaced by the flat `records` dict the SuggestionService returns.
 
 import { defineStore } from 'pinia'
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { formatToTitleCase } from '@/lib/jsonld'
