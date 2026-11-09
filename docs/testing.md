@@ -46,10 +46,21 @@ The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tes
 
 - **The RDF store** is `FakeRdfStore` in [`support.py`](../app/backend/data_descriptor/tests/integration/support.py): a backend-agnostic SPARQL 1.1 endpoint served through `responses` at the `requests` level. It answers the SELECTs the query builder produces from a small in-memory model (`seed_table(...)`), answers ASK checks (`ask_answer`), accepts UPDATEs, serves the Graph Store Protocol, and records every request so a test can assert exactly which SPARQL crossed the boundary (`store.selects`, `store.asks`, `store.updates`, `store.graph_downloads`). Knobs cover the error paths: `outage`, `outage_after`, `select_status`, `ask_status`, `update_status`.
 - **`curl`**, which the ingest service shells out to for graph uploads, is a recording script on `PATH` (`fake_curl` fixture; `fake_curl.uploads`, `fake_curl.fail()`).
+- **`SparqlStore`**, also in `support.py`, serves the same endpoints with a real SPARQL engine, rdflib's, over the graphs Flyover uploaded (`store.load_uploads(fake_curl.uploads)`) and wrote. It runs any query, not only the shapes `FakeRdfStore`'s model knows, for tests of the whole RDF flow. It rewrites the two forms rdflib cannot read, a `GROUP BY` condition in brackets and `\'` inside a double-quoted string, to their equivalents.
 
 The triplifier (`pythonTool`, from `requirements.txt`) runs for real into a temp directory, so the ingest tests triplify an actual CSV. The PostgreSQL ingest path runs against a real PostgreSQL: CI starts one as a service container, locally set `FLYOVER_TEST_POSTGRES_DSN=postgresql://user:pass@host:port/db` (for example from `docker run -d -e POSTGRES_USER=flyover -e POSTGRES_PASSWORD=flyover -e POSTGRES_DB=flyover -p 55432:5432 postgres:16-alpine`); without it those tests skip. Coverage runs read `app/backend/data_descriptor/.coveragerc` (pass `--cov-config` with that path when running from the repo root, as CI does), which leaves the test modules and the gunicorn entrypoint out of the denominator. Tests that document a known defect are marked `xfail(strict=True)` with the reason, so they flip to a failure once the defect is fixed.
 
 One file per flow: `test_integration_ingest.py` and `..._ingest_uploads.py` (upload strategies, background jobs, PostgreSQL), `..._describe.py`, `..._annotate.py` and `..._annotation_cli.py`, `..._share.py`, `..._suggestions.py` (tier-1 matchers, both phases, prompt export and paste-back), `..._store_edges.py` (what the store should never answer), plus `..._loader_validation.py` (loader ↔ validator) and `..._session.py` (server-side state across requests). The older `test_loaders_real_files.py` and `test_validation_real_files.py` read `example_data/` directly.
+
+### The RDF workflow's golden path
+
+[`test_integration_rdf_golden_path.py`](../app/backend/data_descriptor/tests/integration/test_integration_rdf_golden_path.py) takes a fixed CSV and JSON-LD map ([`tests/fixtures/golden/rdf/`](../app/backend/data_descriptor/tests/fixtures/golden/rdf/)) through ingest, describe and annotate as a browser would, with the real triplifier and `SparqlStore`. It then compares the data, ontology and annotation graphs the flow leaves in the store with the expected ones in that folder, as RDF: the order of triples and the names of blank nodes don't matter. The other tests check that each step runs and that particular triples appear; this one notices any change in what the RDF flow produces. When a change is meant to alter that output, write the graphs it now produces and review their diff like any other change:
+
+```bash
+FLYOVER_UPDATE_GOLDEN=1 python -m pytest tests/integration/test_integration_rdf_golden_path.py
+```
+
+The triplifier names the data after the machine's hostname, and the annotation queries expect `data.local`; the test sets that hostname, as `docker-compose.yml` does.
 
 A few practical notes about the layout:
 - [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).

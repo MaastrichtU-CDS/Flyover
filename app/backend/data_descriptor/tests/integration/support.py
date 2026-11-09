@@ -36,6 +36,7 @@ import json
 import os
 import re
 import sys
+import threading
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +47,7 @@ import pytest
 import requests
 import responses
 from flask import Flask
-from rdflib import Graph, Namespace
+from rdflib import Dataset, Graph, Namespace, URIRef
 
 # Make `data_descriptor` modules importable as top-level packages, mirroring
 # the existing test modules.
@@ -359,6 +360,94 @@ class FakeRdfStore:
             )
 
         raise AssertionError(f"FakeRdfStore cannot answer this SELECT:\n{query}")
+
+
+class SparqlStore(FakeRdfStore):
+    """
+    An RDF store that answers with a real SPARQL engine: rdflib's, over the
+    graphs Flyover uploaded and wrote.
+
+    :class:`FakeRdfStore` answers the query shapes Flyover sends today from
+    a small model, and refuses any other; this one evaluates whatever comes,
+    so a test of the whole RDF flow keeps working when the queries change
+    (and keeps checking what they do). The default graph is the union of
+    the named graphs, as in GraphDB.
+
+    The graph uploads go through ``curl`` (see :class:`FakeCurl`); the test
+    hands them over with :meth:`load_uploads`, as the store would receive
+    them. Requests are still recorded in ``calls``.
+    """
+
+    _UPLOAD_FORMATS = {"application/rdf+xml": "xml", "text/turtle": "turtle"}
+    # rdflib (7.6) cannot evaluate a group condition in brackets,
+    # ``GROUP BY (?value)``, which SPARQL allows and GraphDB runs; the same
+    # grouping without them it can.
+    _BRACKETED_GROUP_BY = re.compile(r"GROUP\s+BY\s*\(\s*(\?\w+)\s*\)", re.IGNORECASE)
+    # Nor can it parse an escaped single quote, ``\'``, inside a string in
+    # double quotes, where it is the same as a bare one; GraphDB can.
+    _DOUBLE_QUOTED = re.compile(r'"(?:[^"\\\n\r]|\\.)*"')
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.dataset = Dataset(default_union=True)
+        # Flyover may write from more than one thread; rdflib is not
+        # thread-safe for writes.
+        self._lock = threading.Lock()
+
+    def load_uploads(self, uploads: List["CurlUpload"]) -> None:
+        """Put the files Flyover uploaded with ``curl`` into their graphs."""
+        for upload in uploads:
+            graph = parse_qs(urlparse(upload.url).query)["graph"][0]
+            with self._lock:
+                self.dataset.graph(URIRef(graph)).parse(
+                    upload.file_path, format=self._UPLOAD_FORMATS[upload.content_type]
+                )
+
+    @classmethod
+    def _for_rdflib(cls, text: str) -> str:
+        """``text`` with the two forms rdflib cannot read rewritten to their
+        equivalents (see above)."""
+        text = cls._BRACKETED_GROUP_BY.sub(r"GROUP BY \1", text)
+        return cls._DOUBLE_QUOTED.sub(
+            lambda string: string.group(0).replace("\\'", "'"), text
+        )
+
+    def named_graph(self, uri: str) -> Graph:
+        """A copy of the named graph ``uri`` as it stands."""
+        copy = Graph()
+        for triple in self.dataset.graph(URIRef(uri)):
+            copy.add(triple)
+        return copy
+
+    def _handle(self, request):
+        call = self._record(request)
+        with self._lock:
+            if call.kind == "update":
+                self.dataset.update(self._for_rdflib(call.update))
+                return 204, {}, ""
+            if call.kind == "graph":
+                graph = self.dataset.graph(URIRef(call.graph))
+                if not len(graph):
+                    return 404, {"Content-Type": "text/plain"}, "graph not found"
+                return (
+                    200,
+                    {"Content-Type": "application/n-triples; charset=utf-8"},
+                    graph.serialize(format="nt"),
+                )
+            if call.kind in ("ask", "select"):
+                result = self.dataset.query(self._for_rdflib(call.query))
+                if call.kind == "ask" or "json" in call.accept:
+                    return (
+                        200,
+                        {"Content-Type": "application/sparql-results+json"},
+                        result.serialize(format="json").decode("utf-8"),
+                    )
+                return (
+                    200,
+                    {"Content-Type": "text/csv; charset=utf-8"},
+                    result.serialize(format="csv").decode("utf-8"),
+                )
+        return 400, {"Content-Type": "text/plain"}, "store: unsupported request"
 
 
 # ---------------------------------------------------------------------------
