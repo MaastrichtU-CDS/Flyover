@@ -164,12 +164,12 @@ describe('HomeView', () => {
     await wrapper.find('#rdf-card').trigger('click')
 
     // The pop-up goes on to the RDF landing once the tab has chosen.
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: '/rdf' })
     expect(router.push).not.toHaveBeenCalled()
 
     project.closePicker()
     await wrapper.find('#home-start').trigger('click')
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: '/rdf' })
     expect(router.push).not.toHaveBeenCalled()
   })
 

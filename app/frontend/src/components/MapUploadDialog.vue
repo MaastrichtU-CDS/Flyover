@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useModalFocus } from '@/composables/useModalFocus'
 import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
-import { projectName, projectVersion } from '@/lib/project'
+import { DEFAULT_TARGET_STANDARD, projectName, projectVersion } from '@/lib/project'
 import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
@@ -35,7 +35,9 @@ const incomingLabel = computed(() =>
 const fileName = computed(() => question.value?.fileName || 'This map')
 // For a map for another workflow: that workflow, and the one the tab is in.
 const otherWorkflow = computed(() => workflowById(question.value?.standard) || {})
-const thisWorkflow = computed(() => workflowById(tabWorkflow.value || 'rdf') || {})
+const thisWorkflow = computed(
+  () => workflowById(tabWorkflow.value || DEFAULT_TARGET_STANDARD) || {}
+)
 
 const title = computed(
   () =>

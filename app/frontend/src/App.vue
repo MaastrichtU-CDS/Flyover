@@ -27,23 +27,20 @@ onMounted(() => {
   project.init()
 })
 
-// The home page asks for the project before it goes to the RDF workflow
-// (see useWorkflowEntry). A tab that comes to a page of the workflow without
-// having entered it, by a link, is asked there, and the page waits meanwhile
-// (see useStoreGate). Only a change of page asks, or the project store
-// becoming ready: closing the pop-up does not, nor does leaving the workflow
-// (Exit RDF leaves it a moment before the home page shows). Until the router
-// has settled on the first page, nothing is asked.
+// The home page asks for the project before it goes to a workflow (see
+// useWorkflowEntry). A tab that comes to a page of a workflow without having
+// entered it, by a link, is asked there, for that workflow, and the page
+// waits meanwhile (see useStoreGate). Only a change of page asks, or the
+// project store becoming ready: closing the pop-up does not, nor does
+// leaving the workflow (Exit leaves it a moment before the home page
+// shows). Until the router has settled on the first page, nothing is asked.
 watch(
   () => [route.name, route.path, project.ready],
   ([name, , ready]) => {
     if (!name || !ready) return
-    if (
-      route.meta?.workflow === 'rdf' &&
-      project.workflow !== 'rdf' &&
-      !project.picker.open
-    ) {
-      project.openPicker('enter')
+    const wanted = route.meta?.workflow
+    if (wanted && project.workflow !== wanted && !project.picker.open) {
+      project.openPicker('enter', { workflow: wanted })
     }
   },
   { immediate: true }

@@ -305,7 +305,7 @@ describe('ProjectPicker', () => {
       expect(project.picker.open).toBe(false)
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
       expect(project.workflow).toBe('rdf')
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
       expect(router.push).not.toHaveBeenCalled()
       expect(reloadPage).not.toHaveBeenCalled()
       expect(useStatusStore().messages).toEqual([])
@@ -367,6 +367,15 @@ describe('ProjectPicker', () => {
         expect(useStatusStore().messages[0].text).toBe(
           "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya."
         )
+      })
+
+      it('offers it only as the tab enters the workflow its map targets', async () => {
+        // An OMOP project (once OMOP opens) is not the RDF workflow's.
+        holdOpenProject(OMOP)
+        ;({ wrapper } = await mountPicker())
+
+        expect(wrapper.find('#project-picker-continue').exists()).toBe(false)
+        expect(wrapper.find('#project-picker-open').exists()).toBe(true)
       })
 
       it('opens it again on a server that lost it, under the same token', async () => {
@@ -687,7 +696,7 @@ describe('ProjectPicker', () => {
       route.meta = {}
       const project = useProjectStore()
       await project.init()
-      project.openPicker('enter', { target: '/rdf' })
+      project.openPicker('enter', { workflow: 'rdf', target: '/rdf' })
       wrapper = mount(ProjectPicker, { attachTo: document.body })
       await flushPromises()
 
@@ -698,6 +707,24 @@ describe('ProjectPicker', () => {
       )
       expect(router.push).not.toHaveBeenCalled()
     })
+  })
+
+  it('makes every choice for the workflow it was opened for', async () => {
+    // Only RDF is built, but nothing in the choice is RDF's own.
+    route.path = '/'
+    route.meta = {}
+    const project = useProjectStore()
+    await project.init()
+    project.openPicker('enter', { workflow: 'csv', target: '/csv' })
+    wrapper = mount(ProjectPicker, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('#project-picker-without').trigger('click')
+    await flushPromises()
+
+    expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'csv' } })
+    expect(project.workflow).toBe('csv')
+    expect(router.push).toHaveBeenCalledWith('/csv')
   })
 
   it('says it takes a map naming no standard as RDF, once it opened it', async () => {
@@ -720,7 +747,7 @@ describe('ProjectPicker', () => {
       route.meta = {}
       const project = useProjectStore()
       await project.init()
-      project.openPicker('enter', { target: '/rdf' })
+      project.openPicker('enter', { workflow: 'rdf', target: '/rdf' })
       const mounted = mount(ProjectPicker, { attachTo: document.body })
       await flushPromises()
       return { wrapper: mounted, project }
@@ -733,7 +760,7 @@ describe('ProjectPicker', () => {
       await button(wrapper, 'Continue without a project').trigger('click')
       await flushPromises()
 
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
       expect(project.workflow).toBe('rdf')
       expect(project.picker.open).toBe(false)
       expect(router.push).toHaveBeenCalledWith('/rdf')

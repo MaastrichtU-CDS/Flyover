@@ -74,6 +74,11 @@ function serverWith(project, store = project ? PROJECT_STORE : CONFIGURED) {
   return { project, store, configuredStore: CONFIGURED }
 }
 
+// The server's answer once a choice was made: its route and workflow too.
+function chosen(project, workflow = 'rdf') {
+  return { ...serverWith(project), route: project ? 'project' : 'standard', workflow }
+}
+
 // What the server answers: its project, the store status, a PUT echoing the
 // token it was sent, a DELETE closing it.
 function serve({ project = null, reachable = true } = {}) {
@@ -99,11 +104,11 @@ function serve({ project = null, reachable = true } = {}) {
       schemaId: body.mapping.schema['@id'],
       schemaName: body.mapping.schema.name,
     })
-    return { data: serverWith(current) }
+    return { data: chosen(current, body.workflow) }
   })
-  api.delete.mockImplementation(async () => {
+  api.delete.mockImplementation(async (url, config) => {
     current = null
-    return { data: serverWith(null) }
+    return { data: chosen(null, config?.params?.workflow) }
   })
 }
 
@@ -204,8 +209,23 @@ describe('the project store', () => {
         fileName: 'aya.jsonld',
         sourceUrl: '',
         token: 't1',
+        workflow: 'rdf',
       })
       expect(project.store).toEqual(PROJECT_STORE)
+    })
+
+    it("reopens the browser's project only in the workflow its map targets", async () => {
+      // An OMOP project (once OMOP opens) is not the RDF tab's: the tab works
+      // without one, and the server hears so.
+      inRdf()
+      holdProject('t1')
+      rows.get('project').data.targetStandard = 'omop'
+      const project = useProjectStore()
+
+      await project.init()
+
+      expect(api.put).not.toHaveBeenCalled()
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
     })
 
     it('sends the working copy as it is now, describe answers included', async () => {
@@ -235,7 +255,7 @@ describe('the project store', () => {
       expect(rows.has('semantic_map')).toBe(true)
       expect(useStatusStore().messages[0].text).toContain('could not reopen the project')
       // The tab goes on in the standard RDF flow, which the server hears.
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
     })
 
     it('hands nothing back for a tab outside the workflow, and offers the project later', async () => {
@@ -268,7 +288,7 @@ describe('the project store', () => {
 
       await project.init()
 
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
       expect(project.store).toEqual(CONFIGURED)
     })
 
@@ -383,7 +403,7 @@ describe('the project store', () => {
 
       const result = await project.leaveProject()
 
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
       expect(rows.has('semantic_map')).toBe(false)
       expect(rows.has('project')).toBe(false)
       expect(project.project).toBe(null)
@@ -403,7 +423,7 @@ describe('the project store', () => {
       await project.continueWithoutProject()
 
       // The server starts the standard RDF flow's store when it hears it.
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
       expect(project.workflow).toBe('rdf')
       expect(sessionStorage.getItem('flyover.workflow')).toBe('rdf')
       expect(project.picker.open).toBe(false)
@@ -479,6 +499,7 @@ describe('the project store', () => {
         fileName: 'aya.jsonld',
         sourceUrl: '',
         token: 't1',
+        workflow: 'rdf',
       })
       expect(project.store).toEqual(PROJECT_STORE)
       expect(project.workflow).toBe('rdf')
@@ -545,6 +566,42 @@ describe('the project store', () => {
       expect(api.post).not.toHaveBeenCalled()
     })
 
+    it('is the one each choice names to the server, and entered once the server has it', async () => {
+      // Only RDF is built, but nothing in a choice is RDF's own.
+      const project = useProjectStore()
+      await project.init()
+
+      await project.continueWithoutProject({ workflow: 'csv' })
+      expect(api.delete).toHaveBeenLastCalledWith('/api/v1/project', {
+        params: { workflow: 'csv' },
+      })
+      expect(project.workflow).toBe('csv')
+
+      await project.openProject(MAP, { workflow: 'omop' })
+      expect(api.put.mock.lastCall[1].workflow).toBe('omop')
+      expect(project.workflow).toBe('omop')
+
+      await project.leaveProject({ workflow: 'omop' })
+      expect(api.delete).toHaveBeenLastCalledWith('/api/v1/project', {
+        params: { workflow: 'omop' },
+      })
+    })
+
+    it("is the tab's for a choice that names none, as a step's upload makes", async () => {
+      inRdf()
+      const project = useProjectStore()
+      await project.init()
+      api.delete.mockClear()
+
+      await project.openProject(MAP)
+      await project.leaveProject()
+
+      expect(api.put.mock.lastCall[1].workflow).toBe('rdf')
+      expect(api.delete).toHaveBeenLastCalledWith('/api/v1/project', {
+        params: { workflow: 'rdf' },
+      })
+    })
+
     it('can be entered again after an exit', async () => {
       inRdf()
       const project = useProjectStore()
@@ -561,12 +618,14 @@ describe('the project store', () => {
       const project = useProjectStore()
       await project.init()
 
-      project.openPicker('enter', { target: '/rdf' })
-      expect(project.picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+      project.openPicker('enter', { workflow: 'rdf', target: '/rdf' })
+      expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: '/rdf' })
 
+      // Inside a workflow, the pop-up is for the tab's.
       project.closePicker()
+      project.enterWorkflow('rdf')
       project.openPicker('switch')
-      expect(project.picker).toEqual({ open: true, mode: 'switch', target: null })
+      expect(project.picker).toEqual({ open: true, mode: 'switch', workflow: 'rdf', target: null })
     })
   })
 
@@ -1024,23 +1083,23 @@ describe('the project store', () => {
   describe('the store, once a user chooses', () => {
     // A server that reports where its store stands, one answer after the
     // other (the last one repeats), and that may have forgotten a choice.
-    function serveStates(states, { route = null } = {}) {
+    function serveStates(states, { route = null, workflow = route ? 'rdf' : null } = {}) {
       const answers = [...states]
-      let current = route
+      let current = { route, workflow }
+      const described = () => ({
+        project: null,
+        ...current,
+        store: CONFIGURED,
+        configuredStore: CONFIGURED,
+      })
       api.get.mockImplementation(async (url) => {
-        if (url === '/api/v1/project') {
-          return {
-            data: { project: null, route: current, store: CONFIGURED, configuredStore: CONFIGURED },
-          }
-        }
+        if (url === '/api/v1/project') return { data: described() }
         const state = answers.length > 1 ? answers.shift() : answers[0]
         return { data: { state, reachable: state === 'reachable', reason: '', store: CONFIGURED } }
       })
-      api.delete.mockImplementation(async () => {
-        current = 'standard'
-        return {
-          data: { project: null, route: current, store: CONFIGURED, configuredStore: CONFIGURED },
-        }
+      api.delete.mockImplementation(async (url, config) => {
+        current = { route: 'standard', workflow: config?.params?.workflow }
+        return { data: described() }
       })
     }
 
@@ -1087,7 +1146,7 @@ describe('the project store', () => {
 
       await project.init()
 
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
       expect(project.route).toBe('standard')
       expect(project.picker.open).toBe(false)
     })
@@ -1100,6 +1159,17 @@ describe('the project store', () => {
 
       expect(api.delete).not.toHaveBeenCalled()
       expect(project.storeStatus.state).toBe('waiting')
+    })
+
+    it('tells a server that works in another workflow which one this tab is in', async () => {
+      inRdf()
+      serveStates(['reachable'], { route: 'standard', workflow: 'omop' })
+      const project = useProjectStore()
+
+      await project.init()
+
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project', { params: { workflow: 'rdf' } })
+      expect(project.route).toBe('standard')
     })
 
     it('leaves a server that knows the choice as it is', async () => {
@@ -1315,7 +1385,7 @@ describe('the project store', () => {
       await FakeChannel.all[0].onmessage({ data: { type: 'project-changed' } })
 
       // The pop-up stays, now offering the project first (see ProjectPicker).
-      expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
+      expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: null })
       expect(project.name).toBe('AYA mapping')
       expect(project.workflow).toBe(null)
       expect(api.put).not.toHaveBeenCalled()

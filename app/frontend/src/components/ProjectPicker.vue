@@ -5,16 +5,23 @@ import { storeToRefs } from 'pinia'
 import { useModalFocus } from '@/composables/useModalFocus'
 import { reloadPage } from '@/lib/browser'
 import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
-import { ASSUMED_RDF_NOTE, projectName, projectVersion, targetStandard } from '@/lib/project'
-import { WORKFLOWS, workflowById } from '@/lib/workflows'
+import {
+  ASSUMED_RDF_NOTE,
+  DEFAULT_TARGET_STANDARD,
+  projectName,
+  projectVersion,
+  targetStandard,
+} from '@/lib/project'
+import { workflowById } from '@/lib/workflows'
 import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
 // The pop-up that asks which project to work on. It opens when a tab enters
-// the RDF workflow, with the project this browser remembers as its first
-// choice: on the home page, which goes on to the workflow once the tab has
-// chosen, or over a page of the workflow a link led to. "Switch project" in
-// the status bar opens it again inside the workflow. Cancelled while
+// a workflow, with the project this browser remembers as its first choice
+// when that project is the workflow's: on the home page, which goes on to
+// the workflow once the tab has chosen, or over a page of the workflow a
+// link led to. "Switch project" in the status bar opens it again inside the
+// workflow. Every choice is for the pop-up's workflow. Cancelled while
 // entering, it leaves the user on, or takes them back to, the home page.
 
 const projectStore = useProjectStore()
@@ -50,7 +57,8 @@ const choices = shallowRef(null)
 
 const isOpen = computed(() => picker.value.open)
 const entering = computed(() => picker.value.mode === 'enter')
-// The project this browser remembers, offered first when entering.
+// The project this browser remembers, offered first when entering the
+// workflow its map targets.
 const rememberedLabel = computed(() =>
   [openName.value, openVersion.value].filter(Boolean).join(' · ')
 )
@@ -64,16 +72,14 @@ const pendingVersion = computed(() =>
   pending.value ? projectVersion(pending.value.check.project) : ''
 )
 
-// The workflow the pop-up is for: the one it opens (from the home page),
-// the one whose page is on screen, or the tab's. Its maps target its
+// The workflow the pop-up is for (see openPicker): its maps target its
 // standard; a map for another is that workflow's.
 const { enter } = useWorkflowEntry()
 const currentWorkflow = computed(
-  () =>
-    WORKFLOWS.find((workflow) => workflow.to && workflow.to === picker.value.target) ||
-    workflowById(route.meta?.workflow) ||
-    workflowById(projectStore.workflow) ||
-    workflowById('rdf')
+  () => workflowById(picker.value.workflow) || workflowById(DEFAULT_TARGET_STANDARD)
+)
+const rememberedFits = computed(
+  () => Boolean(project.value) && targetStandard(project.value) === currentWorkflow.value.id
 )
 const pendingWorkflow = computed(() => workflowById(pending.value?.standard) || {})
 
@@ -276,7 +282,7 @@ async function continueWithRemembered() {
   clearErrors()
   busy.value = true
   try {
-    await projectStore.continueWithProject()
+    await projectStore.continueWithProject({ workflow: currentWorkflow.value.id })
     finish(openedMessage())
   } catch (e) {
     error.value = errorMessage(e)
@@ -289,7 +295,11 @@ async function openPending() {
   busy.value = true
   try {
     const { map, fileName, sourceUrl } = pending.value
-    await projectStore.openProject(map, { fileName, sourceUrl })
+    await projectStore.openProject(map, {
+      fileName,
+      sourceUrl,
+      workflow: currentWorkflow.value.id,
+    })
     finish(openedMessage())
   } catch (e) {
     step.value = 'open'
@@ -309,7 +319,9 @@ async function chooseWithoutProject() {
   busy.value = true
   const wasEntering = entering.value
   try {
-    const { storeChanged } = await projectStore.continueWithoutProject()
+    const { storeChanged } = await projectStore.continueWithoutProject({
+      workflow: currentWorkflow.value.id,
+    })
     // Entering, the tab goes on to the workflow either way; switching, only
     // another store calls for a fresh read.
     if (storeChanged || wasEntering) finish(storeChanged ? withoutProjectMessage() : '')
@@ -323,7 +335,7 @@ async function chooseWithoutProject() {
 async function leave() {
   busy.value = true
   try {
-    await projectStore.leaveProject()
+    await projectStore.leaveProject({ workflow: currentWorkflow.value.id })
     finish(withoutProjectMessage())
   } catch (e) {
     step.value = 'choose'
@@ -407,7 +419,7 @@ function back() {
           <!-- The project this browser remembers, first: a row in the
                choices' style, the whole row the button. -->
           <button
-            v-if="project && entering"
+            v-if="entering && rememberedFits"
             id="project-picker-continue"
             type="button"
             class="project-picker-option project-picker-remembered"

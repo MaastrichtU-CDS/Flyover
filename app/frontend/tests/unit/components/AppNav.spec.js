@@ -99,7 +99,12 @@ describe('AppNav', () => {
 
     await wrapper.find('#rdf-workflow-step').trigger('click')
 
-    expect(useProjectStore().picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(useProjectStore().picker).toEqual({
+      open: true,
+      mode: 'enter',
+      workflow: 'rdf',
+      target: '/rdf',
+    })
     expect(router.push).not.toHaveBeenCalled()
   })
 

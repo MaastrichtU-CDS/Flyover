@@ -21,7 +21,7 @@ export function useWorkflowEntry() {
       router.push(workflow.to)
       return
     }
-    project.openPicker('enter', { target: workflow.to })
+    project.openPicker('enter', { workflow: workflow.id, target: workflow.to })
   }
 
   return { enter }

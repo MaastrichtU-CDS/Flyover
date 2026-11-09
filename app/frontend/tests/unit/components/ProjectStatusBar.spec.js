@@ -275,7 +275,7 @@ describe('ProjectStatusBar', () => {
     expect(await tipOf(projectPart)).toContain('the standard RDF flow')
 
     await wrapper.find('#statusbar-switch').trigger('click')
-    expect(project.picker).toEqual({ open: true, mode: 'switch', target: null })
+    expect(project.picker).toEqual({ open: true, mode: 'switch', workflow: 'rdf', target: null })
   })
 
   it('offers to switch an open project', async () => {

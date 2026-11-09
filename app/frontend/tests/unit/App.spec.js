@@ -50,6 +50,8 @@ function makeRouter() {
     routes: [
       { path: '/', name: 'home', component: Page('home') },
       { path: '/rdf', name: 'rdf', component: Page('rdf'), meta: { workflow: 'rdf' } },
+      // Another workflow's page: only RDF is built, but nothing here is RDF's.
+      { path: '/csv', name: 'csv', component: Page('csv'), meta: { workflow: 'csv' } },
       {
         path: '/share/mock',
         name: 'share-mock',
@@ -145,14 +147,25 @@ describe('App', () => {
     await router.push('/rdf')
     await flushPromises()
 
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: null })
+  })
+
+  it("asks for the project on any workflow's page, for that workflow", async () => {
+    let project, router
+    ;({ wrapper, project, router } = await mountApp('/'))
+
+    await router.push('/csv')
+    await flushPromises()
+
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'csv', target: null })
+    expect(wrapper.find('.page').exists()).toBe(false)
   })
 
   it('asks a tab that comes by a link to a page of the workflow', async () => {
     let project
     ;({ wrapper, project } = await mountApp('/share/mock'))
 
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: null })
   })
 
   it('does not ask a reloaded tab that is in the workflow already', async () => {
@@ -188,7 +201,7 @@ describe('App', () => {
 
     await router.push('/rdf')
     await flushPromises()
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: null })
   })
 
   it('does not ask again as the tab exits the workflow from one of its pages', async () => {
@@ -219,7 +232,7 @@ describe('App', () => {
     await router.push('/describe')
     await flushPromises()
 
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: null })
     expect(wrapper.find('.page').exists()).toBe(false)
     expect(wrapper.find('store-wait-stub').attributes('reason')).toBe('waiting')
 
