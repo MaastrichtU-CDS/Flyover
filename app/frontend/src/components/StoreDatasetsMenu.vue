@@ -33,6 +33,23 @@ const dots = useCyclingDots(busy)
 
 const repository = computed(() => store.value?.repository || 'the store')
 
+// A confirm button that names a long dataset stays as wide as the panel:
+// its label ends in an ellipsis, and pans to its end and back while the
+// pointer or the keyboard's focus is on it. How far it pans is measured
+// as that starts, so it fits the panel's width at the time.
+const PAN_PIXELS_PER_SECOND = 40
+const panLabel = ref(null)
+const pan = ref({ distance: 0, seconds: 0 })
+
+function measurePan() {
+  const label = panLabel.value
+  const overflow = label ? label.scrollWidth - label.clientWidth : 0
+  pan.value =
+    overflow > 0
+      ? { distance: overflow, seconds: Math.max(1.5, overflow / PAN_PIXELS_PER_SECOND) }
+      : { distance: 0, seconds: 0 }
+}
+
 const number = new Intl.NumberFormat('en-GB')
 
 function rowsLabel(rows) {
@@ -74,6 +91,11 @@ const asked = computed(() => {
     download: 'Download them first (.trig)',
     confirm: 'Delete every annotation',
   }
+})
+
+// Another question, another label: measured again on the next hover.
+watch(asked, () => {
+  pan.value = { distance: 0, seconds: 0 }
 })
 
 function describe(gone) {
@@ -230,7 +252,10 @@ onBeforeUnmount(() => {
               class="btn btn-sm btn-danger store-panel-confirm-button"
               :disabled="busy"
               :aria-busy="busy ? 'true' : 'false'"
+              :title="pan.distance ? asked.confirm : null"
               @click="datasetsStore.confirm()"
+              @mouseenter="measurePan"
+              @focus="measurePan"
             >
               <template v-if="busy">
                 <i
@@ -245,7 +270,16 @@ onBeforeUnmount(() => {
                 <i
                   class="fas fa-trash-can"
                   aria-hidden="true"
-                /> {{ asked.confirm }}
+                />
+                <span
+                  ref="panLabel"
+                  class="store-panel-pan"
+                  :class="{ 'is-long': pan.distance > 0 }"
+                  :style="{
+                    '--pan-distance': `-${pan.distance}px`,
+                    '--pan-seconds': `${pan.seconds}s`,
+                  }"
+                >{{ asked.confirm }}</span>
               </template>
             </button>
             <button
@@ -422,9 +456,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* The list scrolls when the store holds many datasets. */
+/* The list scrolls when the store holds many datasets; nothing in the
+   panel is wider than it, so it never scrolls sideways. */
 .store-panel-body {
   flex: 1;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 0.5rem 0.75rem;
 }
@@ -503,6 +539,54 @@ onBeforeUnmount(() => {
 .store-panel-consequence {
   margin-bottom: 0.6rem;
   color: #495057;
+}
+
+/* A long dataset name breaks anywhere rather than widen the panel. */
+.store-panel-question,
+.store-panel-consequence {
+  overflow-wrap: anywhere;
+}
+
+/* The confirm button is no wider than the panel; a label too long for it
+   ends in an ellipsis, and pans to its end and back on hover or focus. */
+.store-panel-confirm-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  max-width: 100%;
+}
+
+.store-panel-pan {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.store-panel-confirm-button:hover .store-panel-pan.is-long,
+.store-panel-confirm-button:focus-visible .store-panel-pan.is-long {
+  text-overflow: clip;
+  animation: store-panel-pan var(--pan-seconds) ease-in-out infinite alternate;
+}
+
+@keyframes store-panel-pan {
+  0%,
+  15% {
+    text-indent: 0;
+  }
+
+  85%,
+  100% {
+    text-indent: var(--pan-distance);
+  }
+}
+
+/* Without motion, the button's tooltip gives the whole name. */
+@media (prefers-reduced-motion: reduce) {
+  .store-panel-confirm-button:hover .store-panel-pan.is-long,
+  .store-panel-confirm-button:focus-visible .store-panel-pan.is-long {
+    animation: none;
+  }
 }
 
 .store-panel-actions,
