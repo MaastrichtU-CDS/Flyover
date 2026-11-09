@@ -90,15 +90,15 @@ describe('HomeView', () => {
     ])
   })
 
-  it("shows W3C's and OHDSI's logos in white in the circles, and says Flyover is not OHDSI's", () => {
+  it("shows a knowledge graph and OHDSI's logo in white in the circles, and says Flyover is not OHDSI's", () => {
     const wrapper = mountHome()
 
-    // W3C asks for this alt text on its Semantic Web cube.
+    // Flyover's own drawing, in black, turned white; the title names it.
     const rdf = wrapper.find('#rdf-card .step-icon img')
-    expect(rdf.attributes('src')).toBe('/static/logos/w3c-semantic-web-cube.svg')
-    expect(rdf.attributes('alt')).toBe('W3C Semantic Web Logo')
-    // W3C lets the cube take other colours; OHDSI publishes its own white logo.
+    expect(rdf.attributes('src')).toBe('/static/icons/knowledge-graph.svg')
+    expect(rdf.attributes('alt')).toBe('')
     expect(rdf.classes()).toContain('is-whitened')
+    // OHDSI publishes its own white logo, shown as it is.
     const ohdsi = wrapper.find('#omop-card .step-icon img')
     expect(ohdsi.attributes('src')).toBe('/static/logos/ohdsi-logo-only-white.png')
     expect(ohdsi.classes()).not.toContain('is-whitened')

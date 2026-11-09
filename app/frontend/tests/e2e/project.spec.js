@@ -61,7 +61,10 @@ test.describe('Projects', () => {
       await expect(page.locator(tile)).toBeVisible()
     }
     await expect(page.locator('.nav-step .step-text')).toHaveText(['RDF', 'OMOP', 'CSV'])
-    await expect(page.locator('#rdf-card img')).toHaveAttribute('alt', 'W3C Semantic Web Logo')
+    // RDF's knowledge graph is served and drawn.
+    const graph = page.locator('#rdf-card img')
+    await expect(graph).toHaveAttribute('src', '/static/icons/knowledge-graph.svg')
+    await expect.poll(() => graph.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0)
     await expect(page.locator('#omop-card img')).toHaveAttribute('alt', 'OHDSI logo')
     await expect(page.locator('#omop-card')).toContainText('Flyover is not affiliated with OHDSI')
     await expect(page.locator('#omop-card .workflow-note a')).toHaveAttribute(

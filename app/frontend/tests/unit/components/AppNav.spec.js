@@ -70,15 +70,16 @@ describe('AppNav', () => {
     const wrapper = mount(AppNav)
     const disc = (id) => wrapper.find(`#${id}-workflow-step .workflow-disc`)
 
-    // W3C lets the cube take other colours; OHDSI publishes its own white logo.
-    const cube = disc('rdf').find('img')
-    expect(cube.attributes('src')).toBe('/static/logos/w3c-semantic-web-cube.svg')
-    expect(cube.classes()).toContain('is-whitened')
+    // RDF's knowledge graph is drawn in black and turned white; OHDSI
+    // publishes its own white logo.
+    const graph = disc('rdf').find('img')
+    expect(graph.attributes('src')).toBe('/static/icons/knowledge-graph.svg')
+    expect(graph.classes()).toContain('is-whitened')
     const ohdsi = disc('omop').find('img')
     expect(ohdsi.attributes('src')).toBe('/static/logos/ohdsi-logo-only-white.png')
     expect(ohdsi.classes()).not.toContain('is-whitened')
     // The name beside each disc says it; the logos add nothing to read out.
-    expect(cube.attributes('alt')).toBe('')
+    expect(graph.attributes('alt')).toBe('')
     expect(disc('csv').find('i').classes()).toContain('fa-file-csv')
   })
 
