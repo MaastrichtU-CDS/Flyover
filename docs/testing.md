@@ -40,6 +40,8 @@ Add `--cov=. --cov-report=term-missing` if you want a coverage rollup. Drop `tes
 
 Each layer carries a pytest marker named after its folder (`unit`, `integration`, `api`, `perf`, `e2e`; registered in [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py)), so `-m integration` selects the same tests as the path. `-k integration` and `-k api` work too, but match by name: `-k api` also picks up a few integration tests named after the API they drive, so prefer `-m api` to run exactly the API layer. The performance checks only run when selected: with `-m perf`, or when pytest is pointed at `tests/perf/` alone; in a run of the whole tree they are skipped.
 
+The tests of the RDF workflow (its steps, and the store and services they run on) also carry an `rdf` marker, from the sets in [`tests/workflows.py`](../app/backend/data_descriptor/tests/workflows.py): `-m rdf` runs them on their own, and `-m "not rdf"` the tests of what every workflow shares (the app, the session, the map format, projects). Every test module is in one of the two sets, and [`tests/unit/test_workflows.py`](../app/backend/data_descriptor/tests/unit/test_workflows.py) fails for a module that is in neither, so a new module has to say where it belongs. A new workflow gets its own marker and set.
+
 ### Backend integration tests
 
 The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives the app [`create_app()`](../app/backend/data_descriptor/app_factory.py) builds, the wiring gunicorn serves, with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
