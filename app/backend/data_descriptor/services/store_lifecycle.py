@@ -5,7 +5,8 @@ Flyover starts the local store only once a user has chosen to work on it: by
 opening a project whose map names it (an endpoint on localhost, or none), or
 by continuing without a project, in the standard RDF flow. Until someone
 chooses, Flyover waits. A store on another server is not Flyover's to start.
-Flyover never stops a store: the store may serve others than Flyover too.
+Flyover stops a store only when a user asks it to, as they leave the
+workflow: the store may serve others than Flyover too.
 
 While the chosen store is not running, Flyover starts it at its next check
 when its container never ran (it was created after the choice), but it
@@ -107,6 +108,21 @@ class StoreLifecycle:
             self._launcher.start(self._module)
         except LauncherError as error:
             logger.warning("Flyover could not start the RDF store: %s", error.message)
+
+    def stop(self, store: StoreAddress) -> None:
+        """Ask the launcher to stop ``store``, at a user's request.
+
+        A store that is not Flyover's to start is not Flyover's to stop
+        either, and is left alone. A stopped store stays stopped until a
+        user starts it again or chooses again.
+
+        Raises:
+            LauncherError: the launcher could not stop it; the message says
+                why.
+        """
+        if not self.manages(store):
+            return
+        self._launcher.stop(self._module)
 
     def status(
         self,

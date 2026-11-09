@@ -90,6 +90,10 @@ class StoreLauncher:
         """Start the module's containers that are not running."""
         return self._call("POST", f"/modules/{module}/start")
 
+    def stop(self, module: str) -> ModuleState:
+        """Stop the module's running containers."""
+        return self._call("POST", f"/modules/{module}/stop")
+
     def _call(self, method: str, path: str) -> ModuleState:
         try:
             response = requests.request(

@@ -19,6 +19,7 @@ import pytest
 from app_factory import create_app
 from services import project_service
 from services.project_service import MapFetchError, MapFileChoice
+from services.store_launcher import LauncherError
 from services.store_lifecycle import StoreLifecycle
 from services.store_selection import LOCALHOST_NOTE
 from tests.api.support import REPO, STORE_URL, build_api_app, valid_mapping
@@ -70,9 +71,11 @@ def state_file(doubles):
 
 @pytest.fixture
 def lifecycle():
-    """A store lifecycle that starts nothing, for the routes to call."""
+    """A store lifecycle that starts and stops nothing, for the routes to
+    call; it says the store is Flyover's to start and stop."""
     double = create_autospec(StoreLifecycle, instance=True)
     double.status.return_value = ("reachable", "")
+    double.manages.return_value = True
     return double
 
 
@@ -557,10 +560,12 @@ class TestTheStoreStatus:
         response = client.get("/api/v1/project/store-status")
 
         assert response.status_code == 200
+        # The test stack runs no launcher: the store is not Flyover's to stop.
         assert response.get_json() == {
             "state": "reachable",
             "reachable": True,
             "reason": "",
+            "managed": False,
             "store": CONFIGURED_STORE,
         }
         store.check_reachable.assert_called_once_with()
@@ -601,6 +606,7 @@ class TestTheStoreStatus:
             "state": "waiting",
             "reachable": False,
             "reason": "",
+            "managed": False,
             "store": CONFIGURED_STORE,
         }
         store.check_reachable.assert_not_called()
@@ -641,6 +647,7 @@ class TestStartingTheStoreOnRequest:
             "state": "starting",
             "reachable": False,
             "reason": "",
+            "managed": True,
             "store": CONFIGURED_STORE,
         }
         lifecycle.ensure_started.assert_called_once_with(selection.configured)
@@ -668,6 +675,66 @@ class TestStartingTheStoreOnRequest:
 
         assert response.status_code == 403
         lifecycle.ensure_started.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/project/store-stop
+# ---------------------------------------------------------------------------
+
+
+class TestStoppingTheStoreOnRequest:
+    @pytest.mark.route("POST", "/api/v1/project/store-stop", "success")
+    def test_a_user_leaving_stops_flyovers_store_and_hears_where_it_stands(
+        self, make_app, lifecycle
+    ):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+        selection = client.application.config["APP_CONTEXT"]["store_selection"]
+        client.delete("/api/v1/project")
+        lifecycle.status.return_value = ("stopped", "The RDF store is not running.")
+
+        response = client.post("/api/v1/project/store-stop")
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "state": "stopped",
+            "reachable": False,
+            "reason": "The RDF store is not running.",
+            "managed": True,
+            "store": CONFIGURED_STORE,
+        }
+        lifecycle.stop.assert_called_once_with(selection.current)
+
+    @pytest.mark.route("POST", "/api/v1/project/store-stop", "failure")
+    def test_a_store_flyover_does_not_run_is_left_as_it_is(self, make_app, lifecycle):
+        lifecycle.manages.return_value = False
+        client = make_app(store_lifecycle=lifecycle).test_client()
+
+        response = client.post("/api/v1/project/store-stop")
+
+        assert response.status_code == 409
+        assert response.get_json() == {
+            "error": "Flyover does not run this store, so it leaves it as it is."
+        }
+        lifecycle.stop.assert_not_called()
+
+    def test_a_stop_the_launcher_refuses_says_why(self, make_app, lifecycle):
+        lifecycle.stop.side_effect = LauncherError("The store launcher refused: busy")
+        client = make_app(store_lifecycle=lifecycle).test_client()
+
+        response = client.post("/api/v1/project/store-stop")
+
+        assert response.status_code == 502
+        assert response.get_json() == {"error": "The store launcher refused: busy"}
+
+    def test_another_site_cannot_stop_the_store(self, make_app, lifecycle):
+        client = make_app(store_lifecycle=lifecycle).test_client()
+
+        response = client.post(
+            "/api/v1/project/store-stop", headers={"Origin": "https://evil.example"}
+        )
+
+        assert response.status_code == 403
+        lifecycle.stop.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

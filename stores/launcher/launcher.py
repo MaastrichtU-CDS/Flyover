@@ -1,18 +1,22 @@
 """
-Flyover's store launcher: starts the containers of a store module when
-Flyover asks.
+Flyover's store launcher: starts, and stops, the containers of a store
+module when Flyover asks.
 
-Flyover starts a store only once a user has chosen to work on it, but it
-cannot start containers itself. This service holds Docker's socket for it,
-and does no more than start, and report on, the containers of its own
+Flyover starts a store only once a user has chosen to work on it, and stops
+it only when a user asks to as they leave the workflow, but it cannot start
+or stop containers itself. This service holds Docker's socket for it, and
+does no more than start, stop and report on the containers of its own
 Compose project labelled ``org.flyover.module=<module>``. It answers on the
 stack's internal network only (no port is published), and it never creates,
-stops, removes or runs anything in a container.
+removes or runs anything in a container.
 
     GET  /modules/<module>         the module's state
     POST /modules/<module>/start   start the module's containers that are not
                                    running, in the order their
                                    ``org.flyover.start-order`` label gives
+    POST /modules/<module>/stop    stop the module's running containers, in
+                                   the opposite order, each with its own
+                                   grace period (Compose's stop_grace_period)
     GET  /health                   whether the launcher itself is up
 
 A module's state is ``running`` (every container runs), ``starting`` (one is
@@ -48,7 +52,8 @@ MODULE_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,62}$")
 REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 # Docker's StartedAt for a container that never started.
 NEVER_STARTED = "0001-01-01T00:00:00Z"
-# Seconds to wait for Docker: starting a container may take a moment.
+# Seconds to wait for Docker: starting a container may take a moment, and
+# stopping one waits for its grace period.
 DOCKER_TIMEOUT = 60
 
 logger = logging.getLogger("flyover.store_launcher")
@@ -126,6 +131,13 @@ class Docker:
         if status not in (204, 304):
             raise DockerError(self._refusal(status, body))
 
+    def stop(self, reference: str) -> None:
+        """Stop a container within its own grace period; one that does not
+        run is left as it is."""
+        status, body = self._request("POST", f"/containers/{_path(reference)}/stop")
+        if status not in (204, 304):
+            raise DockerError(self._refusal(status, body))
+
 
 def _path(reference: str) -> str:
     """A container reference for a path of Docker's API: an id or a name,
@@ -153,7 +165,7 @@ def _aggregate(statuses: List[str]) -> str:
 
 
 class Launcher:
-    """Starts, and reports on, the store modules of one Compose project."""
+    """Starts, stops and reports on the store modules of one Compose project."""
 
     def __init__(self, docker: Docker, project: str = ""):
         self._docker = docker
@@ -228,6 +240,15 @@ class Launcher:
                 self._docker.start(member["id"])
         return self.state(module)
 
+    def stop(self, module: str) -> Dict[str, Any]:
+        """Stop what runs, the last started first: a store before the engine
+        it needs."""
+        for member in reversed(self._members(module)):
+            if member["status"] in ("running", "restarting"):
+                logger.info("Stopping %s for module %s", member["name"], module)
+                self._docker.stop(member["id"])
+        return self.state(module)
+
 
 class _Handler(BaseHTTPRequestHandler):
     launcher: Launcher
@@ -242,9 +263,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._answer(lambda: self.launcher.state(module))
 
     def do_POST(self) -> None:
-        module = self._module("/start")
-        if module is not None:
-            self._answer(lambda: self.launcher.start(module))
+        match = re.fullmatch(r"/modules/([^/?#]+)/(start|stop)", self.path)
+        if not match or not MODULE_NAME.match(match.group(1)):
+            self._send(404, {"error": "No such resource."})
+            return
+        module, action = match.groups()
+        act = self.launcher.start if action == "start" else self.launcher.stop
+        self._answer(lambda: act(module))
 
     def _module(self, suffix: str) -> Optional[str]:
         match = re.fullmatch(r"/modules/([^/?#]+)" + re.escape(suffix), self.path)

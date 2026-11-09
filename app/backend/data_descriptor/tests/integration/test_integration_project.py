@@ -214,6 +214,7 @@ class TestTheStoreStatus:
             "state": "unreachable",
             "reachable": False,
             "reason": "Currently, the store cannot be reached by Flyover.",
+            "managed": False,
             "store": body["store"],
         }
         assert body["store"]["url"] == project_store.repository_url
@@ -320,11 +321,13 @@ class FakeLauncher:
         self.started_at = None
         self.never_started = True
         self.starts = 0
+        self.stops = 0
 
     def install(self, web):
         module = f"{LAUNCHER}/modules/rdf-store"
         web.add_callback(responses.GET, module, callback=self._report)
         web.add_callback(responses.POST, f"{module}/start", callback=self._start)
+        web.add_callback(responses.POST, f"{module}/stop", callback=self._stop)
 
     def _report(self, request):
         body = {
@@ -341,6 +344,12 @@ class FakeLauncher:
             self.state = "running"
             self.started_at = datetime.now(timezone.utc).isoformat()
             self.never_started = False
+        return self._report(request)
+
+    def _stop(self, request):
+        self.stops += 1
+        if self.state != "missing":
+            self.state, self.started_at = "stopped", None
         return self._report(request)
 
 
@@ -378,6 +387,7 @@ class TestStartingTheLocalStore:
             "state": "starting",
             "reachable": False,
             "reason": "",
+            "managed": True,
             "store": _state(launching_client)["store"],
         }
 
@@ -439,3 +449,25 @@ class TestStartingTheLocalStore:
 
         assert launcher.starts == 2
         assert started["state"] == "starting"
+
+    def test_a_store_a_user_stops_as_they_leave_stays_stopped_until_they_choose(
+        self, launching_client, launcher, rdf_store
+    ):
+        launching_client.delete("/api/v1/project")
+        rdf_store.outage = None
+        assert _state(launching_client)["managed"] is True
+
+        # The user leaves the workflow and asks to stop the store.
+        rdf_store.outage = requests.ConnectionError("stopped")
+        stopped = launching_client.post("/api/v1/project/store-stop").get_json()
+
+        assert launcher.stops == 1
+        assert stopped["state"] == "stopped"
+        assert stopped["reason"] == STORE_STOPPED
+        assert _state(launching_client)["state"] == "stopped"
+        assert launcher.starts == 1
+
+        # Entering the workflow again is a choice: the store starts.
+        launching_client.delete("/api/v1/project")
+        assert launcher.starts == 2
+        assert _state(launching_client)["state"] == "starting"

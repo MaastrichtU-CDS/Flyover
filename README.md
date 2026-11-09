@@ -170,9 +170,9 @@ Flyover's container `localhost` is the container itself. Flyover never creates r
 as unreachable in the strip.
 
 Flyover starts its own store only when you choose to work on it: by opening a project on it, or by continuing without
-a project. A store on another server is not Flyover's to start. Flyover never stops a store, as other tools may use it
-too. Flyover has no access to Docker itself: a small launcher service (`stores/launcher/`) starts only the containers
-the stack labels as a store. If the store runs elsewhere, set `FLYOVER_STORE_LAUNCHER_URL` empty and Flyover takes the
+a project. A store on another server is not Flyover's to start. Flyover stops its store only when you ask it to, as
+you leave the workflow, since other tools may use the store too. Flyover has no access to Docker itself: a small
+launcher service (`stores/launcher/`) starts and stops only the containers the stack labels as a store. If the store runs elsewhere, set `FLYOVER_STORE_LAUNCHER_URL` empty and Flyover takes the
 store as running.
 
 A map uploaded in a step is checked against the open project. The project's own map (the same schema) replaces the
