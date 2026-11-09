@@ -141,7 +141,11 @@ link to the workflow led to, which waits for your answer:
   page on Codeberg, GitHub, GitLab or a similar site, or its Zenodo record or DOI. A Zenodo record that holds several
   maps lists them to choose from. You may start from the project's empty template and upload your own filled-in map
   later, in any step.
+- **Create a JSON-LD** to share with your partners: describe your data model once, for the sites you work with. This
+  choice is under development.
 - **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
+
+The pop-up opens on these choices; **Open a project** then asks for the map.
 
 Cancelling leaves you on the home page, or takes you back to it.
 

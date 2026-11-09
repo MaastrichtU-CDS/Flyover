@@ -32,7 +32,8 @@ const {
 const dialog = ref(null)
 const fileInput = ref(null)
 const url = ref('')
-// choose | confirm-open | confirm-leave
+// 'choose' (the choices), 'open' (a project's map, from a file or a web
+// address), 'confirm-open' or 'confirm-leave'.
 const step = ref('choose')
 const busy = ref(false)
 const dragging = ref(false)
@@ -64,6 +65,17 @@ const pendingVersion = computed(() =>
 function clearErrors() {
   error.value = ''
   validationErrors.value = []
+}
+
+function showOpen() {
+  clearErrors()
+  step.value = 'open'
+}
+
+function showChoices() {
+  clearErrors()
+  choices.value = null
+  step.value = 'choose'
 }
 
 function reset() {
@@ -257,7 +269,7 @@ async function openPending() {
     await projectStore.openProject(map, { fileName, sourceUrl })
     finish(openedMessage())
   } catch (e) {
-    step.value = 'choose'
+    step.value = 'open'
     error.value = errorMessage(e)
     validationErrors.value = e?.response?.data?.validation_errors || []
   } finally {
@@ -304,9 +316,11 @@ async function download() {
   }
 }
 
+// From a question, back to where it was asked: the map to open, or the
+// choices.
 function back() {
+  step.value = pending.value ? 'open' : 'choose'
   pending.value = null
-  step.value = 'choose'
 }
 </script>
 
@@ -350,9 +364,8 @@ function back() {
       <div class="project-picker-body">
         <template v-if="step === 'choose'">
           <p class="project-picker-intro">
-            A project is defined by its JSON-LD semantic map: the general schema every site
-            of the project shares, and your site's own part. Flyover then works on the RDF
-            store the map names.
+            A project is the JSON-LD semantic map that the sites of a study share: a general
+            schema, and each site's own part.
           </p>
           <p
             v-if="project && !entering"
@@ -361,202 +374,206 @@ function back() {
             Open now: <strong>{{ openName }}</strong>
           </p>
 
-          <div
+          <!-- The project this browser remembers, first: a row in the
+               choices' style, the whole row the button. -->
+          <button
             v-if="project && entering"
-            class="card mb-3 project-picker-remembered"
+            id="project-picker-continue"
+            type="button"
+            class="project-picker-option project-picker-remembered"
+            :disabled="busy"
+            @click="continueWithRemembered"
           >
-            <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
-              <div class="mr-3">
-                <div class="small text-muted">
-                  The project this browser remembers
-                </div>
-                <strong>{{ rememberedLabel }}</strong>
-              </div>
-              <button
-                id="project-picker-continue"
-                type="button"
-                class="btn btn-primary"
-                :disabled="busy"
-                @click="continueWithRemembered"
-              >
-                <i class="fas fa-play" /> Continue with {{ openName }}
-              </button>
-            </div>
-          </div>
+            <span class="project-picker-option-icon"><i
+              class="fas fa-play"
+              aria-hidden="true"
+            /></span>
+            <span class="project-picker-remembered-text">
+              <strong class="project-picker-option-title">Continue with {{ rememberedLabel }}</strong>
+              <span class="project-picker-option-text">The project this browser remembers</span>
+            </span>
+          </button>
 
-          <div class="card mb-3">
-            <div class="card-header bg-light">
-              <h6 class="mb-0">
-                <i class="fas fa-project-diagram" /> Open a project
-              </h6>
-            </div>
-            <div class="card-body">
-              <div
-                class="card p-3 border text-center project-drop"
-                :class="{ 'drag-over': dragging }"
-                @dragover.prevent
-                @dragenter.prevent="dragging = true"
-                @dragleave.prevent="dragging = false"
-                @drop.prevent="onDrop"
+          <!-- The choices first; opening a project then asks for its map. -->
+          <div class="project-picker-options">
+            <button
+              id="project-picker-open"
+              type="button"
+              class="project-picker-option"
+              :disabled="busy"
+              @click="showOpen"
+            >
+              <span class="project-picker-option-icon"><i
+                class="fas fa-folder-open"
+                aria-hidden="true"
+              /></span>
+              <strong class="project-picker-option-title">Open a project</strong>
+              <span class="project-picker-option-text">From its JSON-LD file, or a web address</span>
+            </button>
+            <button
+              id="project-picker-create"
+              type="button"
+              class="project-picker-option"
+              disabled
+            >
+              <span class="project-picker-option-icon"><i
+                class="fas fa-pen-ruler"
+                aria-hidden="true"
+              /></span>
+              <strong class="project-picker-option-title">Create a JSON-LD</strong>
+              <span class="badge project-picker-soon">Under development</span>
+              <span class="project-picker-option-text">Describe your data model once, and share it with your
+                partners</span>
+            </button>
+            <button
+              id="project-picker-without"
+              type="button"
+              class="project-picker-option project-picker-standard"
+              :title="standardStore?.url || ''"
+              :disabled="busy"
+              @click="chooseWithoutProject"
+            >
+              <span class="project-picker-option-icon"><i
+                class="fas fa-forward"
+                aria-hidden="true"
+              /></span>
+              <strong class="project-picker-option-title">Continue without a project</strong>
+              <span class="project-picker-option-text">The standard RDF flow, on Flyover's configured RDF
+                store<template v-if="standardStore">{{ ' (repository ' }}<strong>{{ standardStore.repository }}</strong>)</template></span>
+            </button>
+          </div>
+        </template>
+
+        <template v-else-if="step === 'open'">
+          <!-- One root, so the step leaves the page in one piece. -->
+          <div class="project-picker-open">
+            <button
+              type="button"
+              class="btn btn-link btn-sm p-0 mb-2 project-picker-back"
+              :disabled="busy"
+              @click="showChoices"
+            >
+              <i
+                class="fas fa-arrow-left"
+                aria-hidden="true"
+              /> Back to the choices
+            </button>
+            <h6 class="project-picker-step-title">
+              Open a project
+            </h6>
+            <p class="small text-muted mb-2">
+              Flyover then works on the RDF store that the project's map names.
+            </p>
+            <div
+              class="card p-3 border text-center project-drop"
+              :class="{ 'drag-over': dragging }"
+              @dragover.prevent
+              @dragenter.prevent="dragging = true"
+              @dragleave.prevent="dragging = false"
+              @drop.prevent="onDrop"
+            >
+              <div class="mb-2">
+                <i class="fas fa-file-code fa-2x text-primary" />
+              </div>
+              <strong>Drop the project's JSON-LD map here</strong>
+              <small class="d-block text-muted mb-2">or choose the file on your computer</small>
+              <div>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  :disabled="busy"
+                  @click="fileInput?.click()"
+                >
+                  <i class="fas fa-folder-open" /> Browse
+                </button>
+              </div>
+              <input
+                ref="fileInput"
+                type="file"
+                class="d-none"
+                accept=".jsonld,.json,application/ld+json,application/json"
+                data-testid="project-file-input"
+                @change="onFilePicked"
               >
-                <div class="mb-2">
-                  <i class="fas fa-file-code fa-2x text-primary" />
-                </div>
-                <strong>Drop the project's JSON-LD map here</strong>
-                <small class="d-block text-muted mb-2">or choose the file on your computer</small>
-                <div>
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary btn-sm"
-                    :disabled="busy"
-                    @click="fileInput?.click()"
-                  >
-                    <i class="fas fa-folder-open" /> Browse
-                  </button>
-                </div>
+            </div>
+
+            <form
+              class="mt-3"
+              @submit.prevent="loadFromUrl"
+            >
+              <label
+                for="project-map-url"
+                class="small text-muted mb-1"
+              >Or load the map from a web address:</label>
+              <div class="input-group input-group-sm">
                 <input
-                  ref="fileInput"
-                  type="file"
-                  class="d-none"
-                  accept=".jsonld,.json,application/ld+json,application/json"
-                  data-testid="project-file-input"
-                  @change="onFilePicked"
+                  id="project-map-url"
+                  v-model="url"
+                  type="url"
+                  class="form-control"
+                  aria-describedby="project-map-url-help"
+                  placeholder="https://…/project-map.jsonld"
+                  :disabled="busy"
                 >
-              </div>
-
-              <form
-                class="mt-3"
-                @submit.prevent="loadFromUrl"
-              >
-                <label
-                  for="project-map-url"
-                  class="small text-muted mb-1"
-                >Or load the map from a web address:</label>
-                <div class="input-group input-group-sm">
-                  <input
-                    id="project-map-url"
-                    v-model="url"
-                    type="url"
-                    class="form-control"
-                    aria-describedby="project-map-url-help"
-                    placeholder="https://…/project-map.jsonld"
-                    :disabled="busy"
-                  >
-                  <div class="input-group-append">
-                    <button
-                      type="submit"
-                      class="btn btn-outline-primary"
-                      :disabled="busy || !url.trim()"
-                    >
-                      <i class="fas fa-cloud-download-alt" /> Load
-                    </button>
-                  </div>
-                </div>
-                <small
-                  id="project-map-url-help"
-                  class="form-text text-muted"
-                >
-                  The file's own address, its page on Codeberg, GitHub, GitLab or a similar
-                  site, or its Zenodo record or DOI.
-                </small>
-              </form>
-
-              <div
-                v-if="choices"
-                class="mt-3 project-picker-choices"
-              >
-                <p
-                  id="project-map-choices-label"
-                  class="small mb-1"
-                >
-                  {{ choices.message }} Choose the one to open:
-                </p>
-                <div
-                  class="list-group"
-                  role="group"
-                  aria-labelledby="project-map-choices-label"
-                >
+                <div class="input-group-append">
                   <button
-                    v-for="item in choices.items"
-                    :key="item.url"
-                    type="button"
-                    class="list-group-item list-group-item-action project-picker-choice"
-                    :disabled="busy"
-                    @click="loadChoice(item)"
+                    type="submit"
+                    class="btn btn-outline-primary"
+                    :disabled="busy || !url.trim()"
                   >
-                    <span class="project-picker-choice-name">
-                      <i class="fas fa-file-code" /> {{ item.name }}
-                    </span>
-                    <!-- The space keeps name and size apart for screen readers. -->
-                    <span
-                      v-if="formatSize(item.size)"
-                      class="small text-muted"
-                    >{{ ' ' + formatSize(item.size) }}</span>
+                    <i class="fas fa-cloud-download-alt" /> Load
                   </button>
                 </div>
               </div>
-
-              <div
-                v-if="busy"
-                class="text-muted small mt-2"
+              <small
+                id="project-map-url-help"
+                class="form-text text-muted"
               >
-                <i class="fas fa-spinner fa-spin" /> Checking the map…
-              </div>
+                The file's own address, its page on Codeberg, GitHub, GitLab or a similar
+                site, or its Zenodo record or DOI.
+              </small>
+            </form>
 
-              <div
-                v-if="error"
-                class="alert alert-danger mt-3 mb-0 project-picker-errors"
-                role="alert"
+            <div
+              v-if="choices"
+              class="mt-3 project-picker-choices"
+            >
+              <p
+                id="project-map-choices-label"
+                class="small mb-1"
               >
-                <strong><i class="fas fa-exclamation-triangle" /> {{ error }}</strong>
-                <ul v-if="validationErrors.length">
-                  <li
-                    v-for="(item, index) in validationErrors"
-                    :key="index"
-                  >
-                    <code>{{ item.path }}</code> — {{ item.message }}
-                    <div
-                      v-if="item.suggestion"
-                      class="suggestion"
-                    >
-                      <i class="fas fa-lightbulb" /> {{ item.suggestion }}
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header bg-light">
-              <h6 class="mb-0">
-                <i class="fas fa-database" /> Continue without a project
-              </h6>
-            </div>
-            <div class="card-body">
-              <div class="mb-2 project-picker-standard">
-                <p class="mb-1">
-                  Work in the <strong>standard RDF flow</strong>, on Flyover's configured RDF
-                  store, as Flyover always has. You can still upload a map in the steps, and
-                  choose a project later from the bar at the top.
-                </p>
-                <p
-                  v-if="standardStore"
-                  class="small text-muted mb-0 project-picker-store"
+                {{ choices.message }} Choose the one to open:
+              </p>
+              <div
+                class="list-group"
+                role="group"
+                aria-labelledby="project-map-choices-label"
+              >
+                <button
+                  v-for="item in choices.items"
+                  :key="item.url"
+                  type="button"
+                  class="list-group-item list-group-item-action project-picker-choice"
+                  :disabled="busy"
+                  @click="loadChoice(item)"
                 >
-                  <i class="fas fa-database" /> Repository
-                  <strong>{{ standardStore.repository }}</strong> ·
-                  <span class="project-picker-url">{{ standardStore.url }}</span>
-                </p>
+                  <span class="project-picker-choice-name">
+                    <i class="fas fa-file-code" /> {{ item.name }}
+                  </span>
+                  <!-- The space keeps name and size apart for screen readers. -->
+                  <span
+                    v-if="formatSize(item.size)"
+                    class="small text-muted"
+                  >{{ ' ' + formatSize(item.size) }}</span>
+                </button>
               </div>
-              <button
-                type="button"
-                class="btn btn-secondary"
-                :disabled="busy"
-                @click="chooseWithoutProject"
-              >
-                <i class="fas fa-forward" /> Continue without a project
-              </button>
+            </div>
+
+            <div
+              v-if="busy"
+              class="text-muted small mt-2"
+            >
+              <i class="fas fa-spinner fa-spin" /> Checking the map…
             </div>
           </div>
         </template>
@@ -660,10 +677,32 @@ function back() {
             </button>
           </div>
         </template>
+
+        <div
+          v-if="error && (step === 'choose' || step === 'open')"
+          class="alert alert-danger mt-3 mb-0 project-picker-errors"
+          role="alert"
+        >
+          <strong><i class="fas fa-exclamation-triangle" /> {{ error }}</strong>
+          <ul v-if="validationErrors.length">
+            <li
+              v-for="(item, index) in validationErrors"
+              :key="index"
+            >
+              <code>{{ item.path }}</code> — {{ item.message }}
+              <div
+                v-if="item.suggestion"
+                class="suggestion"
+              >
+                <i class="fas fa-lightbulb" /> {{ item.suggestion }}
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
 
       <div
-        v-if="step === 'choose'"
+        v-if="step === 'choose' || step === 'open'"
         class="project-picker-footer"
       >
         <button
@@ -751,6 +790,106 @@ function back() {
   margin-bottom: 0.75rem;
 }
 
+/* The choices: three tiles side by side, one above the other on a phone. */
+.project-picker-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+}
+
+.project-picker-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1rem 0.75rem 0.85rem;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.project-picker-option:hover:not(:disabled),
+.project-picker-option:focus-visible {
+  border-color: rgba(118, 75, 162, 0.75);
+  box-shadow: 0 2px 8px rgba(118, 75, 162, 0.2);
+  outline: none;
+}
+
+.project-picker-option:disabled {
+  cursor: not-allowed;
+}
+
+.project-picker-option:disabled .project-picker-option-icon,
+.project-picker-option:disabled .project-picker-option-title,
+.project-picker-option:disabled .project-picker-option-text {
+  opacity: 0.6;
+}
+
+.project-picker-option-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+/* The old stylesheet gives every icon a right margin, which pushes it off
+   the centre of its circle. */
+.project-picker-option-icon i {
+  margin: 0;
+}
+
+/* The remembered project: one row across the choices, its icon beside the
+   text, in the choices' purple, as the first thing to pick. */
+.project-picker-remembered {
+  flex-direction: row;
+  gap: 0.75rem;
+  width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-color: rgba(118, 75, 162, 0.45);
+  background: rgba(118, 75, 162, 0.04);
+  text-align: left;
+}
+
+.project-picker-remembered-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.project-picker-option-title {
+  font-size: 0.95rem;
+}
+
+.project-picker-option-text {
+  color: #6c757d;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+/* As on the home page's tiles of workflows under development, but under
+   the title, so it never covers the icon. */
+.project-picker-soon {
+  background: rgba(118, 75, 162, 0.12);
+  color: #764ba2;
+  font-weight: 500;
+}
+
+.project-picker-step-title {
+  margin-bottom: 0.25rem;
+}
+
 .project-drop {
   cursor: default;
 }
@@ -775,10 +914,6 @@ function back() {
 .project-picker-errors .suggestion {
   font-size: 0.85em;
   opacity: 0.85;
-}
-
-.project-picker-url {
-  overflow-wrap: anywhere;
 }
 
 /* A record's maps: compact rows, the list scrolling when it is long. */

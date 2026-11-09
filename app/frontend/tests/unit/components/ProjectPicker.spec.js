@@ -141,7 +141,14 @@ function fileOf(map, name = 'map.jsonld') {
   })
 }
 
+// The step that asks for a project's map, from the choices.
+async function openStep(wrapper) {
+  if (wrapper.find('#project-map-url').exists()) return
+  await wrapper.find('#project-picker-open').trigger('click')
+}
+
 async function pick(wrapper, file) {
+  await openStep(wrapper)
   const input = wrapper.find('input[type="file"]')
   Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
   await input.trigger('change')
@@ -241,14 +248,43 @@ describe('ProjectPicker', () => {
       expect(router.push).not.toHaveBeenCalled()
     })
 
+    it('opens on three choices, creating a JSON-LD still under development', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      const titles = wrapper.findAll('.project-picker-option-title').map((t) => t.text())
+      expect(titles).toEqual(['Open a project', 'Create a JSON-LD', 'Continue without a project'])
+      // The map is asked for once the user chooses to open a project.
+      expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+      expect(wrapper.find('#project-map-url').exists()).toBe(false)
+      const create = wrapper.find('#project-picker-create')
+      expect(create.element.disabled).toBe(true)
+      expect(create.find('.project-picker-soon').text()).toBe('Under development')
+      expect(create.find('.project-picker-option-text').text().replace(/\s+/g, ' ')).toBe(
+        'Describe your data model once, and share it with your partners'
+      )
+    })
+
+    it('asks for the map once the user chooses to open a project, with a way back', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      await wrapper.find('#project-picker-open').trigger('click')
+      expect(wrapper.find('input[type="file"]').exists()).toBe(true)
+      expect(wrapper.find('#project-map-url').exists()).toBe(true)
+      expect(wrapper.find('.project-picker-options').exists()).toBe(false)
+
+      await button(wrapper, 'Back to the choices').trigger('click')
+      expect(wrapper.find('.project-picker-options').exists()).toBe(true)
+    })
+
     it('says that going without a project is the standard RDF flow on the configured store', async () => {
       ;({ wrapper } = await mountPicker())
 
-      const standard = wrapper.find('.project-picker-standard').text().replace(/\s+/g, ' ')
-      expect(standard).toContain('standard RDF flow')
-      expect(standard).toContain("Flyover's configured RDF store")
-      expect(standard).toContain('Repository userRepo')
-      expect(standard).toContain('http://rdf-store:7200/repositories/userRepo')
+      const standard = wrapper.find('.project-picker-standard')
+      expect(standard.find('.project-picker-option-text').text().replace(/\s+/g, ' ')).toBe(
+        "The standard RDF flow, on Flyover's configured RDF store (repository userRepo)"
+      )
+      // Its address, for whoever wants it, on hover.
+      expect(standard.attributes('title')).toBe('http://rdf-store:7200/repositories/userRepo')
     })
 
     it('continues without a project, in the workflow, without reloading', async () => {
@@ -299,11 +335,15 @@ describe('ProjectPicker', () => {
         let project
         ;({ wrapper, project } = await mountPicker())
 
+        // A row above the choices, the whole row the button.
         const remembered = wrapper.find('.project-picker-remembered')
-        expect(remembered.text().replace(/\s+/g, ' ')).toContain(
-          'The project this browser remembers AYA mapping · v1.0.0'
+        expect(remembered.attributes('id')).toBe('project-picker-continue')
+        expect(remembered.find('.project-picker-option-title').text()).toBe(
+          'Continue with AYA mapping · v1.0.0'
         )
-        expect(wrapper.find('#project-picker-continue').text()).toBe('Continue with AYA mapping')
+        expect(remembered.find('.project-picker-option-text').text()).toBe(
+          'The project this browser remembers'
+        )
         // "Open now" is for switching; entering, the offer says it.
         expect(wrapper.find('.project-picker-current').exists()).toBe(false)
 
@@ -378,6 +418,7 @@ describe('ProjectPicker', () => {
 
     it('opens a map from a web address, fetched by the server', async () => {
       ;({ wrapper } = await mountPicker())
+      await openStep(wrapper)
 
       await wrapper.find('#project-map-url').setValue('https://example.org/aya.jsonld')
       await wrapper.find('form').trigger('submit')
@@ -394,6 +435,7 @@ describe('ProjectPicker', () => {
 
     it("says a file's page on a code hosting site, or a Zenodo record, will do", async () => {
       ;({ wrapper } = await mountPicker())
+      await openStep(wrapper)
 
       const field = wrapper.find('#project-map-url')
       const help = wrapper.find(`#${field.attributes('aria-describedby')}`)
@@ -434,6 +476,7 @@ describe('ProjectPicker', () => {
       })
 
       async function load(address) {
+        await openStep(wrapper)
         await wrapper.find('#project-map-url').setValue(address)
         await wrapper.find('#project-map-url').element.form.dispatchEvent(new Event('submit'))
         await flushPromises()
@@ -504,6 +547,7 @@ describe('ProjectPicker', () => {
 
     it('shows why a web address could not be loaded', async () => {
       ;({ wrapper } = await mountPicker())
+      await openStep(wrapper)
       api.post.mockRejectedValueOnce({
         response: { status: 502, data: { error: 'The address answered with HTTP 404.' } },
       })
@@ -569,14 +613,19 @@ describe('ProjectPicker', () => {
       expect(api.put).toHaveBeenCalled()
     })
 
-    it('goes back to the choice without opening anything', async () => {
+    it('goes back to the map to open, and on to the choices, opening nothing', async () => {
       rows.set('semantic_map', { key: 'semantic_map', data: OTHER })
       ;({ wrapper } = await mountPicker())
 
       await pick(wrapper, fileOf(AYA))
-      await button(wrapper, 'Back').trigger('click')
+      await wrapper
+        .findAll('.project-picker-actions button')
+        .find((b) => b.text() === 'Back')
+        .trigger('click')
 
       expect(wrapper.find('.project-picker-question').exists()).toBe(false)
+      expect(wrapper.find('#project-map-url').exists()).toBe(true)
+      await button(wrapper, 'Back to the choices').trigger('click')
       expect(button(wrapper, 'Continue without a project')).toBeTruthy()
       expect(api.put).not.toHaveBeenCalled()
     })

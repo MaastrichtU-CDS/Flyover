@@ -38,7 +38,7 @@ app/frontend/
     │   ├── ExitWorkflowDialog.vue   # leaving a workflow: keep its store running, stop it, or stay
     │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), the project, Exit RDF
     │   ├── StoreWait.vue            # what a page that needs the store shows in its place until the store is there (Start for a stopped one)
-    │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
+    │   ├── ProjectPicker.vue        # pop-up: the choices (open a project, create a JSON-LD, continue without one), then the map
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
     │   ├── HoverTip.vue             # the app's tooltip (the home tiles' style, .bootstrap-tooltip)

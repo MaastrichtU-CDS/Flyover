@@ -36,7 +36,9 @@ function asFile(map, name) {
   return { name, mimeType: 'application/ld+json', buffer: Buffer.from(JSON.stringify(map)) }
 }
 
+// The pop-up opens on its choices; opening a project then asks for the map.
 async function openFromPicker(page, map, name) {
+  await picker(page).getByRole('button', { name: /^Open a project/ }).click()
   await picker(page).locator('input[type="file"]').setInputFiles(asFile(map, name))
 }
 
@@ -93,7 +95,9 @@ test.describe('Projects', () => {
     await expect(heading(page)).toContainText('Welcome to Flyover')
     await expect(dialog).toContainText('standard RDF flow')
     await expect(dialog).toContainText("Flyover's configured RDF store")
-    await expect(dialog).toContainText(/Repository\s+userRepo/)
+    await expect(dialog).toContainText(/repository\s+userRepo/)
+    await expect(dialog.getByRole('button', { name: /Create a JSON-LD/ })).toBeDisabled()
+    await expect(dialog).toContainText('Under development')
 
     await dialog.getByRole('button', { name: 'Cancel' }).click()
     await expect(dialog).toBeHidden()
@@ -211,10 +215,10 @@ test.describe('Projects', () => {
     expect(server.project.name).toBe(CENTRE_A)
 
     await page.locator('#rdf-card').click()
-    const remembered = picker(page).locator('.project-picker-remembered')
+    const remembered = picker(page).getByRole('button', { name: `Continue with ${CENTRE_A}` })
     await expect(remembered).toContainText('The project this browser remembers')
     await expect(remembered).toContainText(new RegExp(`${CENTRE_A}\\s*·\\s*v1\\.0\\.0`))
-    await remembered.getByRole('button', { name: `Continue with ${CENTRE_A}` }).click()
+    await remembered.click()
     await expect(picker(page)).toBeHidden()
     await expect(page).toHaveURL(/\/rdf$/)
     await expect(statusBar(page)).toContainText(new RegExp(`Project:\\s*${CENTRE_A}`))
@@ -416,6 +420,7 @@ test.describe('Projects', () => {
     await page.goto('/rdf')
     const dialog = picker(page)
 
+    await dialog.getByRole('button', { name: /^Open a project/ }).click()
     await dialog.locator('#project-map-url').fill('http://localhost:5000/static/no-such-map.jsonld')
     await dialog.getByRole('button', { name: 'Load' }).click()
 
