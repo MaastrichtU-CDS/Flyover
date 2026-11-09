@@ -409,10 +409,10 @@ function back() {
 
       <div class="project-picker-body">
         <template v-if="step === 'choose'">
-          <p class="project-picker-intro">
-            A project is the JSON-LD semantic map that the sites of a study share: a general
-            schema, and each site's own part.
-          </p>
+          <div class="project-picker-intro">
+            <p>All sites in a project share one JSON-LD, with a common schema and a part for each site.</p>
+            <p>Choose one of the options below; you only need to create a new JSON-LD once per project.</p>
+          </div>
           <p
             v-if="project && !entering"
             class="project-picker-current"
@@ -856,12 +856,25 @@ function back() {
   padding: 1rem;
 }
 
+/* What a project is, and what to do: in the dialog's own size and colour,
+   not as small print. */
 .project-picker-intro {
-  font-size: 0.85em;
+  margin-bottom: 1rem;
+  color: #343a40;
+  line-height: 1.5;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
-  background: rgba(118, 75, 162, 0.06);
+  background: rgba(118, 75, 162, 0.07);
   border-radius: 4px;
-  padding: 0.6rem 0.8rem;
+  padding: 0.7rem 0.9rem;
+}
+
+/* What a project is, then what to do, each on a line of its own. */
+.project-picker-intro p {
+  margin: 0;
+}
+
+.project-picker-intro p + p {
+  margin-top: 0.3rem;
 }
 
 .project-picker-current {

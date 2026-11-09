@@ -272,6 +272,16 @@ describe('ProjectPicker', () => {
       )
     })
 
+    it('says what a shared JSON-LD is for, and asks to pick one of the options', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      // What a project is, then what to do, each on a line of its own.
+      expect(wrapper.findAll('.project-picker-intro p').map((line) => line.text())).toEqual([
+        'All sites in a project share one JSON-LD, with a common schema and a part for each site.',
+        'Choose one of the options below; you only need to create a new JSON-LD once per project.',
+      ])
+    })
+
     it('asks for the map once the user chooses to open a project, with a way back', async () => {
       ;({ wrapper } = await mountPicker())
 
