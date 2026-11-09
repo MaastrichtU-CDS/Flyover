@@ -14,7 +14,7 @@ on:
 
 jobs:
   frontend-checks:
-    name: Lint, type-check, unit tests, build
+    name: Lint, type-check, unit tests with coverage, build
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -40,8 +40,16 @@ jobs:
       - name: Type-check
         run: npm run type-check
 
-      - name: Unit tests
-        run: npm run test:unit
+      # Fails when coverage drops below the floors in vitest.config.js.
+      - name: Unit tests, with coverage
+        run: |
+          npm run test:unit:coverage 2>&1 | tee unit-test-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "## 🧪 Frontend unit tests" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E "Test Files|Tests |Statements|Branches|Functions|Lines|ERROR: Coverage" unit-test-output.txt >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          exit $EXIT_CODE
 
       - name: Build
         run: npm run build
