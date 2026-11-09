@@ -3,6 +3,8 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import {
+  ASSUMED_RDF_NOTE,
+  DEFAULT_TARGET_STANDARD,
   downloadName,
   fingerprint,
   newToken,
@@ -10,6 +12,7 @@ import {
   projectVersion,
   sameProject,
   sameStore,
+  targetStandard,
 } from '@/lib/project'
 import { refreshDataExists } from '@/composables/useNavigation'
 import { useStatusStore } from '@/stores/status'
@@ -575,6 +578,9 @@ export const useProjectStore = defineStore('project', () => {
   //   describe answers were added since it was loaded: then Flyover asks.
   // - Another project's map, or the open project's map naming another
   //   store, asks whether to switch or keep going with what is open.
+  // - A map that targets another standard than this tab's workflow (an
+  //   OMOP map in the RDF workflow) is for another workflow: Flyover says
+  //   so, offers to switch, and the step does not use it.
   //
   // Resolves to { go, opened, storeChanged, invalid }: `go` false means
   // the user kept what they had and the step must not use the map; `opened`
@@ -587,6 +593,11 @@ export const useProjectStore = defineStore('project', () => {
     } catch (e) {
       if (!project.value) return { go: true, opened: false }
       throw e
+    }
+    const standard = check?.valid ? targetStandard(check.project) : null
+    if (standard && standard !== (workflow.value || DEFAULT_TARGET_STANDARD)) {
+      await ask({ kind: 'other-standard', check, fileName, edited: false, standard })
+      return { go: false, opened: false, otherStandard: standard }
     }
     if (!project.value) {
       if (!check?.valid) return { go: true, opened: false }
@@ -608,6 +619,7 @@ export const useProjectStore = defineStore('project', () => {
   // first have to start.
   async function openFromStep(map, fileName) {
     const changed = await openProject(map, { fileName })
+    if (project.value?.targetStandardDeclared === false) status.info(ASSUMED_RDF_NOTE)
     if (changed.storeChanged) await whenStoreReady()
     return { go: true, opened: true, ...changed }
   }

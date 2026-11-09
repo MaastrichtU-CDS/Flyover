@@ -27,7 +27,7 @@ vi.mock('@/composables/useNavigation', () => ({
 
 import api from '@/services/api'
 import { refreshDataExists } from '@/composables/useNavigation'
-import { fingerprint } from '@/lib/project'
+import { ASSUMED_RDF_NOTE, fingerprint } from '@/lib/project'
 import { STORE_START_CHECK_MS, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
@@ -685,8 +685,9 @@ describe('the project store', () => {
       schema: { '@id': 'schema:other/v1', name: 'Other schema' },
     }
 
-    // The server's check: valid, with the map's project and the store
-    // its endpoint names (`store`, the AYA store by default).
+    // The server's check: valid, with the map's project (and the standard
+    // it targets, RDF unless it names one) and the store its endpoint names
+    // (`store`, the AYA store by default).
     function checks(store = PROJECT_STORE) {
       api.post.mockImplementation(async (url, body) => {
         if (url !== '/api/v1/project/check') throw new Error(url)
@@ -699,12 +700,66 @@ describe('the project store', () => {
               name: map.name,
               schemaId: map.schema['@id'],
               schemaName: map.schema.name,
+              targetStandard: map.targetStandard || 'rdf',
+              targetStandardDeclared: Boolean(map.targetStandard),
             },
             store,
           },
         }
       })
     }
+
+    it('sets aside a map for another workflow, and says so, project or not', async () => {
+      for (const withProject of [true, false]) {
+        setActivePinia(createPinia())
+        rows.clear()
+        serve()
+        checks()
+        const project = await openStore({ withProject })
+        const omop = { ...OTHER, targetStandard: 'omop' }
+
+        const planned = project.planUpload(omop, 'omop.jsonld')
+        await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+        expect(project.uploadQuestion).toMatchObject({
+          kind: 'other-standard',
+          standard: 'omop',
+          fileName: 'omop.jsonld',
+        })
+        project.answerUpload('keep')
+
+        expect(await planned).toEqual({ go: false, opened: false, otherStandard: 'omop' })
+        expect(api.put).not.toHaveBeenCalled()
+        // The next round has a store of its own: this one's checks stop.
+        project.stopStatusChecks()
+      }
+    })
+
+    it('takes a map for this workflow as it always did', async () => {
+      checks()
+      const project = await openStore({ withProject: false })
+
+      const planned = project.planUpload({ ...MAP, targetStandard: 'rdf' }, 'aya.jsonld')
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+
+      expect(project.uploadQuestion.kind).toBe('no-project')
+      project.answerUpload('keep')
+      expect(await planned).toEqual({ go: true, opened: false })
+    })
+
+    it('says it takes a map naming no standard as RDF, once it opened it', async () => {
+      checks()
+      const project = await openStore({ withProject: false })
+      api.put.mockImplementation(async (url, body) => ({
+        data: serverWith({ ...details(body.token), targetStandardDeclared: false }),
+      }))
+
+      const planned = project.planUpload(MAP, 'aya.jsonld')
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      project.answerUpload('open')
+      await planned
+
+      expect(useStatusStore().messages.map((m) => m.text)).toContain(ASSUMED_RDF_NOTE)
+    })
 
     async function openStore({ withProject = true } = {}) {
       if (withProject) {

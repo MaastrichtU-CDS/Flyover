@@ -147,6 +147,12 @@ link to the workflow led to, which waits for your answer:
 
 The pop-up opens on these choices; **Open a project** then asks for the map.
 
+A project's JSON-LD names the standard its data is transformed to, in a top-level `targetStandard`: `rdf`, `omop` or
+`csv`. That decides which workflow uses it. A map for another workflow than the one you are in opens nothing: Flyover
+says which workflow it is for, and offers to switch there or to choose a different JSON-LD (OMOP and CSV are under
+development). The same holds for a map uploaded in a step. A map without `targetStandard` is taken as RDF, as every map
+was before, and Flyover says so when it opens it.
+
 Cancelling leaves you on the home page, or takes you back to it.
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**

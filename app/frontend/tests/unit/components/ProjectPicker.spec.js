@@ -35,6 +35,7 @@ import { fingerprint } from '@/lib/project'
 import ProjectPicker from '@/components/ProjectPicker.vue'
 import { useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 const CONFIGURED = {
   kind: 'rdf-store',
@@ -50,19 +51,24 @@ const AYA_STORE = {
   source: 'project',
   note: '',
 }
+// Maps that say they target RDF, as maps for the RDF workflow should.
 const AYA = {
   name: 'AYA mapping',
   version: '1.0.0',
+  targetStandard: 'rdf',
   schema: { '@id': 'schema:aya/v1', name: 'AYA schema' },
   databases: {},
 }
 const OTHER = {
   name: 'Other mapping',
   version: '',
+  targetStandard: 'rdf',
   schema: { '@id': 'schema:other/v1', name: 'Other schema' },
   databases: {},
 }
+const OMOP = { ...OTHER, name: 'OMOP mapping', targetStandard: 'omop' }
 
+// As the server reports a map: its standard is RDF unless it names one.
 function detailsOf(map, extra = {}) {
   return {
     name: map.name,
@@ -71,6 +77,8 @@ function detailsOf(map, extra = {}) {
     schemaId: map.schema['@id'],
     schemaName: map.schema.name,
     schemaVersion: '',
+    targetStandard: map.targetStandard || 'rdf',
+    targetStandardDeclared: Boolean(map.targetStandard),
     fileName: 'map.jsonld',
     sourceUrl: '',
     ...extra,
@@ -641,6 +649,68 @@ describe('ProjectPicker', () => {
       expect(document.activeElement).not.toBe(last)
       expect(wrapper.find('[role="dialog"]').element.contains(document.activeElement)).toBe(true)
     })
+  })
+
+  describe('a map for another workflow', () => {
+    it('opens nothing, says which workflow it is for, and offers to switch', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      await pick(wrapper, fileOf(OMOP, 'omop.jsonld'))
+
+      expect(wrapper.find('.project-picker-question').text()).toBe(
+        'This JSON-LD is for the OMOP workflow'
+      )
+      expect(wrapper.find('.project-picker-body p').text().replace(/\s+/g, ' ')).toBe(
+        'OMOP mapping targets the OMOP common data model, so the RDF workflow cannot open ' +
+          'it. Switch to the OMOP workflow, or choose a different JSON-LD.'
+      )
+      expect(api.put).not.toHaveBeenCalled()
+
+      // OMOP is under development: switching shows its note, over the pop-up.
+      await button(wrapper, 'Switch to OMOP').trigger('click')
+      expect(useWorkflowsStore().soon.label).toBe('OMOP')
+      expect(useProjectStore().picker.open).toBe(true)
+    })
+
+    it('goes back to choose a different JSON-LD', async () => {
+      ;({ wrapper } = await mountPicker())
+      await pick(wrapper, fileOf(OMOP, 'omop.jsonld'))
+
+      await button(wrapper, 'Choose a different JSON-LD').trigger('click')
+
+      expect(wrapper.find('.project-picker-question').exists()).toBe(false)
+      expect(wrapper.find('#project-map-url').exists()).toBe(true)
+    })
+
+    it('is refused on the home page too, for the workflow the pop-up opens', async () => {
+      route.path = '/'
+      route.meta = {}
+      const project = useProjectStore()
+      await project.init()
+      project.openPicker('enter', { target: '/rdf' })
+      wrapper = mount(ProjectPicker, { attachTo: document.body })
+      await flushPromises()
+
+      await pick(wrapper, fileOf(OMOP, 'omop.jsonld'))
+
+      expect(wrapper.find('.project-picker-question').text()).toBe(
+        'This JSON-LD is for the OMOP workflow'
+      )
+      expect(router.push).not.toHaveBeenCalled()
+    })
+  })
+
+  it('says it takes a map naming no standard as RDF, once it opened it', async () => {
+    ;({ wrapper } = await mountPicker())
+    const { targetStandard: _, ...undeclared } = AYA
+
+    await pick(wrapper, fileOf(undeclared, 'aya.jsonld'))
+
+    expect(useStatusStore().messages[0].text).toBe(
+      "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya. " +
+        'Its JSON-LD names no target standard, so Flyover takes it as an RDF project: ' +
+        'add "targetStandard": "rdf" to the JSON-LD to say so.'
+    )
   })
 
   describe('opened on the home page', () => {

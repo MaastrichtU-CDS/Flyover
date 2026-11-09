@@ -2,18 +2,27 @@
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useModalFocus } from '@/composables/useModalFocus'
+import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
 import { projectName, projectVersion } from '@/lib/project'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
 // The question a map uploaded in a step raises (see planUpload in the
 // project store): open it as the project, or keep what Flyover works on.
-// Escape and the backdrop keep what is open, the choice that changes
-// nothing.
+// A map for another workflow (its target standard) is not this workflow's
+// to open: the dialog says so, and offers to switch. Escape and the backdrop
+// keep what is open, the choice that changes nothing.
 
 const projectStore = useProjectStore()
 const status = useStatusStore()
-const { uploadQuestion: question, name: openName, configuredStore } = storeToRefs(projectStore)
+const { enter } = useWorkflowEntry()
+const {
+  uploadQuestion: question,
+  name: openName,
+  configuredStore,
+  workflow: tabWorkflow,
+} = storeToRefs(projectStore)
 
 const dialog = ref(null)
 const isOpen = computed(() => Boolean(question.value))
@@ -24,6 +33,9 @@ const incomingLabel = computed(() =>
   [projectName(incoming.value), projectVersion(incoming.value)].filter(Boolean).join(' · ')
 )
 const fileName = computed(() => question.value?.fileName || 'This map')
+// For a map for another workflow: that workflow, and the one the tab is in.
+const otherWorkflow = computed(() => workflowById(question.value?.standard) || {})
+const thisWorkflow = computed(() => workflowById(tabWorkflow.value || 'rdf') || {})
 
 const title = computed(
   () =>
@@ -31,6 +43,7 @@ const title = computed(
       'no-project': `Open ${incomingLabel.value} as a project?`,
       'other-project': `Switch to ${incomingLabel.value}?`,
       'other-store': 'Switch to another RDF store?',
+      'other-standard': `This JSON-LD is for the ${otherWorkflow.value.label} workflow`,
     })[kind.value] || "Replace the project's working copy?"
 )
 
@@ -40,6 +53,7 @@ const openLabel = computed(
       'no-project': 'Open as the project',
       'other-project': 'Switch project',
       'other-store': 'Switch store',
+      'other-standard': `Switch to ${otherWorkflow.value.label}`,
     })[kind.value] || 'Replace the working copy'
 )
 
@@ -49,11 +63,24 @@ const keepLabel = computed(
       'no-project': 'Keep going without a project',
       'other-project': `Keep going with ${openName.value}`,
       'other-store': 'Keep the current store',
+      'other-standard': 'Choose a different JSON-LD',
     })[kind.value] || 'Keep the current copy'
 )
 
 function answer(choice) {
   projectStore.answerUpload(choice)
+}
+
+// The step sets the map aside either way; the other workflow then opens as
+// from the home page (for now, its note that it is under development).
+function primary() {
+  if (kind.value !== 'other-standard') {
+    answer('open')
+    return
+  }
+  const other = workflowById(question.value?.standard)
+  answer('keep')
+  if (other) enter(other)
 }
 
 useModalFocus(dialog, isOpen, { onEscape: () => answer('keep') })
@@ -116,6 +143,15 @@ async function download() {
           </p>
           <p>Keeping going with {{ openName }} sets this upload aside.</p>
         </template>
+        <template v-else-if="kind === 'other-standard'">
+          <p>
+            <strong>{{ fileName }}</strong> targets {{ otherWorkflow.standardName }}, so the
+            {{ thisWorkflow.label }} workflow cannot use it.
+          </p>
+          <p class="mb-0">
+            Switch to the {{ otherWorkflow.label }} workflow, or choose a different JSON-LD.
+          </p>
+        </template>
         <template v-else-if="kind === 'other-store'">
           <p>
             <strong>{{ fileName }}</strong> belongs to the open project, but names another RDF
@@ -132,14 +168,17 @@ async function download() {
           <p>Keeping the current copy sets this upload aside.</p>
         </template>
 
-        <p class="small text-muted upload-question-store">
+        <p
+          v-if="kind !== 'other-standard'"
+          class="small text-muted upload-question-store"
+        >
           <i class="fas fa-database" /> Its RDF store: repository
           <strong>{{ incomingStore.repository }}</strong> ·
           <span class="upload-question-url">{{ incomingStore.url }}</span>
         </p>
 
         <div
-          v-if="kind !== 'no-project'"
+          v-if="kind !== 'no-project' && kind !== 'other-standard'"
           class="alert alert-warning mb-0"
         >
           Download the current map first to keep it.
@@ -148,7 +187,7 @@ async function download() {
 
       <div class="upload-question-footer">
         <button
-          v-if="kind !== 'no-project'"
+          v-if="kind !== 'no-project' && kind !== 'other-standard'"
           type="button"
           class="btn btn-outline-secondary"
           @click="download"
@@ -158,7 +197,7 @@ async function download() {
         <button
           type="button"
           class="btn btn-primary"
-          @click="answer('open')"
+          @click="primary"
         >
           <i class="fas fa-folder-open" /> {{ openLabel }}
         </button>

@@ -106,7 +106,7 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 | Route | What it does |
 |---|---|
 | `GET /api/v1/project` | The open project (or none), the route chosen (`project`, `standard` or none yet), the store in use and the configured store |
-| `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use, started if Flyover may |
+| `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use, started if Flyover may. A map whose `targetStandard` is not `rdf` (the only workflow that runs) is a 400; one without it counts as `rdf` |
 | `DELETE /api/v1/project` | Work without a project, in the standard RDF flow (also how a user chooses it on entering the RDF workflow); starts the configured store if Flyover may |
 | `POST /api/v1/project/check` | What opening a map would mean (can it be opened, which project, which store), changing nothing |
 | `GET /api/v1/project/store-status` | Where the store in use stands: `waiting` (nobody chose yet), `starting`, `stopped` (someone stopped Flyover's store), `reachable` or `unreachable` (with why), from one short `ASK` and the launcher, and whether Flyover may start and stop it (`managed`); a chosen store whose container never ran is started; the status bar asks every minute while its tab is visible |

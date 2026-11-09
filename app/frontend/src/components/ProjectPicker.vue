@@ -4,8 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useModalFocus } from '@/composables/useModalFocus'
 import { reloadPage } from '@/lib/browser'
-import { projectName, projectVersion } from '@/lib/project'
-import { workflowById } from '@/lib/workflows'
+import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
+import { ASSUMED_RDF_NOTE, projectName, projectVersion, targetStandard } from '@/lib/project'
+import { WORKFLOWS, workflowById } from '@/lib/workflows'
 import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
@@ -33,7 +34,8 @@ const dialog = ref(null)
 const fileInput = ref(null)
 const url = ref('')
 // 'choose' (the choices), 'open' (a project's map, from a file or a web
-// address), 'confirm-open' or 'confirm-leave'.
+// address), 'confirm-open', 'confirm-leave' or 'other-standard' (the map is
+// for another workflow).
 const step = ref('choose')
 const busy = ref(false)
 const dragging = ref(false)
@@ -61,6 +63,19 @@ const pendingName = computed(() =>
 const pendingVersion = computed(() =>
   pending.value ? projectVersion(pending.value.check.project) : ''
 )
+
+// The workflow the pop-up is for: the one it opens (from the home page),
+// the one whose page is on screen, or the tab's. Its maps target its
+// standard; a map for another is that workflow's.
+const { enter } = useWorkflowEntry()
+const currentWorkflow = computed(
+  () =>
+    WORKFLOWS.find((workflow) => workflow.to && workflow.to === picker.value.target) ||
+    workflowById(route.meta?.workflow) ||
+    workflowById(projectStore.workflow) ||
+    workflowById('rdf')
+)
+const pendingWorkflow = computed(() => workflowById(pending.value?.standard) || {})
 
 function clearErrors() {
   error.value = ''
@@ -137,7 +152,9 @@ function finish(message) {
 function openedMessage() {
   const label = [projectStore.name, projectStore.version].filter(Boolean).join(' · ')
   const repository = store.value?.repository
-  return `Flyover now works on the project ${label}${repository ? `, on the RDF store's repository ${repository}` : ''}.`
+  const opened = `Flyover now works on the project ${label}${repository ? `, on the RDF store's repository ${repository}` : ''}.`
+  // A map that names no standard is taken as RDF, and the user hears so.
+  return project.value?.targetStandardDeclared === false ? `${opened} ${ASSUMED_RDF_NOTE}` : opened
 }
 
 function withoutProjectMessage() {
@@ -158,6 +175,12 @@ async function consider(map, origin) {
     if (!check?.valid) {
       error.value = check?.error || 'This map cannot be opened as a project.'
       validationErrors.value = check?.validation_errors || []
+      return
+    }
+    const standard = targetStandard(check.project)
+    if (standard !== currentWorkflow.value.id) {
+      pending.value = { map, ...origin, check, kind: 'other-standard', standard }
+      step.value = 'other-standard'
       return
     }
     const kind = projectStore.classify(check)
@@ -314,6 +337,13 @@ async function download() {
   if (!(await projectStore.downloadWorkingCopy())) {
     status.warning('There is no map in this browser to download.')
   }
+}
+
+// The map is for another workflow: go there as from the home page (for now,
+// its note that it is under development, over this pop-up).
+function switchWorkflow() {
+  const other = workflowById(pending.value?.standard)
+  if (other) enter(other)
 }
 
 // From a question, back to where it was asked: the map to open, or the
@@ -632,6 +662,38 @@ function back() {
               @click="back"
             >
               Back
+            </button>
+          </div>
+        </template>
+
+        <template v-else-if="step === 'other-standard' && pending">
+          <h6 class="project-picker-question">
+            <i
+              class="fas fa-right-left"
+              aria-hidden="true"
+            /> This JSON-LD is for the {{ pendingWorkflow.label }} workflow
+          </h6>
+          <p>
+            <strong>{{ pendingName }}</strong> targets {{ pendingWorkflow.standardName }}, so the
+            {{ currentWorkflow.label }} workflow cannot open it. Switch to the
+            {{ pendingWorkflow.label }} workflow, or choose a different JSON-LD.
+          </p>
+          <div class="project-picker-actions">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="busy"
+              @click="switchWorkflow"
+            >
+              <i class="fas fa-right-left" /> Switch to {{ pendingWorkflow.label }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-link"
+              :disabled="busy"
+              @click="back"
+            >
+              Choose a different JSON-LD
             </button>
           </div>
         </template>

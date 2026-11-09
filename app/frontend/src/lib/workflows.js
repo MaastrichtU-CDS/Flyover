@@ -9,6 +9,8 @@
 //   terms; W3C asks for the cube's alt text as given).
 // - `icon`: the Font Awesome icon used where there is no logo.
 // - `storeLabel`: what the workflow's store is called, where it has one.
+// - `standardName`: the standard its maps target (their targetStandard, the
+//   workflow's id), as a sentence names it.
 // - `note`: small print on the tile, as lines of text and links.
 
 export const WORKFLOWS = [
@@ -19,6 +21,7 @@ export const WORKFLOWS = [
     icon: 'fa-project-diagram',
     iconClass: 'share-icon',
     storeLabel: 'RDF store',
+    standardName: 'RDF',
     logo: {
       src: '/static/logos/w3c-semantic-web-cube.svg',
       alt: 'W3C Semantic Web Logo',
@@ -43,6 +46,7 @@ export const WORKFLOWS = [
     icon: 'fa-database',
     iconClass: 'describe-icon',
     storeLabel: 'OMOP database',
+    standardName: 'the OMOP common data model',
     logo: { src: '/static/logos/ohdsi-logo-only-white.png', alt: 'OHDSI logo' },
     description:
       'Transform your data into OMOP CDM-conformant schemas, coupled with an OMOP database.',
@@ -66,6 +70,7 @@ export const WORKFLOWS = [
     label: 'CSV',
     icon: 'fa-file-csv',
     iconClass: 'annotate-icon',
+    standardName: 'CSV files',
     description:
       'Describe and transform your data to a standardised terminology with the simplicity of CSV files.',
     features: ['No database needed', 'Works with any analysis tool', 'Portable and easily shareable files'],

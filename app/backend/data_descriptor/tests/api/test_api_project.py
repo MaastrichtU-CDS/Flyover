@@ -105,6 +105,8 @@ class TestTheOpenProject:
             "schemaId": "schema:shared-fixture/v1",
             "schemaName": "Shared fixture schema",
             "schemaVersion": "1.0.0",
+            "targetStandard": "rdf",
+            "targetStandardDeclared": False,
             "fileName": "aya.jsonld",
             "sourceUrl": "",
             "openedAt": described["project"]["openedAt"],
@@ -400,6 +402,9 @@ class TestCheckingAMap:
                 "schemaId": "schema:shared-fixture/v1",
                 "schemaName": "Shared fixture schema",
                 "schemaVersion": "1.0.0",
+                # The fixture names no standard: an RDF map, as maps always were.
+                "targetStandard": "rdf",
+                "targetStandardDeclared": False,
                 "fileName": "aya.jsonld",
             },
             "store": {
@@ -431,6 +436,58 @@ class TestCheckingAMap:
         response = client.post("/api/v1/project/check", json={"fileName": "x"})
 
         assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# The standard a map targets
+# ---------------------------------------------------------------------------
+
+
+def _targeting(standard):
+    mapping = valid_mapping()
+    mapping["targetStandard"] = standard
+    return mapping
+
+
+class TestTheStandardAMapTargets:
+    def test_checking_a_map_says_the_standard_it_names(self, client):
+        for standard in ("rdf", "omop", "csv"):
+            body = client.post(
+                "/api/v1/project/check", json={"mapping": _targeting(standard)}
+            ).get_json()
+
+            # A map for another workflow is a valid map: the browser offers
+            # to switch rather than show an error.
+            assert body["valid"] is True
+            assert body["project"]["targetStandard"] == standard
+            assert body["project"]["targetStandardDeclared"] is True
+
+    def test_an_unknown_standard_makes_the_map_invalid(self, client):
+        body = client.post(
+            "/api/v1/project/check", json={"mapping": _targeting("sql")}
+        ).get_json()
+
+        assert body["valid"] is False
+        assert any(e["path"] == "targetStandard" for e in body["validation_errors"])
+
+    def test_a_map_for_another_workflow_does_not_open(self, client, state_file):
+        response = _put(client, mapping=_targeting("omop"))
+
+        assert response.status_code == 400
+        assert response.get_json()["error"] == (
+            "This JSON-LD targets the OMOP common data model (its targetStandard "
+            'is "omop"), so the RDF workflow cannot open it as a project.'
+        )
+        assert client.get("/api/v1/project").get_json()["project"] is None
+        assert not os.path.exists(state_file)
+
+    def test_a_map_naming_rdf_opens_and_says_so(self, client):
+        response = _put(client, mapping=_targeting("rdf"))
+
+        assert response.status_code == 200
+        project = response.get_json()["project"]
+        assert project["targetStandard"] == "rdf"
+        assert project["targetStandardDeclared"] is True
 
 
 # ---------------------------------------------------------------------------

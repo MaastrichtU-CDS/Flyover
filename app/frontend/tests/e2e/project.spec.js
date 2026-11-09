@@ -236,6 +236,10 @@ test.describe('Projects', () => {
       new RegExp(`Project:\\s*${CENTRE_A}\\s*·\\s*v1\\.0\\.0`)
     )
     await expect(page.locator('.alert-success')).toContainText('Flyover now works on the project')
+    // The example map names no target standard: Flyover takes it as RDF, and says so.
+    await expect(page.locator('.alert-success')).toContainText(
+      'Its JSON-LD names no target standard, so Flyover takes it as an RDF project'
+    )
     // The map names localhost, which Flyover reads as its configured store:
     // the hover shows it at the address users know, in the tiles' tooltip.
     await statusBar(page).locator('#statusbar-store .hover-tip').first().hover()
@@ -414,6 +418,27 @@ test.describe('Projects', () => {
 
     state = 'reachable'
     await expect(page.locator('h1').first()).toContainText('Data Description')
+  })
+
+  test('a JSON-LD for another workflow opens nothing, and offers to switch', async ({ page }) => {
+    const omop = await otherProject()
+    omop.targetStandard = 'omop'
+    await page.goto('/rdf')
+    await openFromPicker(page, omop, 'omop.jsonld')
+
+    const dialog = picker(page)
+    await expect(dialog).toContainText('This JSON-LD is for the OMOP workflow')
+    await expect(dialog).toContainText('targets the OMOP common data model')
+    // OMOP is under development: switching shows its note.
+    await dialog.getByRole('button', { name: 'Switch to OMOP' }).click()
+    const soon = page.getByRole('dialog', { name: 'The OMOP workflow' })
+    await expect(soon).toContainText('This workflow is under development.')
+    await soon.getByRole('button', { name: 'Close' }).click()
+    await dialog.getByRole('button', { name: 'Choose a different JSON-LD' }).click()
+    await expect(dialog.locator('#project-map-url')).toBeVisible()
+
+    const server = await (await page.request.get('/api/v1/project')).json()
+    expect(server.project).toBe(null)
   })
 
   test('a map that cannot be fetched from a web address says why', async ({ page }) => {
