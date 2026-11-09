@@ -42,7 +42,7 @@ app/frontend/
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
     │   ├── HoverTip.vue             # the app's tooltip (the home tiles' style, .bootstrap-tooltip)
-    │   ├── AppNav.vue               # the workflows on the home page; Home (the RDF landing) and the steps inside RDF
+    │   ├── AppNav.vue               # the workflows on the home page; inside a workflow, Home (its landing) and its steps (only RDF has steps yet)
     │   ├── AppFooter.vue
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
     │   └── MigrationStub.vue        # legacy placeholder, gone soon

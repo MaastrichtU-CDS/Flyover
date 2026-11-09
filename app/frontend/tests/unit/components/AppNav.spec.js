@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { reactive, ref } from 'vue'
 
-// The bar under the status strip: the workflows on the home page, and Home
-// (the RDF landing) with the steps inside the RDF workflow.
+// The bar under the status strip: the workflows on the home page, and,
+// inside a workflow, Home (the workflow's landing) with its steps.
 
 const route = reactive({ path: '/', meta: {} })
 const router = { push: vi.fn() }
@@ -39,6 +39,7 @@ vi.mock('@/composables/useNavigation', () => ({
 }))
 
 import AppNav from '@/components/AppNav.vue'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 import { useWorkflowsStore } from '@/stores/workflows'
 
@@ -119,6 +120,25 @@ describe('AppNav', () => {
     expect(home.find('i').classes()).toContain('fa-home')
     expect(home.classes()).toContain('active')
     expect(wrapper.find('#home-step').exists()).toBe(false)
+  })
+
+  it('shows Home alone inside a workflow whose steps are still to come', () => {
+    // Only RDF has steps yet; OMOP gets its landing page once it is built.
+    const omop = workflowById('omop')
+    omop.to = '/omop'
+    try {
+      route.path = '/omop'
+      route.meta = { workflow: 'omop' }
+      const wrapper = mount(AppNav)
+
+      expect(labels(wrapper)).toEqual(['Home'])
+      const home = wrapper.find('#omop-home-step')
+      expect(home.attributes('href')).toBe('/omop')
+      expect(home.classes()).toContain('active')
+      expect(wrapper.find('.step-separator').exists()).toBe(false)
+    } finally {
+      delete omop.to
+    }
   })
 
   it('points to Exit RDF when Home is clicked, as Home stays in the workflow', async () => {

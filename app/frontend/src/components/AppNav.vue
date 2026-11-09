@@ -3,15 +3,15 @@ import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useNavigation } from '@/composables/useNavigation'
 import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
-import { WORKFLOWS } from '@/lib/workflows'
+import { WORKFLOWS, workflowById } from '@/lib/workflows'
 import { useWorkflowsStore } from '@/stores/workflows'
 
 // The bar under the status strip. On the home page it offers the workflows,
 // which ask for the project before they open (see useWorkflowEntry), and no
-// Home item: every item leads away from the page it would point to. Inside
-// the RDF workflow it shows Home, the workflow's own landing page, and the
-// workflow's steps, which another workflow may not share. As Home stays
-// inside the workflow, a click on it shows the notice beside Exit RDF (see
+// Home item: every item leads away from the page it would point to. Inside a
+// workflow it shows Home, the workflow's own landing page, and the
+// workflow's steps (STEPS), which another workflow may not share. As Home
+// stays inside the workflow, a click on it shows the notice beside Exit (see
 // the workflows store).
 
 const route = useRoute()
@@ -19,21 +19,27 @@ const { stepStates } = useNavigation()
 const { enter } = useWorkflowEntry()
 const workflows = useWorkflowsStore()
 
-const inRdf = computed(() => route.meta?.workflow === 'rdf')
+// Each workflow's steps, with their state. Only RDF has steps yet (see
+// useNavigation); another workflow shows Home alone until its own come.
+const STEPS = { rdf: stepStates }
+
+// The workflow on screen, or null on the home page.
+const current = computed(() => workflowById(route.meta?.workflow))
+const steps = computed(() => STEPS[current.value?.id]?.value ?? [])
 </script>
 
 <template>
   <div class="flyover-navigation">
     <div class="container">
       <div
-        v-if="inRdf"
+        v-if="current"
         class="nav-steps"
       >
         <RouterLink
-          id="rdf-home-step"
-          to="/rdf"
+          :id="`${current.id}-home-step`"
+          :to="current.to"
           class="nav-step"
-          :class="{ active: route.path === '/rdf' }"
+          :class="{ active: route.path === current.to }"
           @click="workflows.showExitNotice()"
         >
           <span class="step-number">
@@ -42,10 +48,13 @@ const inRdf = computed(() => route.meta?.workflow === 'rdf')
           <span class="step-text">Home</span>
         </RouterLink>
 
-        <span class="step-separator">|</span>
+        <span
+          v-if="steps.length"
+          class="step-separator"
+        >|</span>
 
         <template
-          v-for="(step, idx) in stepStates"
+          v-for="(step, idx) in steps"
           :key="step.name"
         >
           <RouterLink
@@ -68,7 +77,7 @@ const inRdf = computed(() => route.meta?.workflow === 'rdf')
             <span class="step-text">{{ step.label }}</span>
           </RouterLink>
           <i
-            v-if="idx < stepStates.length - 1"
+            v-if="idx < steps.length - 1"
             class="fas fa-chevron-right step-arrow"
           />
         </template>
