@@ -316,6 +316,15 @@ window.MyFeatureApp = MyFeatureApp;
 - **Form submissions**: Standard HTML form POST remains the submission mechanism; Vue manages the reactive state
 - **No SPA routing**: Each page is a separate Flask route with its own Vue app instance
 
+## Third-party logos
+
+The home page shows W3C's [Semantic Web logo](http://www.w3.org/2001/sw/) (the cube) for RDF and the logo of
+[OHDSI](https://www.ohdsi.org/), which maintains the OMOP Common Data Model, in white and under their owners' terms:
+OHDSI's own white version, and the cube turned white, which W3C allows. Neither W3C nor OHDSI endorses Flyover or is
+affiliated with it. See
+[`app/backend/data_descriptor/static/logos/README.md`](app/backend/data_descriptor/static/logos/README.md) for where
+they come from and the terms they are used under.
+
 ## References
 
 - Gouthamchand, V., Choudhury, A., ..., and Wee, L. (2024). Making head and neck cancer clinical data

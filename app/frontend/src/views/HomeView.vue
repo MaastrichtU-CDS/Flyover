@@ -16,13 +16,9 @@ const rdf = workflowById('rdf')
       <h1 class="hero-title">
         Welcome to Flyover
       </h1>
-      <p class="hero-subtitle">
+      <p class="hero-subtitle mb-0">
         A privacy-aware tool to transform your data into F.A.I.R. semantically interoperable
         resources
-      </p>
-      <p class="mb-0">
-        Choose how to work with your data: as RDF triples in an RDF store, in the OMOP common
-        data model, or as a mapped CSV file
       </p>
     </div>
 
@@ -35,7 +31,6 @@ const rdf = workflowById('rdf')
         <div
           :id="`${workflow.id}-card`"
           class="workflow-card"
-          :class="{ 'is-coming': !workflow.available }"
           role="button"
           tabindex="0"
           @click="enter(workflow)"
@@ -45,21 +40,68 @@ const rdf = workflowById('rdf')
             v-if="!workflow.available"
             class="badge workflow-badge"
           >Under development</span>
+          <!-- The workflow's logo in white, as the steps' icons on the RDF
+               landing. -->
           <div
             class="step-icon"
             :class="workflow.iconClass"
           >
+            <img
+              v-if="workflow.logo"
+              class="workflow-logo"
+              :class="{ 'is-whitened': workflow.logo.whiten }"
+              :src="workflow.logo.src"
+              :alt="workflow.logo.alt"
+            >
             <i
+              v-else
               class="fas"
               :class="workflow.icon"
+              aria-hidden="true"
             />
           </div>
           <h3 class="step-title">
             {{ workflow.label }}
           </h3>
-          <p class="step-description">
-            {{ workflow.description }}
-          </p>
+          <!-- The text grows, so the lists below line up across the tiles. -->
+          <div class="workflow-text">
+            <p class="step-description">
+              {{ workflow.description }}
+            </p>
+            <p
+              v-if="workflow.note"
+              class="workflow-note"
+            >
+              <!-- Each line on a line of its own. A link opens beside Flyover,
+                   and does not open the tile. The parts carry their own
+                   spaces (v-text keeps the template's line breaks out of the
+                   sentence). -->
+              <span
+                v-for="(line, l) in workflow.note"
+                :key="l"
+                class="workflow-note-line"
+              >
+                <template
+                  v-for="(part, i) in line"
+                  :key="i"
+                >
+                  <a
+                    v-if="part.href"
+                    :href="part.href"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click.stop
+                    @keyup.enter.stop
+                    v-text="part.text"
+                  />
+                  <span
+                    v-else
+                    v-text="part"
+                  />
+                </template>
+              </span>
+            </p>
+          </div>
           <ul class="step-features">
             <li
               v-for="feature in workflow.features"
@@ -75,8 +117,8 @@ const rdf = workflowById('rdf')
     <div class="cta-section">
       <h3><i class="fas fa-rocket text-primary" /> Ready to Get Started?</h3>
       <p class="mb-4">
-        Bring your project's JSON-LD semantic map, or start without one, and Flyover starts
-        the store your work needs.
+        Use a shared JSON-LD to align your data with partners, or familiarise yourself with the
+        workflow without one.
       </p>
       <button
         id="home-start"
@@ -100,10 +142,39 @@ const rdf = workflowById('rdf')
   cursor: pointer;
 }
 
-/* A workflow under development still opens its note, so it stays a card
-   one can click, a little quieter than the one that is built. */
-.workflow-card.is-coming .step-icon {
-  opacity: 0.75;
+/* The old stylesheet gives every icon a right margin, which pushes it off
+   the centre of its circle. */
+.step-icon > i {
+  margin: 0;
+}
+
+/* As large as the steps' icons look in their circles. */
+.workflow-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+/* A logo whose owner allows other colours (W3C's cube), turned white. */
+.workflow-logo.is-whitened {
+  filter: brightness(0) invert(1);
+}
+
+.workflow-text {
+  flex-grow: 1;
+  width: 100%;
+}
+
+/* Small print, close under the description it qualifies. */
+.workflow-note-line {
+  display: block;
+}
+
+.workflow-note {
+  margin: -0.75rem 0 1.25rem;
+  color: #6c757d;
+  font-size: 0.75rem;
+  text-align: center;
 }
 
 .workflow-badge {

@@ -58,7 +58,14 @@ test.describe('Projects', () => {
     for (const tile of ['#rdf-card', '#omop-card', '#csv-card']) {
       await expect(page.locator(tile)).toBeVisible()
     }
-    await expect(page.locator('.nav-step .step-text')).toHaveText(['Home', 'RDF', 'OMOP', 'CSV'])
+    await expect(page.locator('.nav-step .step-text')).toHaveText(['RDF', 'OMOP', 'CSV'])
+    await expect(page.locator('#rdf-card img')).toHaveAttribute('alt', 'W3C Semantic Web Logo')
+    await expect(page.locator('#omop-card img')).toHaveAttribute('alt', 'OHDSI logo')
+    await expect(page.locator('#omop-card')).toContainText('Flyover is not affiliated with OHDSI')
+    await expect(page.locator('#omop-card .workflow-note a')).toHaveAttribute(
+      'href',
+      'https://www.ohdsi.org/'
+    )
     await expect(statusBar(page)).toHaveText(/Home\s*·\s*Choose a workflow to begin/)
     await expect(picker(page)).toHaveCount(0)
 

@@ -51,14 +51,33 @@ describe('AppNav', () => {
     setActivePinia(createPinia())
   })
 
-  it('offers the workflows on the home page, and no steps', () => {
+  it('offers the workflows on the home page, and no steps or Home', () => {
     route.path = '/'
     route.meta = {}
     const wrapper = mount(AppNav)
 
-    expect(labels(wrapper)).toEqual(['Home', 'RDF', 'OMOP', 'CSV'])
-    expect(wrapper.find('#home-step').classes()).toContain('active')
-    expect(wrapper.find('#rdf-workflow-step').exists()).toBe(true)
+    // Home would point to the page itself; every item leads away from it.
+    expect(labels(wrapper)).toEqual(['RDF', 'OMOP', 'CSV'])
+    expect(wrapper.find('#home-step').exists()).toBe(false)
+    expect(wrapper.findAll('.step-separator')).toHaveLength(2)
+  })
+
+  it("shows the tiles' logos in white in the workflows' discs", () => {
+    route.path = '/'
+    route.meta = {}
+    const wrapper = mount(AppNav)
+    const disc = (id) => wrapper.find(`#${id}-workflow-step .workflow-disc`)
+
+    // W3C lets the cube take other colours; OHDSI publishes its own white logo.
+    const cube = disc('rdf').find('img')
+    expect(cube.attributes('src')).toBe('/static/logos/w3c-semantic-web-cube.svg')
+    expect(cube.classes()).toContain('is-whitened')
+    const ohdsi = disc('omop').find('img')
+    expect(ohdsi.attributes('src')).toBe('/static/logos/ohdsi-logo-only-white.png')
+    expect(ohdsi.classes()).not.toContain('is-whitened')
+    // The name beside each disc says it; the logos add nothing to read out.
+    expect(cube.attributes('alt')).toBe('')
+    expect(disc('csv').find('i').classes()).toContain('fa-file-csv')
   })
 
   it('says a workflow under development is so', async () => {

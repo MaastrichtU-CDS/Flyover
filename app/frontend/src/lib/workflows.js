@@ -1,6 +1,14 @@
 // The workflows Flyover offers on its home page, each with its own steps
 // and its own store. Only RDF is built; OMOP and CSV say they are under
 // development. A route belongs to a workflow through its meta.workflow.
+//
+// - `logo`: a third-party logo, in white, on the tile and in the navigation
+//   bar: the owner's own white version, or the logo turned white
+//   (`whiten`) where its owner allows other colours (see
+//   app/backend/data_descriptor/static/logos/README.md for its source and
+//   terms; W3C asks for the cube's alt text as given).
+// - `icon`: the Font Awesome icon used where there is no logo.
+// - `note`: small print on the tile, as lines of text and links.
 
 export const WORKFLOWS = [
   {
@@ -9,13 +17,21 @@ export const WORKFLOWS = [
     to: '/rdf',
     icon: 'fa-project-diagram',
     iconClass: 'share-icon',
+    logo: {
+      src: '/static/logos/w3c-semantic-web-cube.svg',
+      alt: 'W3C Semantic Web Logo',
+      whiten: true,
+    },
     description:
-      'Turn your data into F.A.I.R. RDF triples in an RDF store: ingest, describe, annotate and share it.',
-    features: [
-      'CSV, Excel and database input',
-      'Variable descriptions',
-      'Ontology annotations',
-      'Sharing and DCAT-AP export',
+      'Transform your data to F.A.I.R. resources using the flexibility of RDF, coupled with an RDF store.',
+    features: ['Flexible vocabularies', 'Flexible data schemas', 'Enables complex reasoning'],
+    note: [
+      [
+        'RDF is a Semantic Web technology of the ',
+        { text: 'World Wide Web Consortium (W3C)', href: 'https://www.w3.org/' },
+        '.',
+      ],
+      ['Flyover is not affiliated with W3C.'],
     ],
     available: true,
   },
@@ -24,9 +40,22 @@ export const WORKFLOWS = [
     label: 'OMOP',
     icon: 'fa-database',
     iconClass: 'describe-icon',
+    logo: { src: '/static/logos/ohdsi-logo-only-white.png', alt: 'OHDSI logo' },
     description:
-      "Bring your data into the OMOP Common Data Model, in the OMOP database your project's JSON-LD names.",
-    features: ['OMOP CDM tables', 'Standard vocabularies', 'Database from your JSON-LD'],
+      'Transform your data into OMOP CDM-conformant schemas, coupled with an OMOP database.',
+    features: [
+      'Standardised vocabularies',
+      'Standardised data schema',
+      'OHDSI tools and network studies',
+    ],
+    note: [
+      [
+        'The OMOP common data model is maintained by ',
+        { text: 'OHDSI', href: 'https://www.ohdsi.org/' },
+        '.',
+      ],
+      ['Flyover is not affiliated with OHDSI.'],
+    ],
     available: false,
   },
   {
@@ -35,8 +64,9 @@ export const WORKFLOWS = [
     icon: 'fa-file-csv',
     iconClass: 'annotate-icon',
     description:
-      'Describe and annotate your data, and export it as a mapped CSV file, with no database at all.',
-    features: ['No database needed', 'Mapped CSV export', 'Ontology terms kept with it'],
+      'Describe and transform your data to a standardised terminology with the simplicity of CSV files.',
+    features: ['No database needed', 'Works with any analysis tool', 'Portable and easily shareable files'],
+    note: [['CSV files are simple text files, usable as spreadsheets.']],
     available: false,
   },
 ]
