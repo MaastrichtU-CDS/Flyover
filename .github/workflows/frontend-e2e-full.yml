@@ -70,7 +70,21 @@ jobs:
       - name: Start stack (tmpfs)
         run: ./scripts/start-test-stack.sh
 
-      - name: Run E2E suite
+      # The full suite reports Flyover itself and each workflow on its own
+      # (the projects in playwright.config.js): the RDF workflow's step runs
+      # even when the first fails, and each keeps its own results folder.
+      - name: Flyover itself (pages, home page, projects)
+        if: matrix.spec == ''
+        working-directory: app/frontend
+        run: npx playwright test --project=flyover --output=test-results/flyover --reporter=line
+
+      - name: RDF workflow
+        if: ${{ !cancelled() && matrix.spec == '' }}
+        working-directory: app/frontend
+        run: npx playwright test --project=rdf --output=test-results/rdf --reporter=line
+
+      - name: Run E2E spec
+        if: matrix.spec != ''
         working-directory: app/frontend
         run: npx playwright test ${{ matrix.spec }} --reporter=line
 

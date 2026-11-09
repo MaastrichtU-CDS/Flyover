@@ -144,12 +144,15 @@ npm run test:e2e:install     # downloads chromium ~150 MB
 # 3. run the smoke spec (fast — ~30s)
 npx playwright test tests/e2e/smoke.spec.js --reporter=line
 
-# 4. or run the whole suite (a few minutes)
+# 4. or run the whole suite (a few minutes), or one project of it
 npm run test:e2e
+npx playwright test --project=rdf
 
 # 5. teardown
 docker compose -f ../../docker-compose.yml -f ../../docker-compose.test.yml down -v
 ```
+
+The specs are grouped in Playwright projects ([`playwright.config.js`](../app/frontend/playwright.config.js)): `flyover` for what every workflow shares (the pages loading, the home page, projects) and `rdf` for the RDF workflow's steps. Each spec is in exactly one. CI runs each project as a step of its own, so a failure reads as Flyover's or the RDF workflow's. A new workflow's specs get their own project.
 
 Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases.
 
@@ -222,7 +225,7 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 | `unit-tests.yml`          | push to `main`, all PRs                                   | yes (perf: no)  | pytest unit, integration and API tests with combined coverage, a 90 % gate on the API layer's coverage of the HTTP layer, then the performance checks (non-blocking, report in the job summary) |
 | `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest, Vite production build                                       |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
-| `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack (both the default and the suggestions-disabled stack) |
+| `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack, a step per project (Flyover itself, the RDF workflow), and the suggestions-disabled stack |
 | `code-quality.yml`        | push to `main`, all PRs                                   | partial         | Black (auto-applies and commits with `[skip ci]`), flake8, mypy, Safety (HIGH severity blocking), Bandit |
 | `release.yaml`            | tag push                                                  | n/a             | Builds and publishes the production flyover-app + flyover-graphdb images to ghcr.io                        |
 
