@@ -1,0 +1,8 @@
+# Test-only dependencies of the backend test layers (unit, integration, API
+# and performance checks). The application's own dependencies, which the
+# tests also need, are in requirements.txt.
+pytest>=8.0
+pytest-mock>=3.12
+pytest-cov>=5.0
+responses>=0.25
+hypothesis>=6.100

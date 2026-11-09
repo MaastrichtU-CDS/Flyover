@@ -20,7 +20,7 @@ from services.suggestions.prompt_export import (
     chunk_size_from_env,
     min_value_count_from_env,
 )
-from utils.mapping_request import parse_and_validate_mapping
+from utils.mapping_request import json_object_body, parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +38,6 @@ def get_app_context() -> dict:
 
 def _request_error(exc: SuggestionRequestError):
     return jsonify({"error": exc.message, "kind": exc.kind}), 400
-
-
-def _json_body() -> dict:
-    """The request body when it is a JSON object, else ``{}``.
-
-    A body that parses to a list, a string or a number is a caller
-    mistake, not a server error: it is treated as empty so the route's
-    own required-field checks answer with a readable 400 instead of an
-    unhandled ``AttributeError`` (a 500).
-    """
-    body = request.get_json(silent=True)
-    return body if isinstance(body, dict) else {}
 
 
 def _maybe_adopt_mapping(session_cache, mapping) -> None:
@@ -125,7 +113,7 @@ def start_suggestions(phase: str):
     if service is None:
         return jsonify({"status": "disabled"}), 200
 
-    body = request.get_json(silent=True) or {}
+    body = json_object_body()
 
     # The describe pages work on the semantic map in the browser's
     # IndexedDB: the describe-landing upload never reaches the session, so
@@ -187,7 +175,7 @@ def prioritise_suggestions(phase: str):
     if service is None:
         return jsonify({"status": "no_job"})
 
-    body = request.get_json(silent=True) or {}
+    body = json_object_body()
     items = body.get("items") or body.get("columns") or []
     if not items:
         return jsonify({"error": "items are required"}), 400
@@ -216,7 +204,7 @@ def suggestions_prompt():
             503,
         )
 
-    body = _json_body() if request.method == "POST" else {}
+    body = json_object_body() if request.method == "POST" else {}
     params = {
         **request.args.to_dict(),
         **{k: v for k, v in body.items() if k != "mapping"},
@@ -243,7 +231,9 @@ def suggestions_prompt():
     chunk = params.get("chunk")
     try:
         chunk = int(chunk) if chunk not in (None, "") else None
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError: a JSON number beyond a float's range (1e999, or
+        # Infinity, which Python's parser accepts) parses as infinity.
         chunk = None
     include = params.get("include")
     if isinstance(include, str):
@@ -292,7 +282,7 @@ def ingest_suggestions(phase: str):
             503,
         )
 
-    body = _json_body()
+    body = json_object_body()
 
     database = body.get("database")
     if not database:

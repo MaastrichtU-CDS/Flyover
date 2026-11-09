@@ -93,12 +93,6 @@ class TestSemanticMapDownload:
 
         assert response.status_code == 500
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="main wires formulate_local_map as a one-argument lambda, but "
-        "DescribeService.formulate_local_semantic_map needs the global map and the database, "
-        "so the legacy (non JSON-LD) download always fails",
-    )
     def test_legacy_mapping_is_exported_as_json(
         self, client, session_cache, legacy_mapping_data
     ):
@@ -441,12 +435,14 @@ class TestShareRoutesAndBranches:
         assert response.mimetype == "image/vnd.microsoft.icon"
         assert response.data == b"\x00\x00\x01\x00"
 
-    def test_mock_data_without_a_json_body_is_a_server_error(self, client):
+    def test_mock_data_without_a_json_body_is_a_client_error(self, client):
         response = client.post("/api/generate-mock-data", data="jsonld_map=x")
 
-        assert response.status_code == 500
-        assert response.get_json()["success"] is False
-        assert response.headers["Access-Control-Allow-Origin"] == "*"
+        assert response.status_code == 400
+        assert response.get_json() == {
+            "success": False,
+            "error": "No JSON data provided",
+        }
 
     def test_mock_data_skips_columns_without_local_names_or_values(
         self, client, mapping_dict

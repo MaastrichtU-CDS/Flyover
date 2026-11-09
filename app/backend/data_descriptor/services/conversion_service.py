@@ -15,6 +15,7 @@ import logging
 from urllib.parse import urlparse
 
 import polars as pl
+from rdflib import Graph, Literal, Namespace
 
 from pythonTool.main_app import run_triplifier as triplifier_run
 from typing import List, Tuple, Union
@@ -26,6 +27,47 @@ except ImportError:
     from utils.data_preprocessing import sanitise_table_name  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
+
+# The database ontology the triplifier describes tables and columns in.
+DBO = Namespace("http://um-cds/ontologies/databaseontology/")
+
+
+def record_column_positions(
+    ontology_path: str, table_name: str, columns: List[str]
+) -> None:
+    """
+    Record where each column of a table stands in its source.
+
+    RDF keeps no order and the triplifier writes none, so the describe pages
+    would list a table's columns in whatever order the RDF store returns
+    them. Each column class of ``table_name`` in the ontology file gets its
+    1-based place in ``columns`` (the CSV header, the spreadsheet sheet or
+    the database table, under the names the triplifier was given) as
+    dbo:column_position.
+
+    Args:
+        ontology_path: The RDF/XML ontology file the triplifier wrote.
+        table_name: The table name the triplifier was given.
+        columns: The table's column names, in their order in the source.
+    """
+    graph = Graph()
+    graph.parse(ontology_path, format="xml")
+    tables = set(graph.subjects(DBO.table, Literal(table_name)))
+    places = {name: place for place, name in enumerate(columns, start=1)}
+
+    recorded = 0
+    for column_class, name in list(graph.subject_objects(DBO.column)):
+        place = places.get(str(name))
+        if place is not None and graph.value(column_class, DBO.table) in tables:
+            graph.set((column_class, DBO.column_position, Literal(place)))
+            recorded += 1
+    if recorded != len(places):
+        logger.warning(
+            f"Recorded the source position of {recorded} of {len(places)} "
+            f"columns of {table_name}"
+        )
+
+    graph.serialize(destination=ontology_path, format="xml")
 
 
 class PythonTriplifierIntegration:
@@ -138,6 +180,9 @@ class PythonTriplifierIntegration:
 
                 # Run Python Triplifier directly using the API
                 triplifier_run(args)
+                record_column_positions(
+                    ontology_path, clean_table_name, csv_data.columns
+                )
 
                 logger.info(
                     f"Python Triplifier executed successfully for table: {clean_table_name}"
@@ -443,6 +488,9 @@ class PythonTriplifierIntegration:
 
                     # Run Python Triplifier directly using the API
                     triplifier_run(args)
+                    record_column_positions(
+                        ontology_path, clean_table_name, safe_columns
+                    )
 
                     logger.info(
                         f"Python Triplifier executed successfully for table: {clean_table_name}"

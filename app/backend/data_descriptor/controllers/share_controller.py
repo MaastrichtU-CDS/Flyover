@@ -6,6 +6,7 @@ semantic map downloads, ontology downloads, and share page rendering.
 """
 
 import logging
+from typing import Any
 
 from flask import (
     Blueprint,
@@ -20,6 +21,20 @@ from services import ShareService
 logger = logging.getLogger(__name__)
 
 share_bp = Blueprint("share", __name__)
+
+# The mock-data page offers up to 10,000 rows. The generator builds every row in
+# memory on the single worker, so the route holds every client to that maximum.
+MAX_MOCK_ROWS = 10_000
+
+
+def _is_row_count(value: Any) -> bool:
+    """Whether ``value`` is a whole number of rows from 0 (empty tables) to
+    the page's maximum."""
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 0 <= value <= MAX_MOCK_ROWS
+    )
 
 
 def get_app_context() -> dict:
@@ -84,8 +99,10 @@ def share_publish():
 def generate_mock_data():
     """Generate mock data from a JSON-LD semantic map."""
     try:
-        data = request.get_json()
-        if not data:
+        # Malformed JSON, another content type and a body that is not an
+        # object are the client's to fix: a 400, not the 500 below.
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
             return jsonify({"success": False, "error": "No JSON data provided"}), 400
 
         jsonld_map = data.get("jsonld_map")
@@ -103,6 +120,18 @@ def generate_mock_data():
                     {
                         "success": False,
                         "error": "table_id requires database_id to be specified",
+                    }
+                ),
+                400,
+            )
+
+        if not _is_row_count(num_rows):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "num_rows must be a whole number from 0 to "
+                        f"{MAX_MOCK_ROWS:,}",
                     }
                 ),
                 400,

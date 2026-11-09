@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
+import { matchStoreTable } from '@/lib/jsonld'
 
 const router = useRouter()
 const PAGE_SIZE = 10
@@ -31,15 +32,10 @@ function toTitleCase(k) {
   return k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+// The ingested table a map table names, by the rule the describe pages
+// write the map with; a table without a name matches none.
 function findMatchingDatabase(mapDbName) {
-  if (!mapDbName) return rdfStoreDatabases.value[0] || null
-  for (const d of rdfStoreDatabases.value) {
-    if (d === mapDbName) return d
-    const a = mapDbName.endsWith('.csv') ? mapDbName.slice(0, -4) : mapDbName
-    const b = d.endsWith('.csv') ? d.slice(0, -4) : d
-    if (a === b) return d
-  }
-  return null
+  return matchStoreTable(mapDbName, rdfStoreDatabases.value)
 }
 
 function extractJsonLdTables(data) {
@@ -358,7 +354,7 @@ function validateTableSelection() {
 
 function getSelectedTableNames() {
   return Object.entries(selectedTables)
-    .filter(([tableName, isSelected]) => isSelected)
+    .filter(([, isSelected]) => isSelected)
     .map(([tableName]) => tableName)
 }
 
@@ -513,10 +509,13 @@ onMounted(load)
               <i class="fas fa-database" /> {{ dbData.rdfStoreName }}
               <span 
                 class="table-selector"
-                @click.stop="toggleTableSelection(dbName)"
                 :class="{ selected: selectedTables[dbName] }"
+                @click.stop="toggleTableSelection(dbName)"
               >
-                <i class="fas" :class="selectedTables[dbName] ? 'fa-check' : 'fa-times'" />
+                <i
+                  class="fas"
+                  :class="selectedTables[dbName] ? 'fa-check' : 'fa-times'"
+                />
                 <span class="selector-tooltip">
                   {{ selectedTables[dbName] ? 'Deselect for annotation' : 'Select for annotation' }}
                 </span>
@@ -528,17 +527,17 @@ onMounted(load)
               :class="{ open: expandedDatabases[dbData.rdfStoreName] }"
               @click="toggleDatabase(dbData.rdfStoreName)"
             >
-            <span class="toggle-text">{{
-              expandedDatabases[dbData.rdfStoreName] ? 'Show less' : 'Show more'
-            }}</span>
-            <i
-              class="fas"
-              :class="
-                expandedDatabases[dbData.rdfStoreName]
-                  ? 'fa-chevron-down'
-                  : 'fa-chevron-up'
-              "
-            />
+              <span class="toggle-text">{{
+                expandedDatabases[dbData.rdfStoreName] ? 'Show less' : 'Show more'
+              }}</span>
+              <i
+                class="fas"
+                :class="
+                  expandedDatabases[dbData.rdfStoreName]
+                    ? 'fa-chevron-down'
+                    : 'fa-chevron-up'
+                "
+              />
             </button>
           </div>
 

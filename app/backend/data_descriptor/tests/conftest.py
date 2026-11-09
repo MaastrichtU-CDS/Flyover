@@ -15,6 +15,8 @@ import polars as pl
 # layer can be selected with `-m` as well as by path or `-k`.
 #   unit         tests/unit/          isolated modules, external deps stubbed
 #   integration  tests/integration/   real internal wiring, RDF store faked at HTTP level
+#   api          tests/api/           HTTP behaviour of every route, services mocked (issue #109)
+#   perf         tests/perf/          performance checks of the HTTP layer
 #   e2e          tests/e2e/           full Docker stack (issue #110)
 # ---------------------------------------------------------------------------
 
@@ -22,6 +24,8 @@ _TESTS_DIR = Path(__file__).parent
 _LAYER_MARKERS = {
     "unit": "isolated unit test with external dependencies stubbed",
     "integration": "cross-layer test with the RDF store faked at the HTTP boundary",
+    "api": "HTTP-level functional test of the Flask routes with the services mocked",
+    "perf": "performance check of the HTTP layer; runs with -m perf or on its own",
     "e2e": "end-to-end test against the full Docker stack",
 }
 
@@ -29,14 +33,39 @@ _LAYER_MARKERS = {
 def pytest_configure(config):
     for marker, description in _LAYER_MARKERS.items():
         config.addinivalue_line("markers", f"{marker}: {description}")
+    config.addinivalue_line(
+        "markers",
+        "route(method, rule, outcome): the route an API test requests and whether "
+        "it exercises the route's 'success' or its 'failure' path",
+    )
 
 
-def pytest_collection_modifyitems(items):
+def pytest_collection_modifyitems(config, items):
     for item in items:
         path = Path(str(item.fspath))
         for layer in _LAYER_MARKERS:
             if (_TESTS_DIR / layer) in path.parents:
                 item.add_marker(getattr(pytest.mark, layer))
+    _skip_perf_unless_selected(config, items)
+
+
+def _skip_perf_unless_selected(config, items):
+    """Performance checks run only when asked for.
+
+    They run with ``-m perf``, or when every collected test is one (pytest
+    pointed at ``tests/perf/``). A plain run of the whole tree skips them, so
+    timing-sensitive checks never slow down or flake the functional layers.
+    """
+    perf_items = [item for item in items if item.get_closest_marker("perf")]
+    if not perf_items or len(perf_items) == len(items):
+        return
+    if "perf" in (config.getoption("markexpr") or ""):
+        return
+    skip = pytest.mark.skip(
+        reason="performance checks run on their own: pytest -m perf (or tests/perf/)"
+    )
+    for item in perf_items:
+        item.add_marker(skip)
 
 
 # ---------------------------------------------------------------------------

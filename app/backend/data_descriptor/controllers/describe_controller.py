@@ -6,17 +6,18 @@ data variables, including type specification and categorisation.
 """
 
 import copy
-import json
+import functools
 import logging
+import re
 from io import StringIO
 
 import polars as pl
 from flask import Blueprint, jsonify, redirect, request
 
-from typing import Any
+from typing import Any, Callable, Optional
 
 from services import DescribeService
-from utils.mapping_request import parse_and_validate_mapping
+from utils.mapping_request import json_object_body, parse_and_validate_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def api_describe_variable_details_state():
     if session_cache.DescriptiveInfoDetails is None:
         session_cache.DescriptiveInfoDetails = {}
 
-    body = request.get_json(silent=True) or {}
+    body = json_object_body()
     body_mapping = parse_and_validate_mapping(body.get("mapping"))
     effective_mapping = body_mapping or session_cache.jsonld_mapping
 
@@ -96,6 +97,12 @@ def api_describe_variable_details_state():
         descriptive_info = session_cache.descriptive_info
         details = session_cache.DescriptiveInfoDetails
 
+    # The store's columns per database, in their source order: read at most
+    # once per request, and only when the details need them.
+    store_columns = functools.cache(
+        lambda: rdf_store_service.get_column_info_by_database() or {}
+    )
+
     if effective_mapping:
         _populate_details_from_jsonld(
             effective_mapping,
@@ -104,7 +111,13 @@ def api_describe_variable_details_state():
             session_cache.databases,
             rdf_store_service,
             name_matcher,
+            store_columns,
         )
+
+    # The variables form and the map each add entries in their own order;
+    # the page lists them as their columns stand in the source.
+    if details:
+        _order_by_columns(details, store_columns())
 
     preselected_values = {}
     if effective_mapping and details:
@@ -125,6 +138,26 @@ def api_describe_variable_details_state():
             ),
         }
     )
+
+
+def _read_categories(cat_result: Any, local_column: str) -> Optional[list]:
+    """The store's category counts for a column as rows, or None when the
+    store has none or they cannot be read (logged; the column is then left
+    out rather than failing the page)."""
+    if not cat_result:
+        return None
+    try:
+        df = pl.read_csv(
+            StringIO(cat_result),
+            separator=",",
+            infer_schema_length=0,
+            null_values=[],
+            try_parse_dates=False,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to parse categories for {local_column}: {e}")
+        return None
+    return df.to_dicts()
 
 
 @describe_bp.route("/units", methods=["POST"])
@@ -164,17 +197,12 @@ def retrieve_descriptive_info():
                 display_name = f'{global_var} (or "{local_var}")'
 
             if data_type == "categorical":
-                cat_result = rdf_store_service.get_categories(local_var, database)
-                if cat_result:
-                    df = pl.read_csv(
-                        StringIO(cat_result),
-                        separator=",",
-                        infer_schema_length=0,
-                        null_values=[],
-                        try_parse_dates=False,
-                    )
+                categories = _read_categories(
+                    rdf_store_service.get_categories(local_var, database), local_var
+                )
+                if categories is not None:
                     session_cache.DescriptiveInfoDetails[database].append(
-                        {display_name: df.to_dicts()}
+                        {display_name: categories}
                     )
             elif data_type == "continuous":
                 session_cache.DescriptiveInfoDetails[database].append(display_name)
@@ -197,15 +225,50 @@ def describe_variable_details():
     return redirect("/describe/variable-details")
 
 
+# Both describe pages name a details entry '<description> (or "<column>")'.
+_LISTED_COLUMN = re.compile(r'\(or "(?P<column>.*)"\)\Z', re.DOTALL)
+
+
+def _listed_column(display_name: str) -> Optional[str]:
+    """The column a details entry names: 'Age (or "age")' -> 'age'."""
+    match = _LISTED_COLUMN.search(display_name)
+    return match.group("column") if match else None
+
+
 def _variable_exists_in_details(details_list: list, local_column: str) -> bool:
+    """Whether the details list already has an entry for ``local_column``.
+
+    The column is compared whole, so an "age" column is not taken for the
+    "stage" column already listed.
+    """
     for item in details_list:
-        if isinstance(item, str) and local_column in item:
+        # A continuous variable is listed by name, a categorical one as
+        # {name: categories}.
+        names = (
+            [item] if isinstance(item, str) else item if isinstance(item, dict) else []
+        )
+        if any(_listed_column(name) == local_column for name in names):
             return True
-        if isinstance(item, dict):
-            for key in item:
-                if local_column in key:
-                    return True
     return False
+
+
+def _entry_column(entry: Any) -> Optional[str]:
+    """The column a details entry is for. A continuous variable is listed by
+    name, a categorical one as {name: categories}."""
+    name = next(iter(entry), "") if isinstance(entry, dict) else entry
+    return _listed_column(name)
+
+
+def _order_by_columns(details: dict, columns_by_database: dict) -> None:
+    """Put each database's details entries in the source order of their
+    columns (mutates ``details``). An entry whose column the store does not
+    list keeps its place after the others."""
+    for database, entries in details.items():
+        places = {
+            column: place
+            for place, column in enumerate(columns_by_database.get(database, []))
+        }
+        entries.sort(key=lambda entry: places.get(_entry_column(entry), len(places)))
 
 
 def _category_options_from_mapping(mapping: Any, details: dict) -> dict:
@@ -243,12 +306,14 @@ def _populate_details_from_jsonld(
     databases: list,
     rdf_store_service: Any,
     name_matcher: Any,
+    store_columns: Callable[[], dict],
 ) -> None:
     """Populate the details dicts from a JSON-LD mapping (mutates them).
 
     ``descriptive_info`` and ``details`` are the caller's dicts: the session's
     own when no body mapping was supplied (so the population persists, as it
     always has), or request-local copies when the browser's map was sent.
+    ``store_columns`` gives the store's columns per database.
     """
     if not mapping or not databases:
         return
@@ -264,7 +329,7 @@ def _populate_details_from_jsonld(
     # contain. Without filtering, those phantom variables would surface on
     # the details page even though the user never saw or chose them on
     # /describe/variables.
-    columns_by_database = rdf_store_service.get_column_info_by_database() or {}
+    columns_by_database = store_columns()
 
     for database in databases:
         if not database:
@@ -281,9 +346,6 @@ def _populate_details_from_jsonld(
 
         for var_key in mapping.get_all_variable_keys():
             var_info = mapping.get_variable(var_key)
-            if not var_info:
-                continue
-
             data_type = getattr(var_info, "data_type", None)
             local_column = mapping.get_local_column(var_key)
 
@@ -306,21 +368,12 @@ def _populate_details_from_jsonld(
                 }
 
             if data_type == "categorical":
-                cat_result = rdf_store_service.get_categories(local_column, database)
-                if cat_result:
-                    try:
-                        df = pl.read_csv(
-                            StringIO(cat_result),
-                            separator=",",
-                            infer_schema_length=0,
-                            null_values=[],
-                            try_parse_dates=False,
-                        )
-                        details[database].append({display_name: df.to_dicts()})
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to parse categories for {local_column}: {e}"
-                        )
+                categories = _read_categories(
+                    rdf_store_service.get_categories(local_column, database),
+                    local_column,
+                )
+                if categories is not None:
+                    details[database].append({display_name: categories})
             elif data_type == "continuous":
                 details[database].append(display_name)
 
@@ -328,14 +381,19 @@ def _populate_details_from_jsonld(
             del details[database]
 
 
-@describe_bp.route("/end", methods=["GET", "POST"])
+@describe_bp.route("/end", methods=["POST"])
 def retrieve_detailed_descriptive_info():
     """Process detailed variable info (units, categories)."""
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
 
-    for database in session_cache.databases:
+    # The describe pages set both; a submission that arrives before them (a
+    # stale tab, a reload after a restart) has nothing to save.
+    if session_cache.descriptive_info is None:
+        session_cache.descriptive_info = {}
+
+    for database in session_cache.databases or []:
         if database not in session_cache.descriptive_info:
             session_cache.descriptive_info[database] = {}
 

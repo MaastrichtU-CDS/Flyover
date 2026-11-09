@@ -19,7 +19,7 @@ import psycopg2
 import pytest
 import requests
 
-from tests.integration.support import CSV_BYTES, TABLE
+from tests.integration.support import CSV_BYTES, TABLE, column_positions
 from services import IngestService
 from services.rdf_store_service import RDFStoreService
 
@@ -432,12 +432,6 @@ class TestOrphanCheckOnMalformedShapes:
         assert body["csv_checked"] is True
         assert body["validation_warnings"] == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="MappingValidator._collect_statistics calls .values() on `databases` and `tables` "
-        "before the schema verdict is used, so a list in either place raises AttributeError and "
-        "the validate endpoint answers 500 instead of a validation error",
-    )
     @pytest.mark.parametrize(
         "databases",
         [["not", "a", "dict"], {"db": {"name": TABLE, "tables": ["not", "a", "dict"]}}],
@@ -606,6 +600,18 @@ class TestPostgresIngest:
         response = client.post("/upload", data=_postgres_form(postgres))
 
         assert "No+tables+were+successfully+processed" in response.headers["Location"]
+
+    def test_the_ontology_keeps_the_table_column_order(
+        self, client, postgres, session_cache, fake_curl
+    ):
+        client.post("/upload", data=_postgres_form(postgres))
+
+        (output,) = session_cache.output_files
+        assert column_positions(output["ontology_file"]) == {
+            "id": 1,
+            "sex": 2,
+            "age": 3,
+        }
 
 
 # ---------------------------------------------------------------------------
