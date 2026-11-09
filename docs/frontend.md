@@ -48,7 +48,8 @@ app/frontend/
     ├── composables/
     │   ├── useCyclingDots.js        # the one-to-three dots that show something is under way
     │   ├── useModalFocus.js         # keyboard handling the pop-ups share (focus, Tab, Escape)
-    │   ├── useStoreGate.js          # whether the page on screen waits for the store, and why
+    │   ├── useStoreGate.js          # whether the page on screen waits (for the project choice, the store), and why
+    │   ├── useWorkflowEntry.js      # entering a workflow from the home page: ask for the project, then go there
     │   └── useNavigation.js         # workflow-step state (which steps are completed, disabled)
     ├── lib/
     │   ├── workflows.js             # the workflows the home page offers, and which are built
@@ -95,7 +96,7 @@ The project store ([`src/stores/project.js`](../app/frontend/src/stores/project.
 - IndexedDB `FlyoverDB` → `metadata` holds the working copy (`semantic_map`, the row the describe pages fill in) and, next to it, the record of the open project (`project`: what the server reported, the token, and the fingerprint of the working copy as it was loaded, which tells whether describe answers were added since).
 - `sessionStorage` holds `flyover.workflow` (the workflow this tab entered, `rdf`; gone once the tab is back on the home page) and `flyover.project.notice` (a message to show after the reload that follows a change).
 - When the app starts, `init()` reads the server's project and sends nothing, unless the tab is inside the RDF workflow already (a reload): then it reopens the browser's project on a server that lost it (same token), or tells a server that forgot it that the tab works without one. A `BroadcastChannel` (`flyover-project`) tells other tabs about a change.
-- [`App.vue`](../app/frontend/src/App.vue) opens the pop-up in `enter` mode when a tab comes to a page of the workflow (`meta.workflow`) without having entered it, and calls `exitWorkflow()` when the tab comes back to the home page. The pop-up offers the project the browser remembers first (`continueWithProject()`: on a server that still has it, only `POST /api/v1/project/store-start`; on one that lost it, the same `PUT` under the same token); cancelled, it goes back to the home page. A tab enters the workflow (`enterWorkflow('rdf')`) only once the server has its choice, and each entry counts up `entries`, on which App.vue keys the `RouterView`, so a page that opened under the pop-up opens afresh. The status bar's **Switch project** opens the pop-up in `switch` mode, and **Exit RDF** leaves the workflow; the project stays remembered and its store keeps running.
+- The home page's RDF tile, its start button and the navigation bar's RDF item open the pop-up in `enter` mode on the home page, with the workflow's page as its `target` ([`composables/useWorkflowEntry.js`](../app/frontend/src/composables/useWorkflowEntry.js)); the pop-up goes there once the tab has chosen, and a cancel leaves the user on the home page. [`App.vue`](../app/frontend/src/App.vue) opens it, without a target, when a link leads a tab to a page of the workflow (`meta.workflow`) it has not entered; that page waits in its place until the tab has chosen ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)), and a cancel goes back to the home page. App.vue calls `exitWorkflow()` when the tab arrives back on the home page. The pop-up offers the project the browser remembers first (`continueWithProject()`: on a server that still has it, only `POST /api/v1/project/store-start`; on one that lost it, the same `PUT` under the same token). A tab enters the workflow (`enterWorkflow('rdf')`) only once the server has its choice. The status bar's **Switch project** opens the pop-up in `switch` mode, and **Exit RDF** leaves the workflow; the project stays remembered and its store keeps running.
 - Whether the store answers (`/api/v1/project/store-status`) is asked when the app starts, after a change of project, every minute while the tab is visible (`STORE_CHECK_INTERVAL_MS`; a hidden tab asks as soon as it is shown again, if a check is due), on every route change, and when the user clicks the status. A re-check keeps the last answer on screen until the new one arrives.
 - A view that takes a map upload calls `project.planUpload(map, fileName)` before it uses the map, and follows the answer: `go: false` means the user kept what was open; `opened: true` means the map is now the project's working copy, so a cleaned copy goes through `project.adoptWorkingCopy(...)` instead of a direct IndexedDB write.
 
@@ -170,9 +171,10 @@ Concrete example: adding `/describe/units`.
    ```
 
    Keep the lazy-import pattern — it keeps the initial bundle small. A page of the RDF workflow gets `meta: RDF`
-   (`{ workflow: 'rdf' }`), so a tab that comes to it by a link is asked for the project first; one that reads or writes
-   the store gets `meta: RDF_STORE` (`{ workflow: 'rdf', needsStore: true }`) instead: it then waits in its place until
-   the tab has chosen, while the store starts and until the first answer about it
+   (`{ workflow: 'rdf' }`): a tab that comes to it by a link is asked for the project first, and the page waits in its
+   place until the tab has chosen. One that reads or writes the store gets `meta: RDF_STORE`
+   (`{ workflow: 'rdf', needsStore: true }`) instead: it then also waits while the store starts and until the first
+   answer about it
    ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)), so its own checks on mount always
    meet a store that is there.
 

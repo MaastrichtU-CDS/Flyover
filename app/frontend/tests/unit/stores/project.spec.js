@@ -516,17 +516,14 @@ describe('the project store', () => {
   })
 
   describe('the workflow a tab is in', () => {
-    it('lasts for the tab, and counts each time the tab enters it', async () => {
+    it('lasts for the tab', async () => {
       const project = useProjectStore()
       await project.init()
-      expect(project.entries).toBe(0)
 
-      project.enterWorkflow('rdf')
       project.enterWorkflow('rdf')
 
       expect(project.workflow).toBe('rdf')
       expect(sessionStorage.getItem('flyover.workflow')).toBe('rdf')
-      expect(project.entries).toBe(1)
     })
 
     it('is left for the home page, the project and its store kept', async () => {
@@ -548,7 +545,7 @@ describe('the project store', () => {
       expect(api.post).not.toHaveBeenCalled()
     })
 
-    it('counts entering again after an exit', async () => {
+    it('can be entered again after an exit', async () => {
       inRdf()
       const project = useProjectStore()
       await project.init()
@@ -556,7 +553,20 @@ describe('the project store', () => {
       project.exitWorkflow()
       project.enterWorkflow('rdf')
 
-      expect(project.entries).toBe(1)
+      expect(project.workflow).toBe('rdf')
+      expect(sessionStorage.getItem('flyover.workflow')).toBe('rdf')
+    })
+
+    it('opens the pop-up to enter it with the page to go to after the choice', async () => {
+      const project = useProjectStore()
+      await project.init()
+
+      project.openPicker('enter', { target: '/rdf' })
+      expect(project.picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+
+      project.closePicker()
+      project.openPicker('switch')
+      expect(project.picker).toEqual({ open: true, mode: 'switch', target: null })
     })
   })
 
@@ -1192,7 +1202,7 @@ describe('the project store', () => {
       await FakeChannel.all[0].onmessage({ data: { type: 'project-changed' } })
 
       // The pop-up stays, now offering the project first (see ProjectPicker).
-      expect(project.picker).toEqual({ open: true, mode: 'enter' })
+      expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
       expect(project.name).toBe('AYA mapping')
       expect(project.workflow).toBe(null)
       expect(api.put).not.toHaveBeenCalled()

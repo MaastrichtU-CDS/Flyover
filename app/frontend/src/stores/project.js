@@ -110,14 +110,11 @@ export const useProjectStore = defineStore('project', () => {
   // How many answers about the store have come in, to wait for a fresh one.
   const storeAnswers = ref(0)
   // The pop-up: 'enter' when a tab enters the RDF workflow, 'switch' from
-  // the status bar inside it.
-  const picker = ref({ open: false, mode: 'enter' })
+  // the status bar inside it. Opened from the home page, `target` is the
+  // workflow's page to go to once the tab has chosen.
+  const picker = ref({ open: false, mode: 'enter', target: null })
   // The workflow this tab is in ('rdf'), or null on the home page.
   const workflow = ref(tabSetting(WORKFLOW))
-  // How often this tab entered a workflow. The page on screen opens afresh
-  // each time (see App.vue): it may have opened under the pop-up, before the
-  // choice it reads.
-  const entries = ref(0)
   // The question an upload in a step raises, while it waits for the user:
   // { kind, check, fileName, edited } (see planUpload).
   const uploadQuestion = shallowRef(null)
@@ -616,7 +613,6 @@ export const useProjectStore = defineStore('project', () => {
   // Called once the server has the tab's choice, so a choice that failed
   // leaves the tab outside the workflow, to be asked again.
   function enterWorkflow(id) {
-    if (workflow.value !== id) entries.value += 1
     workflow.value = id
     setTabSetting(WORKFLOW, id)
   }
@@ -629,8 +625,8 @@ export const useProjectStore = defineStore('project', () => {
     closePicker()
   }
 
-  function openPicker(mode = 'switch') {
-    picker.value = { open: true, mode }
+  function openPicker(mode = 'switch', { target = null } = {}) {
+    picker.value = { open: true, mode, target }
   }
 
   function closePicker() {
@@ -646,7 +642,6 @@ export const useProjectStore = defineStore('project', () => {
     storeStatus,
     picker,
     workflow,
-    entries,
     uploadQuestion,
     name,
     version,

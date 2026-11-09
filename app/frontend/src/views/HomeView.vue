@@ -1,22 +1,13 @@
 <script setup>
-// Flyover's home page: the workflows, each a tile. Choosing one enters it;
-// RDF has its own landing page (RdfLandingView, "RDF home"), where Flyover
-// first asks for the project's JSON-LD (see App.vue). OMOP and CSV are under
-// development, and say so.
-import { useRouter } from 'vue-router'
-import { WORKFLOWS } from '@/lib/workflows'
-import { useWorkflowsStore } from '@/stores/workflows'
+// Flyover's home page: the workflows, each a tile. Choosing RDF asks for the
+// project's JSON-LD here first, and then goes on to the workflow's own
+// landing page (RdfLandingView); see useWorkflowEntry. OMOP and CSV are
+// under development, and say so.
+import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
+import { WORKFLOWS, workflowById } from '@/lib/workflows'
 
-const router = useRouter()
-const workflows = useWorkflowsStore()
-
-function open(workflow) {
-  if (!workflow.available) {
-    workflows.showSoon(workflow.id)
-    return
-  }
-  router.push(workflow.to)
-}
+const { enter } = useWorkflowEntry()
+const rdf = workflowById('rdf')
 </script>
 
 <template>
@@ -47,8 +38,8 @@ function open(workflow) {
           :class="{ 'is-coming': !workflow.available }"
           role="button"
           tabindex="0"
-          @click="open(workflow)"
-          @keyup.enter="open(workflow)"
+          @click="enter(workflow)"
+          @keyup.enter="enter(workflow)"
         >
           <span
             v-if="!workflow.available"
@@ -87,13 +78,14 @@ function open(workflow) {
         Bring your project's JSON-LD semantic map, or start without one, and Flyover starts
         the store your work needs.
       </p>
-      <RouterLink
+      <button
         id="home-start"
-        to="/rdf"
+        type="button"
         class="btn btn-primary btn-lg"
+        @click="enter(rdf)"
       >
         <i class="fas fa-play" /> Start Data F.A.I.R.-ification Process
-      </RouterLink>
+      </button>
     </div>
   </div>
 </template>

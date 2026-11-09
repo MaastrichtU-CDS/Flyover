@@ -10,10 +10,11 @@ import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
 // The pop-up that asks which project to work on. It opens when a tab enters
-// the RDF workflow (from the home page, or a link to one of its pages), with
-// the project this browser remembers as its first choice; "Switch project"
-// in the status bar opens it again inside the workflow. Cancelled while
-// entering, it goes back to the home page.
+// the RDF workflow, with the project this browser remembers as its first
+// choice: on the home page, which goes on to the workflow once the tab has
+// chosen, or over a page of the workflow a link led to. "Switch project" in
+// the status bar opens it again inside the workflow. Cancelled while
+// entering, it leaves the user on, or takes them back to, the home page.
 
 const projectStore = useProjectStore()
 const status = useStatusStore()
@@ -99,20 +100,26 @@ function cancel() {
   projectStore.closePicker()
 }
 
-// After a change. Entering, nothing reloads: the page under the pop-up
-// opens afresh (see App.vue), and one that needs the store waits for it.
-// Switching, a step page reloads so it reads the project and the store
-// afresh; the message waits for the reload. The workflow's home page reads
-// neither, so it does not reload.
+// After a choice; `message`, if any, says what changed. Entering, nothing
+// reloads: the pop-up goes on to the workflow's page it was opened for, and
+// a page waits until the tab has entered (see useStoreGate). Switching, a
+// step page reloads so it reads the project and the store afresh; the
+// message waits for the reload. The workflow's home page reads neither, so
+// it does not reload.
 function finish(message) {
-  const switching = !entering.value
+  const { mode, target } = picker.value
   projectStore.closePicker()
-  if (switching && route.path !== workflowById(route.meta?.workflow)?.to) {
-    projectStore.noticeAfterReload(message)
+  if (mode === 'enter') {
+    if (message) status.success(message)
+    if (target && route.path !== target) router.push(target)
+    return
+  }
+  if (route.path !== workflowById(route.meta?.workflow)?.to) {
+    if (message) projectStore.noticeAfterReload(message)
     reloadPage()
     return
   }
-  status.success(message)
+  if (message) status.success(message)
 }
 
 function openedMessage() {
@@ -265,9 +272,12 @@ async function chooseWithoutProject() {
     return
   }
   busy.value = true
+  const wasEntering = entering.value
   try {
     const { storeChanged } = await projectStore.continueWithoutProject()
-    if (storeChanged) finish(withoutProjectMessage())
+    // Entering, the tab goes on to the workflow either way; switching, only
+    // another store calls for a fresh read.
+    if (storeChanged || wasEntering) finish(storeChanged ? withoutProjectMessage() : '')
   } catch (e) {
     error.value = errorMessage(e)
   } finally {

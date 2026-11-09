@@ -53,7 +53,9 @@ test('legacy URLs redirect into the SPA', async ({ page }) => {
 
 test('navigation between SPA pages works without full reload', async ({ page }) => {
   await page.goto('/')
+  // RDF asks for the project first (the fixture continues without one).
   await page.locator('#rdf-workflow-step').click()
+  await expect(page.locator('h1').first()).toContainText(/The RDF workflow/)
   await expect(page).toHaveURL(/\/rdf$/)
   await page.getByRole('link', { name: /Ingest/ }).first().click()
   await expect(page).toHaveURL(/\/ingest$/)

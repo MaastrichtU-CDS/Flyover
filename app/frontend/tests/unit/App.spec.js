@@ -3,10 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-// The app asks a tab for its project as it enters the RDF workflow (from the
-// home page, or by a link to one of the workflow's pages), and a tab that
-// comes back to the home page has left the workflow. The page under the
-// pop-up opens afresh once the tab has chosen.
+// The app asks a tab that comes by a link to a page of the RDF workflow for
+// its project, and holds the page until it has chosen; the home page asks
+// before it goes there (see useWorkflowEntry). A tab that comes back to the
+// home page has left the workflow.
 
 vi.mock('@/services/api', () => ({
   default: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
@@ -139,14 +139,14 @@ describe('App', () => {
     await router.push('/rdf')
     await flushPromises()
 
-    expect(project.picker).toEqual({ open: true, mode: 'enter' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
   })
 
   it('asks a tab that comes by a link to a page of the workflow', async () => {
     let project
     ;({ wrapper, project } = await mountApp('/share/mock'))
 
-    expect(project.picker).toEqual({ open: true, mode: 'enter' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
   })
 
   it('does not ask a reloaded tab that is in the workflow already', async () => {
@@ -182,7 +182,7 @@ describe('App', () => {
 
     await router.push('/rdf')
     await flushPromises()
-    expect(project.picker).toEqual({ open: true, mode: 'enter' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
   })
 
   it('does not ask again as the tab exits the workflow from one of its pages', async () => {
@@ -213,7 +213,7 @@ describe('App', () => {
     await router.push('/describe')
     await flushPromises()
 
-    expect(project.picker).toEqual({ open: true, mode: 'enter' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', target: null })
     expect(wrapper.find('.page').exists()).toBe(false)
     expect(wrapper.find('store-wait-stub').attributes('reason')).toBe('waiting')
 
@@ -223,27 +223,37 @@ describe('App', () => {
     expect(wrapper.find('.page').text()).toBe('describe')
   })
 
-  it('opens the page under the pop-up afresh once the tab has chosen', async () => {
+  it('holds a page that needs no store until the tab has chosen, and opens it once', async () => {
     let project
     ;({ wrapper, project } = await mountApp('/share/mock'))
-    expect(mounts).toBe(1)
+    expect(wrapper.find('.page').exists()).toBe(false)
+    expect(wrapper.find('store-wait-stub').attributes('reason')).toBe('waiting')
+    expect(mounts).toBe(0)
 
     project.enterWorkflow('rdf')
     project.closePicker()
     await flushPromises()
 
     expect(wrapper.find('.page').text()).toBe('mock')
-    expect(mounts).toBe(2)
+    expect(mounts).toBe(1)
   })
 
-  it('keeps the page as it is when nothing about the workflow changes', async () => {
-    sessionStorage.setItem('flyover.workflow', 'rdf')
-    let project
-    ;({ wrapper, project } = await mountApp('/share/mock'))
+  it('stays in the workflow a tab entered on the home page, as it goes there', async () => {
+    let project, router
+    ;({ wrapper, project, router } = await mountApp('/'))
+    project.openPicker('enter', { target: '/rdf' })
 
+    // The choice: the tab enters while the home page still shows...
     project.enterWorkflow('rdf')
+    project.closePicker()
     await flushPromises()
+    expect(project.workflow).toBe('rdf')
 
-    expect(mounts).toBe(1)
+    // ...and the pop-up goes on to the workflow's page.
+    await router.push('/rdf')
+    await flushPromises()
+    expect(project.workflow).toBe('rdf')
+    expect(project.picker.open).toBe(false)
+    expect(wrapper.find('.page').text()).toBe('rdf')
   })
 })

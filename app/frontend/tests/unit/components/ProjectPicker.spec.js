@@ -594,6 +594,84 @@ describe('ProjectPicker', () => {
     })
   })
 
+  describe('opened on the home page', () => {
+    // As the RDF tile, the start button and the navigation bar open it.
+    async function mountOnHome() {
+      route.path = '/'
+      route.meta = {}
+      const project = useProjectStore()
+      await project.init()
+      project.openPicker('enter', { target: '/rdf' })
+      const mounted = mount(ProjectPicker, { attachTo: document.body })
+      await flushPromises()
+      return { wrapper: mounted, project }
+    }
+
+    it('goes on to the RDF landing once the tab continues without a project', async () => {
+      let project
+      ;({ wrapper, project } = await mountOnHome())
+
+      await button(wrapper, 'Continue without a project').trigger('click')
+      await flushPromises()
+
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(project.workflow).toBe('rdf')
+      expect(project.picker.open).toBe(false)
+      expect(router.push).toHaveBeenCalledWith('/rdf')
+      expect(reloadPage).not.toHaveBeenCalled()
+    })
+
+    it('goes on once a dropped map opened as the project, and says so', async () => {
+      ;({ wrapper } = await mountOnHome())
+
+      await pick(wrapper, fileOf(AYA, 'aya.jsonld'))
+
+      expect(router.push).toHaveBeenCalledWith('/rdf')
+      expect(useStatusStore().messages[0].text).toBe(
+        "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya."
+      )
+    })
+
+    it('goes on with the project this browser remembers', async () => {
+      holdOpenProject()
+      ;({ wrapper } = await mountOnHome())
+
+      await wrapper.find('#project-picker-continue').trigger('click')
+      await flushPromises()
+
+      expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-start')
+      expect(router.push).toHaveBeenCalledWith('/rdf')
+    })
+
+    it('stays on the home page when cancelled, the tab outside the workflow', async () => {
+      let project
+      ;({ wrapper, project } = await mountOnHome())
+
+      await button(wrapper, 'Cancel').trigger('click')
+
+      expect(project.picker.open).toBe(false)
+      expect(project.workflow).toBe(null)
+      expect(router.push).not.toHaveBeenCalled()
+      expect(api.delete).not.toHaveBeenCalled()
+    })
+
+    it('stays on the home page, still asking, when the server does not hear the choice', async () => {
+      let project
+      ;({ wrapper, project } = await mountOnHome())
+      api.delete.mockRejectedValueOnce({
+        response: { status: 503, data: { error: 'The server is busy.' } },
+      })
+
+      await button(wrapper, 'Continue without a project').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('.project-picker-errors').text()).toContain('The server is busy.')
+      expect(project.picker.open).toBe(true)
+      expect(project.workflow).toBe(null)
+      expect(router.push).not.toHaveBeenCalled()
+    })
+  })
+
   describe('from the status bar', () => {
     it('can be cancelled, with Escape too', async () => {
       holdOpenProject()

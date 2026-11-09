@@ -22,12 +22,13 @@ onMounted(() => {
   project.init()
 })
 
-// A tab that comes to a page of the RDF workflow without having entered it
-// (from the home page, or by a link) is asked for the project first (the
-// page waits meanwhile; see useStoreGate). Only a change of page asks, or
-// the project store becoming ready: closing the pop-up does not, nor does
-// leaving the workflow (Exit RDF leaves it a moment before the home page
-// shows). Until the router has settled on the first page, nothing is asked.
+// The home page asks for the project before it goes to the RDF workflow
+// (see useWorkflowEntry). A tab that comes to a page of the workflow without
+// having entered it, by a link, is asked there, and the page waits meanwhile
+// (see useStoreGate). Only a change of page asks, or the project store
+// becoming ready: closing the pop-up does not, nor does leaving the workflow
+// (Exit RDF leaves it a moment before the home page shows). Until the router
+// has settled on the first page, nothing is asked.
 watch(
   () => [route.name, route.path, project.ready],
   ([name, , ready]) => {
@@ -44,11 +45,13 @@ watch(
 )
 
 // A tab that comes back to the home page, by Exit RDF or otherwise, has left
-// the workflow, and is asked again when it enters it again.
+// the workflow, and is asked again when it enters it again. Only arriving
+// there leaves: a tab that chose on the home page enters the workflow a
+// moment before it goes to the workflow's page.
 watch(
-  () => [route.name, route.meta?.workflow, project.workflow],
-  ([name, workflow, inWorkflow]) => {
-    if (name && !workflow && inWorkflow) project.exitWorkflow()
+  () => [route.name, route.meta?.workflow],
+  ([name, workflow]) => {
+    if (name && !workflow && project.workflow) project.exitWorkflow()
   },
   { immediate: true }
 )
@@ -72,12 +75,7 @@ watch(
           v-if="waitingFor"
           :reason="waitingFor"
         />
-        <!-- Opens afresh once the tab enters a workflow: the page may have
-             opened under the pop-up, before the choice it reads. -->
-        <RouterView
-          v-else
-          :key="project.entries"
-        />
+        <RouterView v-else />
       </div>
     </main>
     <AppFooter />

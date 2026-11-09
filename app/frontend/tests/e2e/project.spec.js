@@ -73,28 +73,31 @@ test.describe('Projects', () => {
     await expect(page).toHaveURL(/\/$/)
   })
 
-  test('entering the RDF workflow asks for the project, and cancelling goes home', async ({
+  test('the RDF tile asks for the project on the home page, and goes on after the choice', async ({
     page,
     context,
   }) => {
     await page.goto('/')
     await page.locator('#rdf-card').click()
-    await expect(page).toHaveURL(/\/rdf$/)
     const dialog = picker(page)
     await expect(dialog).toBeVisible()
+    // Nothing opens before the choice.
+    await expect(page).toHaveURL(/\/$/)
+    await expect(heading(page)).toContainText('Welcome to Flyover')
     await expect(dialog).toContainText('standard RDF flow')
     await expect(dialog).toContainText("Flyover's configured RDF store")
     await expect(dialog).toContainText(/Repository\s+userRepo/)
 
     await dialog.getByRole('button', { name: 'Cancel' }).click()
-    await expect(page).toHaveURL(/\/$/)
     await expect(dialog).toBeHidden()
+    await expect(page).toHaveURL(/\/$/)
 
-    // The start button enters it too.
+    // The start button asks too; the choice goes on to the RDF landing.
     await page.locator('#home-start').click()
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: 'Continue without a project' }).click()
     await expect(dialog).toBeHidden()
+    await expect(page).toHaveURL(/\/rdf$/)
     await expect(heading(page)).toContainText('The RDF workflow')
     await expect(page.locator('#rdf-home-step')).toBeVisible()
     await expect(page.locator('#ingest-step')).toBeVisible()
@@ -107,10 +110,11 @@ test.describe('Projects', () => {
     await page.reload()
     await expect(statusBar(page)).toContainText('No project')
     await expect(picker(page)).toHaveCount(0)
-    // ...but a new tab that comes by a link to a step asks.
+    // ...but a new tab that comes by a link to a step asks, the step waiting.
     const otherTab = await context.newPage()
     await otherTab.goto('/describe')
     await expect(picker(otherTab)).toBeVisible()
+    await expect(otherTab.locator('.store-wait')).toContainText('Waiting for a project choice')
   })
 
   test('Exit RDF goes home; entering again offers the remembered project first', async ({
@@ -133,6 +137,7 @@ test.describe('Projects', () => {
     await expect(remembered).toContainText(new RegExp(`${CENTRE_A}\\s*·\\s*v1\\.0\\.0`))
     await remembered.getByRole('button', { name: `Continue with ${CENTRE_A}` }).click()
     await expect(picker(page)).toBeHidden()
+    await expect(page).toHaveURL(/\/rdf$/)
     await expect(statusBar(page)).toContainText(new RegExp(`Project:\\s*${CENTRE_A}`))
     server = await (await page.request.get('/api/v1/project')).json()
     expect(server.project.name).toBe(CENTRE_A)

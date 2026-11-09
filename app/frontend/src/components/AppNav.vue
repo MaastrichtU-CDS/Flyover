@@ -2,16 +2,17 @@
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useNavigation } from '@/composables/useNavigation'
+import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
 import { WORKFLOWS } from '@/lib/workflows'
-import { useWorkflowsStore } from '@/stores/workflows'
 
-// The bar under the status strip. On the home page it offers the workflows;
-// inside the RDF workflow it shows "RDF home" and the workflow's steps,
-// which another workflow may not share.
+// The bar under the status strip. On the home page it offers the workflows,
+// which ask for the project before they open (see useWorkflowEntry); inside
+// the RDF workflow it shows "RDF home" and the workflow's steps, which
+// another workflow may not share.
 
 const route = useRoute()
 const { stepStates } = useNavigation()
-const workflows = useWorkflowsStore()
+const { enter } = useWorkflowEntry()
 
 const inRdf = computed(() => route.meta?.workflow === 'rdf')
 </script>
@@ -88,27 +89,12 @@ const inRdf = computed(() => route.meta?.workflow === 'rdf')
           :key="workflow.id"
         >
           <span class="step-separator">|</span>
-          <RouterLink
-            v-if="workflow.available"
-            :id="`${workflow.id}-workflow-step`"
-            :to="workflow.to"
-            class="nav-step"
-          >
-            <span class="step-number">
-              <i
-                class="fas step-icon-header"
-                :class="workflow.icon"
-              />
-            </span>
-            <span class="step-text">{{ workflow.label }}</span>
-          </RouterLink>
           <a
-            v-else
             :id="`${workflow.id}-workflow-step`"
             href="#"
             role="button"
             class="nav-step"
-            @click.prevent="workflows.showSoon(workflow.id)"
+            @click.prevent="enter(workflow)"
           >
             <span class="step-number">
               <i

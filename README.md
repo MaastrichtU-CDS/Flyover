@@ -130,8 +130,9 @@ workflow has its own home page, **RDF home**, and guides you through four distin
 ### Projects
 
 A project is the JSON-LD semantic map a study shares with its sites. Its `schema` section is the general part every
-site of the project uses; its `databases` section is the part each site fills in for its own data. When you enter the
-RDF workflow, from the home page or by a link to one of its pages, Flyover asks which project to work on:
+site of the project uses; its `databases` section is the part each site fills in for its own data. Before the RDF
+workflow opens, Flyover asks which project to work on: on the home page, when you choose RDF there, or over the page a
+link to the workflow led to, which waits for your answer:
 
 - **Continue with** the project this browser remembers, if there is one: it is offered first, with the describe
   answers you added to it.
@@ -141,7 +142,7 @@ RDF workflow, from the home page or by a link to one of its pages, Flyover asks 
   later, in any step.
 - **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
 
-Cancelling goes back to the home page.
+Cancelling leaves you on the home page, or takes you back to it.
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
 (red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it,

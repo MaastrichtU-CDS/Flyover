@@ -7,9 +7,19 @@ import { reactive, ref } from 'vue'
 // "RDF home" with the steps inside the RDF workflow.
 
 const route = reactive({ path: '/', meta: {} })
+const router = { push: vi.fn() }
 vi.mock('vue-router', () => ({
   useRoute: () => route,
+  useRouter: () => router,
   RouterLink: { props: ['to'], template: '<a :href="String(to)"><slot /></a>' },
+}))
+vi.mock('@/services/api', () => ({
+  default: { get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() },
+}))
+vi.mock('@/lib/db', () => ({
+  getData: vi.fn(async () => null),
+  saveData: vi.fn(async () => {}),
+  deleteData: vi.fn(async () => {}),
 }))
 vi.mock('@/composables/useNavigation', () => ({
   useNavigation: () => ({
@@ -29,6 +39,7 @@ vi.mock('@/composables/useNavigation', () => ({
 }))
 
 import AppNav from '@/components/AppNav.vue'
+import { useProjectStore } from '@/stores/project'
 import { useWorkflowsStore } from '@/stores/workflows'
 
 function labels(wrapper) {
@@ -47,7 +58,7 @@ describe('AppNav', () => {
 
     expect(labels(wrapper)).toEqual(['Home', 'RDF', 'OMOP', 'CSV'])
     expect(wrapper.find('#home-step').classes()).toContain('active')
-    expect(wrapper.find('#rdf-workflow-step').attributes('href')).toBe('/rdf')
+    expect(wrapper.find('#rdf-workflow-step').exists()).toBe(true)
   })
 
   it('says a workflow under development is so', async () => {
@@ -58,6 +69,18 @@ describe('AppNav', () => {
     await wrapper.find('#omop-workflow-step').trigger('click')
 
     expect(useWorkflowsStore().soon.label).toBe('OMOP')
+  })
+
+  it('asks for the project on the home page before it opens the RDF workflow', async () => {
+    route.path = '/'
+    route.meta = {}
+    router.push.mockClear()
+    const wrapper = mount(AppNav)
+
+    await wrapper.find('#rdf-workflow-step').trigger('click')
+
+    expect(useProjectStore().picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(router.push).not.toHaveBeenCalled()
   })
 
   it('shows RDF home and the steps inside the RDF workflow', () => {

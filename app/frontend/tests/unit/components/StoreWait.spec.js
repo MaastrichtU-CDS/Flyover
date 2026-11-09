@@ -192,10 +192,35 @@ describe('useStoreGate', () => {
     expect(wrapper.text()).toBe('starting')
   })
 
-  it('never holds up a page that works without the store', () => {
+  it('holds a page of the workflow that works without the store until the tab chose', async () => {
+    route.path = '/share/mock'
+    route.meta = { workflow: 'rdf' }
+    project.ready = false
+    state('starting')
+    const wrapper = mount(Harness)
+    // A link led here: the pop-up asks, and the page waits for the answer.
+    expect(wrapper.text()).toBe('waiting')
+
+    project.workflow = 'rdf'
+    await nextTick()
+    // The store does not hold it, whatever it does.
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('never holds up a page that works without the store, once the tab is in', () => {
     route.path = '/rdf'
     route.meta = { workflow: 'rdf' }
-    project.picker = { open: true, mode: 'enter' }
+    project.workflow = 'rdf'
+    project.ready = false
+    state('stopped')
+
+    expect(mount(Harness).text()).toBe('')
+  })
+
+  it('never holds up a page outside the workflows, the pop-up open over it or not', () => {
+    route.path = '/'
+    route.meta = {}
+    project.picker = { open: true, mode: 'enter', target: '/rdf' }
     state('starting')
 
     expect(mount(Harness).text()).toBe('')
