@@ -239,10 +239,8 @@ test.describe('Projects', () => {
       new RegExp(`Project:\\s*${CENTRE_A}\\s*·\\s*v1\\.0\\.0`)
     )
     await expect(page.locator('.alert-success')).toContainText('Flyover now works on the project')
-    // The example map names no target standard: Flyover takes it as RDF, and says so.
-    await expect(page.locator('.alert-success')).toContainText(
-      'Its JSON-LD names no target standard, so Flyover takes it as an RDF project'
-    )
+    // The example map says it targets RDF, so Flyover assumes nothing.
+    await expect(page.locator('.alert-success')).not.toContainText('names no target standard')
     // The map names localhost, which Flyover reads as its configured store:
     // the hover shows it at the address users know, in the tiles' tooltip.
     await statusBar(page).locator('#statusbar-store .hover-tip').first().hover()
@@ -256,6 +254,20 @@ test.describe('Projects', () => {
     const server = await (await page.request.get('/api/v1/project')).json()
     expect(server.project.name).toBe(CENTRE_A)
     expect(server.store.repository).toBe('userRepo')
+  })
+
+  test('a map that names no target standard opens as RDF, and says so', async ({ page }) => {
+    const map = await centreA()
+    delete map.targetStandard
+    await page.goto('/describe')
+    await openFromPicker(page, map, 'mapping_centre_a.jsonld')
+
+    await expect(page.locator('.alert-success')).toContainText(
+      'Its JSON-LD names no target standard, so Flyover takes it as an RDF project'
+    )
+    const server = await (await page.request.get('/api/v1/project')).json()
+    expect(server.project.targetStandard).toBe('rdf')
+    expect(server.project.targetStandardDeclared).toBe(false)
   })
 
   test('switching asks first and offers the download; leaving goes back to the standard flow', async ({

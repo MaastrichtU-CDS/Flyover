@@ -51,6 +51,7 @@
   },
   "@id": "https://github.com/MaastrichtU-CDS/Flyover/example_data/centre_b_dutch/mapping_centre_b",
   "@type": "mapping:DataMapping",
+  "targetStandard": "rdf",
   "name": "Centre B - Example Dutch Hospital Mapping",
   "description": "Local data mapping for fictive Centre B (Dutch language dataset)",
   "version": "1.0.0",

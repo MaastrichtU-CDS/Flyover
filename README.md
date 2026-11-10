@@ -151,7 +151,8 @@ A project's JSON-LD names the standard its data is transformed to, in a top-leve
 `csv`. That decides which workflow uses it. A map for another workflow than the one you are in opens nothing: Flyover
 says which workflow it is for, and offers to switch there or to choose a different JSON-LD (OMOP and CSV are under
 development). The same holds for a map uploaded in a step. A map without `targetStandard` is taken as RDF, as every map
-was before, and Flyover says so when it opens it.
+was before, and Flyover says so when it opens it. The example maps in `example_data/`, the template among them, say
+`"targetStandard": "rdf"`.
 
 Cancelling leaves you on the home page, or takes you back to it.
 
