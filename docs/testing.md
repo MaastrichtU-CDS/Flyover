@@ -12,6 +12,7 @@ Several test layers, each with a different speed/realism trade-off. This doc tel
 | Backend performance | pytest       | [`tests/perf/`](../app/backend/data_descriptor/tests/perf/) | Latency, growth with input size, uploads, compression and parallel annotation of the HTTP layer | ~10 s       | [`unit-tests.yml`](../.github/workflows/unit-tests.yml) (non-blocking step) |
 | Frontend unit | Vitest             | [`app/frontend/tests/unit/`](../app/frontend/tests/unit/) | Stores, composables, view components — happy-dom, no backend               | <2 s        | [`frontend-checks.yml`](../.github/workflows/frontend-checks.yml)           |
 | Frontend E2E | Playwright          | [`app/frontend/tests/e2e/`](../app/frontend/tests/e2e/) | Multi-page workflow against a real stack (Flask + GraphDB)                 | ~minutes    | [`frontend-smoke.yml`](../.github/workflows/frontend-smoke.yml) (1 spec); [`frontend-e2e-full.yml`](../.github/workflows/frontend-e2e-full.yml) (all specs) |
+| Performance benchmark | Python + Docker | [`performance/`](../performance/) | How long the RDF workflow takes on a real stack (Flask + GraphDB), and how much memory: two set-ups compared on one machine | ~15 min | [`performance-rdf.yml`](../.github/workflows/performance-rdf.yml) (advisory) |
 
 Plus a non-test code-quality job: [`code-quality.yml`](../.github/workflows/code-quality.yml) runs Black, flake8, mypy, Bandit, and Safety. See the **CI workflow map** below.
 
@@ -63,6 +64,12 @@ FLYOVER_UPDATE_GOLDEN=1 python -m pytest tests/integration/test_integration_rdf_
 ```
 
 The triplifier names the data after the machine's hostname, and the annotation queries expect `data.local`; the test sets that hostname, as `docker-compose.yml` does.
+
+### What the RDF flow asks of the store
+
+Annotation is store time: for every variable Flyover sends the store a handful of updates and checks. How long those take depends on the machine; how many are sent does not. [`test_integration_rdf_store_requests.py`](../app/backend/data_descriptor/tests/integration/test_integration_rdf_store_requests.py) counts them on the golden path's table and map, by kind (updates, ASK checks, SELECTs), and pins the counts. It also holds the flow to two things that matter when data is added to a store that already holds some: annotating a second table sends no more requests than annotating the first did, and annotating the same table again sends the same ones.
+
+The counts move only when the flow changes what it asks of the store. Fewer is an optimisation to keep; more is a cost someone chose to add. Either way, update the numbers in the same change and say why. The timed counterpart, on a real store, is the [performance benchmark](#performance-benchmark).
 
 A few practical notes about the layout:
 - [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
@@ -116,7 +123,27 @@ What they found (a laptop; CI runners are roughly two to three times slower):
 | Mock data, 10,000 rows (the page's maximum, real generator) | 23 ms, 357 KB | Fast at the page's limit, which the endpoint enforces too. |
 | Annotation of 64 databases × 50 ms of store time | 109 ms | 29 times faster than one at a time; at most 32 in flight. |
 
+One module times a service instead of the HTTP layer: [`test_perf_conversion.py`](../app/backend/data_descriptor/tests/perf/test_perf_conversion.py) runs the real conversion to RDF (the triplifier, no store) on tables of growing size, and checks that its time grows in step with the rows and with the columns. Each conversion carries the same fixed cost of about a second, so the growth is fitted to what a table costs beyond an almost empty one. On a laptop a cell costs about 80 µs, whether the table is long or wide.
+
 Limits found on the way: `/api/generate-mock-data` passed any `num_rows` to the generator, so one request could ask the single worker for a billion rows; it now refuses anything but a whole number from 0 (empty tables) to the page's maximum of 10,000. Before Werkzeug 3.1.9, a describe form over Flask's 500 KB `MAX_FORM_MEMORY_SIZE` (about 2,400 category values on the details page) was refused with a bare 413. `requirements.txt` now requires 3.1.9 or later, which no longer applies that limit to urlencoded forms. Flyover sets no size limit of its own on those forms: it runs locally for one user.
+
+### Performance benchmark
+
+The checks above say whether work grows as it should. They cannot say whether the RDF workflow has become slower, because most of its time is spent in the store, and seconds measured on one CI runner mean little on the next. The benchmark in [`performance/`](../performance/) answers that question by running two set-ups of Flyover side by side on the same machine: the same sequence of intakes on both, in turns, several times over, compared pairwise.
+
+```bash
+pip install -r performance/requirements.txt
+
+# this checkout against the last release, or against main
+python -m performance compare --baseline release:3.5.0 --candidate tree:.
+python -m performance compare --baseline ref:main --candidate tree:.
+```
+
+What it measures is repeated intake: a first table, then follow-up tables for the same patients, each uploaded, linked, and annotated in a store that already holds the earlier ones, and after that the read queries a consumer of the store sends. Four figures are judged over the whole sequence (conversion time, annotation time, read-query time, and Flyover's peak memory), and a figure is flagged when it moved by 20 % or more and the repetitions agree on it. The data is synthetic, so the right answer to every read query is known, and every answer is checked: a change that is faster but returns something else fails.
+
+In CI ([`performance-rdf.yml`](../.github/workflows/performance-rdf.yml)) a pull request to `main` is compared with `main`, and after a merge `main` is compared with the last release and the result is added to the wiki under `performance/rdf`. Timings advise and never fail the job; wrong answers and the benchmark's own tests do. [`performance/README.md`](../performance/README.md) has the rest: the sides a comparison can have (a release, a branch, another ruleset, rewritten read queries), the profiles, how to read a result, and what is not covered.
+
+The folder is not part of the application and never ends up in an image; its own tests ([`performance/tests/`](../performance/tests/)) hold it to that, and start no stack.
 
 ### Frontend unit (Vitest)
 
@@ -214,6 +241,7 @@ Practical heuristics:
 - **Prefer the cheaper layer.** A unit test runs in milliseconds; an E2E test takes minutes and is flakier. If you can mock the services and test the route's HTTP behaviour in the API layer, do that before reaching for a stack.
 - **Unit tests do not use the Flask test client.** Anything that goes through a route belongs to the API layer (services mocked) or the integration layer (services real).
 - **Don't unit-test what Vitest is good at.** Component rendering, click handlers, derived UI state belong in Vitest, not in Playwright. Playwright is for "does the whole ingest workflow still work?", not "does this button enable when the field is filled?"
+- **A test says whether something works; the benchmark says whether it got slower.** "Does annotation still take about as long?" is not a test with a time limit in it (that flakes on a slow runner, or is too loose to notice anything): it is a run of [`performance/`](../performance/) against `main` or the last release. What can be counted exactly, such as the requests sent to the store, does belong in a test.
 - **One E2E happy-path per workflow** is the goal — that's what `smoke.spec.js` is for. The richer specs (`ingest.spec.js`, `annotate.spec.js`, etc.) cover the variants; the full suite runs on every push to `main` and every PR, like the other layers.
 
 ## CI workflow map
@@ -226,6 +254,7 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 | `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest, Vite production build                                       |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
 | `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack, a step per project (Flyover itself, the RDF workflow), and the suggestions-disabled stack |
+| `performance-rdf.yml`     | PRs to `main` and pushes to `main` that touch the backend, the app's Dockerfile, the stores, the compose files or `performance/`; manual dispatch | its own tests and wrong answers: yes; timings: no | Runs the benchmark's own tests, then compares two set-ups on one runner: a PR against `main`, `main` against the last release (added to the wiki under `performance/rdf`), or any two on demand. Flags a figure that moved by 20 % or more in the job summary and in a comment on the PR |
 | `code-quality.yml`        | push to `main`, all PRs                                   | partial         | Black (auto-applies and commits with `[skip ci]`), flake8, mypy, Safety (HIGH severity blocking), Bandit |
 | `release.yaml`            | tag push                                                  | n/a             | Builds and publishes the production flyover-app + flyover-graphdb images to ghcr.io                        |
 
