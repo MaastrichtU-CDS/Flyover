@@ -1,0 +1,254 @@
+name: RDF Performance
+
+# Compares the RDF workflow's performance between two set-ups of Flyover, on
+# one runner (see performance/README.md):
+#
+#   a pull request to main   the pull request against main, the short profile
+#   a push to main           main against the last release, the fuller
+#                            profile; the result goes to the wiki
+#   on demand                any two set-ups, any profile
+#
+# Timings advise: a figure that moved by 20 % or more is flagged in the job
+# summary and in a comment on the pull request, and never fails the job. The
+# job fails when the benchmark's own tests fail, or when the candidate did
+# not do the work it was given (a failed step, or wrong answers to the read
+# queries).
+
+on:
+  # What can change the RDF workflow's performance: the backend, the app's
+  # image, the stores and how they are started, and the benchmark itself.
+  # (The same list twice: a pull request to main, and a push to main.)
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/backend/**'
+      - 'app/Dockerfile'
+      - 'stores/**'
+      - 'docker-compose*.yml'
+      - 'performance/**'
+      - '.github/workflows/performance-rdf.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/backend/**'
+      - 'app/Dockerfile'
+      - 'stores/**'
+      - 'docker-compose*.yml'
+      - 'performance/**'
+      - '.github/workflows/performance-rdf.yml'
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: 'The side to measure against (release:3.5.0, ref:main, …). Empty: the last release.'
+        default: ''
+      candidate:
+        description: 'The side under test. tree:. is the branch this run is started on.'
+        default: 'tree:.'
+      profile:
+        description: 'How much work (see performance/rdf/profiles.yml)'
+        type: choice
+        options: [full, pr, smoke]
+        default: full
+      repetitions:
+        description: 'Measured runs per side. Empty: the profile''s.'
+        default: ''
+      threshold:
+        description: 'The smallest change to flag, as a fraction'
+        default: '0.2'
+
+# A newer push to a pull request replaces the run in progress. Runs on main
+# wait their turn, so each adds its row to the history.
+concurrency:
+  group: performance-rdf-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  harness-tests:
+    name: The benchmark's own tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install the benchmark's dependencies
+        run: pip install -r performance/requirements.txt -r performance/requirements-test.txt
+
+      - name: Run the tests
+        run: python -m pytest performance/tests -q
+
+  compare:
+    name: Compare two set-ups
+    needs: harness-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 45 || 150 }}
+    outputs:
+      outcome: ${{ steps.compare.outputs.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The base of a pull request and the release tags are needed too.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install the benchmark's dependencies
+        run: pip install -r performance/requirements.txt
+
+      - name: Choose the two sides
+        id: sides
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          INPUT_BASELINE: ${{ inputs.baseline }}
+          INPUT_CANDIDATE: ${{ inputs.candidate }}
+          INPUT_PROFILE: ${{ inputs.profile }}
+        run: |
+          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)"
+          last_release="${tag:+release:$tag}"
+          case "$EVENT" in
+            pull_request)
+              baseline="ref:$BASE_SHA"; candidate="tree:."; profile="pr" ;;
+            push)
+              baseline="$last_release"; candidate="tree:."; profile="full" ;;
+            *)
+              baseline="${INPUT_BASELINE:-$last_release}"
+              candidate="${INPUT_CANDIDATE:-tree:.}"
+              profile="${INPUT_PROFILE:-full}" ;;
+          esac
+          if [ -z "$baseline" ]; then
+            echo "::error::No release tag was found to compare with; give a baseline."
+            exit 1
+          fi
+          echo "Baseline $baseline, candidate $candidate, profile $profile"
+          {
+            echo "baseline=$baseline"
+            echo "candidate=$candidate"
+            echo "profile=$profile"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compare
+        id: compare
+        env:
+          BASELINE: ${{ steps.sides.outputs.baseline }}
+          CANDIDATE: ${{ steps.sides.outputs.candidate }}
+          PROFILE: ${{ steps.sides.outputs.profile }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          THRESHOLD: ${{ inputs.threshold || '0.2' }}
+        run: |
+          python -m performance compare \
+            --baseline "$BASELINE" --candidate "$CANDIDATE" --profile "$PROFILE" \
+            --threshold "$THRESHOLD" ${REPETITIONS:+--repetitions "$REPETITIONS"} \
+            --output performance-result.json
+
+      - name: Write the pull-request comment
+        if: always() && hashFiles('performance-result.json') != ''
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python -m performance report performance-result.json \
+            --format comment --link "$RUN_URL" > performance-comment.md
+
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-rdf-${{ github.run_id }}
+          path: |
+            performance-result.json
+            performance-comment.md
+          retention-days: 90
+          if-no-files-found: ignore
+
+  comment:
+    name: Tell the pull request
+    needs: compare
+    # Not for a pull request from a fork: its token may not comment.
+    if: >-
+      always() && needs.compare.outputs.outcome != ''
+      && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: performance-rdf-${{ github.run_id }}
+
+      # One comment per pull request, kept up to date. It is written when a
+      # figure is flagged or the candidate was at fault; once it is there, a
+      # later run that finds nothing says so in the same comment.
+      - uses: actions/github-script@v7
+        env:
+          OUTCOME: ${{ needs.compare.outputs.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- flyover-performance-rdf -->';
+            const body = marker + '\n' + fs.readFileSync('performance-comment.md', 'utf8');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const mine = comments.find(c => c.body && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else if (['flagged', 'failed'].includes(process.env.OUTCOME)) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
+
+  history:
+    name: Add the run to the history in the wiki
+    needs: compare
+    if: always() && needs.compare.outputs.outcome != '' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install the benchmark's dependencies
+        run: pip install -r performance/requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: performance-rdf-${{ github.run_id }}
+
+      - name: Add the run to performance/rdf
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python -m performance history performance-result.json \
+            --folder wiki/performance/rdf \
+            --candidate "main@${GITHUB_SHA::7}" --link "$RUN_URL"
+
+      - name: Push the wiki
+        working-directory: wiki
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add performance/rdf
+          git commit -m "RDF performance of main@${GITHUB_SHA::7}"
+          git push
