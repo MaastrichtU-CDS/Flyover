@@ -1,0 +1,4 @@
+# What the benchmark itself needs: nothing of the application's. It talks to
+# a stack over HTTP and through the Docker command line.
+requests>=2.31
+PyYAML>=6.0
