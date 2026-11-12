@@ -48,6 +48,7 @@ RDF = frozenset(
         "test_integration_ingest.py",
         "test_integration_ingest_uploads.py",
         "test_integration_rdf_golden_path.py",
+        "test_integration_rdf_store_requests.py",
         "test_integration_share.py",
         "test_integration_store_datasets.py",
         "test_integration_store_edges.py",
@@ -59,6 +60,8 @@ RDF = frozenset(
         "test_api_share.py",
         "test_api_store.py",
         "test_api_suggestions.py",
+        # perf
+        "test_perf_conversion.py",
     }
 )
 
