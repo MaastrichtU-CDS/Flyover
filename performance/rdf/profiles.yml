@@ -1,0 +1,73 @@
+# What a run of the RDF benchmark does: how much data, how many intakes,
+# which scenarios, how often. Chosen with --profile.
+#
+# Sizes are small on purpose. Annotating one table of 15,000 rows takes
+# GraphDB ten minutes, and each further intake costs more than the one
+# before: what a profile measures is that growth, on tables small enough to
+# repeat. Measured on a laptop, with 50 patients and ten variables per table,
+# the three intakes took 1.9 s, 6.7 s and 15.5 s to annotate.
+#
+#   variables     schema variables every table holds, besides the identifier
+#                 (a list may hold lists, so a profile can build on another)
+#   rows          patients per table
+#   tables        intakes: a first table, then follow-up tables
+#   repetitions   measured runs of every scenario, per side
+#   scenarios     see rdf/scenarios.py
+#   missing       share of empty cells (default 0.1)
+#   seed          the data's seed (default 1)
+#   settings      settings of the stack, such as BENCH_STORE_TMPFS: 4g
+
+# The pull-request profile: one scenario, three intakes of 40 patients, four
+# repetitions. It takes six minutes on a laptop. With the image builds it
+# has to fit in about 20 minutes on a CI runner; if the first runs there
+# show it does not, this is the place to make it smaller.
+pr:
+  variables: &pr
+    - biological_sex
+    - age_at_initial_diagnosis
+    - educational_level
+    - comorb_mi
+    - tumour_topography_or_location_icd_10
+    - clinical_t_stage
+    - eortc_qlq_aya_q1
+    - time_prom_recording
+    - bespoke_q2_cancer_spread
+  rows: 40
+  tables: 3
+  repetitions: 4
+  scenarios:
+    - repeated-intake/annotate-new
+
+# The fuller profile, for main after a merge and for runs on demand, where
+# nobody waits for the answer: both ways of annotating, more variables, a
+# second pair of variables among the read queries. Annotating everything
+# again is what makes it long: with 60 patients the third intake took 169 s
+# that way, against 36 s for the new table alone. About half an hour on a
+# laptop.
+full:
+  variables:
+    - *pr
+    - chemotherapy
+    - gender
+    - comorb_dm
+    - clinical_n_stage
+    - radiotherapy
+  rows: 40
+  tables: 3
+  repetitions: 4
+  scenarios:
+    - repeated-intake/annotate-new
+    - repeated-intake/annotate-all
+
+# The smallest run that still goes through every step: for trying the
+# benchmark itself, not for judging anything.
+smoke:
+  variables:
+    - biological_sex
+    - age_at_initial_diagnosis
+    - clinical_t_stage
+  rows: 10
+  tables: 2
+  repetitions: 1
+  scenarios:
+    - repeated-intake/annotate-new
