@@ -40,16 +40,29 @@ Add `--cov=. --cov-report=term-missing` if you want a coverage rollup. Drop `tes
 
 Each layer carries a pytest marker named after its folder (`unit`, `integration`, `api`, `perf`, `e2e`; registered in [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py)), so `-m integration` selects the same tests as the path. `-k integration` and `-k api` work too, but match by name: `-k api` also picks up a few integration tests named after the API they drive, so prefer `-m api` to run exactly the API layer. The performance checks only run when selected: with `-m perf`, or when pytest is pointed at `tests/perf/` alone; in a run of the whole tree they are skipped.
 
+The tests of the RDF workflow (its steps, and the store and services they run on) also carry an `rdf` marker, from the sets in [`tests/workflows.py`](../app/backend/data_descriptor/tests/workflows.py): `-m rdf` runs them on their own, and `-m "not rdf"` the tests of what every workflow shares (the app, the session, the map format, projects). Every test module is in one of the two sets, and [`tests/unit/test_workflows.py`](../app/backend/data_descriptor/tests/unit/test_workflows.py) fails for a module that is in neither, so a new module has to say where it belongs. A new workflow gets its own marker and set.
+
 ### Backend integration tests
 
 The integration layer ([`tests/integration/`](../app/backend/data_descriptor/tests/integration/)) drives the app [`create_app()`](../app/backend/data_descriptor/app_factory.py) builds, the wiring gunicorn serves, with the real controllers, services, repositories, query builder, loaders and validators. Nothing inside `data_descriptor` is mocked; only the two process boundaries are faked, where the real thing would leave the process:
 
 - **The RDF store** is `FakeRdfStore` in [`support.py`](../app/backend/data_descriptor/tests/integration/support.py): a backend-agnostic SPARQL 1.1 endpoint served through `responses` at the `requests` level. It answers the SELECTs the query builder produces from a small in-memory model (`seed_table(...)`), answers ASK checks (`ask_answer`), accepts UPDATEs, serves the Graph Store Protocol, and records every request so a test can assert exactly which SPARQL crossed the boundary (`store.selects`, `store.asks`, `store.updates`, `store.graph_downloads`). Knobs cover the error paths: `outage`, `outage_after`, `select_status`, `ask_status`, `update_status`.
 - **`curl`**, which the ingest service shells out to for graph uploads, is a recording script on `PATH` (`fake_curl` fixture; `fake_curl.uploads`, `fake_curl.fail()`).
+- **`SparqlStore`**, also in `support.py`, serves the same endpoints with a real SPARQL engine, rdflib's, over the graphs Flyover uploaded (`store.load_uploads(fake_curl.uploads)`) and wrote. It runs any query, not only the shapes `FakeRdfStore`'s model knows, for tests of the whole RDF flow. It rewrites the two forms rdflib cannot read, a `GROUP BY` condition in brackets and `\'` inside a double-quoted string, to their equivalents.
 
 The triplifier (`pythonTool`, from `requirements.txt`) runs for real into a temp directory, so the ingest tests triplify an actual CSV. The PostgreSQL ingest path runs against a real PostgreSQL: CI starts one as a service container, locally set `FLYOVER_TEST_POSTGRES_DSN=postgresql://user:pass@host:port/db` (for example from `docker run -d -e POSTGRES_USER=flyover -e POSTGRES_PASSWORD=flyover -e POSTGRES_DB=flyover -p 55432:5432 postgres:16-alpine`); without it those tests skip. Coverage runs read `app/backend/data_descriptor/.coveragerc` (pass `--cov-config` with that path when running from the repo root, as CI does), which leaves the test modules and the gunicorn entrypoint out of the denominator. Tests that document a known defect are marked `xfail(strict=True)` with the reason, so they flip to a failure once the defect is fixed.
 
 One file per flow: `test_integration_ingest.py` and `..._ingest_uploads.py` (upload strategies, background jobs, PostgreSQL), `..._describe.py`, `..._annotate.py` and `..._annotation_cli.py`, `..._share.py`, `..._suggestions.py` (tier-1 matchers, both phases, prompt export and paste-back), `..._store_edges.py` (what the store should never answer), plus `..._loader_validation.py` (loader ↔ validator) and `..._session.py` (server-side state across requests). The older `test_loaders_real_files.py` and `test_validation_real_files.py` read `example_data/` directly.
+
+### The RDF workflow's golden path
+
+[`test_integration_rdf_golden_path.py`](../app/backend/data_descriptor/tests/integration/test_integration_rdf_golden_path.py) takes a fixed CSV and JSON-LD map ([`tests/fixtures/golden/rdf/`](../app/backend/data_descriptor/tests/fixtures/golden/rdf/)) through ingest, describe and annotate as a browser would, with the real triplifier and `SparqlStore`. It then compares the data, ontology and annotation graphs the flow leaves in the store with the expected ones in that folder, as RDF: the order of triples and the names of blank nodes don't matter. The other tests check that each step runs and that particular triples appear; this one notices any change in what the RDF flow produces. When a change is meant to alter that output, write the graphs it now produces and review their diff like any other change:
+
+```bash
+FLYOVER_UPDATE_GOLDEN=1 python -m pytest tests/integration/test_integration_rdf_golden_path.py
+```
+
+The triplifier names the data after the machine's hostname, and the annotation queries expect `data.local`; the test sets that hostname, as `docker-compose.yml` does.
 
 A few practical notes about the layout:
 - [`tests/conftest.py`](../app/backend/data_descriptor/tests/conftest.py) defines fixtures shared across `unit/` and `integration/` (sample DataFrame, JSON-LD mapping, mock RDF responses).
@@ -134,12 +147,15 @@ npm run test:e2e:install     # downloads chromium ~150 MB
 # 3. run the smoke spec (fast — ~30s)
 npx playwright test tests/e2e/smoke.spec.js --reporter=line
 
-# 4. or run the whole suite (a few minutes)
+# 4. or run the whole suite (a few minutes), or one project of it
 npm run test:e2e
+npx playwright test --project=rdf
 
 # 5. teardown
 docker compose -f ../../docker-compose.yml -f ../../docker-compose.test.yml down -v
 ```
+
+The specs are grouped in Playwright projects ([`playwright.config.js`](../app/frontend/playwright.config.js)): `flyover` for what every workflow shares (the pages loading, the home page, projects) and `rdf` for the RDF workflow's steps. Each spec is in exactly one. CI runs each project as a step of its own, so a failure reads as Flyover's or the RDF workflow's. A new workflow's specs get their own project.
 
 Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases.
 
@@ -212,7 +228,7 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 | `unit-tests.yml`          | push to `main`, all PRs                                   | yes (perf: no)  | pytest unit, integration and API tests with combined coverage, a 90 % gate on the API layer's coverage of the HTTP layer, then the performance checks (non-blocking, report in the job summary) |
 | `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest with a coverage gate, Vite production build                  |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
-| `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack (both the default and the suggestions-disabled stack) |
+| `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack, a step per project (Flyover itself, the RDF workflow), and the suggestions-disabled stack |
 | `code-quality.yml`        | push to `main`, all PRs                                   | partial         | Black (auto-applies and commits with `[skip ci]`), flake8, mypy, Safety (HIGH severity blocking), Bandit |
 | `release.yaml`            | tag push                                                  | n/a             | Builds and publishes the production flyover-app + flyover-graphdb images to ghcr.io                        |
 

@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import polars as pl
 
+from .workflows import marker_for
+
 # ---------------------------------------------------------------------------
 # Test layers (issue #106): one marker per layer, applied by folder, so each
 # layer can be selected with `-m` as well as by path or `-k`.
@@ -38,6 +40,11 @@ def pytest_configure(config):
         "route(method, rule, outcome): the route an API test requests and whether "
         "it exercises the route's 'success' or its 'failure' path",
     )
+    config.addinivalue_line(
+        "markers",
+        "rdf: tests a step of the RDF workflow, or the store and services it runs "
+        "on (see tests/workflows.py)",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -46,6 +53,9 @@ def pytest_collection_modifyitems(config, items):
         for layer in _LAYER_MARKERS:
             if (_TESTS_DIR / layer) in path.parents:
                 item.add_marker(getattr(pytest.mark, layer))
+        workflow = marker_for(path.name)
+        if workflow:
+            item.add_marker(getattr(pytest.mark, workflow))
     _skip_perf_unless_selected(config, items)
 
 
