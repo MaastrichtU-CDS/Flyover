@@ -169,7 +169,7 @@ class TestTheSequence:
         self, flyover, workload
     ):
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert sample.faults == []
+        assert sample.errors == []
         assert flyover.asked == [
             ("DELETE", "project"),
             ("POST", "upload patients"),
@@ -233,7 +233,7 @@ class TestTheSequence:
     ):
         flyover.project_status = 404
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert sample.faults == []
+        assert sample.errors == []
 
     def test_a_scenario_that_does_not_exist(self, workload):
         with pytest.raises(ValueError, match="is not one of"):
@@ -241,22 +241,22 @@ class TestTheSequence:
 
 
 class TestWhatIsMeasured:
-    def test_the_judged_figures_are_the_sequences_totals(self, flyover, workload):
+    def test_the_judged_metrics_are_the_sequences_totals(self, flyover, workload):
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
         by_name = {step.name: step.seconds for step in sample.steps}
-        figures = sample.figures
-        assert figures["conversion_s"] == pytest.approx(
+        metrics = sample.metrics
+        assert metrics["conversion_s"] == pytest.approx(
             by_name["upload patients"] + by_name["upload followup_2"], abs=1e-3
         )
-        assert figures["annotation_s"] == pytest.approx(
+        assert metrics["annotation_s"] == pytest.approx(
             by_name["annotate after patients"] + by_name["annotate after followup_2"],
             abs=1e-3,
         )
-        assert figures["queries_s"] == pytest.approx(
+        assert metrics["queries_s"] == pytest.approx(
             sum(by_name[f"query {name}"] for name in QUERY_NAMES), abs=1e-3
         )
         # The app's peak memory, read after the whole sequence.
-        assert figures["app_peak_memory_mb"] == 103.0
+        assert metrics["app_peak_memory_mb"] == 103.0
 
     def test_each_intake_and_the_growth_are_reported(self, flyover, workload):
         reported = scenarios.run(
@@ -285,36 +285,36 @@ class TestWhatIsMeasured:
         assert list(sample.reported["queries"]) == [name]
 
     def test_the_warm_up_is_one_intake_of_the_same_flow(self, flyover, workload):
-        faults = RdfWorkflow().warm_up(FakeStack(), SIDE, workload)
-        assert faults == []
+        errors = RdfWorkflow().warm_up(FakeStack(), SIDE, workload)
+        assert errors == []
         assert flyover.uploaded == ["patients"]
         assert ("POST", f"query {QUERY_NAMES[0]}") in flyover.asked
 
 
-class TestFaults:
+class TestErrors:
     def test_an_upload_that_is_refused_stops_the_run(self, flyover, workload):
         flyover.upload_location = "/?error=Error: the RDF store did not accept"
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert sample.faults == [
+        assert sample.errors == [
             "upload patients: the upload was refused: 302 "
             "/?error=Error: the RDF store did not accept"
         ]
         assert flyover.asked[-1] == ("POST", "upload patients")
-        assert sample.figures == {}
+        assert sample.metrics == {}
 
     def test_an_annotation_that_says_it_failed(self, flyover, workload):
         flyover.annotation = {"success": False, "error": "No databases available"}
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert len(sample.faults) == 1
-        assert "annotation failed" in sample.faults[0]
-        assert "No databases available" in sample.faults[0]
+        assert len(sample.errors) == 1
+        assert "annotation failed" in sample.errors[0]
+        assert "No databases available" in sample.errors[0]
 
     def test_an_annotation_that_says_it_succeeded_but_left_a_variable_out(
         self, flyover, workload
     ):
         flyover.failed_variables = ["biological_sex"]
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert sample.faults == [
+        assert sample.errors == [
             "annotate after patients: not annotated: patients.biological_sex"
         ]
 
@@ -323,16 +323,16 @@ class TestFaults:
     ):
         flyover.wrong_answer_for = queries.single_name("biological_sex")
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert len(sample.faults) == 1
-        assert sample.faults[0].startswith(
+        assert len(sample.errors) == 1
+        assert sample.errors[0].startswith(
             "query single_column__biological_sex.rq: wrong answer: "
         )
-        assert "1 missing" in sample.faults[0]
+        assert "1 missing" in sample.errors[0]
         # The other queries are still sent and judged.
         assert sum(what.startswith("query") for _, what in flyover.asked) == 3
 
     def test_a_store_that_refuses_a_query(self, flyover, workload):
         flyover.query_status = 500
         sample = scenarios.run(FakeStack(), SIDE, workload, scenarios.ANNOTATE_NEW)
-        assert len(sample.faults) == 3
-        assert "the store answered 500 the store is out of space" in sample.faults[0]
+        assert len(sample.errors) == 3
+        assert "the store answered 500 the store is out of space" in sample.errors[0]

@@ -9,7 +9,7 @@ is in both values and cancels out.
 
 The ratios are averaged on the log scale (a geometric mean, so that twice
 as slow and twice as fast weigh the same), and a 95 % interval says how well
-the repetitions agree. A figure is flagged only when the change is both
+the repetitions agree. A metric is flagged only when the change is both
 large (at least the threshold) and clear (the interval excludes no change).
 """
 
@@ -77,9 +77,9 @@ def t_critical(degrees_of_freedom: int) -> float:
 
 @dataclass(frozen=True)
 class Comparison:
-    """One figure, compared between the two sides."""
+    """One metric, compared between the two sides."""
 
-    figure: str
+    metric: str
     pairs: int
     baseline: Optional[float]  # median of the baseline's values
     candidate: Optional[float]  # median of the candidate's values
@@ -98,12 +98,12 @@ class Comparison:
 
 
 def compare(
-    figure: str,
+    metric: str,
     baseline: Sequence[Optional[float]],
     candidate: Sequence[Optional[float]],
     threshold: float,
 ) -> Comparison:
-    """Compare a figure for which a higher value is worse (time, memory).
+    """Compare a metric for which a higher value is worse (time, memory).
 
     ``baseline[i]`` and ``candidate[i]`` are the two sides' values of
     repetition ``i``. A repetition in which either side has no value, or a
@@ -125,7 +125,7 @@ def compare(
     ]
     if not pairs:
         return Comparison(
-            figure, 0, None, None, None, None, None, NO_FLAG, "no values to compare"
+            metric, 0, None, None, None, None, None, NO_FLAG, "no values to compare"
         )
 
     base_median = statistics.median(b for b, _ in pairs)
@@ -136,7 +136,7 @@ def compare(
 
     if len(pairs) < MINIMUM_PAIRS:
         return Comparison(
-            figure,
+            metric,
             len(pairs),
             base_median,
             cand_median,
@@ -160,7 +160,7 @@ def compare(
     elif ratio <= (1 + _ROUNDING) / (1 + threshold) and high < 1:
         verdict = IMPROVED
     return Comparison(
-        figure, len(pairs), base_median, cand_median, ratio, low, high, verdict
+        metric, len(pairs), base_median, cand_median, ratio, low, high, verdict
     )
 
 

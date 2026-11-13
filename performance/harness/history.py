@@ -23,9 +23,9 @@ _INTRODUCTION = """\
 How long Flyover's {title} workflow takes, measured after every change to
 `main`. Each run puts `main` (the candidate) next to the last release (the
 baseline) on the same machine and does the same work on both, several
-times over. A figure shows the candidate's median and, in brackets, how it
+times over. A metric shows the candidate's median and, in brackets, how it
 differs from the baseline: `36.6 s (+30 %)` is 30 % slower than the last
-release. ⚠️ marks a figure that got worse by the threshold or more, 🟢 one
+release. ⚠️ marks a metric that got worse by the threshold or more, 🟢 one
 that got better.
 
 The seconds of two rows are not comparable: the runs were on different
@@ -68,7 +68,7 @@ def add(
         at = lines.index(separator) + 1
         lines[at:at] = rows.split("\n")
     else:
-        # The figures have changed since the table was begun: a new table.
+        # The metrics have changed since the table was begun: a new table.
         lines += ["", header, rows]
     page.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return page

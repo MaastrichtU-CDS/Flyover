@@ -16,7 +16,7 @@ SCENARIO = "repeated-intake/annotate-new"
 def sample(conversion, annotation, queries=2.0, memory=130.0):
     return {
         "scenario": SCENARIO,
-        "figures": {
+        "metrics": {
             "conversion_s": conversion,
             "annotation_s": annotation,
             "queries_s": queries,
@@ -37,12 +37,12 @@ def sample(conversion, annotation, queries=2.0, memory=130.0):
             "statements": 18190,
         },
         "invariants": {"statements": 18190},
-        "faults": [],
+        "errors": [],
         "steps": [],
     }
 
 
-def result(annotation_factor=1.0, faults=None, repetitions=4):
+def result(annotation_factor=1.0, errors=None, repetitions=4):
     records = []
     for number in range(1, repetitions + 1):
         speed = 1 + number / 20
@@ -55,11 +55,11 @@ def result(annotation_factor=1.0, faults=None, repetitions=4):
                 CANDIDATE: sample(6.1 * speed, 25.0 * speed * annotation_factor),
             }
         )
-    faults = {BASELINE: [], CANDIDATE: [], **(faults or {})}
+    errors = {BASELINE: [], CANDIDATE: [], **(errors or {})}
     comparisons = (
         []
-        if any(faults.values())
-        else runner.judge(records, RdfWorkflow.figures, [SCENARIO], 0.2)
+        if any(errors.values())
+        else runner.judge(records, RdfWorkflow.metrics, [SCENARIO], 0.2)
     )
     return {
         "schema": results.SCHEMA,
@@ -90,16 +90,16 @@ def result(annotation_factor=1.0, faults=None, repetitions=4):
         },  # fmt: skip
         "repetitions": records,
         "comparisons": comparisons,
-        "faults": faults,
+        "errors": errors,
         "logs": {},
-        "outcome": runner.outcome(faults, comparisons),
+        "outcome": runner.outcome(errors, comparisons),
         "duration_s": 480.0,
     }
 
 
 class TestTheHeadline:
     def test_nothing_moved(self):
-        assert report.headline(result()) == "✅ **No figure moved by 20 % or more.**"
+        assert report.headline(result()) == "✅ **No metric moved by 20 % or more.**"
 
     def test_a_slowdown_says_how_much_and_how_sure(self):
         headline = report.headline(result(annotation_factor=1.3))
@@ -112,12 +112,12 @@ class TestTheHeadline:
         headline = report.headline(result(annotation_factor=0.5))
         assert headline.startswith("🟢 **Annotation is 50 % faster**")
 
-    def test_a_candidate_at_fault(self):
-        headline = report.headline(result(faults={CANDIDATE: ["wrong answer"]}))
+    def test_a_candidate_that_failed(self):
+        headline = report.headline(result(errors={CANDIDATE: ["wrong answer"]}))
         assert "The candidate did not do the work" in headline
 
-    def test_a_baseline_at_fault(self):
-        headline = report.headline(result(faults={BASELINE: ["refused"]}))
+    def test_a_baseline_that_failed(self):
+        headline = report.headline(result(errors={BASELINE: ["refused"]}))
         assert "nothing can be said about the candidate" in headline
 
 
@@ -132,7 +132,7 @@ class TestTheSummary:
         assert "flagged from 20 %" in text
         assert "sha256 `abababababababab`" in text
 
-    def test_every_judged_figure_has_a_row_with_both_sides_and_the_change(self):
+    def test_every_judged_metric_has_a_row_with_both_sides_and_the_change(self):
         text = report.summary(result(annotation_factor=1.3))
         row = [line for line in text.splitlines() if line.startswith("| Annotation")][0]
         assert row == (
@@ -163,26 +163,26 @@ class TestTheSummary:
         )
         assert "The run took 8.0 minutes." in text
 
-    def test_faults_are_listed_and_nothing_is_compared(self):
-        text = report.summary(result(faults={CANDIDATE: ["query x: wrong answer"]}))
-        assert "**What went wrong on the candidate:**" in text
+    def test_errors_are_listed_and_nothing_is_compared(self):
+        text = report.summary(result(errors={CANDIDATE: ["query x: wrong answer"]}))
+        assert "**Errors on the candidate:**" in text
         assert "- query x: wrong answer" in text
-        assert "| Figure |" not in text
+        assert "| Metric |" not in text
 
-    def test_many_faults_are_cut_short(self):
-        faults = {CANDIDATE: [f"fault {n}" for n in range(14)]}
-        text = report.summary(result(faults=faults))
-        assert "- fault 9" in text and "- fault 10" not in text
+    def test_many_errors_are_cut_short(self):
+        errors = {CANDIDATE: [f"error {n}" for n in range(14)]}
+        text = report.summary(result(errors=errors))
+        assert "- error 9" in text and "- error 10" not in text
         assert "- … and 4 more" in text
 
     def test_too_few_repetitions_are_shown_but_not_judged(self):
         text = report.summary(result(annotation_factor=3.0, repetitions=2))
-        assert "✅ **No figure moved" in text
+        assert "✅ **No metric moved" in text
         assert "fewer than 3 repetitions: no interval, so no flag" in text
 
 
 class TestTheCommentAndTheHistory:
-    def test_the_comment_is_the_verdict_and_the_judged_figures(self):
+    def test_the_comment_is_the_verdict_and_the_judged_metrics(self):
         text = report.comment(
             result(annotation_factor=1.3), "https://example.org/run/1"
         )
@@ -194,7 +194,7 @@ class TestTheCommentAndTheHistory:
         assert "[Full result](https://example.org/run/1)." in text
         assert "<details>" not in text
 
-    def test_a_history_row_shows_the_candidates_figures_and_their_change(self):
+    def test_a_history_row_shows_the_candidates_metrics_and_their_change(self):
         current = result(annotation_factor=1.3)
         header = report.history_header(current).splitlines()
         row = report.history_rows(current, "main@abc1234", "https://example.org/run/1")
@@ -210,7 +210,7 @@ class TestTheCommentAndTheHistory:
         )
 
     def test_a_failed_run_still_gets_its_row(self):
-        row = report.history_rows(result(faults={CANDIDATE: ["x"]}))
+        row = report.history_rows(result(errors={CANDIDATE: ["x"]}))
         assert row.endswith("| n/a | n/a | n/a | n/a | failed |")
 
 
@@ -281,13 +281,13 @@ class TestTheCommandLine:
         assert results.read(output)["workflow"] == "rdf"
         assert "## RDF performance" in capsys.readouterr().out
 
-    def test_a_flag_does_not_fail_the_command_but_a_fault_does(
+    def test_a_flag_does_not_fail_the_command_but_an_error_does(
         self, monkeypatch, tmp_path
     ):
         arguments = ["compare", "--baseline", "release:1", "--candidate", "release:2"]
         for outcome, code in (
             (results.FLAGGED, 0),
-            (results.VOID, 0),
+            (results.INVALID, 0),
             (results.FAILED, 1),
         ):
             assert self.run_with(monkeypatch, outcome, arguments, tmp_path)[0] == code

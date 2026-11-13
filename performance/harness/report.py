@@ -26,7 +26,7 @@ def headline(result: Mapping[str, Any]) -> str:
             "❌ **The candidate did not do the work it was given**, so nothing "
             "was compared."
         )
-    if outcome == results.VOID:
+    if outcome == results.INVALID:
         return (
             "⚪ **The baseline did not do the work it was given**, so nothing can "
             "be said about the candidate."
@@ -35,7 +35,7 @@ def headline(result: Mapping[str, Any]) -> str:
         c for c in result["comparisons"] if c["verdict"] in (REGRESSED, IMPROVED)
     ]
     if not flagged:
-        return f"✅ **No figure moved by {threshold} or more.**"
+        return f"✅ **No metric moved by {threshold} or more.**"
     parts = []
     for comparison in flagged:
         worse = comparison["verdict"] == REGRESSED
@@ -65,7 +65,7 @@ def summary(result: Mapping[str, Any]) -> str:
         f"{result['threshold'] * 100:.0f} %.",
         "",
     ]
-    lines += _faults(result)
+    lines += _errors(result)
     for scenario in result["profile"]["scenarios"]:
         lines += _scenario(result, scenario)
     lines += _machine(result)
@@ -73,16 +73,16 @@ def summary(result: Mapping[str, Any]) -> str:
 
 
 def comment(result: Mapping[str, Any], run_url: str = "") -> str:
-    """The pull-request comment: the verdict and the judged figures."""
+    """The pull-request comment: the verdict and the judged metrics."""
     lines = [
         f"### {result['workflow'].upper()} performance",
         "",
         headline(result),
         "",
     ]
-    lines += _faults(result)
+    lines += _errors(result)
     for scenario in result["profile"]["scenarios"]:
-        table = _figures_table(result, scenario)
+        table = _metrics_table(result, scenario)
         if table:
             lines += [f"`{scenario}`", ""] + table + [""]
     sides = result["sides"]
@@ -107,7 +107,7 @@ def history_header(result: Mapping[str, Any]) -> str:
 
 
 def history_rows(result: Mapping[str, Any], candidate: str = "", link: str = "") -> str:
-    """The run as rows of the history page, one per scenario. Each figure
+    """The run as rows of the history page, one per scenario. Each metric
     shows the candidate's median and its change against the baseline."""
     sides = result["sides"]
     name = candidate or sides[CANDIDATE]["spec"]
@@ -155,15 +155,15 @@ def _labels(result: Mapping[str, Any]) -> List[str]:
     ]
 
 
-def _faults(result: Mapping[str, Any]) -> List[str]:
+def _errors(result: Mapping[str, Any]) -> List[str]:
     lines: List[str] = []
     for side in (CANDIDATE, BASELINE):
-        faults = result["faults"].get(side) or []
-        if faults:
-            lines.append(f"**What went wrong on the {side}:**")
-            lines += [f"- {fault}" for fault in faults[:10]]
-            if len(faults) > 10:
-                lines.append(f"- … and {len(faults) - 10} more")
+        errors = result["errors"].get(side) or []
+        if errors:
+            lines.append(f"**Errors on the {side}:**")
+            lines += [f"- {error}" for error in errors[:10]]
+            if len(errors) > 10:
+                lines.append(f"- … and {len(errors) - 10} more")
             lines.append("")
     return lines
 
@@ -171,12 +171,12 @@ def _faults(result: Mapping[str, Any]) -> List[str]:
 def _scenario(result: Mapping[str, Any], scenario: str) -> List[str]:
     records = [r for r in result["repetitions"] if r["scenario"] == scenario]
     lines = [f"### `{scenario}`", ""]
-    table = _figures_table(result, scenario)
+    table = _metrics_table(result, scenario)
     if table:
         lines += table + [""]
     complete = [r for r in records if BASELINE in r and CANDIDATE in r]
     measured = [
-        r for r in complete if not r[BASELINE]["faults"] and not r[CANDIDATE]["faults"]
+        r for r in complete if not r[BASELINE]["errors"] and not r[CANDIDATE]["errors"]
     ]
     if not measured:
         return lines + ["No repetition completed on both sides.", ""]
@@ -238,12 +238,12 @@ def _scenario(result: Mapping[str, Any], scenario: str) -> List[str]:
     return lines
 
 
-def _figures_table(result: Mapping[str, Any], scenario: str) -> List[str]:
+def _metrics_table(result: Mapping[str, Any], scenario: str) -> List[str]:
     mine = [c for c in result["comparisons"] if c["scenario"] == scenario]
     if not mine:
         return []
     lines = [
-        "| Figure | Baseline | Candidate | Change | 95 % interval | Spread | |",
+        "| Metric | Baseline | Candidate | Change | 95 % interval | Spread | |",
         "|---|---|---|---|---|---|---|",
     ]
     for comparison in mine:
@@ -271,7 +271,7 @@ def _figures_table(result: Mapping[str, Any], scenario: str) -> List[str]:
 def _machine(result: Mapping[str, Any]) -> List[str]:
     machine = result["environment"]
     sides = result["sides"]
-    lines = ["<details><summary>Where and what</summary>", ""]
+    lines = ["<details><summary>Environment</summary>", ""]
     lines.append(
         f"- Machine: {machine.get('cpu')}, {machine.get('cpus')} CPUs, "
         f"{machine.get('memory_gb')} GB; Docker {machine.get('docker')}; "

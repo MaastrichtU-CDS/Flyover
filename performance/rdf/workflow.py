@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Mapping
 import yaml
 
 from ..harness.result import Sample
-from ..harness.runner import Figure
+from ..harness.runner import Metric
 from ..harness.sides import Side
 from ..harness.stack import Stack
 from . import scenarios
@@ -26,11 +26,11 @@ class RdfWorkflow:
     name = "rdf"
 
     # What is judged, in the order it is shown. Higher is worse for each.
-    figures = (
-        Figure("conversion_s", "Conversion", "s"),
-        Figure("annotation_s", "Annotation", "s"),
-        Figure("queries_s", "Read queries", "s"),
-        Figure("app_peak_memory_mb", "Flyover's peak memory", "MB"),
+    metrics = (
+        Metric("conversion_s", "Conversion", "s"),
+        Metric("annotation_s", "Annotation", "s"),
+        Metric("queries_s", "Read queries", "s"),
+        Metric("app_peak_memory_mb", "Flyover's peak memory", "MB"),
     )
 
     def profiles(self) -> Dict[str, Dict[str, Any]]:
@@ -61,7 +61,7 @@ class RdfWorkflow:
         sample = scenarios.run(
             stack, side, workload, scenarios.ANNOTATE_NEW, tables=workload.tables[:1]
         )
-        return sample.faults
+        return sample.errors
 
     def run(
         self, stack: Stack, side: Side, workload: Workload, scenario: str

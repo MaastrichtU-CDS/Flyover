@@ -9,7 +9,7 @@ from performance.harness.result import Sample
 from performance.harness.runner import (
     BASELINE,
     CANDIDATE,
-    Figure,
+    Metric,
     compare,
     judge,
     outcome,
@@ -17,7 +17,7 @@ from performance.harness.runner import (
 from performance.harness.sides import Side
 from performance.harness.stats import IMPROVED, NO_FLAG, REGRESSED
 
-FIGURES = (Figure("seconds", "Time", "s"), Figure("memory", "Memory", "MB"))
+METRICS = (Metric("seconds", "Time", "s"), Metric("memory", "Memory", "MB"))
 
 
 class FakeStack:
@@ -29,8 +29,8 @@ class FakeStack:
         self.events.append("up")
         return 1.0
 
-    def fresh(self):
-        self.events.append("fresh")
+    def reset(self):
+        self.events.append("reset")
 
     def down(self):
         self.events.append("down")
@@ -48,13 +48,13 @@ class FakeWorkflow:
     """A workflow whose candidate takes ``factor`` times as long."""
 
     name = "fake"
-    figures = FIGURES
+    metrics = METRICS
 
-    def __init__(self, factor=1.0, faults=None, statements=None, warm_up_faults=None):
+    def __init__(self, factor=1.0, errors=None, statements=None, warm_up_errors=None):
         self.factor = factor
-        self.faults = faults or {}  # (side, repetition) -> message
+        self.errors = errors or {}  # (side, repetition) -> message
         self.statements = statements or {}  # (side, repetition) -> count
-        self.warm_up_faults = warm_up_faults or {}
+        self.warm_up_errors = warm_up_errors or {}
         self.calls = []
         self.count = {}
 
@@ -63,7 +63,7 @@ class FakeWorkflow:
 
     def warm_up(self, stack, side, workload):
         self.calls.append(("warm-up", side.name))
-        return list(self.warm_up_faults.get(side.name, []))
+        return list(self.warm_up_errors.get(side.name, []))
 
     def run(self, stack, side, workload, scenario):
         number = self.count[(side.name, scenario)] = (
@@ -71,13 +71,13 @@ class FakeWorkflow:
         )
         self.calls.append((scenario, side.name))
         sample = Sample(scenario)
-        fault = self.faults.get((side.name, number))
-        if fault:
-            sample.faults.append(fault)
+        error = self.errors.get((side.name, number))
+        if error:
+            sample.errors.append(error)
             return sample
         speed = 1 + number / 10  # every repetition on a machine of its own speed
         slower = self.factor if side.name == CANDIDATE else 1.0
-        sample.figures = {"seconds": 10 * speed * slower, "memory": 100.0}
+        sample.metrics = {"seconds": 10 * speed * slower, "memory": 100.0}
         sample.invariants = {"statements": self.statements.get((side.name, number), 50)}
         return sample
 
@@ -137,8 +137,8 @@ class TestTheLoop:
         workflow = FakeWorkflow()
         _, stacks = run(workflow, profile=profile(repetitions=2))
         for stack in stacks:
-            # up, fresh for the warm-up, fresh for each of two runs, down
-            assert stack.events == ["up", "fresh", "fresh", "fresh", "down"]
+            # up, reset for the warm-up, reset for each of two runs, down
+            assert stack.events == ["up", "reset", "reset", "reset", "down"]
 
     def test_each_side_gets_a_stack_of_its_own_with_the_profiles_settings(self):
         _, stacks = run(FakeWorkflow())
@@ -223,36 +223,36 @@ class TestTheResult:
 
     def test_every_raw_value_is_kept(self):
         result, _ = run(FakeWorkflow(factor=2.0))
-        values = [r[CANDIDATE]["figures"]["seconds"] for r in result["repetitions"]]
+        values = [r[CANDIDATE]["metrics"]["seconds"] for r in result["repetitions"]]
         assert values == pytest.approx([22.0, 24.0, 26.0, 28.0])
 
 
-class TestFaults:
-    def test_a_fault_of_the_candidate_fails_the_run_and_stops_it(self):
-        workflow = FakeWorkflow(faults={(CANDIDATE, 2): "wrong answer"})
+class TestErrors:
+    def test_an_error_of_the_candidate_fails_the_run_and_stops_it(self):
+        workflow = FakeWorkflow(errors={(CANDIDATE, 2): "wrong answer"})
         result, _ = run(workflow)
         assert result["outcome"] == results.FAILED
-        assert result["faults"][CANDIDATE] == ["one, repetition 2: wrong answer"]
+        assert result["errors"][CANDIDATE] == ["one, repetition 2: wrong answer"]
         assert result["comparisons"] == []
         assert len(result["repetitions"]) == 2
         assert result["logs"] == {CANDIDATE: "logs of candidate"}
 
-    def test_a_fault_of_the_baseline_voids_the_run(self):
-        workflow = FakeWorkflow(faults={(BASELINE, 1): "the store refused"})
+    def test_an_error_of_the_baseline_invalidates_the_run(self):
+        workflow = FakeWorkflow(errors={(BASELINE, 1): "the store refused"})
         result, _ = run(workflow)
-        assert result["outcome"] == results.VOID
-        assert result["faults"][BASELINE] == ["one, repetition 1: the store refused"]
+        assert result["outcome"] == results.INVALID
+        assert result["errors"][BASELINE] == ["one, repetition 1: the store refused"]
         assert result["comparisons"] == []
 
-    def test_a_fault_of_both_is_the_candidates_to_answer_for(self):
-        workflow = FakeWorkflow(faults={(BASELINE, 1): "x", (CANDIDATE, 1): "y"})
+    def test_an_error_of_both_is_the_candidates_to_answer_for(self):
+        workflow = FakeWorkflow(errors={(BASELINE, 1): "x", (CANDIDATE, 1): "y"})
         assert run(workflow)[0]["outcome"] == results.FAILED
 
     def test_a_failed_warm_up_stops_the_run_before_it_measures(self):
-        workflow = FakeWorkflow(warm_up_faults={CANDIDATE: ["annotation failed"]})
+        workflow = FakeWorkflow(warm_up_errors={CANDIDATE: ["annotation failed"]})
         result, _ = run(workflow)
         assert result["outcome"] == results.FAILED
-        assert result["faults"][CANDIDATE] == ["warm-up: annotation failed"]
+        assert result["errors"][CANDIDATE] == ["warm-up: annotation failed"]
         assert result["repetitions"] == []
 
     def test_the_same_work_must_leave_the_same_behind(self):
@@ -261,7 +261,7 @@ class TestFaults:
         workflow = FakeWorkflow(statements={(CANDIDATE, 3): 41})
         result, _ = run(workflow)
         assert result["outcome"] == results.FAILED
-        assert result["faults"][CANDIDATE] == [
+        assert result["errors"][CANDIDATE] == [
             "one, repetition 3: statements is 41, but was 50 before"
         ]
 
@@ -276,8 +276,8 @@ class TestJudging:
             {
                 "repetition": index + 1,
                 "scenario": scenario,
-                BASELINE: {"figures": {"seconds": b, "memory": 100.0}},
-                CANDIDATE: {"figures": {"seconds": c, "memory": 100.0}},
+                BASELINE: {"metrics": {"seconds": b, "memory": 100.0}},
+                CANDIDATE: {"metrics": {"seconds": c, "memory": 100.0}},
             }
             for index, (b, c) in enumerate(zip(baseline, candidate))
         ]
@@ -288,31 +288,31 @@ class TestJudging:
         )
         verdicts = {
             (c["scenario"], c["label"]): c["verdict"]
-            for c in judge(records, FIGURES, ["one", "two"], 0.2)
+            for c in judge(records, METRICS, ["one", "two"], 0.2)
         }
         assert verdicts[("one", "Time")] == NO_FLAG
         assert verdicts[("two", "Time")] == REGRESSED
 
-    def test_a_figure_a_side_did_not_measure_is_not_judged(self):
+    def test_a_metric_a_side_did_not_measure_is_not_judged(self):
         records = self.records([10, 11, 12], [None, None, None])
-        time = judge(records, FIGURES, ["one"], 0.2)[0]
+        time = judge(records, METRICS, ["one"], 0.2)[0]
         assert (time["pairs"], time["verdict"]) == (0, NO_FLAG)
 
     def test_how_much_each_sides_own_runs_differ_is_recorded(self):
         records = self.records([9, 10, 11], [20, 20, 20])
-        time = judge(records, FIGURES, ["one"], 0.2)[0]
+        time = judge(records, METRICS, ["one"], 0.2)[0]
         assert time["baseline_spread"] == pytest.approx(0.1)
         assert time["candidate_spread"] == 0
 
     @pytest.mark.parametrize(
-        "faults, verdicts, expected",
+        "errors, verdicts, expected",
         [
             ({BASELINE: [], CANDIDATE: []}, [NO_FLAG], results.OK),
             ({BASELINE: [], CANDIDATE: []}, [NO_FLAG, REGRESSED], results.FLAGGED),
             ({BASELINE: [], CANDIDATE: []}, [IMPROVED], results.FLAGGED),
-            ({BASELINE: ["x"], CANDIDATE: []}, [], results.VOID),
+            ({BASELINE: ["x"], CANDIDATE: []}, [], results.INVALID),
             ({BASELINE: [], CANDIDATE: ["x"]}, [], results.FAILED),
         ],
     )
-    def test_how_a_run_ended(self, faults, verdicts, expected):
-        assert outcome(faults, [{"verdict": v} for v in verdicts]) == expected
+    def test_how_a_run_ended(self, errors, verdicts, expected):
+        assert outcome(errors, [{"verdict": v} for v in verdicts]) == expected

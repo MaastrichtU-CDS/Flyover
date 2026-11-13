@@ -150,7 +150,7 @@ class Stack:
                 )
             time.sleep(0.5)
 
-    def fresh(self, timeout: float = 300) -> None:
+    def reset(self, timeout: float = 300) -> None:
         """Back to the state right after a start: an empty repository, and a
         new app container, so nothing of the last run is left in Flyover's
         memory or files, and its peak memory counts from here."""

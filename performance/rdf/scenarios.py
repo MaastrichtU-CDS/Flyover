@@ -65,7 +65,7 @@ def run(
     try:
         flow.enter()
     except FlowError as error:
-        sample.faults.append(str(error))
+        sample.errors.append(str(error))
         return sample
 
     app_before = stack.counters(APP_SERVICE)
@@ -83,7 +83,7 @@ def run(
         answered = time.monotonic()
         sample.steps.append(upload)
         if not upload.ok:
-            sample.faults.append(f"{upload.name}: {upload.error}")
+            sample.errors.append(f"{upload.name}: {upload.error}")
             return sample
         ingested.append(table.name)
 
@@ -92,7 +92,7 @@ def run(
             link = flow.wait_for_link(table)
             sample.steps.append(link)
             if not link.ok:
-                sample.faults.append(f"{link.name}: {link.error}")
+                sample.errors.append(f"{link.name}: {link.error}")
                 return sample
             link_seconds = link.seconds
 
@@ -100,17 +100,17 @@ def run(
         loaded = flow.load_map(workload.mapping_bytes(names))
         sample.steps.append(loaded)
         if not loaded.ok:
-            sample.faults.append(f"{loaded.name} for {table.name}: {loaded.error}")
+            sample.errors.append(f"{loaded.name} for {table.name}: {loaded.error}")
             return sample
 
         annotated = flow.annotate(f"annotate after {table.name}")
         sample.steps.append(annotated)
         if not annotated.ok:
-            sample.faults.append(f"{annotated.name}: {annotated.error}")
+            sample.errors.append(f"{annotated.name}: {annotated.error}")
             return sample
-        fault = _annotation_fault(flow, len(names) * len(workload.variables))
-        if fault:
-            sample.faults.append(f"{annotated.name}: {fault}")
+        error = _annotation_error(flow, len(names) * len(workload.variables))
+        if error:
+            sample.errors.append(f"{annotated.name}: {error}")
             return sample
 
         intakes.append(
@@ -127,7 +127,7 @@ def run(
 
     app_after = stack.counters(APP_SERVICE)
     store_after = stack.counters(STORE_SERVICE)
-    sample.figures = {
+    sample.metrics = {
         "conversion_s": round(sum(i["conversion_s"] for i in intakes), 4),
         "annotation_s": round(sum(i["annotation_s"] for i in intakes), 4),
         "queries_s": (
@@ -153,7 +153,7 @@ def run(
     return sample
 
 
-def _annotation_fault(flow: RdfFlow, expected_variables: int) -> str:
+def _annotation_error(flow: RdfFlow, expected_variables: int) -> str:
     """Flyover answers that annotation succeeded; this asks what it did."""
     done = flow.annotation_outcome()
     if done.get("error"):
@@ -189,18 +189,18 @@ def _read_queries(
         sample.steps.append(step)
         if not step.ok or step.status != 200:
             detail = step.error or (response.text[:300] if response is not None else "")
-            sample.faults.append(
+            sample.errors.append(
                 f"{step.name}: the store answered {step.status} {detail}"
             )
             continue
         try:
             bindings = response.json()["results"]["bindings"]
         except (ValueError, KeyError):
-            sample.faults.append(f"{step.name}: the answer is not a SPARQL result")
+            sample.errors.append(f"{step.name}: the answer is not a SPARQL result")
             continue
         wrong = oracle.difference(name, bindings, workload, ingested)
         if wrong:
-            sample.faults.append(f"{step.name}: wrong answer: {wrong}")
+            sample.errors.append(f"{step.name}: wrong answer: {wrong}")
         seconds[name] = step.seconds
     return seconds
 

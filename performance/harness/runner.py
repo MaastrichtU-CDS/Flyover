@@ -25,8 +25,8 @@ CANDIDATE = "candidate"
 
 
 @dataclass(frozen=True)
-class Figure:
-    """A figure that is judged: its key in a sample, and how to show it."""
+class Metric:
+    """A metric that is judged: its key in a sample, and how to show it."""
 
     key: str
     label: str
@@ -37,7 +37,7 @@ class Workflow(Protocol):
     """What a workflow's folder gives the harness."""
 
     name: str
-    figures: Sequence[Figure]
+    metrics: Sequence[Metric]
 
     def profile(self, name: str) -> Dict[str, Any]: ...
 
@@ -62,13 +62,13 @@ def compare(
     prepare_side: Callable[[Side, Path], None] = prepare,
     identify: Callable[[Side], Dict[str, Optional[str]]] = image_identity,
 ) -> Dict[str, Any]:
-    """Run ``profile`` on both sides and judge every figure. Returns the
+    """Run ``profile`` on both sides and judge every metric. Returns the
     result as it is written to file."""
     started = time.monotonic()
     sides = {BASELINE: baseline, CANDIDATE: candidate}
     stacks: Dict[str, Stack] = {}
     records: List[Dict[str, Any]] = []
-    faults: Dict[str, List[str]] = {BASELINE: [], CANDIDATE: []}
+    errors: Dict[str, List[str]] = {BASELINE: [], CANDIDATE: []}
     workload = workflow.workload(profile)
 
     try:
@@ -79,14 +79,14 @@ def compare(
             log(f"{name}: stack up in {stacks[name].up()} s")
 
         for name, stack in stacks.items():
-            stack.fresh()
-            for fault in workflow.warm_up(stack, sides[name], workload):
-                faults[name].append(f"warm-up: {fault}")
+            stack.reset()
+            for error in workflow.warm_up(stack, sides[name], workload):
+                errors[name].append(f"warm-up: {error}")
             log(f"{name}: warmed up")
 
         repetitions = int(profile["repetitions"])
         for repetition in range(1, repetitions + 1):
-            if any(faults.values()):
+            if any(errors.values()):
                 break
             order = [BASELINE, CANDIDATE] if repetition % 2 else [CANDIDATE, BASELINE]
             for scenario in profile["scenarios"]:
@@ -96,33 +96,33 @@ def compare(
                     "order": order,
                 }
                 for name in order:
-                    stacks[name].fresh()
+                    stacks[name].reset()
                     sample = workflow.run(stacks[name], sides[name], workload, scenario)
                     record[name] = sample.as_dict()
-                    for fault in sample.faults:
-                        faults[name].append(
-                            f"{scenario}, repetition {repetition}: {fault}"
+                    for error in sample.errors:
+                        errors[name].append(
+                            f"{scenario}, repetition {repetition}: {error}"
                         )
                     log(
                         f"repetition {repetition}/{repetitions}, {scenario}, {name}: "
-                        f"{_brief(sample, workflow.figures)}"
+                        f"{_brief(sample, workflow.metrics)}"
                     )
                 records.append(record)
     finally:
         logs = {
-            name: stack.logs(tail=200) for name, stack in stacks.items() if faults[name]
+            name: stack.logs(tail=200) for name, stack in stacks.items() if errors[name]
         }
         if not keep:
             for stack in stacks.values():
                 stack.down()
 
     for name in sides:
-        faults[name].extend(_broken_invariants(records, name))
+        errors[name].extend(_broken_invariants(records, name))
 
     comparisons = (
         []
-        if any(faults.values())
-        else judge(records, workflow.figures, profile["scenarios"], threshold)
+        if any(errors.values())
+        else judge(records, workflow.metrics, profile["scenarios"], threshold)
     )
     return {
         "schema": results.SCHEMA,
@@ -138,41 +138,41 @@ def compare(
         },
         "repetitions": records,
         "comparisons": comparisons,
-        "faults": faults,
+        "errors": errors,
         "logs": logs,
-        "outcome": outcome(faults, comparisons),
+        "outcome": outcome(errors, comparisons),
         "duration_s": round(time.monotonic() - started, 1),
     }
 
 
 def judge(
     records: Sequence[Mapping[str, Any]],
-    figures: Sequence[Figure],
+    metrics: Sequence[Metric],
     scenarios: Sequence[str],
     threshold: float,
 ) -> List[Dict[str, Any]]:
-    """Every figure of every scenario, compared between the sides."""
+    """Every metric of every scenario, compared between the sides."""
     comparisons = []
     for scenario in scenarios:
         mine = [record for record in records if record["scenario"] == scenario]
-        for figure in figures:
+        for metric in metrics:
             comparison = stats.compare(
-                figure.key,
-                [record[BASELINE]["figures"].get(figure.key) for record in mine],
-                [record[CANDIDATE]["figures"].get(figure.key) for record in mine],
+                metric.key,
+                [record[BASELINE]["metrics"].get(metric.key) for record in mine],
+                [record[CANDIDATE]["metrics"].get(metric.key) for record in mine],
                 threshold,
             )
             comparisons.append(
                 {
                     "scenario": scenario,
-                    "label": figure.label,
-                    "unit": figure.unit,
+                    "label": metric.label,
+                    "unit": metric.unit,
                     **comparison.as_dict(),
                     "baseline_spread": stats.spread(
-                        _values(mine, BASELINE, figure.key)
+                        _values(mine, BASELINE, metric.key)
                     ),
                     "candidate_spread": stats.spread(
-                        _values(mine, CANDIDATE, figure.key)
+                        _values(mine, CANDIDATE, metric.key)
                     ),
                 }
             )
@@ -180,19 +180,19 @@ def judge(
 
 
 def outcome(
-    faults: Mapping[str, Sequence[str]], comparisons: Sequence[Mapping[str, Any]]
+    errors: Mapping[str, Sequence[str]], comparisons: Sequence[Mapping[str, Any]]
 ) -> str:
-    if faults[CANDIDATE]:
+    if errors[CANDIDATE]:
         return results.FAILED
-    if faults[BASELINE]:
-        return results.VOID
+    if errors[BASELINE]:
+        return results.INVALID
     if any(c["verdict"] != stats.NO_FLAG for c in comparisons):
         return results.FLAGGED
     return results.OK
 
 
 def _values(records: Sequence[Mapping[str, Any]], side: str, key: str) -> List[float]:
-    values = [record[side]["figures"].get(key) for record in records]
+    values = [record[side]["metrics"].get(key) for record in records]
     return [value for value in values if isinstance(value, (int, float))]
 
 
@@ -214,12 +214,12 @@ def _broken_invariants(records: Sequence[Mapping[str, Any]], side: str) -> List[
     return broken
 
 
-def _brief(sample: Sample, figures: Sequence[Figure]) -> str:
-    if sample.faults:
-        return f"FAULT: {sample.faults[0][:200]}"
+def _brief(sample: Sample, metrics: Sequence[Metric]) -> str:
+    if sample.errors:
+        return f"ERROR: {sample.errors[0][:200]}"
     parts = []
-    for figure in figures:
-        value = sample.figures.get(figure.key)
+    for metric in metrics:
+        value = sample.metrics.get(metric.key)
         if value is not None:
-            parts.append(f"{figure.label.lower()} {value:.4g} {figure.unit}")
+            parts.append(f"{metric.label.lower()} {value:.4g} {metric.unit}")
     return ", ".join(parts)

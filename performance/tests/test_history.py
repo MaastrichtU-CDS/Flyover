@@ -69,11 +69,11 @@ class TestLaterRuns:
         assert "A note from a person." in page.read_text()
 
     def test_a_failed_run_is_recorded_too(self, tmp_path):
-        history.add(result(faults={CANDIDATE: ["wrong answer"]}), tmp_path)
+        history.add(result(errors={CANDIDATE: ["wrong answer"]}), tmp_path)
         row = (tmp_path / "RDF-performance.md").read_text().rstrip("\n").split("\n")[-1]
         assert row.endswith("| n/a | n/a | n/a | n/a | failed |")
 
-    def test_other_figures_begin_a_new_table(self, tmp_path):
+    def test_other_metrics_begin_a_new_table(self, tmp_path):
         history.add(result(), tmp_path)
         changed = later(result(), "2026-11-13T10:00:00Z")
         changed["comparisons"] = changed["comparisons"][:2]

@@ -22,9 +22,9 @@ SCHEMA = "flyover-performance/1"
 
 # How a run ended.
 OK = "ok"  # measured, nothing flagged
-FLAGGED = "flagged"  # measured, a figure moved by the threshold or more
-VOID = "void"  # the baseline was at fault: nothing can be said of the candidate
-FAILED = "failed"  # the candidate was at fault: wrong answers or a failed step
+FLAGGED = "flagged"  # measured, a metric moved by the threshold or more
+INVALID = "invalid"  # the baseline failed: nothing can be said of the candidate
+FAILED = "failed"  # the candidate failed: wrong answers or a failed step
 
 
 @dataclass
@@ -33,22 +33,22 @@ class Sample:
 
     scenario: str
     steps: List[Step] = field(default_factory=list)
-    # The figures that are judged: higher is worse.
-    figures: Dict[str, Optional[float]] = field(default_factory=dict)
+    # The metrics that are judged: higher is worse.
+    metrics: Dict[str, Optional[float]] = field(default_factory=dict)
     # Everything else worth reading, never judged.
     reported: Dict[str, Any] = field(default_factory=dict)
     # Values that the same work must leave the same on every repetition.
     invariants: Dict[str, Any] = field(default_factory=dict)
     # What went wrong, if anything: the sample is then not a measurement.
-    faults: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "scenario": self.scenario,
-            "figures": self.figures,
+            "metrics": self.metrics,
             "reported": self.reported,
             "invariants": self.invariants,
-            "faults": self.faults,
+            "errors": self.errors,
             "steps": [step.as_dict() for step in self.steps],
         }
 

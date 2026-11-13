@@ -7,13 +7,13 @@ The benchmark's command line.
     python -m performance history result.json --folder wiki/performance/rdf
     python -m performance profiles
 
-``compare`` runs a profile on two sides and judges every figure;
+``compare`` runs a profile on two sides and judges every metric;
 ``calibrate`` compares a side with itself, which shows how much the machine
 alone makes two runs differ. Both write the result file and print its
 summary. A flag never changes the exit code: timings advise. The exit code
 says whether the work was done:
 
-    0   measured (flagged or not), or void because the baseline was at fault
+    0   measured (flagged or not), or invalid because the baseline failed
     1   the candidate did not do the work: wrong answers or a failed step
     2   the run could not be made: a bad side, profile or stack
 """
@@ -63,7 +63,8 @@ def _parser() -> argparse.ArgumentParser:
     compare.set_defaults(run=_compare)
 
     calibrate = commands.add_parser(
-        "calibrate", help="compare a side with itself, to see the machine's noise"
+        "calibrate",
+        help="an A/A run: compare a side with itself, to see the machine's noise",
     )
     calibrate.add_argument("--side", required=True, help="the side to run twice")
     _run_options(calibrate)

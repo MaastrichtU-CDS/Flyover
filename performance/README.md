@@ -58,11 +58,11 @@ same code in every column that uses it: "yes" is the same number whether
 it answers chemotherapy or radiotherapy. That is on purpose, see
 [what the benchmark ran into](#what-the-benchmark-ran-into).
 
-### The figures
+### The metrics
 
-Four figures are judged, each over the whole sequence:
+Four metrics are judged, each over the whole sequence:
 
-| Figure | What it is |
+| Metric | What it is |
 |---|---|
 | Conversion | time of the `/upload` requests: parse, triplify, load into the store |
 | Annotation | time of the `/start-annotation` requests |
@@ -115,7 +115,7 @@ python -m performance compare --baseline release:3.5.0 --candidate tree:.
 # this checkout against main: what an optimisation branch does
 python -m performance compare --baseline ref:main --candidate tree:.
 
-# one side against itself: how much this machine alone makes two runs differ
+# one side against itself (an A/A run): how much this machine alone makes two runs differ
 python -m performance calibrate --side tree:.
 
 # what the profiles are
@@ -154,7 +154,7 @@ The exit code says whether the work was done, not whether it was fast:
 
 | Code | |
 |---|---|
-| 0 | measured, flagged or not; or the baseline was at fault |
+| 0 | measured, flagged or not; or the baseline failed |
 | 1 | the candidate did not do the work: a failed step or wrong answers |
 | 2 | the run could not be made: a side, profile or stack that does not work |
 
@@ -208,7 +208,7 @@ own in [`compose/`](compose) and an entry in `STORE_KINDS`
 ## Reading a result
 
 ```
-| Figure     | Baseline | Candidate | Change | 95 % interval | Spread    |           |
+| Metric     | Baseline | Candidate | Change | 95 % interval | Spread    |           |
 | Annotation | 24.3 s   | 31.6 s    | +30 %  | +26 % to +34 % | 2 % / 2 % | ⚠️ slower |
 ```
 
@@ -219,7 +219,7 @@ own in [`compose/`](compose) and an entry in `STORE_KINDS`
 - **95 % interval**: how well the repetitions agree on the change.
 - **Spread**: how much each side's own repetitions differ (baseline /
   candidate). A large spread means a noisy machine.
-- **Flag**: a figure is flagged only when the change is at least the
+- **Flag**: a metric is flagged only when the change is at least the
   threshold (20 %) *and* the interval excludes no change. ⚠️ is worse, 🟢 is
   better. Fewer than three repetitions are never flagged.
 
@@ -228,9 +228,9 @@ How a run ended:
 | Outcome | |
 |---|---|
 | `ok` | measured, nothing flagged |
-| `flagged` | measured, at least one figure moved by the threshold or more |
+| `flagged` | measured, at least one metric moved by the threshold or more |
 | `failed` | the candidate did not do the work; nothing was compared |
-| `void` | the baseline did not do the work; nothing can be said of the candidate |
+| `invalid` | the baseline did not do the work; nothing can be said of the candidate |
 
 Seconds from two runs are not comparable unless the runs were on the same
 machine. Percentages are: both sides of a run shared one.
@@ -314,7 +314,7 @@ comparison:
 - The job summary always holds the full report, and the result file is kept
   as an artefact for 90 days.
 - A pull request gets one comment, written when something is flagged or the
-  candidate was at fault, and kept up to date after that.
+  candidate failed, and kept up to date after that.
 - After a push to `main` the run is added to the project's wiki, under
   `performance/rdf`: a row on the page and the result file beside it.
 

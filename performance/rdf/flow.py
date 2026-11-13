@@ -28,7 +28,7 @@ REQUEST_TIMEOUT = 3 * 3600
 
 
 class FlowError(RuntimeError):
-    """A step of the flow that did not do its work: the run is void."""
+    """A step of the flow that did not do its work: the run is invalid."""
 
 
 class RdfFlow:

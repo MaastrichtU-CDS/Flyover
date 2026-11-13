@@ -220,13 +220,13 @@ class TestLifeCycle:
         assert "logs" in docker.commands[-1]
 
     @responses.activate
-    def test_fresh_replaces_the_app_container_and_empties_the_store(
+    def test_reset_replaces_the_app_container_and_empties_the_store(
         self, tmp_path, docker
     ):
         stack = Stack(side(), 0, tmp_path, run=docker)
         self.answering(stack)
         responses.delete(f"{stack.repository_url}/statements", status=204)
-        stack.fresh()
+        stack.reset()
         assert docker.compose_arguments(0) == [
             "up",
             "-d",
