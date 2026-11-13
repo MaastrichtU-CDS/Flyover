@@ -8,7 +8,7 @@ name: RDF Performance
 #                            profile; the result goes to the wiki
 #   on demand                any two set-ups, any profile
 #
-# Timings advise: a figure that moved by 20 % or more is flagged in the job
+# Timings advise: a metric that moved by 20 % or more is flagged in the job
 # summary and in a comment on the pull request, and never fails the job. The
 # job fails when the benchmark's own tests fail, or when the candidate did
 # not do the work it was given (a failed step, or wrong answers to the read
@@ -67,43 +67,47 @@ permissions:
 
 jobs:
   harness-tests:
-    name: The benchmark's own tests
+    name: Harness tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Install the benchmark's dependencies
+      - name: Install dependencies
         run: pip install -r performance/requirements.txt -r performance/requirements-test.txt
 
-      - name: Run the tests
+      - name: Run harness tests
         run: python -m pytest performance/tests -q
 
   compare:
-    name: Compare two set-ups
+    name: Benchmark (baseline vs candidate)
     needs: harness-tests
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'pull_request' && 45 || 150 }}
     outputs:
       outcome: ${{ steps.compare.outputs.outcome }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           # The base of a pull request and the release tags are needed too.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Install the benchmark's dependencies
+      - name: Install dependencies
         run: pip install -r performance/requirements.txt
 
-      - name: Choose the two sides
+      - name: Select baseline and candidate
         id: sides
         env:
           EVENT: ${{ github.event_name }}
@@ -135,7 +139,7 @@ jobs:
             echo "profile=$profile"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Compare
+      - name: Run benchmark
         id: compare
         env:
           BASELINE: ${{ steps.sides.outputs.baseline }}
@@ -149,7 +153,7 @@ jobs:
             --threshold "$THRESHOLD" ${REPETITIONS:+--repetitions "$REPETITIONS"} \
             --output performance-result.json
 
-      - name: Write the pull-request comment
+      - name: Render PR comment
         if: always() && hashFiles('performance-result.json') != ''
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -157,7 +161,7 @@ jobs:
           python -m performance report performance-result.json \
             --format comment --link "$RUN_URL" > performance-comment.md
 
-      - name: Keep the result
+      - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -169,7 +173,7 @@ jobs:
           if-no-files-found: ignore
 
   comment:
-    name: Tell the pull request
+    name: PR comment
     needs: compare
     # Not for a pull request from a fork: its token may not comment.
     if: >-
@@ -181,14 +185,16 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download result
+        uses: actions/download-artifact@v4
         with:
           name: performance-rdf-${{ github.run_id }}
 
       # One comment per pull request, kept up to date. It is written when a
-      # figure is flagged or the candidate was at fault; once it is there, a
+      # metric is flagged or the candidate failed; once it is there, a
       # later run that finds nothing says so in the same comment.
-      - uses: actions/github-script@v7
+      - name: Create or update comment
+        uses: actions/github-script@v7
         env:
           OUTCOME: ${{ needs.compare.outputs.outcome }}
         with:
@@ -209,7 +215,7 @@ jobs:
             }
 
   history:
-    name: Add the run to the history in the wiki
+    name: Publish results to wiki
     needs: compare
     if: always() && needs.compare.outputs.outcome != '' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -217,26 +223,29 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Check out the wiki
+      - name: Checkout wiki
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}.wiki
           path: wiki
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Install the benchmark's dependencies
+      - name: Install dependencies
         run: pip install -r performance/requirements.txt
 
-      - uses: actions/download-artifact@v4
+      - name: Download result
+        uses: actions/download-artifact@v4
         with:
           name: performance-rdf-${{ github.run_id }}
 
-      - name: Add the run to performance/rdf
+      - name: Add run to history
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -244,7 +253,7 @@ jobs:
             --folder wiki/performance/rdf \
             --candidate "main@${GITHUB_SHA::7}" --link "$RUN_URL"
 
-      - name: Push the wiki
+      - name: Push wiki
         working-directory: wiki
         run: |
           git config user.name "github-actions[bot]"
