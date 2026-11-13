@@ -1,0 +1,6 @@
+# For the benchmark's own tests (performance/tests), on top of
+# requirements.txt. They start no stack: Flyover and the store are mocked at
+# HTTP level, and Docker is a stand-in.
+pytest>=8.0
+responses>=0.25
+jsonschema>=4.0

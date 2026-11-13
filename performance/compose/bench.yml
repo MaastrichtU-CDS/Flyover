@@ -1,0 +1,36 @@
+# The stack one side of a comparison runs in: Flyover and its store, and
+# nothing else. Each side gets its own Compose project (-p), so its own
+# containers, network and ports; nothing here names a container or a network
+# that another stack could already own.
+#
+# It does not build anything and reads no other compose file of this
+# repository: which images run, and with which settings, is the side's (see
+# harness/sides.py). That is what lets one file run a release from last
+# year next to today's branch.
+#
+# The store's service is added from the file of its kind (store-graphdb.yml);
+# whatever the kind, Flyover reaches it as "rdf-store".
+
+services:
+  flyover:
+    image: ${BENCH_APP_IMAGE:?the side's app image}
+    # The triplifier names the data after the machine it runs on, and the
+    # annotation queries expect data.local (see docker-compose.yml).
+    hostname: data.local
+    ports:
+      - "127.0.0.1:${BENCH_APP_PORT:?the side's app port}:5000"
+    environment:
+      FLYOVER_RDF_STORE_URL: http://rdf-store:7200
+      FLYOVER_RDF_STORE_PUBLIC_URL: http://localhost:${BENCH_STORE_PORT:?the side's store port}
+      FLYOVER_REPOSITORY_NAME: ${BENCH_REPOSITORY:-userRepo}
+      # The store below is already running: no launcher starts it. Versions
+      # from before stores started on demand ignore the setting.
+      FLYOVER_STORE_LAUNCHER_URL: ""
+      FLASK_ENV: production
+    depends_on:
+      - rdf-store
+    networks:
+      - bench
+
+networks:
+  bench: {}

@@ -1,0 +1,54 @@
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+PREFIX gsso: <http://purl.obolibrary.org/obo/>
+PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX sct: <http://purl.bioontology.org/ontology/SNOMEDCT/>
+PREFIX sio: <http://semanticscience.org/resource/>
+PREFIX strongaya: <https://strongaya.eu/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT DISTINCT 
+	?patient
+	?patientID
+	?subClass 
+	(SAMPLE(?value) AS ?any_value)
+
+WHERE {      
+    # ---------- Fetch patient attribute from Table ----------   
+    ?patient sio:SIO_000255/sio:SIO_000235/sio:SIO_000059 ?sub_class_type .
+    ?sub_class_type rdf:type ?main_class ;
+    				  rdf:type ncit:C25185 ;
+                      dbo:has_cell ?subcell.
+    ?subcell dbo:has_value ?value .
+
+    # ---------- Fetch patient ID from Table ----------
+    # The identifier is optional; a record whose identifier cannot be retrieved is
+    # identified by its own URI instead, so that it is still observed and counted.
+    # A record of a linked table is identified by the identifier that its foreign key
+    # refers to, so that it lines up with the records of the table it refers to.
+    OPTIONAL {
+        ?patient sio:SIO_000673 ?patientidNode.
+        ?patientidNode rdf:type ncit:C25364 ;
+                       dbo:has_cell/dbo:has_value ?identifierValue .
+
+        OPTIONAL {
+            ?patientidNode dbo:fk_refers_to ?referencedIdNode .
+            ?referencedIdNode dbo:has_cell/dbo:has_value ?referencedIdValue .
+        }
+    }
+    BIND(COALESCE(?referencedIdValue, ?identifierValue, STR(?patient)) AS ?patientID)
+    
+ 	# ---------- subClass and values ----------
+    FILTER STRSTARTS(STR(?main_class), STR(ncit:))
+
+    OPTIONAL {
+        ?subcell rdf:type ?subClass .
+        FILTER (STRSTARTS(STR(?subClass), STR(ncit:)) || STRSTARTS(STR(?subClass), STR(strongaya:))) .
+        ?subClass rdfs:subClassOf ?main_class .
+        FILTER (!sameTerm(?subClass, ?main_class))
+    }
+}
+GROUP BY ?patient ?patientID ?subClass

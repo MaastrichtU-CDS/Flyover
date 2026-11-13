@@ -1,0 +1,25 @@
+# GraphDB as a side's store. Its home is a tmpfs, as in the CI test stack
+# (docker-compose.test.yml): a clean repository on every start, and no disk
+# whose speed would differ between runs. The image seeds the repository with
+# its own settings, the ruleset among them, so a side that wants another
+# ruleset brings another image.
+#
+# GraphDB reasons itself, so Flyover does not materialise inferences.
+
+services:
+  rdf-store:
+    image: ${BENCH_STORE_IMAGE:?the side's store image}
+    ports:
+      - "127.0.0.1:${BENCH_STORE_PORT:?the side's store port}:7200"
+    tmpfs:
+      - /opt/graphdb/home:size=${BENCH_STORE_TMPFS:-2g},mode=1777
+    environment:
+      GDB_HEAP_SIZE: ${BENCH_STORE_HEAP:-2g}
+      GDB_MIN_MEM: 1g
+      GDB_MAX_MEM: ${BENCH_STORE_HEAP:-2g}
+    networks:
+      - bench
+
+  flyover:
+    environment:
+      FLYOVER_MATERIALIZE_INFERENCES: "false"
