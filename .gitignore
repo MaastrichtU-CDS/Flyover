@@ -41,6 +41,7 @@ app/frontend/test-results/
 coverage.xml
 htmlcov/
 app/.coverage
+app/frontend/coverage/
 
 # RDF store data and logs (generated at runtime, not tracked).
 # Settings/config files under these directories are kept (only data and logs

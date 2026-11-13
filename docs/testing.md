@@ -112,9 +112,12 @@ cd app/frontend
 npm install                  # first time only
 npm run test:unit            # one-shot
 npm run test:unit:watch      # watch mode while you edit
+npm run test:unit:coverage   # one-shot, with coverage of src/ (what CI runs)
 ```
 
 Vitest runs in [`happy-dom`](https://github.com/capricorn86/happy-dom) — a lightweight DOM implementation — so components can mount, render, and emit events without a real browser. Specs live in `tests/unit/{stores,lib,views}/*.spec.js`. There's no backend; calls through `services/api.js` should be mocked (look at existing view specs for the pattern).
+
+CI runs them with coverage (`@vitest/coverage-v8`) and fails when the share of `src/` they run drops below the floors in [`vitest.config.js`](../app/frontend/vitest.config.js): 73 % of lines and statements, 74 % of functions and 82 % of branches, main's figures on 2026-11-09 rounded down. Raise the floors as coverage grows. The report goes to `app/frontend/coverage/` (ignored by git), and its summary to the job summary.
 
 ### Frontend E2E (Playwright)
 
@@ -207,7 +210,7 @@ All of these live in [`.github/workflows/`](../.github/workflows/).
 | Workflow                  | Triggers                                                  | Blocking?       | What it does                                                                                      |
 |---------------------------|-----------------------------------------------------------|-----------------|---------------------------------------------------------------------------------------------------|
 | `unit-tests.yml`          | push to `main`, all PRs                                   | yes (perf: no)  | pytest unit, integration and API tests with combined coverage, a 90 % gate on the API layer's coverage of the HTTP layer, then the performance checks (non-blocking, report in the job summary) |
-| `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest, Vite production build                                       |
+| `frontend-checks.yml`     | push to `main`, all PRs (frontend paths)                  | yes             | ESLint, `vue-tsc` type-check, Vitest with a coverage gate, Vite production build                  |
 | `frontend-smoke.yml`      | push to `main`, all PRs                                   | yes             | Brings up the tmpfs test stack and runs `smoke.spec.js` only                                      |
 | `frontend-e2e-full.yml`   | push to `main`, all PRs; manual dispatch                 | yes             | Full Playwright suite against the test stack (both the default and the suggestions-disabled stack) |
 | `code-quality.yml`        | push to `main`, all PRs                                   | partial         | Black (auto-applies and commits with `[skip ci]`), flake8, mypy, Safety (HIGH severity blocking), Bandit |
