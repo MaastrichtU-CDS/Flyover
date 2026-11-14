@@ -11,9 +11,12 @@ vi.mock('@/lib/db', () => ({
   deleteData: vi.fn(async () => {}),
 }))
 vi.mock('@/composables/useNavigation', () => ({ refreshDataExists: vi.fn(async () => {}) }))
+const router = { push: vi.fn() }
+vi.mock('vue-router', () => ({ useRouter: () => router, useRoute: () => ({ meta: {} }) }))
 
 import MapUploadDialog from '@/components/MapUploadDialog.vue'
 import { useProjectStore } from '@/stores/project'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 // The question a map uploaded in a step raises: open it as the project, or
 // keep what Flyover works on.
@@ -75,6 +78,39 @@ describe('MapUploadDialog', () => {
   afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
+  })
+
+  it('says a map for another workflow is not for this one, and offers to switch', async () => {
+    let answers
+    ;({ wrapper, answers } = setUp({ ...question('other-standard'), standard: 'omop' }))
+
+    expect(wrapper.find('#upload-question-title').text()).toBe(
+      'This JSON-LD is for the OMOP workflow'
+    )
+    expect(wrapper.find('.upload-question-body').text().replace(/\s+/g, ' ')).toBe(
+      'aya.jsonld targets the OMOP common data model, so the RDF workflow cannot use it. ' +
+        'Switch to the OMOP workflow, or choose a different JSON-LD.'
+    )
+    // Nothing of this workflow's to download, and no store to name.
+    expect(button(wrapper, 'Download the current map')).toBeUndefined()
+    expect(wrapper.find('.upload-question-store').exists()).toBe(false)
+
+    await button(wrapper, 'Switch to OMOP').trigger('click')
+
+    // The upload is set aside; OMOP says it is under development, for now.
+    expect(answers).toEqual(['keep'])
+    expect(useWorkflowsStore().soon.label).toBe('OMOP')
+    expect(router.push).not.toHaveBeenCalled()
+  })
+
+  it('lets the user choose a different JSON-LD instead', async () => {
+    let answers
+    ;({ wrapper, answers } = setUp({ ...question('other-standard'), standard: 'omop' }))
+
+    await button(wrapper, 'Choose a different JSON-LD').trigger('click')
+
+    expect(answers).toEqual(['keep'])
+    expect(useWorkflowsStore().soon).toBe(null)
   })
 
   it('shows nothing until an upload asks', () => {

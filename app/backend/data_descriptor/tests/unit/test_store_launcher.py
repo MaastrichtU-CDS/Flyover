@@ -49,6 +49,26 @@ def test_starting_a_module_answers_with_its_state(web):
     assert call.request.method == "POST"
 
 
+def test_stopping_a_module_answers_with_its_state(web):
+    web.post(
+        f"{MODULE_URL}/stop",
+        json={"state": "stopped", "startedAt": None, "neverStarted": False},
+    )
+
+    assert StoreLauncher(LAUNCHER).stop("rdf-store") == ModuleState("stopped", None)
+    [call] = web.calls
+    assert call.request.method == "POST"
+
+
+def test_a_stop_the_launcher_refuses_says_why(web):
+    web.post(f"{MODULE_URL}/stop", status=502, json={"error": "Docker is busy"})
+
+    with pytest.raises(
+        LauncherError, match="The store launcher refused: Docker is busy"
+    ):
+        StoreLauncher(LAUNCHER).stop("rdf-store")
+
+
 @pytest.mark.parametrize(
     "never, expected", [(True, True), (False, False), (None, False), ("yes", False)]
 )

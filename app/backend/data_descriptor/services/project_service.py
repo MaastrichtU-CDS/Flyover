@@ -85,6 +85,19 @@ ENDPOINT_SUGGESTION = (
     "use Flyover's configured store."
 )
 
+# The standard a map's data is transformed to, which names the workflow that
+# uses it (the map's top-level ``targetStandard``; the map schema allows only
+# these). A map without one is an RDF map, as every map was before. Only the
+# RDF workflow runs, so only an RDF map opens as a project.
+TARGET_STANDARDS = ("rdf", "omop", "csv")
+DEFAULT_TARGET_STANDARD = "rdf"
+OPENABLE_TARGET_STANDARDS = ("rdf",)
+_STANDARD_NAMES = {
+    "rdf": "RDF",
+    "omop": "the OMOP common data model",
+    "csv": "CSV files",
+}
+
 
 class ProjectError(Exception):
     """A map that cannot be opened as a project, with the reasons for the UI."""
@@ -106,11 +119,25 @@ def _token(value: Any) -> str:
     return uuid.uuid4().hex
 
 
-def project_details(mapping: Dict[str, Any]) -> Dict[str, str]:
-    """What a map says about itself: its own name and version, and the
-    schema (the general part every site of a project shares) it follows."""
+def target_standard(mapping: Dict[str, Any]) -> Tuple[str, bool]:
+    """The standard ``mapping`` targets, and whether it says so itself.
+
+    A map that names none, or one Flyover does not know, counts as RDF; the
+    map schema refuses an unknown one before a map gets here.
+    """
+    declared = mapping.get("targetStandard")
+    if isinstance(declared, str) and declared in TARGET_STANDARDS:
+        return declared, True
+    return DEFAULT_TARGET_STANDARD, False
+
+
+def project_details(mapping: Dict[str, Any]) -> Dict[str, Any]:
+    """What a map says about itself: its own name and version, the schema
+    (the general part every site of a project shares) it follows, and the
+    standard it targets (``targetStandardDeclared``: whether it names it)."""
     schema = mapping.get("schema")
     schema = schema if isinstance(schema, dict) else {}
+    standard, declared = target_standard(mapping)
     return {
         "name": _text(mapping.get("name")),
         "version": _text(mapping.get("version")),
@@ -118,6 +145,8 @@ def project_details(mapping: Dict[str, Any]) -> Dict[str, str]:
         "schemaId": _text(schema.get("@id")),
         "schemaName": _text(schema.get("name")),
         "schemaVersion": _text(schema.get("version")),
+        "targetStandard": standard,
+        "targetStandardDeclared": declared,
     }
 
 
@@ -222,11 +251,20 @@ class ProjectService:
 
         Opening replaces any open project, also one with the same schema (a
         site's filled-in map replacing the empty template it started from).
+        Only an RDF map opens: the RDF workflow is the one Flyover runs (the
+        browser offers to switch before it gets this far).
 
         Raises:
             ProjectError: the map cannot be opened; nothing changed.
         """
         store, parsed = self._examine(mapping)
+        standard, _ = target_standard(mapping)
+        if standard not in OPENABLE_TARGET_STANDARDS:
+            raise ProjectError(
+                f"This JSON-LD targets {_STANDARD_NAMES[standard]} "
+                f'(its targetStandard is "{standard}"), so the RDF workflow '
+                "cannot open it as a project."
+            )
         project = OpenProject(
             token=_token(token),
             mapping=mapping,
@@ -245,7 +283,8 @@ class ProjectService:
         """Work without a project, in the standard RDF flow: the configured
         store, no project's map.
 
-        It is also how a user chooses the standard RDF flow at start-up.
+        It is also how a user chooses the standard RDF flow on entering the
+        RDF workflow.
         Without an open project there is nothing to close: the session keeps
         what the steps worked out without one (a map an upload put there).
         """

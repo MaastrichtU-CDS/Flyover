@@ -1,93 +1,13 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useNavigation } from '@/composables/useNavigation'
-import { useStatusStore } from '@/stores/status'
+// Flyover's home page: the workflows, each a tile. Choosing RDF asks for the
+// project's JSON-LD here first, and then goes on to the workflow's own
+// landing page (RdfLandingView); see useWorkflowEntry. OMOP and CSV are
+// under development, and say so.
+import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
+import { WORKFLOWS, workflowById } from '@/lib/workflows'
 
-const router = useRouter()
-const { dataExists } = useNavigation()
-const status = useStatusStore()
-
-const showTooltip = ref(null)
-
-const cards = [
-  {
-    id: 'ingest',
-    to: '/ingest',
-    iconClass: 'ingest-icon',
-    titleIcon: 'fa-cookie-bite',
-    title: '1. Ingest',
-    description:
-      'Upload and process your datasets to prepare them for semantic annotation and interoperability.',
-    features: [
-      'CSV and DB support',
-      'Automatic conversion',
-      'Data grooming',
-      'Link multiple graphs',
-    ],
-  },
-  {
-    id: 'describe',
-    to: '/describe',
-    iconClass: 'describe-icon',
-    titleIcon: 'fa-edit',
-    title: '2. Describe',
-    description:
-      'Provide metadata and descriptions for your data variables to enhance semantic meaning.',
-    features: [
-      'Data type specifications',
-      'Unit specifications',
-      'Local definitions',
-      'Variable labelling',
-    ],
-    requiresData: true,
-  },
-  {
-    id: 'annotate',
-    to: '/annotate',
-    iconClass: 'annotate-icon',
-    titleIcon: 'fa-tags',
-    title: '3. Annotate',
-    description:
-      'Annotate your data using standardised ontologies to make your data semantically interoperable.',
-    features: [
-      'Ontological annotations',
-      'Semantic interoperability',
-      'Metadata-driven',
-      'Value mapping',
-    ],
-    requiresData: true,
-  },
-  {
-    id: 'share',
-    to: '/share',
-    iconClass: 'share-icon',
-    titleIcon: 'fa-mail-forward',
-    title: '4. Share',
-    description:
-      'Share (meta-)data of your semantically interoperable data and speed up your collaborations.',
-    features: [
-      'Archive mapping',
-      'Generate mock data',
-      'Increase findability',
-      'DCAT-AP export',
-    ],
-  },
-]
-
-function isDisabled(card) {
-  return !!card.requiresData && !dataExists.value
-}
-
-function open(card) {
-  if (isDisabled(card)) {
-    status.warning(
-      'Please complete the Ingest step first by submitting your data.'
-    )
-    return
-  }
-  router.push(card.to)
-}
+const { enter } = useWorkflowEntry()
+const rdf = workflowById('rdf')
 </script>
 
 <template>
@@ -96,66 +16,100 @@ function open(card) {
       <h1 class="hero-title">
         Welcome to Flyover
       </h1>
-      <p class="hero-subtitle">
+      <p class="hero-subtitle mb-0">
         A privacy-aware tool to transform your data into F.A.I.R. semantically interoperable
         resources
       </p>
-      <p class="mb-0">
-        Transform your data into F.A.I.R. semantically interoperable Resource Description
-        Framework (RDF) triples through our guided four-step process
-      </p>
     </div>
 
-    <div class="row">
+    <div class="row justify-content-center">
       <div
-        v-for="card in cards"
-        :key="card.id"
-        class="col-xl-3 col-lg-3 col-md-6 mb-4 card-container"
+        v-for="workflow in WORKFLOWS"
+        :key="workflow.id"
+        class="col-xl-4 col-lg-4 col-md-6 mb-4"
       >
         <div
-          :id="`${card.id}-card`"
+          :id="`${workflow.id}-card`"
           class="workflow-card"
-          :class="{ disabled: isDisabled(card) }"
-          :aria-disabled="isDisabled(card)"
           role="button"
           tabindex="0"
-          @click="open(card)"
-          @keyup.enter="open(card)"
-          @mouseenter="showTooltip = card.id"
-          @mouseleave="showTooltip = null"
-          @focus="showTooltip = card.id"
-          @blur="showTooltip = null"
+          @click="enter(workflow)"
+          @keyup.enter="enter(workflow)"
         >
+          <span
+            v-if="!workflow.available"
+            class="badge workflow-badge"
+          >Under development</span>
+          <!-- The workflow's logo in white, as the steps' icons on the RDF
+               landing. -->
           <div
             class="step-icon"
-            :class="card.iconClass"
+            :class="workflow.iconClass"
           >
+            <img
+              v-if="workflow.logo"
+              class="workflow-logo"
+              :class="{ 'is-whitened': workflow.logo.whiten }"
+              :src="workflow.logo.src"
+              :alt="workflow.logo.alt"
+            >
             <i
+              v-else
               class="fas"
-              :class="card.titleIcon"
+              :class="workflow.icon"
+              aria-hidden="true"
             />
           </div>
           <h3 class="step-title">
-            {{ card.title }}
+            {{ workflow.label }}
           </h3>
-          <p class="step-description">
-            {{ card.description }}
-          </p>
+          <!-- The text grows, so the lists below line up across the tiles. -->
+          <div class="workflow-text">
+            <p class="step-description">
+              {{ workflow.description }}
+            </p>
+            <p
+              v-if="workflow.note"
+              class="workflow-note"
+            >
+              <!-- Each line on a line of its own. A link opens beside Flyover,
+                   and does not open the tile. The parts carry their own
+                   spaces (v-text keeps the template's line breaks out of the
+                   sentence). -->
+              <span
+                v-for="(line, l) in workflow.note"
+                :key="l"
+                class="workflow-note-line"
+              >
+                <template
+                  v-for="(part, i) in line"
+                  :key="i"
+                >
+                  <a
+                    v-if="part.href"
+                    :href="part.href"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click.stop
+                    @keyup.enter.stop
+                    v-text="part.text"
+                  />
+                  <span
+                    v-else
+                    v-text="part"
+                  />
+                </template>
+              </span>
+            </p>
+          </div>
           <ul class="step-features">
             <li
-              v-for="feature in card.features"
+              v-for="feature in workflow.features"
               :key="feature"
             >
               <i class="fas fa-check" /> {{ feature }}
             </li>
           </ul>
-        </div>
-        <div
-          v-if="showTooltip === card.id && isDisabled(card)"
-          class="bootstrap-tooltip"
-          role="tooltip"
-        >
-          First complete the data ingest step to proceed with this step.
         </div>
       </div>
     </div>
@@ -163,14 +117,17 @@ function open(card) {
     <div class="cta-section">
       <h3><i class="fas fa-rocket text-primary" /> Ready to Get Started?</h3>
       <p class="mb-4">
-        Begin transforming your data into semantically interoperable resources.
+        Use a shared JSON-LD to align your data with partners, or familiarise yourself with the
+        workflow without one.
       </p>
-      <RouterLink
-        to="/ingest"
+      <button
+        id="home-start"
+        type="button"
         class="btn btn-primary btn-lg"
+        @click="enter(rdf)"
       >
         <i class="fas fa-play" /> Start Data F.A.I.R.-ification Process
-      </RouterLink>
+      </button>
     </div>
   </div>
 </template>
@@ -179,25 +136,53 @@ function open(card) {
 .hero-section::before {
   background-image: url('/static/image-flyover.svg');
 }
+
 .workflow-card {
+  position: relative;
   cursor: pointer;
 }
-/* Match legacy index.js behaviour: when Describe/Annotate are gated by a
-   missing ingest, dim the card and block the pointer so users can't open the
-   step. Legacy flyover-custom.css already styles .workflow-card.disabled with
-   opacity 0.6 / cursor not-allowed — the SFC's scoped `cursor: pointer` rule
-   above would otherwise out-cascade it, so restate it here. */
-.workflow-card.disabled {
-  cursor: not-allowed;
-}
-.workflow-card.disabled:hover {
-  transform: none;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+
+/* The old stylesheet gives every icon a right margin, which pushes it off
+   the centre of its circle. */
+.step-icon > i {
+  margin: 0;
 }
 
-/* The tooltip for disabled cards (.bootstrap-tooltip, in assets/main.css)
-   sits above the card. */
-.card-container {
-  position: relative;
+/* As large as the steps' icons look in their circles. */
+.workflow-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+/* A logo whose owner allows other colours (W3C's cube), turned white. */
+.workflow-logo.is-whitened {
+  filter: brightness(0) invert(1);
+}
+
+.workflow-text {
+  flex-grow: 1;
+  width: 100%;
+}
+
+/* Small print, close under the description it qualifies. */
+.workflow-note-line {
+  display: block;
+}
+
+.workflow-note {
+  margin: -0.75rem 0 1.25rem;
+  color: #6c757d;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.workflow-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: rgba(118, 75, 162, 0.12);
+  color: #764ba2;
+  font-weight: 500;
 }
 </style>

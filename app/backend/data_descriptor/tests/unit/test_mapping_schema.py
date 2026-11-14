@@ -253,6 +253,36 @@ class TestInvalidTypeValues(unittest.TestCase):
         self._assert_type_error("mapping:WrongMapping")
 
 
+class TestTargetStandard(unittest.TestCase):
+    """The standard a map targets: rdf, omop or csv, or none at all."""
+
+    def setUp(self):
+        """Set up a shared validator instance."""
+        self.validator = MappingValidator()
+
+    def test_each_known_standard_is_accepted(self):
+        """targetStandard 'rdf', 'omop' and 'csv' must pass."""
+        for standard in ("rdf", "omop", "csv"):
+            mapping = copy.deepcopy(_VALID_MAPPING)
+            mapping["targetStandard"] = standard
+            result = self.validator.validate(mapping)
+            self.assertTrue(result.is_valid, [i.message for i in result.issues])
+
+    def test_a_map_naming_no_standard_is_accepted(self):
+        """A map without targetStandard (every older map) must pass."""
+        self.assertNotIn("targetStandard", _VALID_MAPPING)
+        self.assertTrue(self.validator.validate(copy.deepcopy(_VALID_MAPPING)).is_valid)
+
+    def test_an_unknown_or_misspelt_standard_is_rejected(self):
+        """targetStandard must be exactly one of the known standards."""
+        for standard in ("sql", "RDF", "omop-cdm", "", 1):
+            mapping = copy.deepcopy(_VALID_MAPPING)
+            mapping["targetStandard"] = standard
+            result = self.validator.validate(mapping)
+            self.assertFalse(result.is_valid, standard)
+            self.assertTrue(any("targetStandard" in i.path for i in result.issues))
+
+
 # ---------------------------------------------------------------------------
 # Invalid version format (3 variations)
 # ---------------------------------------------------------------------------

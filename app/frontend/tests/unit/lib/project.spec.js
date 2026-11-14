@@ -9,6 +9,7 @@ import {
   projectVersion,
   sameProject,
   sameStore,
+  targetStandard,
 } from '@/lib/project'
 
 // A map has a general part every site of a project shares (its schema) and
@@ -38,6 +39,20 @@ describe('mapDetails', () => {
       schemaId: 'schema:aya/v1',
       schemaName: 'AYA schema (renamed)',
       schemaVersion: '1',
+      // Naming no standard, it is an RDF map, as every map was before.
+      targetStandard: 'rdf',
+      targetStandardDeclared: false,
+    })
+  })
+
+  it('reads the standard a map names, and only a known one', () => {
+    expect(mapDetails({ ...FILLED_IN, targetStandard: 'omop' })).toMatchObject({
+      targetStandard: 'omop',
+      targetStandardDeclared: true,
+    })
+    expect(mapDetails({ ...FILLED_IN, targetStandard: 'sql' })).toMatchObject({
+      targetStandard: 'rdf',
+      targetStandardDeclared: false,
     })
   })
 
@@ -49,8 +64,21 @@ describe('mapDetails', () => {
       schemaId: '',
       schemaName: '',
       schemaVersion: '',
+      targetStandard: 'rdf',
+      targetStandardDeclared: false,
     })
     expect(mapDetails(null).schemaId).toBe('')
+  })
+})
+
+describe('targetStandard', () => {
+  it("is the standard a map's details name, else RDF", () => {
+    expect(targetStandard({ targetStandard: 'omop' })).toBe('omop')
+    expect(targetStandard({ targetStandard: 'csv' })).toBe('csv')
+    expect(targetStandard({ targetStandard: 'rdf' })).toBe('rdf')
+    expect(targetStandard({ targetStandard: 'nonsense' })).toBe('rdf')
+    expect(targetStandard({})).toBe('rdf')
+    expect(targetStandard(null)).toBe('rdf')
   })
 })
 

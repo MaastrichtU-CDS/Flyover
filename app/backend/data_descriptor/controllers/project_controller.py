@@ -2,16 +2,16 @@
 Project controller: the project the server works on.
 
 The browser opens a project when the user picks a JSON-LD map in the
-start-up pop-up, switches through the status bar, or accepts the offer an
-upload in a step makes; it closes the project when the user continues
-without one. Routes are the ``/api/v1/project`` surface:
+pop-up that asks for it on entering the RDF workflow, switches through the
+status bar, or accepts the offer an upload in a step makes; it closes the
+project when the user continues without one. Routes are the ``/api/v1/project`` surface:
 
 - ``GET /api/v1/project``: the open project (or none), the route chosen (a
   project, the standard RDF flow, or none yet), the store in use and the
   configured store (the one working without a project uses);
 - ``PUT /api/v1/project``: open a map as the project, replacing any other;
 - ``DELETE /api/v1/project``: work without a project, in the standard RDF
-  flow (also how a user chooses it at start-up);
+  flow (also how a user chooses it on entering the RDF workflow);
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
   nothing, so the browser can ask the user before it switches;
 - ``GET /api/v1/project/store-status``: where the store in use stands
@@ -19,6 +19,8 @@ without one. Routes are the ``/api/v1/project`` surface:
   status bar;
 - ``POST /api/v1/project/store-start``: start the store in use at a user's
   request (the status bar's Start, for a store someone stopped);
+- ``POST /api/v1/project/store-stop``: stop the store in use at a user's
+  request, as they leave the workflow;
 - ``POST /api/v1/project/fetch-map``: a map from a web address, fetched by
   the server, for the pop-up to check and open like an uploaded file; or,
   for a Zenodo record holding several, the maps to choose from.
@@ -29,6 +31,7 @@ import logging
 from flask import Blueprint, current_app, jsonify
 
 from services.project_service import MapFetchError, MapFileChoice, ProjectError
+from services.store_launcher import LauncherError
 from utils.mapping_request import json_object_body
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,7 @@ logger = logging.getLogger(__name__)
 project_bp = Blueprint("project", __name__)
 
 NO_MAP = "No map was sent: the body needs a 'mapping' object."
+NOT_OUR_STORE = "Flyover does not run this store, so it leaves it as it is."
 
 
 def _context() -> dict:
@@ -123,12 +127,14 @@ def store_status():
     """Where the store the app works on stands, and if it does not answer, why.
 
     Answers ``{"state": "...", "reachable": bool, "reason": "...",
-    "store": {...}}``. The state is ``waiting`` (nobody has chosen a project
-    or the standard RDF flow yet, so no store was started), ``starting``,
-    ``stopped`` (Flyover's to start, but someone stopped it), ``reachable``
-    or ``unreachable`` (see services/store_lifecycle.py; a later ``none``
-    will mean the work uses no database). An unreachable store is an answer,
-    not an error. A chosen store whose container never ran is started.
+    "managed": bool, "store": {...}}``, where ``managed`` says whether
+    Flyover may start and stop the store. The state is ``waiting`` (nobody
+    has chosen a project or the standard RDF flow yet, so no store was
+    started), ``starting``, ``stopped`` (Flyover's to start, but someone
+    stopped it), ``reachable`` or ``unreachable`` (see
+    services/store_lifecycle.py; a later ``none`` will mean the work uses no
+    database). An unreachable store is an answer, not an error. A chosen
+    store whose container never ran is started.
     """
     return _store_status_answer()
 
@@ -151,6 +157,28 @@ def start_store():
     return _store_status_answer()
 
 
+@project_bp.route("/api/v1/project/store-stop", methods=["POST"])
+def stop_store():
+    """Stop the store the app works on, at a user's request.
+
+    For leaving the workflow, when the user chooses to stop the store rather
+    than keep it running; Flyover never stops one of its own accord. Only a
+    store Flyover runs (the local one, where the stack runs a launcher) can
+    be stopped: another is a 409, and a launcher that cannot stop it a 502,
+    with the reason. Answers as the store status does.
+    """
+    lifecycle = _context()["store_lifecycle"]
+    store = _context()["store_selection"].current
+    if not lifecycle.manages(store):
+        return jsonify({"error": NOT_OUR_STORE}), 409
+    try:
+        lifecycle.stop(store)
+    except LauncherError as error:
+        logger.warning("Flyover could not stop the store: %s", error.message)
+        return jsonify({"error": error.message}), 502
+    return _store_status_answer()
+
+
 def _store_status_answer():
     service = _project_service()
     store = service.describe()["store"]
@@ -162,14 +190,15 @@ def _store_status_answer():
             logger.warning("Checking the store failed", exc_info=True)
             return False, "Flyover could not check the store."
 
-    state, reason = _context()["store_lifecycle"].status(
-        _context()["store_selection"].current, service.route is not None, check
-    )
+    lifecycle = _context()["store_lifecycle"]
+    current = _context()["store_selection"].current
+    state, reason = lifecycle.status(current, service.route is not None, check)
     return jsonify(
         {
             "state": state,
             "reachable": state == "reachable",
             "reason": reason,
+            "managed": bool(lifecycle.manages(current)),
             "store": store,
         }
     )

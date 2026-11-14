@@ -1,7 +1,8 @@
 import { test as base, expect } from '@playwright/test'
 
-// Flyover asks which project to work on whenever it opens in a new tab,
-// and a map uploaded in a step without a project offers to open it as one.
+// Flyover asks which project to work on whenever a tab enters the RDF
+// workflow, as a spec's tab does when it first goes to a step's page, and a
+// map uploaded in a step without a project offers to open it as one.
 // The specs of the steps test the standard RDF flow, as Flyover ran before
 // projects, so they answer both through the UI as a user would: "Continue
 // without a project" and "Keep going without a project", whenever they

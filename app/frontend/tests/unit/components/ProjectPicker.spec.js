@@ -3,14 +3,17 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { reactive } from 'vue'
 
-// The pop-up that asks which project to work on: at start-up it can only be
-// left by choosing; from the status bar it can be cancelled. Opening a map
-// or leaving a project that would replace work in this browser asks first.
+// The pop-up that asks which project to work on: as a tab enters the RDF
+// workflow, with the project this browser remembers offered first (cancelled,
+// it goes back to the home page), and from the status bar to switch. Opening
+// a map or leaving a project that would replace work in this browser asks
+// first.
 
 const rows = new Map()
-const route = reactive({ path: '/describe' })
+const route = reactive({ path: '/describe', meta: { workflow: 'rdf' } })
+const router = { push: vi.fn() }
 
-vi.mock('vue-router', () => ({ useRoute: () => route }))
+vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => router }))
 vi.mock('@/lib/browser', () => ({ reloadPage: vi.fn() }))
 vi.mock('@/lib/db', () => ({
   getData: vi.fn(async (_s, key) => (rows.has(key) ? structuredClone(rows.get(key)) : null)),
@@ -32,6 +35,7 @@ import { fingerprint } from '@/lib/project'
 import ProjectPicker from '@/components/ProjectPicker.vue'
 import { useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 const CONFIGURED = {
   kind: 'rdf-store',
@@ -47,19 +51,24 @@ const AYA_STORE = {
   source: 'project',
   note: '',
 }
+// Maps that say they target RDF, as maps for the RDF workflow should.
 const AYA = {
   name: 'AYA mapping',
   version: '1.0.0',
+  targetStandard: 'rdf',
   schema: { '@id': 'schema:aya/v1', name: 'AYA schema' },
   databases: {},
 }
 const OTHER = {
   name: 'Other mapping',
   version: '',
+  targetStandard: 'rdf',
   schema: { '@id': 'schema:other/v1', name: 'Other schema' },
   databases: {},
 }
+const OMOP = { ...OTHER, name: 'OMOP mapping', targetStandard: 'omop' }
 
+// As the server reports a map: its standard is RDF unless it names one.
 function detailsOf(map, extra = {}) {
   return {
     name: map.name,
@@ -68,6 +77,8 @@ function detailsOf(map, extra = {}) {
     schemaId: map.schema['@id'],
     schemaName: map.schema.name,
     schemaVersion: '',
+    targetStandard: map.targetStandard || 'rdf',
+    targetStandardDeclared: Boolean(map.targetStandard),
     fileName: 'map.jsonld',
     sourceUrl: '',
     ...extra,
@@ -94,6 +105,9 @@ function serve({ open = null } = {}) {
     if (url === '/api/v1/project/fetch-map') {
       return { data: { mapping: AYA, fileName: 'aya.jsonld', sourceUrl: body.url } }
     }
+    if (url === '/api/v1/project/store-start') {
+      return { data: { state: 'starting', reachable: false, reason: '', store: answer().store } }
+    }
     throw new Error(url)
   })
   api.put.mockImplementation(async (_url, body) => {
@@ -106,18 +120,24 @@ function serve({ open = null } = {}) {
   })
 }
 
-function holdOpenProject(map = AYA) {
+// The project this browser remembers; the server still has it, unless
+// `serverLost` (a restart).
+function holdOpenProject(map = AYA, { serverLost = false } = {}) {
   rows.set('semantic_map', { key: 'semantic_map', data: structuredClone(map) })
   rows.set('project', {
     key: 'project',
     data: { ...detailsOf(map), token: 't1', loadedFingerprint: fingerprint(map) },
   })
-  serve({ open: { ...detailsOf(map), token: 't1' } })
+  serve({ open: serverLost ? null : { ...detailsOf(map), token: 't1' } })
 }
 
-async function mountPicker() {
+// The pop-up, opened as App.vue opens it: 'enter' as the tab enters the RDF
+// workflow, 'switch' from the status bar inside it.
+async function mountPicker(mode = 'enter') {
   const project = useProjectStore()
   await project.init()
+  if (mode === 'switch') project.enterWorkflow('rdf')
+  project.openPicker(mode)
   const wrapper = mount(ProjectPicker, { attachTo: document.body })
   await flushPromises()
   return { wrapper, project }
@@ -129,7 +149,14 @@ function fileOf(map, name = 'map.jsonld') {
   })
 }
 
+// The step that asks for a project's map, from the choices.
+async function openStep(wrapper) {
+  if (wrapper.find('#project-map-url').exists()) return
+  await wrapper.find('#project-picker-open').trigger('click')
+}
+
 async function pick(wrapper, file) {
+  await openStep(wrapper)
   const input = wrapper.find('input[type="file"]')
   Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
   await input.trigger('change')
@@ -151,6 +178,7 @@ describe('ProjectPicker', () => {
     vi.clearAllMocks()
     vi.stubGlobal('BroadcastChannel', undefined)
     route.path = '/describe'
+    route.meta = { workflow: 'rdf' }
     serve()
   })
 
@@ -161,34 +189,113 @@ describe('ProjectPicker', () => {
     vi.unstubAllGlobals()
   })
 
-  describe('at start-up', () => {
-    it('asks which project to work on and can only be left by choosing', async () => {
-      ;({ wrapper } = await mountPicker())
+  describe('entering the RDF workflow', () => {
+    it('asks which project to work on, and goes back to the home page when cancelled', async () => {
+      let project
+      ;({ wrapper, project } = await mountPicker())
 
       const dialog = wrapper.find('[role="dialog"]')
       expect(dialog.exists()).toBe(true)
       expect(dialog.attributes('aria-modal')).toBe('true')
       expect(wrapper.find('#project-picker-title').text()).toBe('Choose a project')
-      expect(wrapper.find('.project-picker-close').exists()).toBe(false)
-      expect(button(wrapper, 'Cancel')).toBeUndefined()
+      expect(wrapper.find('.project-picker-close').exists()).toBe(true)
 
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await button(wrapper, 'Cancel').trigger('click')
+
+      expect(project.picker.open).toBe(false)
+      expect(project.workflow).toBe(null)
+      expect(router.push).toHaveBeenCalledWith('/')
+      expect(api.delete).not.toHaveBeenCalled()
+    })
+
+    it('goes back to the home page on Escape, a click beside it, or its close button', async () => {
+      const leave = [
+        () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })),
+        () => wrapper.find('.project-picker-backdrop').trigger('click'),
+        () => wrapper.find('.project-picker-close').trigger('click'),
+      ]
+      for (const how of leave) {
+        setActivePinia(createPinia())
+        router.push.mockClear()
+        let project
+        ;({ wrapper, project } = await mountPicker())
+
+        await how()
+        await flushPromises()
+
+        expect(project.picker.open).toBe(false)
+        expect(router.push).toHaveBeenCalledWith('/')
+        wrapper.unmount()
+      }
+      wrapper = undefined
+    })
+
+    it('lets a choice under way finish before anything closes it', async () => {
+      let project
+      ;({ wrapper, project } = await mountPicker())
+      let answer
+      api.delete.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          answer = resolve
+        })
+      )
+
+      await button(wrapper, 'Continue without a project').trigger('click')
       await wrapper.find('.project-picker-backdrop').trigger('click')
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
       await flushPromises()
-      expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+
+      expect(project.picker.open).toBe(true)
+      expect(router.push).not.toHaveBeenCalled()
+
+      answer({ data: { project: null, store: CONFIGURED, configuredStore: CONFIGURED } })
+      await flushPromises()
+
+      expect(project.picker.open).toBe(false)
+      expect(project.workflow).toBe('rdf')
+      expect(router.push).not.toHaveBeenCalled()
+    })
+
+    it('opens on three choices, creating a JSON-LD still under development', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      const titles = wrapper.findAll('.project-picker-option-title').map((t) => t.text())
+      expect(titles).toEqual(['Open a project', 'Create a JSON-LD', 'Continue without a project'])
+      // The map is asked for once the user chooses to open a project.
+      expect(wrapper.find('input[type="file"]').exists()).toBe(false)
+      expect(wrapper.find('#project-map-url').exists()).toBe(false)
+      const create = wrapper.find('#project-picker-create')
+      expect(create.element.disabled).toBe(true)
+      expect(create.find('.project-picker-soon').text()).toBe('Under development')
+      expect(create.find('.project-picker-option-text').text().replace(/\s+/g, ' ')).toBe(
+        'Describe your data model once, and share it with your partners'
+      )
+    })
+
+    it('asks for the map once the user chooses to open a project, with a way back', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      await wrapper.find('#project-picker-open').trigger('click')
+      expect(wrapper.find('input[type="file"]').exists()).toBe(true)
+      expect(wrapper.find('#project-map-url').exists()).toBe(true)
+      expect(wrapper.find('.project-picker-options').exists()).toBe(false)
+
+      await button(wrapper, 'Back to the choices').trigger('click')
+      expect(wrapper.find('.project-picker-options').exists()).toBe(true)
     })
 
     it('says that going without a project is the standard RDF flow on the configured store', async () => {
       ;({ wrapper } = await mountPicker())
 
-      const standard = wrapper.find('.project-picker-standard').text().replace(/\s+/g, ' ')
-      expect(standard).toContain('standard RDF flow')
-      expect(standard).toContain("Flyover's configured RDF store")
-      expect(standard).toContain('Repository userRepo')
-      expect(standard).toContain('http://rdf-store:7200/repositories/userRepo')
+      const standard = wrapper.find('.project-picker-standard')
+      expect(standard.find('.project-picker-option-text').text().replace(/\s+/g, ' ')).toBe(
+        "The standard RDF flow, on Flyover's configured RDF store (repository userRepo)"
+      )
+      // Its address, for whoever wants it, on hover.
+      expect(standard.attributes('title')).toBe('http://rdf-store:7200/repositories/userRepo')
     })
 
-    it('continues without a project for this tab, without reloading', async () => {
+    it('continues without a project, in the workflow, without reloading', async () => {
       let project
       ;({ wrapper, project } = await mountPicker())
 
@@ -197,12 +304,14 @@ describe('ProjectPicker', () => {
 
       expect(project.picker.open).toBe(false)
       expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
-      expect(sessionStorage.getItem('flyover.project.withoutProject')).toBe('1')
+      expect(project.workflow).toBe('rdf')
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(router.push).not.toHaveBeenCalled()
       expect(reloadPage).not.toHaveBeenCalled()
       expect(useStatusStore().messages).toEqual([])
     })
 
-    it('opens a dropped map as the project and reloads the step page', async () => {
+    it('opens a dropped map as the project, and says so without reloading', async () => {
       let project
       ;({ wrapper, project } = await mountPicker())
 
@@ -214,24 +323,110 @@ describe('ProjectPicker', () => {
       })
       expect(api.put.mock.calls[0][1]).toMatchObject({ mapping: AYA, fileName: 'aya.jsonld' })
       expect(project.picker.open).toBe(false)
-      expect(reloadPage).toHaveBeenCalled()
-      expect(sessionStorage.getItem('flyover.project.notice')).toBe(
+      expect(project.workflow).toBe('rdf')
+      expect(reloadPage).not.toHaveBeenCalled()
+      expect(useStatusStore().messages[0].text).toBe(
         "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya."
       )
     })
 
-    it('says so instead of reloading on the home page', async () => {
-      route.path = '/'
+    it('offers no project first when the browser remembers none', async () => {
       ;({ wrapper } = await mountPicker())
 
-      await pick(wrapper, fileOf(AYA))
+      expect(wrapper.find('.project-picker-remembered').exists()).toBe(false)
+      expect(wrapper.find('.project-picker-current').exists()).toBe(false)
+    })
 
-      expect(reloadPage).not.toHaveBeenCalled()
-      expect(useStatusStore().messages[0].text).toContain('Flyover now works on the project')
+    describe('with a project this browser remembers', () => {
+      it('offers it first, and continues with it on a server that still has it', async () => {
+        holdOpenProject()
+        let project
+        ;({ wrapper, project } = await mountPicker())
+
+        // A row above the choices, the whole row the button.
+        const remembered = wrapper.find('.project-picker-remembered')
+        expect(remembered.attributes('id')).toBe('project-picker-continue')
+        expect(remembered.find('.project-picker-option-title').text()).toBe(
+          'Continue with AYA mapping · v1.0.0'
+        )
+        expect(remembered.find('.project-picker-option-text').text()).toBe(
+          'The project this browser remembers'
+        )
+        // "Open now" is for switching; entering, the offer says it.
+        expect(wrapper.find('.project-picker-current').exists()).toBe(false)
+
+        await wrapper.find('#project-picker-continue').trigger('click')
+        await flushPromises()
+
+        // The server keeps its work on the project; its store has to run.
+        expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-start')
+        expect(api.put).not.toHaveBeenCalled()
+        expect(project.picker.open).toBe(false)
+        expect(project.workflow).toBe('rdf')
+        expect(reloadPage).not.toHaveBeenCalled()
+        expect(useStatusStore().messages[0].text).toBe(
+          "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya."
+        )
+      })
+
+      it('opens it again on a server that lost it, under the same token', async () => {
+        holdOpenProject(AYA, { serverLost: true })
+        let project
+        ;({ wrapper, project } = await mountPicker())
+
+        await wrapper.find('#project-picker-continue').trigger('click')
+        await flushPromises()
+
+        expect(api.put.mock.calls[0][1]).toMatchObject({ mapping: AYA, token: 't1' })
+        expect(project.picker.open).toBe(false)
+        expect(project.workflow).toBe('rdf')
+      })
+
+      it('says why it could not continue with it, and stays open to choose another', async () => {
+        holdOpenProject(AYA, { serverLost: true })
+        api.put.mockRejectedValueOnce({
+          response: { status: 400, data: { error: 'The map is not a valid Flyover semantic map.' } },
+        })
+        let project
+        ;({ wrapper, project } = await mountPicker())
+
+        await wrapper.find('#project-picker-continue').trigger('click')
+        await flushPromises()
+
+        expect(wrapper.find('.project-picker-errors').text()).toContain(
+          'The map is not a valid Flyover semantic map.'
+        )
+        expect(project.picker.open).toBe(true)
+        expect(project.workflow).toBe(null)
+      })
+
+      it('asks before leaving it to continue without a project, and reloads nothing', async () => {
+        holdOpenProject()
+        let project
+        ;({ wrapper, project } = await mountPicker())
+
+        await button(wrapper, 'Continue without a project').trigger('click')
+        await flushPromises()
+        expect(wrapper.find('.project-picker-question').text()).toBe('Leave AYA mapping?')
+        expect(api.delete).not.toHaveBeenCalled()
+
+        await button(wrapper, 'Leave the project').trigger('click')
+        await flushPromises()
+
+        expect(api.delete).toHaveBeenCalled()
+        expect(project.project).toBe(null)
+        expect(rows.has('semantic_map')).toBe(false)
+        expect(project.workflow).toBe('rdf')
+        expect(reloadPage).not.toHaveBeenCalled()
+        expect(useStatusStore().messages[0].text).toBe(
+          "Flyover now works without a project: the standard RDF flow on the configured RDF store's repository userRepo."
+        )
+      })
     })
 
     it('opens a map from a web address, fetched by the server', async () => {
       ;({ wrapper } = await mountPicker())
+      await openStep(wrapper)
 
       await wrapper.find('#project-map-url').setValue('https://example.org/aya.jsonld')
       await wrapper.find('form').trigger('submit')
@@ -248,6 +443,7 @@ describe('ProjectPicker', () => {
 
     it("says a file's page on a code hosting site, or a Zenodo record, will do", async () => {
       ;({ wrapper } = await mountPicker())
+      await openStep(wrapper)
 
       const field = wrapper.find('#project-map-url')
       const help = wrapper.find(`#${field.attributes('aria-describedby')}`)
@@ -288,6 +484,7 @@ describe('ProjectPicker', () => {
       })
 
       async function load(address) {
+        await openStep(wrapper)
         await wrapper.find('#project-map-url').setValue(address)
         await wrapper.find('#project-map-url').element.form.dispatchEvent(new Event('submit'))
         await flushPromises()
@@ -321,7 +518,7 @@ describe('ProjectPicker', () => {
           fileName: 'mapping_centre_a.jsonld',
           sourceUrl: `${FILES}/mapping_centre_a.jsonld`,
         })
-        expect(reloadPage).toHaveBeenCalled()
+        expect(useProjectStore().picker.open).toBe(false)
       })
 
       it('forgets them once another address is typed', async () => {
@@ -358,6 +555,7 @@ describe('ProjectPicker', () => {
 
     it('shows why a web address could not be loaded', async () => {
       ;({ wrapper } = await mountPicker())
+      await openStep(wrapper)
       api.post.mockRejectedValueOnce({
         response: { status: 502, data: { error: 'The address answered with HTTP 404.' } },
       })
@@ -423,14 +621,19 @@ describe('ProjectPicker', () => {
       expect(api.put).toHaveBeenCalled()
     })
 
-    it('goes back to the choice without opening anything', async () => {
+    it('goes back to the map to open, and on to the choices, opening nothing', async () => {
       rows.set('semantic_map', { key: 'semantic_map', data: OTHER })
       ;({ wrapper } = await mountPicker())
 
       await pick(wrapper, fileOf(AYA))
-      await button(wrapper, 'Back').trigger('click')
+      await wrapper
+        .findAll('.project-picker-actions button')
+        .find((b) => b.text() === 'Back')
+        .trigger('click')
 
       expect(wrapper.find('.project-picker-question').exists()).toBe(false)
+      expect(wrapper.find('#project-map-url').exists()).toBe(true)
+      await button(wrapper, 'Back to the choices').trigger('click')
       expect(button(wrapper, 'Continue without a project')).toBeTruthy()
       expect(api.put).not.toHaveBeenCalled()
     })
@@ -448,15 +651,154 @@ describe('ProjectPicker', () => {
     })
   })
 
+  describe('a map for another workflow', () => {
+    it('opens nothing, says which workflow it is for, and offers to switch', async () => {
+      ;({ wrapper } = await mountPicker())
+
+      await pick(wrapper, fileOf(OMOP, 'omop.jsonld'))
+
+      expect(wrapper.find('.project-picker-question').text()).toBe(
+        'This JSON-LD is for the OMOP workflow'
+      )
+      expect(wrapper.find('.project-picker-body p').text().replace(/\s+/g, ' ')).toBe(
+        'OMOP mapping targets the OMOP common data model, so the RDF workflow cannot open ' +
+          'it. Switch to the OMOP workflow, or choose a different JSON-LD.'
+      )
+      expect(api.put).not.toHaveBeenCalled()
+
+      // OMOP is under development: switching shows its note, over the pop-up.
+      await button(wrapper, 'Switch to OMOP').trigger('click')
+      expect(useWorkflowsStore().soon.label).toBe('OMOP')
+      expect(useProjectStore().picker.open).toBe(true)
+    })
+
+    it('goes back to choose a different JSON-LD', async () => {
+      ;({ wrapper } = await mountPicker())
+      await pick(wrapper, fileOf(OMOP, 'omop.jsonld'))
+
+      await button(wrapper, 'Choose a different JSON-LD').trigger('click')
+
+      expect(wrapper.find('.project-picker-question').exists()).toBe(false)
+      expect(wrapper.find('#project-map-url').exists()).toBe(true)
+    })
+
+    it('is refused on the home page too, for the workflow the pop-up opens', async () => {
+      route.path = '/'
+      route.meta = {}
+      const project = useProjectStore()
+      await project.init()
+      project.openPicker('enter', { target: '/rdf' })
+      wrapper = mount(ProjectPicker, { attachTo: document.body })
+      await flushPromises()
+
+      await pick(wrapper, fileOf(OMOP, 'omop.jsonld'))
+
+      expect(wrapper.find('.project-picker-question').text()).toBe(
+        'This JSON-LD is for the OMOP workflow'
+      )
+      expect(router.push).not.toHaveBeenCalled()
+    })
+  })
+
+  it('says it takes a map naming no standard as RDF, once it opened it', async () => {
+    ;({ wrapper } = await mountPicker())
+    const { targetStandard: _, ...undeclared } = AYA
+
+    await pick(wrapper, fileOf(undeclared, 'aya.jsonld'))
+
+    expect(useStatusStore().messages[0].text).toBe(
+      "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya. " +
+        'Its JSON-LD names no target standard, so Flyover takes it as an RDF project: ' +
+        'add "targetStandard": "rdf" to the JSON-LD to say so.'
+    )
+  })
+
+  describe('opened on the home page', () => {
+    // As the RDF tile, the start button and the navigation bar open it.
+    async function mountOnHome() {
+      route.path = '/'
+      route.meta = {}
+      const project = useProjectStore()
+      await project.init()
+      project.openPicker('enter', { target: '/rdf' })
+      const mounted = mount(ProjectPicker, { attachTo: document.body })
+      await flushPromises()
+      return { wrapper: mounted, project }
+    }
+
+    it('goes on to the RDF landing once the tab continues without a project', async () => {
+      let project
+      ;({ wrapper, project } = await mountOnHome())
+
+      await button(wrapper, 'Continue without a project').trigger('click')
+      await flushPromises()
+
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(project.workflow).toBe('rdf')
+      expect(project.picker.open).toBe(false)
+      expect(router.push).toHaveBeenCalledWith('/rdf')
+      expect(reloadPage).not.toHaveBeenCalled()
+    })
+
+    it('goes on once a dropped map opened as the project, and says so', async () => {
+      ;({ wrapper } = await mountOnHome())
+
+      await pick(wrapper, fileOf(AYA, 'aya.jsonld'))
+
+      expect(router.push).toHaveBeenCalledWith('/rdf')
+      expect(useStatusStore().messages[0].text).toBe(
+        "Flyover now works on the project AYA mapping · v1.0.0, on the RDF store's repository aya."
+      )
+    })
+
+    it('goes on with the project this browser remembers', async () => {
+      holdOpenProject()
+      ;({ wrapper } = await mountOnHome())
+
+      await wrapper.find('#project-picker-continue').trigger('click')
+      await flushPromises()
+
+      expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-start')
+      expect(router.push).toHaveBeenCalledWith('/rdf')
+    })
+
+    it('stays on the home page when cancelled, the tab outside the workflow', async () => {
+      let project
+      ;({ wrapper, project } = await mountOnHome())
+
+      await button(wrapper, 'Cancel').trigger('click')
+
+      expect(project.picker.open).toBe(false)
+      expect(project.workflow).toBe(null)
+      expect(router.push).not.toHaveBeenCalled()
+      expect(api.delete).not.toHaveBeenCalled()
+    })
+
+    it('stays on the home page, still asking, when the server does not hear the choice', async () => {
+      let project
+      ;({ wrapper, project } = await mountOnHome())
+      api.delete.mockRejectedValueOnce({
+        response: { status: 503, data: { error: 'The server is busy.' } },
+      })
+
+      await button(wrapper, 'Continue without a project').trigger('click')
+      await flushPromises()
+
+      expect(wrapper.find('.project-picker-errors').text()).toContain('The server is busy.')
+      expect(project.picker.open).toBe(true)
+      expect(project.workflow).toBe(null)
+      expect(router.push).not.toHaveBeenCalled()
+    })
+  })
+
   describe('from the status bar', () => {
     it('can be cancelled, with Escape too', async () => {
       holdOpenProject()
       let project
-      ;({ wrapper, project } = await mountPicker())
-      project.openPicker('switch')
-      await flushPromises()
+      ;({ wrapper, project } = await mountPicker('switch'))
 
       expect(wrapper.find('.project-picker-current').text()).toBe('Open now: AYA mapping')
+      expect(wrapper.find('.project-picker-remembered').exists()).toBe(false)
       await button(wrapper, 'Cancel').trigger('click')
       expect(project.picker.open).toBe(false)
 
@@ -465,14 +807,28 @@ describe('ProjectPicker', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
       await flushPromises()
       expect(project.picker.open).toBe(false)
+      // The tab stays where it was, in the workflow.
+      expect(project.workflow).toBe('rdf')
+      expect(router.push).not.toHaveBeenCalled()
+    })
+
+    it('says so instead of reloading on the RDF home page', async () => {
+      route.path = '/rdf'
+      holdOpenProject()
+      ;({ wrapper } = await mountPicker('switch'))
+
+      await pick(wrapper, fileOf(OTHER))
+      await button(wrapper, 'Open the project').trigger('click')
+      await flushPromises()
+
+      expect(reloadPage).not.toHaveBeenCalled()
+      expect(useStatusStore().messages[0].text).toContain('Flyover now works on the project Other mapping')
     })
 
     it('asks before switching to another project', async () => {
       holdOpenProject()
       let project
-      ;({ wrapper, project } = await mountPicker())
-      project.openPicker('switch')
-      await flushPromises()
+      ;({ wrapper, project } = await mountPicker('switch'))
 
       await pick(wrapper, fileOf(OTHER))
 
@@ -486,9 +842,7 @@ describe('ProjectPicker', () => {
     it('replaces an unedited copy of the same project without asking', async () => {
       holdOpenProject()
       let project
-      ;({ wrapper, project } = await mountPicker())
-      project.openPicker('switch')
-      await flushPromises()
+      ;({ wrapper, project } = await mountPicker('switch'))
 
       await pick(wrapper, fileOf({ ...AYA, name: 'Centre A AYA mapping' }))
 
@@ -500,10 +854,7 @@ describe('ProjectPicker', () => {
     it('asks before replacing a copy of the same project with describe answers in it', async () => {
       holdOpenProject()
       rows.get('semantic_map').data.databases = { a: { tables: {} } }
-      let project
-      ;({ wrapper, project } = await mountPicker())
-      project.openPicker('switch')
-      await flushPromises()
+      ;({ wrapper } = await mountPicker('switch'))
 
       await pick(wrapper, fileOf({ ...AYA, name: 'Centre A AYA mapping' }))
 
@@ -514,9 +865,7 @@ describe('ProjectPicker', () => {
     it('asks before leaving the project, and says where Flyover goes', async () => {
       holdOpenProject()
       let project
-      ;({ wrapper, project } = await mountPicker())
-      project.openPicker('switch')
-      await flushPromises()
+      ;({ wrapper, project } = await mountPicker('switch'))
 
       await button(wrapper, 'Continue without a project').trigger('click')
       await flushPromises()
@@ -540,9 +889,7 @@ describe('ProjectPicker', () => {
     it('shows why the server refused to open a map, and keeps the open project', async () => {
       holdOpenProject()
       let project
-      ;({ wrapper, project } = await mountPicker())
-      project.openPicker('switch')
-      await flushPromises()
+      ;({ wrapper, project } = await mountPicker('switch'))
       api.put.mockRejectedValueOnce({
         response: { status: 400, data: { error: 'Flyover cannot use the store the map\'s endpoint names.', validation_errors: [] } },
       })

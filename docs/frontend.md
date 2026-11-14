@@ -19,9 +19,10 @@ app/frontend/
     ├── main.js                      # app entry: createApp → use(pinia, router) → mount('#app')
     ├── App.vue                      # shell: ProjectStatusBar, AppNav, <RouterView/> (or StoreWait), AppFooter, StatusBanner, the project pop-ups
     ├── assets/main.css              # the only Vue-owned CSS (layout overrides)
-    ├── router/index.js              # the 11 routes (lazy-loaded), base path /app/; meta.needsStore on the pages that use the store
+    ├── router/index.js              # the 12 routes (lazy-loaded); meta.workflow on the RDF pages, meta.needsStore on those that use the store
     ├── views/                       # one component per route
-    │   ├── HomeView.vue
+    │   ├── HomeView.vue             # the home page: the workflows (RDF; OMOP and CSV under development)
+    │   ├── RdfLandingView.vue       # "Flyover × RDF", the RDF workflow's landing: its four steps, as tiles
     │   ├── IngestView.vue
     │   ├── DescribeLandingView.vue
     │   ├── DescribeVariablesView.vue
@@ -33,26 +34,31 @@ app/frontend/
     │   ├── ShareMockView.vue
     │   └── SharePublishView.vue
     ├── components/                  # shared bits used across views
-    │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), and the project
+    │   ├── WorkflowSoonDialog.vue   # the pop-up of a workflow under development (OMOP, CSV)
+    │   ├── ExitWorkflowDialog.vue   # leaving a workflow: keep its store running, stop it, or stay
+    │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), the project, Exit RDF
     │   ├── StoreWait.vue            # what a page that needs the store shows in its place until the store is there (Start for a stopped one)
-    │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
+    │   ├── ProjectPicker.vue        # pop-up: the choices (open a project, create a JSON-LD, continue without one), then the map
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
     │   ├── HoverTip.vue             # the app's tooltip (the home tiles' style, .bootstrap-tooltip)
-    │   ├── AppNav.vue               # breadcrumb / step navigator
+    │   ├── AppNav.vue               # the workflows on the home page; Home (the RDF landing) and the steps inside RDF
     │   ├── AppFooter.vue
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
     │   └── MigrationStub.vue        # legacy placeholder, gone soon
     ├── composables/
     │   ├── useCyclingDots.js        # the one-to-three dots that show something is under way
     │   ├── useModalFocus.js         # keyboard handling the pop-ups share (focus, Tab, Escape)
-    │   ├── useStoreGate.js          # whether the page on screen waits for the store, and why
+    │   ├── useStoreGate.js          # whether the page on screen waits (for the project choice, the store), and why
+    │   ├── useWorkflowEntry.js      # entering a workflow from the home page: ask for the project, then go there
     │   └── useNavigation.js         # workflow-step state (which steps are completed, disabled)
     ├── lib/
+    │   ├── workflows.js             # the workflows the home page offers, and which are built
     │   ├── project.js               # which project a map belongs to, its name, a map fingerprint
     │   └── browser.js               # reloadPage() and loadPage(), kept apart so tests can stand in for them
     ├── stores/
     │   ├── project.js               # Pinia store: the open project, kept in step with the server
+    │   ├── workflows.js             # Pinia store: the note a workflow under development shows, the notice beside Exit
     │   ├── storeDatasets.js         # Pinia store: the datasets panel's list, question and deletes
     │   └── status.js                # Pinia store: toast/banner messages
     └── services/
@@ -89,10 +95,13 @@ flowchart TD
 The project store ([`src/stores/project.js`](../app/frontend/src/stores/project.js)) keeps the browser and the server on the same project (see [architecture.md](architecture.md#projects-and-the-store-in-use) for the server side):
 
 - IndexedDB `FlyoverDB` → `metadata` holds the working copy (`semantic_map`, the row the describe pages fill in) and, next to it, the record of the open project (`project`: what the server reported, the token, and the fingerprint of the working copy as it was loaded, which tells whether describe answers were added since).
-- `sessionStorage` holds `flyover.project.withoutProject` (this tab chose to work without a project) and `flyover.project.notice` (a message to show after the reload that follows a change).
-- When the app starts, `init()` reopens the browser's project on a server that lost it (same token), and opens the pop-up when there is no project and the tab has not chosen. A `BroadcastChannel` (`flyover-project`) tells other tabs about a change.
+- `sessionStorage` holds `flyover.workflow` (the workflow this tab entered, `rdf`; gone once the tab is back on the home page) and `flyover.project.notice` (a message to show after the reload that follows a change).
+- When the app starts, `init()` reads the server's project and sends nothing, unless the tab is inside the RDF workflow already (a reload): then it reopens the browser's project on a server that lost it (same token), or tells a server that forgot it that the tab works without one. A `BroadcastChannel` (`flyover-project`) tells other tabs about a change.
+- The home page's RDF tile, its start button and the navigation bar's RDF item open the pop-up in `enter` mode on the home page, with the workflow's page as its `target` ([`composables/useWorkflowEntry.js`](../app/frontend/src/composables/useWorkflowEntry.js)); the pop-up goes there once the tab has chosen, and a cancel leaves the user on the home page. [`App.vue`](../app/frontend/src/App.vue) opens it, without a target, when a link leads a tab to a page of the workflow (`meta.workflow`) it has not entered; that page waits in its place until the tab has chosen ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)), and a cancel goes back to the home page. App.vue calls `exitWorkflow()` when the tab arrives back on the home page. The pop-up offers the project the browser remembers first (`continueWithProject()`: on a server that still has it, only `POST /api/v1/project/store-start`; on one that lost it, the same `PUT` under the same token). A tab enters the workflow (`enterWorkflow('rdf')`) only once the server has its choice. The status bar's **Switch project** opens the pop-up in `switch` mode, and **Exit RDF** goes to the home page; the project stays remembered.
+- Leaving the workflow for the home page, by **Exit RDF** or the Back button, passes App.vue's navigation guard. For a tab inside the workflow whose store Flyover runs (`storeManaged`, from the store answers' `managed`) and that is running, it asks through the workflows store's `askExit()`, and [`ExitWorkflowDialog`](../app/frontend/src/components/ExitWorkflowDialog.vue) answers: `keep`, `stopped` (it stopped the store itself, with `project.stopStore()` and `POST /api/v1/project/store-stop`, saying so while it runs and why if it fails) or `stay`, which cancels the navigation.
 - Whether the store answers (`/api/v1/project/store-status`) is asked when the app starts, after a change of project, every minute while the tab is visible (`STORE_CHECK_INTERVAL_MS`; a hidden tab asks as soon as it is shown again, if a check is due), on every route change, and when the user clicks the status. A re-check keeps the last answer on screen until the new one arrives.
 - A view that takes a map upload calls `project.planUpload(map, fileName)` before it uses the map, and follows the answer: `go: false` means the user kept what was open; `opened: true` means the map is now the project's working copy, so a cleaned copy goes through `project.adoptWorkingCopy(...)` instead of a direct IndexedDB write.
+- A map's `targetStandard` (`rdf`, `omop` or `csv`; the server's check reports it, RDF when the map names none) is the id of the workflow that uses it. A map for another workflow than the tab's is refused before anything else: the pop-up shows its `other-standard` step, and `planUpload` asks the `other-standard` question (MapUploadDialog), both offering to switch through `useWorkflowEntry` (for a workflow under development, its note). Opening a map that names no standard says it is taken as RDF (`ASSUMED_RDF_NOTE` in `lib/project.js`).
 
 ## How dev mode works
 
@@ -161,13 +170,16 @@ Concrete example: adding `/describe/units`.
 
    ```js
    { path: '/describe/units', name: 'describe-units',
-     component: () => import('@/views/DescribeUnitsView.vue') },
+     component: () => import('@/views/DescribeUnitsView.vue'), meta: RDF_STORE },
    ```
 
-   Keep the lazy-import pattern — it keeps the initial bundle small. A page that reads or writes the store also gets
-   `meta: STORE` (`{ needsStore: true }`): it then waits in its place while nobody has chosen a project, while the
-   store starts and until the first answer about it ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)),
-   so its own checks on mount always meet a store that is there.
+   Keep the lazy-import pattern — it keeps the initial bundle small. A page of the RDF workflow gets `meta: RDF`
+   (`{ workflow: 'rdf' }`): a tab that comes to it by a link is asked for the project first, and the page waits in its
+   place until the tab has chosen. One that reads or writes the store gets `meta: RDF_STORE`
+   (`{ workflow: 'rdf', needsStore: true }`) instead: it then also waits while the store starts and until the first
+   answer about it
+   ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)), so its own checks on mount always
+   meet a store that is there.
 
 3. **(Optional) Surface it in the nav** by adding an entry to `STEPS` in [`composables/useNavigation.js`](../app/frontend/src/composables/useNavigation.js) if it's a top-level workflow step, or just link to it from another view with `<RouterLink to="/describe/units">`.
 

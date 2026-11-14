@@ -3,13 +3,14 @@ import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from '@/stores/project'
 
-// Whether the page on screen has to wait for the store, and why. A route
-// that needs the store (meta.needsStore) waits until Flyover knows whether
-// to ask for a project, while nobody has chosen what to work on (the server
-// says so, or this tab's start-up pop-up is open), while the store starts,
-// and until the first answer about it. A page, once
-// open, stays open whatever the store does next: it may hold the user's
-// work. The next page waits again while the store is not there.
+// Whether the page on screen has to wait, and why. A page of a workflow
+// (meta.workflow) waits until the tab has entered the workflow, by choosing
+// a project or to go without one (App.vue asks). A page that needs the
+// store (meta.needsStore) then also waits until Flyover knows the store,
+// while nobody has chosen what to work on (the server says so), while the
+// store starts, and until the first answer about it. A page, once open,
+// stays open whatever happens next: it may hold the user's work. The next
+// page waits again while it has to.
 //
 // A store someone stopped holds the page too, with a button to start it. A
 // store that cannot be reached for another reason lets the page open, and
@@ -19,14 +20,19 @@ import { useProjectStore } from '@/stores/project'
 // when the page may open.
 export function useStoreGate() {
   const route = useRoute()
-  const { ready, picker, storeStatus } = storeToRefs(useProjectStore())
+  const { ready, picker, storeStatus, workflow } = storeToRefs(useProjectStore())
 
   const notYet = computed(() => {
-    // Until the project store has loaded, Flyover does not know yet whether
-    // it will ask for a project: a store that answers early must not open
-    // the page under the start-up pop-up.
+    // The tab has not entered this page's workflow: App.vue asks it, which
+    // may follow a moment later (once the router has settled), so the page
+    // waits on the same condition rather than on the pop-up.
+    if (route.meta?.workflow && workflow.value !== route.meta.workflow) return 'waiting'
+    if (picker.value.open && picker.value.mode === 'enter') return 'waiting'
+    if (!route.meta?.needsStore) return ''
+    // Until the project store has loaded, Flyover does not know the store:
+    // one that answers early must not open the page before Flyover knows
+    // whether it is the store the tab works on.
     if (!ready.value) return 'connecting'
-    if (picker.value.open && picker.value.mode === 'startup') return 'waiting'
     return (
       {
         waiting: 'waiting',
@@ -48,9 +54,8 @@ export function useStoreGate() {
     }
   )
 
-  const waitingFor = computed(() =>
-    route.meta?.needsStore && !opened.value ? notYet.value : ''
-  )
+  const held = computed(() => Boolean(route.meta?.needsStore || route.meta?.workflow))
+  const waitingFor = computed(() => (held.value && !opened.value ? notYet.value : ''))
   const trouble = computed(() =>
     route.meta?.needsStore && storeStatus.value.state === 'unreachable'
       ? storeStatus.value.reason

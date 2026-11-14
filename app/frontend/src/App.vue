@@ -1,16 +1,24 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/AppNav.vue'
 import AppFooter from '@/components/AppFooter.vue'
+import ExitWorkflowDialog from '@/components/ExitWorkflowDialog.vue'
 import MapUploadDialog from '@/components/MapUploadDialog.vue'
 import ProjectPicker from '@/components/ProjectPicker.vue'
 import ProjectStatusBar from '@/components/ProjectStatusBar.vue'
 import StatusBanner from '@/components/StatusBanner.vue'
 import StoreWait from '@/components/StoreWait.vue'
+import WorkflowSoonDialog from '@/components/WorkflowSoonDialog.vue'
 import { useStoreGate } from '@/composables/useStoreGate'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 const project = useProjectStore()
+const workflows = useWorkflowsStore()
+const route = useRoute()
+const router = useRouter()
 // A page that needs the store waits for it in its place, or says above it
 // why the store cannot be reached (see useStoreGate).
 const { waitingFor, trouble } = useStoreGate()
@@ -18,6 +26,55 @@ const { waitingFor, trouble } = useStoreGate()
 onMounted(() => {
   project.init()
 })
+
+// The home page asks for the project before it goes to the RDF workflow
+// (see useWorkflowEntry). A tab that comes to a page of the workflow without
+// having entered it, by a link, is asked there, and the page waits meanwhile
+// (see useStoreGate). Only a change of page asks, or the project store
+// becoming ready: closing the pop-up does not, nor does leaving the workflow
+// (Exit RDF leaves it a moment before the home page shows). Until the router
+// has settled on the first page, nothing is asked.
+watch(
+  () => [route.name, route.path, project.ready],
+  ([name, , ready]) => {
+    if (!name || !ready) return
+    if (
+      route.meta?.workflow === 'rdf' &&
+      project.workflow !== 'rdf' &&
+      !project.picker.open
+    ) {
+      project.openPicker('enter')
+    }
+  },
+  { immediate: true }
+)
+
+// Leaving the workflow for the home page, by Exit RDF, the Back button or
+// otherwise, first asks whether to keep the workflow's store running or stop
+// it (see ExitWorkflowDialog): only for a tab inside the workflow, and only
+// when the store is Flyover's own and runs. The navigation waits for the
+// answer; "Stay" cancels it.
+const RUNNING = ['reachable', 'starting', 'unreachable']
+const removeExitGuard = router.beforeEach(async (to, from) => {
+  const workflow = from.meta?.workflow
+  if (!workflow || to.meta?.workflow || project.workflow !== workflow) return true
+  if (!project.storeManaged || !RUNNING.includes(project.storeStatus.state)) return true
+  const answer = await workflows.askExit(workflowById(workflow))
+  return answer !== 'stay'
+})
+onBeforeUnmount(removeExitGuard)
+
+// A tab that comes back to the home page, by Exit RDF or otherwise, has left
+// the workflow, and is asked again when it enters it again. Only arriving
+// there leaves: a tab that chose on the home page enters the workflow a
+// moment before it goes to the workflow's page.
+watch(
+  () => [route.name, route.meta?.workflow],
+  ([name, workflow]) => {
+    if (name && !workflow && project.workflow) project.exitWorkflow()
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -44,5 +101,7 @@ onMounted(() => {
     <AppFooter />
     <ProjectPicker />
     <MapUploadDialog />
+    <WorkflowSoonDialog />
+    <ExitWorkflowDialog />
   </div>
 </template>

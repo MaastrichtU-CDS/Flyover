@@ -1,7 +1,7 @@
 """
 Tests of Flyover's store launcher (stores/launcher/launcher.py): the Docker
-calls it makes over the socket, which containers it starts, and its HTTP
-answers.
+calls it makes over the socket, which containers it starts and stops, and
+its HTTP answers.
 
     python -m pytest stores/launcher -q
 """
@@ -100,6 +100,23 @@ def test_starting_a_container_that_runs_already_is_fine(engine, status):
     assert server.calls == [("POST", "/containers/abc123/start")]
 
 
+@pytest.mark.parametrize("status", [204, 304])
+def test_stopping_a_container_that_does_not_run_is_fine(engine, status):
+    server, docker = engine(lambda method, path: (status, None))
+
+    docker.stop("abc123")
+
+    # No timeout of its own: the container's grace period applies.
+    assert server.calls == [("POST", "/containers/abc123/stop")]
+
+
+def test_a_refused_stop_says_why(engine):
+    _, docker = engine(lambda method, path: (404, {"message": "No such container: x"}))
+
+    with pytest.raises(DockerError, match="No such container: x"):
+        docker.stop("x")
+
+
 def test_a_refused_start_says_why(engine):
     _, docker = engine(lambda method, path: (404, {"message": "No such container: x"}))
 
@@ -134,6 +151,8 @@ def test_a_reference_cannot_reach_another_api_path(engine, reference):
     with pytest.raises(DockerError, match="is not a container's id or name"):
         docker.start(reference)
     with pytest.raises(DockerError, match="is not a container's id or name"):
+        docker.stop(reference)
+    with pytest.raises(DockerError, match="is not a container's id or name"):
         docker.inspect(reference)
     assert server.calls == []
 
@@ -163,6 +182,7 @@ class FakeDocker:
         self.listed = containers
         self.hostname_labels = hostname_labels
         self.started = []
+        self.stopped = []
         self.queries = []
 
     def containers(self, labels):
@@ -187,6 +207,14 @@ class FakeDocker:
             if c["Id"] == reference:
                 c["State"], c["StartedAt"] = "running", LATER
                 self.started.append(c["Names"][0].lstrip("/"))
+                return
+        raise DockerError("No such container")
+
+    def stop(self, reference):
+        for c in self.listed:
+            if c["Id"] == reference:
+                c["State"] = "exited"
+                self.stopped.append(c["Names"][0].lstrip("/"))
                 return
         raise DockerError("No such container")
 
@@ -275,6 +303,26 @@ def test_starting_starts_only_what_is_not_running_in_the_labelled_order():
     assert state["startedAt"] == LATER
 
 
+def test_stopping_stops_only_what_runs_the_last_started_first():
+    docker = FakeDocker(
+        [
+            container("rdf-store", "running", order=2, started=LATER),
+            container("qlever-engine", "running", order=1, started=EARLIER),
+            container("restarting", "restarting", order=3, started=EARLIER),
+            container("unrelated", "running", module="omop", started=LATER),
+            container("other-stack-store", "running", project="other", started=LATER),
+            container("already", "exited", started=EARLIER, order=4),
+        ]
+    )
+
+    state = Launcher(docker, PROJECT).stop("rdf-store")
+
+    assert docker.stopped == ["restarting", "rdf-store", "qlever-engine"]
+    assert state["state"] == "stopped"
+    # It ran before, so Flyover leaves it stopped until a user asks.
+    assert state["neverStarted"] is False
+
+
 def test_a_module_without_containers_is_missing_and_nothing_starts():
     docker = FakeDocker([container("omop-db", module="omop")])
 
@@ -353,6 +401,16 @@ def test_the_launcher_reports_and_starts_a_module_over_http(serve):
     assert (status, body["state"], body["startedAt"]) == (200, "running", LATER)
 
 
+def test_the_launcher_stops_a_module_over_http(serve):
+    docker = FakeDocker([container("rdf-store", "running", started=LATER)])
+    port = serve(docker)
+
+    status, body = call(port, "POST", "/modules/rdf-store/stop")
+
+    assert (status, body["state"], body["startedAt"]) == (200, "stopped", None)
+    assert docker.stopped == ["rdf-store"]
+
+
 @pytest.mark.parametrize(
     "method, path",
     [
@@ -360,7 +418,9 @@ def test_the_launcher_reports_and_starts_a_module_over_http(serve):
         ("GET", "/modules/..%2F..%2Fimages"),
         ("GET", "/modules/rdf-store/start"),
         ("POST", "/modules/rdf-store"),
-        ("POST", "/modules/rdf-store/stop"),
+        ("POST", "/modules/rdf-store/remove"),
+        ("POST", "/modules/RDF-STORE/stop"),
+        ("GET", "/modules/rdf-store/stop"),
         ("GET", "/containers/json"),
         ("GET", "/modules/rdf-store?all=1"),
     ],
@@ -373,6 +433,7 @@ def test_anything_else_is_not_found(serve, method, path):
 
     assert (status, body) == (404, {"error": "No such resource."})
     assert docker.started == []
+    assert docker.stopped == []
 
 
 def test_a_docker_refusal_is_a_bad_gateway_with_the_reason(serve):

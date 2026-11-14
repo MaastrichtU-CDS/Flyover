@@ -69,6 +69,15 @@
       "description": "SPARQL endpoint URL",
       "type": "string"
     },
+    "targetStandard": {
+      "description": "The standard the map's data is transformed to, and so the Flyover workflow that uses it: rdf (an RDF store), omop (the OMOP common data model) or csv (CSV files). A map without it is taken as rdf.",
+      "type": "string",
+      "enum": [
+        "rdf",
+        "omop",
+        "csv"
+      ]
+    },
     "schema": {
       "$ref": "#/definitions/SemanticSchema"
     },

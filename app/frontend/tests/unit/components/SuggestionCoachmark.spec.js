@@ -66,14 +66,14 @@ describe('Frontend unit: SuggestionCoachmark', () => {
     expect(live.text()).toContain(COPY.body)
   })
 
-  it('emits close when the user clicks "Got it"', async () => {
+  it('emits close, acknowledged, when the user clicks "Got it"', async () => {
     const w = mountCoachmark()
     await vi.advanceTimersByTimeAsync(400)
     await w.find('button.coachmark-confirm').trigger('click')
-    expect(w.emitted('close')).toBeTruthy()
+    expect(w.emitted('close')).toEqual([[{ acknowledged: true }]])
   })
 
-  it('emits close on Escape once visible', async () => {
+  it('emits close, not acknowledged, on Escape once visible', async () => {
     const w = mountCoachmark()
     // Before the delay, Escape does nothing.
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
@@ -81,7 +81,14 @@ describe('Frontend unit: SuggestionCoachmark', () => {
 
     await vi.advanceTimersByTimeAsync(400)
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    expect(w.emitted('close')).toBeTruthy()
+    expect(w.emitted('close')).toEqual([[{ acknowledged: false }]])
+  })
+
+  it("lines up with its anchor's left edge, or its right edge for an anchor on the right", () => {
+    expect(mountCoachmark().find('.suggestion-coachmark').classes()).not.toContain('is-end')
+    expect(mountCoachmark({ align: 'end' }).find('.suggestion-coachmark').classes()).toContain(
+      'is-end'
+    )
   })
 
   it('stops listening for Escape when unmounted', async () => {

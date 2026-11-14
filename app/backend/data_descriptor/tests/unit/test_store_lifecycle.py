@@ -33,6 +33,7 @@ class FakeLauncher:
         self.answer = state or ModuleState("running", NOW)
         self.error = error
         self.started = []
+        self.stopped = []
         self.asked = 0
 
     def state(self, module):
@@ -46,6 +47,12 @@ class FakeLauncher:
         if self.error:
             raise self.error
         return self.answer
+
+    def stop(self, module):
+        self.stopped.append(module)
+        if self.error:
+            raise self.error
+        return ModuleState("stopped", None)
 
 
 def lifecycle(launcher=None):
@@ -198,4 +205,39 @@ def test_nothing_is_started_before_someone_chooses_even_if_it_never_ran():
     launcher = FakeLauncher(ModuleState("stopped", None, never_started=True))
 
     assert lifecycle(launcher).status(LOCAL, False, answers(False)) == ("waiting", "")
+    assert launcher.started == []
+
+
+def test_a_user_can_stop_flyovers_store_any_repository_of_it():
+    launcher = FakeLauncher()
+
+    lifecycle(launcher).stop(LOCAL)
+    lifecycle(launcher).stop(LOCAL_OTHER_REPOSITORY)
+
+    assert launcher.stopped == ["rdf-store", "rdf-store"]
+
+
+def test_a_store_flyover_does_not_run_is_never_stopped():
+    launcher = FakeLauncher()
+
+    lifecycle(launcher).stop(REMOTE)
+    lifecycle(None).stop(LOCAL)
+
+    assert launcher.stopped == []
+
+
+def test_a_stop_the_launcher_refuses_says_why():
+    launcher = FakeLauncher(error=LauncherError("Docker is busy"))
+
+    with pytest.raises(LauncherError, match="Docker is busy"):
+        lifecycle(launcher).stop(LOCAL)
+
+
+def test_a_store_a_user_stopped_stays_stopped_until_a_user_starts_it():
+    launcher = FakeLauncher(state=ModuleState("stopped", None, never_started=False))
+    check = answers(False, "No answer.")
+
+    lifecycle(launcher).stop(LOCAL)
+
+    assert lifecycle(launcher).status(LOCAL, True, check) == ("stopped", STORE_STOPPED)
     assert launcher.started == []

@@ -1,7 +1,8 @@
 <script setup>
 /**
  * SuggestionCoachmark — the first-visit callout that explains the
- * suggestion review flow (WS2).
+ * suggestion review flow (WS2). The status bar's notice beside Exit RDF
+ * uses it too, so the two look alike.
  *
  * Non-modal: it never blocks clicking the pill or the dropdown
  * underneath, never steals focus on page load, and closes on "Got it"
@@ -12,9 +13,12 @@
  *   title — bold heading of the callout.
  *   body — explanation text.
  *   confirmLabel — label of the acknowledgement button (default "Got it").
+ *   align — 'start' (default) lines the callout up with its anchor's left
+ *     edge; 'end' with its right edge, for an anchor near the right.
  *
  * Emits:
- *   close — the user acknowledged the callout (button or Escape).
+ *   close — the user closed the callout, with { acknowledged }: true for
+ *     the button, false for Escape. The suggestion views treat both alike.
  *
  * The callout appears ~300 ms after mount so it does not flash during
  * layout, is announced once through a polite live region, and respects
@@ -29,6 +33,11 @@ const props = defineProps({
   title: { type: String, required: true },
   body: { type: String, required: true },
   confirmLabel: { type: String, default: 'Got it' },
+  align: {
+    type: String,
+    default: 'start',
+    validator: (value) => ['start', 'end'].includes(value),
+  },
 })
 
 const emit = defineEmits(['close'])
@@ -42,12 +51,12 @@ const announced = ref('')
 let _showTimer = null
 let _announceTimer = null
 
-function close() {
-  emit('close')
+function close(acknowledged) {
+  emit('close', { acknowledged })
 }
 
 function onKeydown(e) {
-  if (e.key === 'Escape' && visible.value) close()
+  if (e.key === 'Escape' && visible.value) close(false)
 }
 
 onMounted(() => {
@@ -76,6 +85,7 @@ onBeforeUnmount(() => {
     <div
       v-show="visible"
       class="suggestion-coachmark"
+      :class="{ 'is-end': align === 'end' }"
       role="dialog"
       aria-modal="false"
       :aria-labelledby="titleId"
@@ -90,7 +100,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="btn btn-sm btn-light coachmark-confirm"
-        @click.stop="close"
+        @click.stop="close(true)"
       >
         {{ confirmLabel }}
       </button>
@@ -148,6 +158,17 @@ onBeforeUnmount(() => {
   border-width: 0 0.4rem 0.4rem;
   border-style: solid;
   border-color: transparent transparent rgba(0, 0, 0, 0.9);
+}
+
+/* Lined up with the anchor's right edge, the arrow on the right. */
+.suggestion-coachmark.is-end {
+  left: auto;
+  right: 0;
+}
+
+.suggestion-coachmark.is-end::before {
+  left: auto;
+  right: 14px;
 }
 
 .coachmark-title {

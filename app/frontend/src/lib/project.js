@@ -1,6 +1,11 @@
 // Projects. A project is a JSON-LD semantic map the user opened on purpose:
-// in the pop-up Flyover shows when it opens, through "Switch project" in the
-// status bar, or by accepting the offer a map upload in a step makes.
+// in the pop-up Flyover shows as a tab enters a workflow, through "Switch
+// project" in the status bar, or by accepting the offer a map upload in a
+// step makes.
+//
+// A map names the standard its data is transformed to, `targetStandard`
+// (rdf, omop or csv): the workflow that uses it. A map without one is an RDF
+// map, as every map was before.
 //
 // A map has a general part every site of a project shares (its `schema`)
 // and a site-specific part (its own name, its `databases`). Two maps belong
@@ -13,6 +18,14 @@
 // The example template's name, which a site is meant to replace.
 const PLACEHOLDER_NAME = /^REPLACE_WITH_/i
 
+const TARGET_STANDARDS = ['rdf', 'omop', 'csv']
+export const DEFAULT_TARGET_STANDARD = 'rdf'
+
+// Said after opening a map that names no target standard.
+export const ASSUMED_RDF_NOTE =
+  'Its JSON-LD names no target standard, so Flyover takes it as an RDF project: ' +
+  'add "targetStandard": "rdf" to the JSON-LD to say so.'
+
 function text(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -20,6 +33,7 @@ function text(value) {
 // What a map says about itself, in the shape the server reports it.
 export function mapDetails(map) {
   const schema = map && typeof map.schema === 'object' && map.schema ? map.schema : {}
+  const declared = TARGET_STANDARDS.includes(map?.targetStandard)
   return {
     name: text(map?.name),
     version: text(map?.version),
@@ -27,7 +41,15 @@ export function mapDetails(map) {
     schemaId: text(schema['@id']),
     schemaName: text(schema.name),
     schemaVersion: text(schema.version),
+    targetStandard: declared ? map.targetStandard : DEFAULT_TARGET_STANDARD,
+    targetStandardDeclared: declared,
   }
+}
+
+// The standard a map targets, from its details: its own, else RDF.
+export function targetStandard(details) {
+  const standard = details?.targetStandard
+  return TARGET_STANDARDS.includes(standard) ? standard : DEFAULT_TARGET_STANDARD
 }
 
 // Whether two maps (or their details) belong to the same project: the same

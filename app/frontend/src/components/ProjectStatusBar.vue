@@ -1,12 +1,15 @@
 <script setup>
 import { computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import HoverTip from '@/components/HoverTip.vue'
 import StoreDatasetsMenu from '@/components/StoreDatasetsMenu.vue'
+import SuggestionCoachmark from '@/components/SuggestionCoachmark.vue'
 import { useCyclingDots } from '@/composables/useCyclingDots'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 import { useStoreDatasetsStore } from '@/stores/storeDatasets'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 // The strip above the step bar: which RDF store Flyover works on (and
 // where it stands; a click on it opens its datasets), which project is
@@ -14,20 +17,48 @@ import { useStoreDatasetsStore } from '@/stores/storeDatasets'
 // Where the store stands is asked again on every step, every minute while
 // the tab is visible (every two seconds while it starts; see the project
 // store), and on a click. Until someone chooses a project, or the standard
-// RDF flow, Flyover starts no store and the strip says it is waiting.
+// RDF flow, Flyover starts no store and the strip says it is waiting. On the
+// home page no workflow is chosen, so the strip names neither store nor
+// project; inside a workflow it offers to exit it, back to the home page.
 
 const projectStore = useProjectStore()
 const route = useRoute()
+const router = useRouter()
 const { store, storeStatus, project, name, version, picker } = storeToRefs(projectStore)
 // While the datasets panel is open, the store's tooltip stays away from it.
 const { open: datasetsOpen } = storeToRefs(useStoreDatasetsStore())
 
+// The page belongs to a workflow (the RDF one), not to the home page.
+const inWorkflow = computed(() => Boolean(route.meta?.workflow))
+
 // Nobody has chosen what to work on: the server said so, or this tab's
-// start-up pop-up is still open.
+// pop-up asks as it enters the workflow.
 const waiting = computed(
   () =>
     storeStatus.value.state === 'waiting' ||
-    (picker.value.open && picker.value.mode === 'startup')
+    (picker.value.open && picker.value.mode === 'enter')
+)
+
+// Leave the workflow for the home page. App.vue asks first whether to keep
+// the store running, and the tab leaves the workflow once it is there; the
+// project stays remembered.
+function exitWorkflow() {
+  router.push('/')
+}
+
+// The notice beside Exit (see the workflows store): "Home" in the
+// navigation bar shows it on the workflow's landing page, and it goes once
+// the user moves on.
+const workflows = useWorkflowsStore()
+const { exitNotice } = storeToRefs(workflows)
+const workflowName = computed(() => workflowById(route.meta?.workflow)?.label || '')
+watch(
+  () => route.path,
+  (path) => {
+    if (exitNotice.value && path !== workflowById(route.meta?.workflow)?.to) {
+      workflows.closeExitNotice()
+    }
+  }
 )
 // The work uses no database (none does yet: a later workflow may keep
 // everything in memory).
@@ -96,7 +127,20 @@ const projectTip = computed(() => {
     <!-- The page content's container, so the strip lines up with it. -->
     <div class="container container-flyover statusbar-inner">
       <span
-        v-if="waiting"
+        v-if="!inWorkflow"
+        id="statusbar-home"
+        class="statusbar-item"
+      >
+        <i
+          class="fas fa-home"
+          aria-hidden="true"
+        />
+        Home
+        <span aria-hidden="true">·</span>
+        <span class="statusbar-muted">Choose a workflow to begin</span>
+      </span>
+      <span
+        v-else-if="waiting"
         id="statusbar-store"
         class="statusbar-item statusbar-waiting"
       >
@@ -187,6 +231,7 @@ const projectTip = computed(() => {
         </template>
       </span>
       <span
+        v-if="inWorkflow"
         id="statusbar-project"
         class="statusbar-item"
       >
@@ -218,6 +263,27 @@ const projectTip = computed(() => {
         >
           {{ project ? 'Switch project' : 'Choose a project' }}
         </button>
+        <span aria-hidden="true">·</span>
+        <span class="statusbar-exit">
+          <button
+            id="statusbar-exit"
+            type="button"
+            class="statusbar-link"
+            @click="exitWorkflow"
+          >
+            <i
+              class="fas fa-right-from-bracket"
+              aria-hidden="true"
+            /> Exit {{ workflowName }}
+          </button>
+          <SuggestionCoachmark
+            v-if="exitNotice"
+            align="end"
+            :title="`This is the ${workflowName} workflow's home`"
+            :body="`To leave the workflow and go back to Flyover's home page, click Exit ${workflowName}.`"
+            @close="workflows.closeExitNotice($event)"
+          />
+        </span>
       </span>
     </div>
   </div>
@@ -251,6 +317,12 @@ const projectTip = computed(() => {
 
 .statusbar-item strong {
   color: #fff;
+}
+
+/* The anchor of the notice beside Exit. */
+.statusbar-exit {
+  position: relative;
+  display: inline-flex;
 }
 
 .statusbar-link {
@@ -328,7 +400,8 @@ const projectTip = computed(() => {
   text-align: left;
 }
 
-.statusbar-waiting {
+.statusbar-waiting,
+.statusbar-muted {
   font-style: italic;
 }
 
