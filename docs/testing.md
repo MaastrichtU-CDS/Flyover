@@ -143,6 +143,8 @@ docker compose -f ../../docker-compose.yml -f ../../docker-compose.test.yml down
 
 Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases.
 
+Flyover asks which project to work on when it opens, and a map uploaded in a step without a project offers to open it as one. The specs of the steps test the standard RDF flow, so they import `test` and `expect` from [`tests/e2e/helpers/fixtures.js`](../app/frontend/tests/e2e/helpers/fixtures.js), which answers both through the UI ("Continue without a project", "Keep going without a project") whenever they show. A new spec of the steps should do the same. `tests/e2e/project.spec.js` tests projects themselves, so it imports Playwright's own `test`, and closes the project on the server after each test.
+
 The suggestion flows (`tests/e2e/suggestions.spec.js`) need the default `FLYOVER_SUGGESTION_TIERS=1` and upload their own semantic map; their "disabled" flow mocks `/api/v1/suggestions/status`. The real feature-off run is `tests/e2e/suggestions-disabled.spec.js`: start the stack with the flag empty and set `E2E_SUGGESTIONS_DISABLED=1` so an enabled stack fails instead of skipping. Each suggestion spec skips itself against a stack in the other state, so `npm run test:e2e` passes on either.
 
 ```bash

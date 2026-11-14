@@ -60,6 +60,11 @@ After changing the preset, recreate the stack with `docker compose up -d --build
 See [`stores/rdf/README.md`](stores/rdf/README.md) for the differences between the
 backends and details of the QLever integration.
 
+Flyover reaches the store inside Docker as `http://rdf-store:7200`; its users reach
+it where the stack publishes it, `http://localhost:7200`, which is the address the
+status bar shows. If you publish the store elsewhere, set `FLYOVER_RDF_STORE_PUBLIC_URL`
+to the address your users know it by.
+
 See the wiki's [Getting Started](https://github.com/MaastrichtU-CDS/Flyover/wiki/Getting-Started) page for more details
 on configuration and environment variables.
 
@@ -98,6 +103,32 @@ Flyover guides you through four distinct steps:
    data model is needed to drive the annotation process. Review and verify annotations to ensure semantic correctness.
 4. **Share** — Download filled-in semantic maps, generate anonymous mock data that preserves the structure of your
    dataset, and share your project with a wider audience.
+
+### Projects
+
+A project is the JSON-LD semantic map a study shares with its sites. Its `schema` section is the general part every
+site of the project uses; its `databases` section is the part each site fills in for its own data. When Flyover opens,
+it asks which project to work on:
+
+- **Open a project**: drop or browse for the project's JSON-LD map, or load it from a web address. You may start from
+  the project's empty template and upload your own filled-in map later, in any step.
+- **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
+
+A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
+(red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it.
+Flyover checks the connection every minute while its tab is visible, on every step, and when you click the status. Switching and leaving ask first and offer to download the
+current map, describe answers included. Working without a project lasts for the browser tab; an open project lasts
+until you switch or leave it.
+
+While a project is open, every step works on the RDF store its map's top-level `endpoint` names, for example
+`http://graphdb.example.org:7200/repositories/aya/statements`; without an endpoint, Flyover uses its configured store.
+An endpoint on `localhost` or `127.0.0.1` means the configured store with the repository the map names, because inside
+Flyover's container `localhost` is the container itself. Flyover never creates repositories: one the store lacks shows
+as unreachable in the strip.
+
+A map uploaded in a step is checked against the open project. The project's own map (the same schema) replaces the
+working copy, after asking if you added describe answers since it was loaded; another project's map asks whether to
+switch. Without a project, a map that belongs to a project offers to open it as one.
 
 ### Example Data
 

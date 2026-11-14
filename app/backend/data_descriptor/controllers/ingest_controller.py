@@ -32,7 +32,7 @@ ingest_bp = Blueprint("ingest", __name__)
 
 
 def get_app_context() -> dict:
-    """Get application context (session_cache, rdf_store_url, etc.)."""
+    """Get application context (session_cache, rdf_store_service, etc.)."""
     from flask import current_app
     from services import RDFStoreService
 

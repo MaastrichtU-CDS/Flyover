@@ -82,13 +82,34 @@ The JSON-LD mapping is **the** durable document that the user is editing across 
 
 The Flask side at [`app/backend/data_descriptor/`](../app/backend/data_descriptor/) is organised as four layers:
 
-- **[`controllers/`](../app/backend/data_descriptor/controllers/)** — One Flask Blueprint per workflow step (`ingest_bp`, `describe_bp`, `annotate_bp`, `share_bp`). Each route does HTTP parsing only — pulls JSON or form data, calls a service, packages the response. Many landing routes are now just `redirect("/app/...")` because the SPA owns the page rendering.
+- **[`controllers/`](../app/backend/data_descriptor/controllers/)** — One Flask Blueprint per workflow step (`ingest_bp`, `describe_bp`, `annotate_bp`, `share_bp`), plus `suggestions_bp` and `project_bp` (see [Projects and the store in use](#projects-and-the-store-in-use)). Each route does HTTP parsing only — pulls JSON or form data, calls a service, packages the response. Many landing routes are now just `redirect("/app/...")` because the SPA owns the page rendering.
 - **[`services/`](../app/backend/data_descriptor/services/)** — Business logic. `IngestService` runs the Triplifier and writes to GraphDB; `RdfStoreService` is the higher-level wrapper around the repository; `ShareService` does export and mock-data generation; etc. Services are the right place to add new behaviour — they're the layer the unit tests exercise most heavily.
 - **[`repositories/`](../app/backend/data_descriptor/repositories/)** — `RdfStoreRepository` owns the actual HTTP calls to GraphDB's REST API; `query_builder.py` constructs the SPARQL strings. Anything that touches `requests.post("http://rdf-store:7200/...")` belongs here.
 - **`session_cache`** — The one `SessionCache` instance [`create_app()`](../app/backend/data_descriptor/app_factory.py) puts into `APP_CONTEXT`, shared by every request. Holds the current user's in-flight state: the loaded CSV, the JSON-LD mapping under construction, the list of variables, etc. It's process-local, so the app is **not** safe to scale horizontally without changes.
-- **[`app_factory.py`](../app/backend/data_descriptor/app_factory.py)** — `create_app()` registers the blueprints and the SPA route (the built files, and `index.html` for client routes; an unknown `/api/` path or a missing asset is a 404), refuses state-changing requests whose `Origin` (or `Referer`) names another site (the forms carry no CSRF token), answers errors on the JSON API (`/api/`, and for clients that ask for JSON) as `{"error": ...}` while page routes keep Flask's HTML pages, wires response compression ([`utils/response_compression.py`](../app/backend/data_descriptor/utils/response_compression.py)) and builds `APP_CONTEXT`: the session cache, the RDF store and suggestion services, and the helpers the controllers call (triplifier run, graph upload, background jobs, name matching). [`data_descriptor_main.py`](../app/backend/data_descriptor/data_descriptor_main.py) is the gunicorn entry point: it applies gevent's monkey patching and logging, then calls `create_app()` with the settings it reads from the environment. Tests call the factory with their own settings and services.
+- **[`app_factory.py`](../app/backend/data_descriptor/app_factory.py)** — `create_app()` registers the blueprints and the SPA route (the built files, and `index.html` for client routes; an unknown `/api/` path or a missing asset is a 404), refuses state-changing requests whose `Origin` (or `Referer`) names another site (the forms carry no CSRF token), answers errors on the JSON API (`/api/`, and for clients that ask for JSON) as `{"error": ...}` while page routes keep Flask's HTML pages, wires response compression ([`utils/response_compression.py`](../app/backend/data_descriptor/utils/response_compression.py)) and builds `APP_CONTEXT`: the session cache, the store selection, the RDF store, suggestion and project services, and the helpers the controllers call (triplifier run, graph upload, background jobs, name matching, fetching a map from a web address). [`data_descriptor_main.py`](../app/backend/data_descriptor/data_descriptor_main.py) is the gunicorn entry point: it applies gevent's monkey patching and logging, then calls `create_app()` with the settings it reads from the environment. Tests call the factory with their own settings and services.
 
 If you're hunting a bug, work from the outside in: controller → service → repository. The controller usually just hands the request body to the service.
+
+## Projects and the store in use
+
+A project is a JSON-LD map the user opened on purpose (see the [README](../README.md#projects)). The browser keeps the project's working copy in IndexedDB; the server keeps what it needs to work on it.
+
+**The store selection** ([`services/store_selection.py`](../app/backend/data_descriptor/services/store_selection.py)). `StoreSelection` holds the store the app works on: the configured one (`FLYOVER_RDF_STORE_URL`, `FLYOVER_REPOSITORY_NAME`) or the one an open project's map names in its top-level `endpoint`. `APP_CONTEXT["rdf_store_service"]` is a `SelectedStoreService`: it hands every call to the selected store's `RDFStoreService`, and a request keeps the store it first used, so a project that changes mid-request never splits that request over two stores. The graph upload and the relationship jobs an ingest starts take `pin_store(...)` once, so they finish on the store they started on. An endpoint is usable when its path holds `/repositories/<name>` (anything after the name, such as `/statements`, is dropped); a `localhost` or loopback endpoint means the configured store with the map's repository. Credentials in an endpoint are used, but never shown or logged. The browser is told a store's address as its users know it: the configured store at `FLYOVER_RDF_STORE_PUBLIC_URL` (compose sets `http://localhost:7200`, where it publishes the store; the app itself uses `http://rdf-store:7200`), and a map's `localhost` endpoint the same way.
+
+**The project service** ([`services/project_service.py`](../app/backend/data_descriptor/services/project_service.py)) behind [`controllers/project_controller.py`](../app/backend/data_descriptor/controllers/project_controller.py):
+
+| Route | What it does |
+|---|---|
+| `GET /api/v1/project` | The open project (or none), the store in use and the configured store |
+| `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use |
+| `DELETE /api/v1/project` | Work without a project again |
+| `POST /api/v1/project/check` | What opening a map would mean (can it be opened, which project, which store), changing nothing |
+| `GET /api/v1/project/store-status` | Whether the store in use answers one short `ASK`, and if not, why; the status bar asks every minute while its tab is visible |
+| `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB) |
+
+Two maps belong to the same project when their `schema` sections do: the same `schema.@id` when both have one, else the same `schema.name`. On every change of project, the server forgets the session state worked out for the previous map (the annotation status, pasted LLM answers, suggestion jobs, the describe answers the forms posted); on a change of store, also what it knew of the previous store's databases. The data in the stores is never touched.
+
+gunicorn runs one worker with `--preload` and replaces it every thousand or so requests (the status bar's check adds about 60 an hour per visible tab); a new worker starts from the app as it was built, without the session's in-memory state. The open project is therefore also written to `state/open_project.json` beside the package (outside `static/`, readable by the app only, as an endpoint may carry credentials), and every request first catches up with that file (`ProjectService.sync`, one `stat` when nothing changed). When the container itself is recreated the file is gone, and the browser sends its project again, under the same token, the next time Flyover opens.
 
 ## What is `userRepo`?
 
@@ -101,7 +122,7 @@ Why this matters operationally:
 
 The seed contains stock GraphDB defaults only — single admin user with the documented default password. **Never commit live user state into `stores/rdf/graphdb/seed/`.**
 
-The Flask backend learns which repository to use from the env var `FLYOVER_REPOSITORY_NAME=userRepo` (set in [`docker-compose.yml`](../docker-compose.yml)). Changing that without also seeding a config.ttl for the new repository will break ingest.
+The Flask backend learns which repository to use from the env var `FLYOVER_REPOSITORY_NAME=userRepo` (set in [`docker-compose.yml`](../docker-compose.yml)). Changing that without also seeding a config.ttl for the new repository will break ingest. An open project's map may name another repository (or another store); Flyover never creates one, so it must exist before the project is used.
 
 ## What is JSON-LD?
 

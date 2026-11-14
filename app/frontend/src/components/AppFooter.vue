@@ -1,6 +1,8 @@
 <template>
   <footer class="flyover-footer">
-    <div class="container">
+    <!-- The page content's container, as the status bar at the top uses, so
+         the logo and the version line up with the store and the project. -->
+    <div class="container container-flyover">
       <div class="row">
         <div class="col-md-4 text-md-left">
           <p class="footer-text-md">

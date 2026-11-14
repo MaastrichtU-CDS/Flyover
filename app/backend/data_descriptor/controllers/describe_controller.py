@@ -25,7 +25,7 @@ describe_bp = Blueprint("describe", __name__)
 
 
 def get_app_context() -> dict:
-    """Get application context (session_cache, rdf_store_url, etc.)."""
+    """Get application context (session_cache, rdf_store_service, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})

@@ -466,6 +466,21 @@ class TestStartAnnotation:
             temp_dir=os.path.join(tempfile.gettempdir(), "annotation_temp", TABLE),
         )
 
+    def test_the_annotations_go_to_the_store_the_service_works_on(
+        self, client, session_cache, store, annotatable
+    ):
+        # The session's own repository name is not where they go: the store
+        # service names both the store and its repository.
+        store.rdf_store_url = "http://another-store:7200"
+        store.repo = "projectRepo"
+        session_cache.repo = REPO
+
+        client.post("/start-annotation")
+
+        assert annotatable.execute_annotation.call_args.args[0] == (
+            "http://another-store:7200/repositories/projectRepo/statements"
+        )
+
     @pytest.mark.parametrize(
         "database, folder",
         [("../../etc", "etc"), ("///", "db"), ("Centre B (NL)", "Centre_B_NL")],

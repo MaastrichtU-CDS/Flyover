@@ -17,7 +17,7 @@ app/frontend/
 ├── playwright.config.js             # E2E test config — see testing.md
 └── src/
     ├── main.js                      # app entry: createApp → use(pinia, router) → mount('#app')
-    ├── App.vue                      # shell: AppNav, <RouterView/>, AppFooter, StatusBanner
+    ├── App.vue                      # shell: ProjectStatusBar, AppNav, <RouterView/>, AppFooter, StatusBanner, the project pop-ups
     ├── assets/main.css              # the only Vue-owned CSS (layout overrides)
     ├── router/index.js              # the 11 routes (lazy-loaded), base path /app/
     ├── views/                       # one component per route
@@ -33,13 +33,21 @@ app/frontend/
     │   ├── ShareMockView.vue
     │   └── SharePublishView.vue
     ├── components/                  # shared bits used across views
+    │   ├── ProjectStatusBar.vue     # strip above the steps: the store (with a reachability dot) and the project
+    │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
+    │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── AppNav.vue               # breadcrumb / step navigator
     │   ├── AppFooter.vue
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
     │   └── MigrationStub.vue        # legacy placeholder, gone soon
     ├── composables/
+    │   ├── useModalFocus.js         # keyboard handling the pop-ups share (focus, Tab, Escape)
     │   └── useNavigation.js         # workflow-step state (which steps are completed, disabled)
+    ├── lib/
+    │   ├── project.js               # which project a map belongs to, its name, a map fingerprint
+    │   └── browser.js               # reloadPage(), kept apart so tests can stand in for it
     ├── stores/
+    │   ├── project.js               # Pinia store: the open project, kept in step with the server
     │   └── status.js                # Pinia store: toast/banner messages
     └── services/
         └── api.js                   # axios instance, baseURL '/'
@@ -69,6 +77,16 @@ flowchart TD
     r2 & r3 & r4 & r5 -->|"POST /upload, /upload-semantic-map, ..."| api
     api --> flask
 ```
+
+## Projects in the browser
+
+The project store ([`src/stores/project.js`](../app/frontend/src/stores/project.js)) keeps the browser and the server on the same project (see [architecture.md](architecture.md#projects-and-the-store-in-use) for the server side):
+
+- IndexedDB `FlyoverDB` → `metadata` holds the working copy (`semantic_map`, the row the describe pages fill in) and, next to it, the record of the open project (`project`: what the server reported, the token, and the fingerprint of the working copy as it was loaded, which tells whether describe answers were added since).
+- `sessionStorage` holds `flyover.project.withoutProject` (this tab chose to work without a project) and `flyover.project.notice` (a message to show after the reload that follows a change).
+- When the app starts, `init()` reopens the browser's project on a server that lost it (same token), and opens the pop-up when there is no project and the tab has not chosen. A `BroadcastChannel` (`flyover-project`) tells other tabs about a change.
+- Whether the store answers (`/api/v1/project/store-status`) is asked when the app starts, after a change of project, every minute while the tab is visible (`STORE_CHECK_INTERVAL_MS`; a hidden tab asks as soon as it is shown again, if a check is due), on every route change, and when the user clicks the status. A re-check keeps the last answer on screen until the new one arrives.
+- A view that takes a map upload calls `project.planUpload(map, fileName)` before it uses the map, and follows the answer: `go: false` means the user kept what was open; `opened: true` means the map is now the project's working copy, so a cleaned copy goes through `project.adoptWorkingCopy(...)` instead of a direct IndexedDB write.
 
 ## How dev mode works
 

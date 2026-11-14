@@ -4,9 +4,11 @@ import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { useNavigation } from '@/composables/useNavigation'
+import { errorMessage, useProjectStore } from '@/stores/project'
 
 const router = useRouter()
 const { refreshDataExists } = useNavigation()
+const project = useProjectStore()
 
 const checking = ref(true)
 const dataExists = ref(false)
@@ -182,6 +184,28 @@ function showUploadStatus(message, type) {
   uploadStatus.value = { message, type: type || 'success' }
 }
 
+// Why the open project cannot take a map, as the status box shows it.
+function invalidMapHtml(check) {
+  const items = (check?.validation_errors || [])
+    .map((e) => `<li><code>${escapeHtml(e.path)}</code> — ${escapeHtml(e.message)}</li>`)
+    .join('')
+  return `<strong>${escapeHtml(check?.error || 'This map cannot be opened as a project.')}</strong>${items ? `<ul>${items}</ul>` : ''}`
+}
+
+// Whether the store Flyover works on holds data: on arrival, and again when
+// an upload moved Flyover to a project's store.
+async function checkDataExists() {
+  try {
+    const { data } = await api.get('/api/check-graph-exists')
+    dataExists.value = !!data?.exists
+    refreshDataExists()
+  } catch {
+    dataExists.value = false
+  } finally {
+    checking.value = false
+  }
+}
+
 async function handleJsonUpload() {
   if (!jsonFile.value) {
     showUploadStatus('Please select a JSON-LD file to upload.', 'error')
@@ -199,6 +223,37 @@ async function handleJsonUpload() {
       uploadProcessing.value = false
       return
     }
+    // Which project the map belongs to comes first: opening it may move
+    // Flyover to another store, which the upload below must be checked on.
+    let plan
+    try {
+      plan = await project.planUpload(json, jsonFile.value.name)
+    } catch (e) {
+      showUploadStatus(`The map could not be checked: ${escapeHtml(errorMessage(e))}`, 'error')
+      return
+    }
+    if (plan.invalid) {
+      showUploadStatus(invalidMapHtml(plan.invalid), 'error')
+      return
+    }
+    if (!plan.go) {
+      showUploadStatus(
+        `The upload was set aside: Flyover keeps working on ${escapeHtml(project.name)}.`,
+        'info'
+      )
+      return
+    }
+    if (plan.storeChanged) {
+      await checkDataExists()
+      if (!dataExists.value) {
+        showUploadStatus(
+          "Flyover now works on the project's RDF store, which holds no data yet. Ingest the data first.",
+          'info'
+        )
+        return
+      }
+    }
+
     const formData = new FormData()
     formData.append('annotationJsonFile', jsonFile.value)
     const res = await fetch('/upload-annotation-json', {
@@ -209,11 +264,18 @@ async function handleJsonUpload() {
 
     if (res.ok && result.success) {
       try {
-        await db.saveData('metadata', {
-          key: 'semantic_map',
-          data: result.cleaned_mapping || json,
-          timestamp: new Date().toISOString(),
-        })
+        if (plan.opened) {
+          // The project's working copy, as loaded: cleaned of absent columns.
+          await project.adoptWorkingCopy(result.cleaned_mapping || json, {
+            fileName: jsonFile.value.name,
+          })
+        } else {
+          await db.saveData('metadata', {
+            key: 'semantic_map',
+            data: result.cleaned_mapping || json,
+            timestamp: new Date().toISOString(),
+          })
+        }
       } catch (e) {
         console.error('Failed to save JSON-LD to IndexedDB:', e)
       }
@@ -266,15 +328,7 @@ function goToAnnotationReview() {
 }
 
 onMounted(async () => {
-  try {
-    const { data } = await api.get('/api/check-graph-exists')
-    dataExists.value = !!data?.exists
-    refreshDataExists()
-  } catch {
-    dataExists.value = false
-  } finally {
-    checking.value = false
-  }
+  await checkDataExists()
   if (dataExists.value) {
     await checkIndexedDbSemanticMap()
   }

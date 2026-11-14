@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures.js'
 
 // These tests assume `docker compose up` is running. They drive the SPA
 // against the real Flask + GraphDB stack.

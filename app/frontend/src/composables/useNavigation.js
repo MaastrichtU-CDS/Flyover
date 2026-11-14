@@ -43,7 +43,8 @@ const STEPS = [
   },
 ]
 
-async function refreshDataExists() {
+// Whether the store in use holds any data; asked again when it changes.
+export async function refreshDataExists() {
   try {
     const { data } = await api.get('/api/check-graph-exists')
     dataExists.value = !!data?.exists

@@ -38,7 +38,7 @@ def _is_row_count(value: Any) -> bool:
 
 
 def get_app_context() -> dict:
-    """Get application context (session_cache, rdf_store_url, etc.)."""
+    """Get application context (session_cache, rdf_store_service, etc.)."""
     from flask import current_app
 
     return current_app.config.get("APP_CONTEXT", {})
@@ -64,10 +64,9 @@ def download_ontology():
     ctx = get_app_context()
     session_cache = ctx.get("session_cache")
     rdf_store_service = ctx.get("rdf_store_service")
-    rdf_store_url = ctx.get("rdf_store_url", "http://localhost:7200")
     named_graph = "http://ontology.local/"
     return ShareService.download_ontology(
-        session_cache, rdf_store_service, rdf_store_url, named_graph
+        session_cache, rdf_store_service, rdf_store_service.rdf_store_url, named_graph
     )
 
 

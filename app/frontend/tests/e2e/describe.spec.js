@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures.js'
 import { DEFAULT_CSV, runIngestFlow, watchConsoleErrors } from './helpers/ingest.js'
 
 // Describe flow walks from the post-ingest landing into the variables form.

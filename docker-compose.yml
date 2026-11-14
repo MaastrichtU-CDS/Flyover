@@ -34,6 +34,9 @@ services:
       - "127.0.0.1:5000:5000"
     environment:
       - FLYOVER_RDF_STORE_URL=${FLYOVER_RDF_STORE_URL:-http://rdf-store:7200}
+      # Where users reach the same store: the port stores/rdf/compose.yml
+      # publishes for rdf-store. Shown in the UI; the app uses the URL above.
+      - FLYOVER_RDF_STORE_PUBLIC_URL=${FLYOVER_RDF_STORE_PUBLIC_URL:-http://localhost:7200}
       - FLYOVER_REPOSITORY_NAME=${FLYOVER_REPOSITORY_NAME:-userRepo}
       - FLASK_ENV=production
       # Enable manual materialization of inferred triples in a separate graph.

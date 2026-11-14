@@ -19,6 +19,7 @@ import app_factory
 from app_factory import AppSettings, SessionCache, build_app_context, create_app
 from services.ingest_service import IngestService
 from services.rdf_store_service import RDFStoreService
+from services.store_selection import SelectedStoreService, StoreAddress, StoreSelection
 from services.suggestions import SuggestionService
 from tests.api.support import REPO, STORE_URL, api_settings
 
@@ -41,6 +42,34 @@ class TestSettingsFromTheEnvironment:
             child_dir="data_descriptor",
             upload_folder=os.path.join("data_descriptor", "static", "files"),
         )
+
+    @pytest.mark.parametrize(
+        "public_url, shown",
+        [
+            ("http://localhost:7200", "http://localhost:7200"),
+            ("http://localhost:7200/", "http://localhost:7200"),
+            ("http://localhost:7200/repositories/userRepo", "http://localhost:7200"),
+            ("  ", ""),
+        ],
+    )
+    def test_the_stores_public_address_is_read_and_normalised(self, public_url, shown):
+        settings = AppSettings.from_env(
+            {
+                "FLYOVER_RDF_STORE_URL": "http://rdf-store:7200",
+                "FLYOVER_REPOSITORY_NAME": "userRepo",
+                "FLYOVER_RDF_STORE_PUBLIC_URL": public_url,
+            }
+        )
+
+        assert settings.rdf_store_url == "http://rdf-store:7200"
+        assert settings.rdf_store_public_url == shown
+
+    def test_outside_docker_the_public_address_is_read_too(self):
+        settings = AppSettings.from_env(
+            {"FLYOVER_RDF_STORE_PUBLIC_URL": "http://graphdb.example.org"}
+        )
+
+        assert settings.rdf_store_public_url == "http://graphdb.example.org"
 
     def test_the_older_graphdb_variable_still_works(self):
         settings = AppSettings.from_env(
@@ -99,10 +128,17 @@ class TestTheDefaultWiring:
         context = app.config["APP_CONTEXT"]
         assert isinstance(context["session_cache"], SessionCache)
         assert context["session_cache"].repo == REPO
-        assert isinstance(context["rdf_store_service"], RDFStoreService)
+        # The store service is the selected store's, and the configured
+        # store is selected until a project names another.
+        selection = context["store_selection"]
+        assert isinstance(selection, StoreSelection)
+        assert selection.current == StoreAddress(STORE_URL, REPO)
+        assert isinstance(context["rdf_store_service"], SelectedStoreService)
+        assert isinstance(context["rdf_store_service"].pinned(), RDFStoreService)
+        assert context["rdf_store_service"].pinned() is selection.service()
         assert context["rdf_store_service"].repo == REPO
+        assert context["rdf_store_service"].rdf_store_url == STORE_URL
         assert isinstance(context["suggestion_service"], SuggestionService)
-        assert context["rdf_store_url"] == STORE_URL
         assert context["upload_folder"] == settings.upload_folder
         assert os.path.isdir(settings.upload_folder)
         assert app.config["rdf_store_url"] == STORE_URL
@@ -149,6 +185,9 @@ def wiring(tmp_path, monkeypatch):
     monkeypatch.setattr(app_factory.gevent, "spawn", lambda *a: spawned.append(a) or a)
     settings = api_settings(tmp_path)
     store = create_autospec(RDFStoreService, instance=True)
+    # Instance attributes set in __init__ are invisible to autospec.
+    store.rdf_store_url = STORE_URL
+    store.repo = REPO
     context = build_app_context(settings, {"rdf_store_service": store})
     return {
         "context": context,
@@ -158,6 +197,64 @@ def wiring(tmp_path, monkeypatch):
         "spawned": spawned,
         "store": store,
     }
+
+
+@pytest.fixture
+def selected_wiring(tmp_path, monkeypatch):
+    """The default context, store service included, with the ingest replaced."""
+    ingest = create_autospec(IngestService)
+    spawned = []
+    monkeypatch.setattr(app_factory, "IngestService", ingest)
+    monkeypatch.setattr(app_factory.gevent, "spawn", lambda *a: spawned.append(a) or a)
+    context = build_app_context(api_settings(tmp_path))
+    return {
+        "context": context,
+        "ingest": ingest,
+        "spawned": spawned,
+        "selection": context["store_selection"],
+    }
+
+
+PROJECT_STORE = StoreAddress("http://project-store:7200", "projectRepo", "project")
+
+
+class TestTheSelectedStore:
+    def test_an_upload_goes_to_the_store_selected_at_that_time(self, selected_wiring):
+        selected_wiring["selection"].use(PROJECT_STORE)
+
+        selected_wiring["context"]["upload_func"]("CSV", ["a.ttl"])
+
+        upload = selected_wiring["ingest"].return_value.upload_multiple_graphs
+        assert upload.call_args.args[1:3] == (
+            "http://project-store:7200",
+            "projectRepo",
+        )
+
+    def test_the_relationship_jobs_keep_the_store_they_started_on(
+        self, selected_wiring
+    ):
+        selection = selected_wiring["selection"]
+        selection.use(PROJECT_STORE)
+
+        selected_wiring["context"]["start_background"](SessionCache(REPO))
+        selection.use_configured()
+
+        on_project_store = selection.service(PROJECT_STORE)
+        assert [job[2] for job in selected_wiring["spawned"]] == [
+            on_project_store,
+            on_project_store,
+        ]
+        assert on_project_store.rdf_store_url == "http://project-store:7200"
+
+    def test_a_store_selection_can_be_passed_in(self, tmp_path):
+        selection = StoreSelection(StoreAddress("http://elsewhere:7200", "other"))
+
+        context = build_app_context(
+            api_settings(tmp_path), {"store_selection": selection}
+        )
+
+        assert context["store_selection"] is selection
+        assert context["rdf_store_service"].rdf_store_url == "http://elsewhere:7200"
 
 
 class TestTheDefaultHelpers:
@@ -182,6 +279,22 @@ class TestTheDefaultHelpers:
 
         wiring["ingest"].return_value.upload_ontology_then_data.assert_called_once_with(
             settings.root_dir, STORE_URL, REPO, data_background=False
+        )
+
+    def test_an_upload_goes_to_the_store_the_service_names_at_that_time(self, wiring):
+        # The store service, not the settings the app started with, says
+        # where the graphs go: an upload follows a store that changed since.
+        wiring["store"].rdf_store_url = "http://another-store:7200"
+        wiring["store"].repo = "projectRepo"
+
+        wiring["context"]["upload_func"]("CSV", ["a.ttl"])
+
+        wiring["ingest"].return_value.upload_multiple_graphs.assert_called_once_with(
+            wiring["settings"].root_dir,
+            "http://another-store:7200",
+            "projectRepo",
+            ["a.ttl"],
+            data_background=False,
         )
 
     def test_the_relationship_jobs_run_as_greenlets_on_the_store(self, wiring):
@@ -313,4 +426,4 @@ class TestTheGunicornEntryPoint:
         assert built["compress"] is True
         assert "/api/v1/suggestions/status" in built["routes"]
         assert "/<path:subpath>" in built["routes"]
-        assert len(built["routes"]) == 38
+        assert len(built["routes"]) == 44

@@ -22,7 +22,7 @@ from typing import Any, Dict, Mapping, Optional
 from urllib.parse import urlsplit
 
 import gevent
-from flask import Flask, abort, request, send_from_directory
+from flask import Flask, abort, current_app, request, send_from_directory
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import safe_join
 
@@ -30,12 +30,20 @@ from controllers import (
     annotate_bp,
     describe_bp,
     ingest_bp,
+    project_bp,
     share_bp,
     suggestions_bp,
 )
 from services.describe_service import DescribeService
 from services.ingest_service import IngestService
+from services.project_service import ProjectService, fetch_map
 from services.rdf_store_service import RDFStoreService
+from services.store_selection import (
+    SelectedStoreService,
+    StoreAddress,
+    StoreSelection,
+    pin_store,
+)
 from services.suggestions import SuggestionService
 from utils.response_compression import FlyoverCompress
 from utils.rdf_store_url import normalise_rdf_store_base_url
@@ -52,11 +60,15 @@ class AppSettings:
     """Where the app finds the RDF store and keeps its working files.
 
     Attributes:
-        rdf_store_url: Base URL of the RDF store.
+        rdf_store_url: Base URL of the RDF store, as the app reaches it.
         repo: RDF store repository name.
         root_dir: Directory the triplifier output and uploads are read from.
         child_dir: The package directory below ``root_dir``.
         upload_folder: Where uploaded annotation maps are saved.
+        rdf_store_public_url: Base URL of the same store as its users reach
+            it, shown in the UI. Inside Docker the app reaches the store by
+            its service name (``rdf-store``), which means nothing to a user;
+            empty means the UI shows ``rdf_store_url``.
     """
 
     rdf_store_url: str
@@ -64,6 +76,16 @@ class AppSettings:
     root_dir: str
     child_dir: str
     upload_folder: str
+    rdf_store_public_url: str = ""
+
+    @property
+    def state_file(self) -> str:
+        """Where the open project is kept for the next worker.
+
+        It sits next to the package's folders, never in ``static/`` (which
+        Flask serves): the map may name its store with credentials.
+        """
+        return os.path.join(self.root_dir, self.child_dir, "state", "open_project.json")
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "AppSettings":
@@ -73,6 +95,7 @@ class AppSettings:
             "FLYOVER_GRAPHDB_URL"
         )
         repo = env.get("FLYOVER_REPOSITORY_NAME")
+        public_url = (env.get("FLYOVER_RDF_STORE_PUBLIC_URL") or "").strip()
         if rdf_store_url and repo:
             # Assume it is running in Docker
             child_dir = "data_descriptor"
@@ -82,6 +105,7 @@ class AppSettings:
                 root_dir="/app/",
                 child_dir=child_dir,
                 upload_folder=os.path.join(child_dir, "static", "files"),
+                rdf_store_public_url=normalise_rdf_store_base_url(public_url, repo),
             )
         # Assume it is not running in Docker
         child_dir = "."
@@ -91,6 +115,7 @@ class AppSettings:
             root_dir="",
             child_dir=child_dir,
             upload_folder=os.path.join(child_dir, "static", "files"),
+            rdf_store_public_url=normalise_rdf_store_base_url(public_url, "userRepo"),
         )
 
 
@@ -170,10 +195,14 @@ def build_app_context(
 ) -> Dict[str, Any]:
     """Build the ``APP_CONTEXT`` the controllers read.
 
-    ``overrides`` replaces entries of the default wiring. The session cache
-    and the two services are resolved first, so the default helpers act on
-    the ones that end up in the context. An unknown entry is an error: it
-    would otherwise sit unused next to the default it was meant to replace.
+    ``overrides`` replaces entries of the default wiring. The session cache,
+    the store selection and the two services are resolved first, so the
+    default helpers act on the ones that end up in the context. An unknown
+    entry is an error: it would otherwise sit unused next to the default it
+    was meant to replace.
+
+    The default store service is the selected store's: the configured store
+    until a project names another one (see ``services/store_selection.py``).
     """
     overrides = dict(overrides or {})
     session_cache = (
@@ -181,18 +210,32 @@ def build_app_context(
         if "session_cache" in overrides
         else SessionCache(settings.repo)
     )
+    store_selection = (
+        overrides["store_selection"]
+        if "store_selection" in overrides
+        else StoreSelection(
+            StoreAddress(
+                settings.rdf_store_url,
+                settings.repo,
+                public_base_url=settings.rdf_store_public_url,
+            )
+        )
+    )
     rdf_store_service = (
         overrides["rdf_store_service"]
         if "rdf_store_service" in overrides
-        else RDFStoreService(settings.rdf_store_url, settings.repo)
+        else SelectedStoreService(store_selection)
+    )
+    project_service = (
+        overrides["project_service"]
+        if "project_service" in overrides
+        else ProjectService(session_cache, store_selection, settings.state_file)
     )
     suggestion_service = (
         overrides["suggestion_service"]
         if "suggestion_service" in overrides
         else SuggestionService()
     )
-    rdf_store_url = settings.rdf_store_url
-    repo = settings.repo
     root_dir = settings.root_dir
     child_dir = settings.child_dir
 
@@ -208,30 +251,41 @@ def build_app_context(
         session_cache.output_files = result[2]
         return result[:2]
 
+    def upload_func(file_type: str, output_files: Optional[list]) -> tuple:
+        """Upload the triplifier's output to the store the service works on."""
+        store = pin_store(rdf_store_service)
+        store_url, repo = store.rdf_store_url, store.repo
+        if file_type in ("CSV", "Excel"):
+            return IngestService().upload_multiple_graphs(
+                root_dir, store_url, repo, output_files, data_background=False
+            )
+        return IngestService().upload_ontology_then_data(
+            root_dir, store_url, repo, data_background=False
+        )
+
     context: Dict[str, Any] = {
         "session_cache": session_cache,
+        "store_selection": store_selection,
         "rdf_store_service": rdf_store_service,
-        "rdf_store_url": rdf_store_url,
+        "project_service": project_service,
         "upload_folder": settings.upload_folder,
         "root_dir": root_dir,
         "child_dir": child_dir,
         "run_triplifier": run_triplifier,
         "suggestion_service": suggestion_service,
-        "upload_func": lambda file_type, output_files: (
-            IngestService().upload_multiple_graphs(
-                root_dir, rdf_store_url, repo, output_files, data_background=False
-            )
-            if file_type in ("CSV", "Excel")
-            else IngestService().upload_ontology_then_data(
-                root_dir, rdf_store_url, repo, data_background=False
-            )
-        ),
+        "upload_func": upload_func,
+        # The jobs run on after the request: each keeps the store the ingest
+        # wrote to, even if the project changes while it runs.
         "start_background": lambda sc: [
             gevent.spawn(
-                IngestService.background_pk_fk_processing, sc, rdf_store_service
+                IngestService.background_pk_fk_processing,
+                sc,
+                pin_store(rdf_store_service),
             ),
             gevent.spawn(
-                IngestService.background_cross_graph_processing, sc, rdf_store_service
+                IngestService.background_cross_graph_processing,
+                sc,
+                pin_store(rdf_store_service),
             ),
         ],
         "handle_postgres": lambda username, password, postgres_url, postgres_db, table: (
@@ -260,6 +314,7 @@ def build_app_context(
         "get_semantic_map": lambda sc, database_key=None: (
             get_semantic_map_for_annotation(sc, database_key)
         ),
+        "fetch_map": fetch_map,
     }
 
     unknown = set(overrides) - set(context)
@@ -287,6 +342,16 @@ def _refuse_requests_from_other_sites() -> None:
         return
     if urlsplit(source).netloc.lower() != request.host.lower():
         abort(403)
+
+
+def _catch_up_with_the_open_project() -> None:
+    """Work on the project the state file names before answering.
+
+    A worker gunicorn started after the project changed would otherwise
+    answer from the state the app had when it was built (see
+    ``services/project_service.py``).
+    """
+    current_app.config["APP_CONTEXT"]["project_service"].sync()
 
 
 def _is_api_path(path: str) -> bool:
@@ -364,14 +429,24 @@ def create_app(
     app.config["UPLOAD_FOLDER"] = settings.upload_folder
     os.makedirs(settings.upload_folder, exist_ok=True)
     app.before_request(_refuse_requests_from_other_sites)
+    app.before_request(_catch_up_with_the_open_project)
     app.register_error_handler(HTTPException, _answer_http_error)
     FlyoverCompress(app)
 
-    for blueprint in (ingest_bp, describe_bp, annotate_bp, share_bp, suggestions_bp):
+    for blueprint in (
+        ingest_bp,
+        describe_bp,
+        annotate_bp,
+        share_bp,
+        suggestions_bp,
+        project_bp,
+    ):
         app.register_blueprint(blueprint)
     _register_spa(app, spa_dir)
 
     app.config["rdf_store_url"] = settings.rdf_store_url
     app.config["repo"] = settings.repo
     app.config["APP_CONTEXT"] = build_app_context(settings, context)
+    # Reopen the project the previous run left open.
+    app.config["APP_CONTEXT"]["project_service"].sync()
     return app
