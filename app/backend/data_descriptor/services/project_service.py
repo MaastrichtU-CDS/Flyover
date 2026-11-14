@@ -20,7 +20,10 @@ stores is never touched.
 gunicorn replaces its worker every thousand or so requests, and a new worker
 starts from the state the app had when it was built. The open project is
 therefore also written to a file outside the folders Flask serves, and every
-request first catches up with that file (``sync``).
+request first catches up with that file (``sync``). The file names the run
+that wrote it: when Flyover itself restarts, the choice of the run before is
+forgotten, so no store starts until a user chooses again (the browser still
+remembers the project, and offers it first).
 """
 
 import json
@@ -37,12 +40,28 @@ import requests
 
 from loaders import JSONLDMapping
 from services.store_selection import StoreAddress, StoreSelection, store_for_endpoint
+from utils.raw_file_address import (
+    ZenodoRecord,
+    raw_file_address,
+    shown_address,
+    zenodo_record,
+)
 from utils.rdf_store_url import without_credentials
 from validation.mapping_validator import MappingValidator
 
 logger = logging.getLogger(__name__)
 
 STATE_FILE_VERSION = 1
+
+# This process's run of Flyover. gunicorn (with --preload) builds the app
+# before it forks its worker, so the worker it starts after every thousand or
+# so requests shares the run; a restart of Flyover starts a new one.
+RUN_ID = uuid.uuid4().hex
+
+# What a user chose to work on: a project, or the standard RDF flow without
+# one. Until someone chooses, there is no route and Flyover waits.
+PROJECT_ROUTE = "project"
+STANDARD_ROUTE = "standard"
 
 # Session state worked out against one map. It goes when the map changes.
 MAP_TIED_STATE = (
@@ -127,11 +146,20 @@ class OpenProject:
 class ProjectService:
     """Opens, replaces and closes the project the server works on."""
 
-    def __init__(self, session_cache: Any, selection: StoreSelection, state_file: str):
+    def __init__(
+        self,
+        session_cache: Any,
+        selection: StoreSelection,
+        state_file: str,
+        run_id: Optional[str] = None,
+    ):
         self._session_cache = session_cache
         self._selection = selection
         self._state_file = state_file
+        self._run_id = run_id or RUN_ID
         self._project: Optional[OpenProject] = None
+        # The standard RDF flow, once chosen without a project.
+        self._standard = False
         # (mtime, size) of the state file as this process last read or wrote
         # it; None while there is none.
         self._seen: Optional[Tuple[int, int]] = None
@@ -140,14 +168,25 @@ class ProjectService:
     def project(self) -> Optional[OpenProject]:
         return self._project
 
+    @property
+    def route(self) -> Optional[str]:
+        """What a user chose to work on: ``project``, ``standard`` (the
+        standard RDF flow, without a project), or None while nobody has
+        chosen. Flyover starts no store before someone chooses."""
+        if self._project is not None:
+            return PROJECT_ROUTE
+        return STANDARD_ROUTE if self._standard else None
+
     def describe(self) -> Dict[str, Any]:
-        """The open project (None without one) and the store the app is on.
+        """The open project (None without one), the route chosen and the
+        store the app is on.
 
         ``configuredStore`` is the store working without a project uses, so
         the browser can say so while a project's own store is in use.
         """
         return {
             "project": self._project.describe() if self._project else None,
+            "route": self.route,
             "store": self._selection.current.describe(),
             "configuredStore": self._selection.configured.describe(),
         }
@@ -198,18 +237,22 @@ class ProjectService:
             parsed=parsed,
         )
         self._apply(project)
+        self._standard = False
         self._write(project)
         return self.describe()
 
     def close(self) -> Dict[str, Any]:
-        """Work without a project: the configured store, no project's map.
+        """Work without a project, in the standard RDF flow: the configured
+        store, no project's map.
 
+        It is also how a user chooses the standard RDF flow at start-up.
         Without an open project there is nothing to close: the session keeps
         what the steps worked out without one (a map an upload put there).
         """
         if self._project is not None:
             self._apply(None)
-        self._remove_file()
+        self._standard = True
+        self._write_payload({"version": STATE_FILE_VERSION, "route": STANDARD_ROUTE})
         return self.describe()
 
     def sync(self) -> None:
@@ -224,19 +267,20 @@ class ProjectService:
         if seen == self._seen:
             return
         self._seen = seen
-        project = None
+        project, standard = None, False
         if seen is not None:
             try:
-                project = self._read()
+                project, standard = self._read()
             except Exception:
                 logger.warning(
-                    "The open project in %s could not be restored; working "
-                    "without a project",
+                    "The open project in %s could not be restored; waiting "
+                    "for a user to choose again",
                     self._state_file,
                     exc_info=True,
                 )
         if project != self._project:
             self._apply(project)
+        self._standard = standard
 
     # ------------------------------------------------------------------
 
@@ -298,30 +342,44 @@ class ProjectService:
         return status.st_mtime_ns, status.st_size
 
     def _write(self, project: OpenProject) -> None:
-        payload = {
-            "version": STATE_FILE_VERSION,
-            "token": project.token,
-            "fileName": project.file_name,
-            "sourceUrl": project.source_url,
-            "openedAt": project.opened_at,
-            "mapping": project.mapping,
-        }
+        self._write_payload(
+            {
+                "version": STATE_FILE_VERSION,
+                "token": project.token,
+                "fileName": project.file_name,
+                "sourceUrl": project.source_url,
+                "openedAt": project.opened_at,
+                "mapping": project.mapping,
+            }
+        )
+
+    def _write_payload(self, payload: Dict[str, Any]) -> None:
         os.makedirs(os.path.dirname(self._state_file) or ".", exist_ok=True)
         partial = f"{self._state_file}.partial"
         # The map may name its store with credentials: readable by the app only.
         descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
+            json.dump({**payload, "run": self._run_id}, handle)
         os.replace(partial, self._state_file)
         self._seen = self._signature()
 
-    def _read(self) -> OpenProject:
+    def _read(self) -> Tuple[Optional[OpenProject], bool]:
+        """The project the file keeps, or (None, True) for the standard RDF
+        flow chosen without one; (None, False) for a choice an earlier run of
+        Flyover made, which a user has to make again."""
         with open(self._state_file, encoding="utf-8") as handle:
             payload = json.load(handle)
         if payload.get("version") != STATE_FILE_VERSION:
             raise ValueError(f"unknown state file version {payload.get('version')!r}")
+        if payload.get("run") != self._run_id:
+            logger.info(
+                "The choice in %s is from an earlier run of Flyover", self._state_file
+            )
+            return None, False
+        if "mapping" not in payload and payload.get("route") == STANDARD_ROUTE:
+            return None, True
         store, parsed = self._examine(payload.get("mapping"))
-        return OpenProject(
+        project = OpenProject(
             token=_token(payload.get("token")),
             mapping=payload["mapping"],
             file_name=_text(payload.get("fileName")),
@@ -330,13 +388,7 @@ class ProjectService:
             store=store,
             parsed=parsed,
         )
-
-    def _remove_file(self) -> None:
-        try:
-            os.remove(self._state_file)
-        except FileNotFoundError:
-            pass
-        self._seen = None
+        return project, False
 
 
 # ---------------------------------------------------------------------------
@@ -348,19 +400,72 @@ MAX_FETCHED_MAP_BYTES = 20 * 1024 * 1024
 # Seconds to connect, and to wait between bytes once connected.
 FETCH_TIMEOUT = (5, 30)
 FETCH_ACCEPT = "application/ld+json, application/json;q=0.9, */*;q=0.1"
+# Zenodo's API answers application/ld+json with the record's schema.org
+# description, which lists no files.
+ZENODO_ACCEPT = "application/json"
 NOT_JSON_HINT = (
-    "If the file is on GitHub or a similar site, use the address of its " "raw version."
+    "Give the address of the map file itself, of its page on a code hosting "
+    "site such as Codeberg, GitHub or GitLab, or of its Zenodo record."
 )
+PRIVATE_HINT = (
+    "If the repository is private, download the map from the site and open "
+    "the file instead."
+)
+RESTRICTED_HINT = (
+    "If the record's files are restricted, download the map from Zenodo and "
+    "open the file instead."
+)
+# The file a page or a record leads to, as the messages below name it.
+RAW_FILE = "the raw file behind that page"
+ZENODO_FILE = "the file in that Zenodo record"
+# What fetching that file met, worded about it.
+FILE_FAILURES = {
+    "status": "{The_file}, {address}, answered with HTTP {status}.",
+    "timeout": "{The_file}, {address}, did not answer in time.",
+    "unreachable": "Flyover could not reach {the_file}, {address}.",
+    "too-large": "{The_file}, {address}, is larger than {limit} MB.",
+    "not-json": "{The_file}, {address}, is not JSON.",
+    "not-map": "{The_file}, {address}, is not a JSON-LD map.",
+}
+# Answers a visitor without access gets: not found, refused, or a sign-in
+# page instead of the file.
+NO_ACCESS_ANSWERS = (401, 403, 404)
+# The files that may hold a map, by preference: JSON-LD, then plain JSON.
+MAP_FILE_KINDS = ((".jsonld", "JSON-LD"), (".json", "JSON"))
 
 
 class MapFetchError(Exception):
     """A map that could not be fetched, with the reason for the user."""
 
-    def __init__(self, message: str, *, upstream: bool = True):
+    def __init__(
+        self,
+        message: str,
+        *,
+        upstream: bool = True,
+        reason: str = "",
+        status: Optional[int] = None,
+    ):
         super().__init__(message)
         self.message = message
         # False when the address itself is unusable, True when fetching failed.
         self.upstream = upstream
+        # What went wrong (status, timeout, unreachable, too-large, not-json
+        # or not-map), and the HTTP status for "status".
+        self.reason = reason
+        self.status = status
+
+
+class MapFileChoice(Exception):
+    """An address that leads to several maps, of which the user picks one.
+
+    ``choices`` lists them by name, as ``{"name", "url", "size"}`` (size in
+    bytes, or None); fetching a choice's url gives that map.
+    """
+
+    def __init__(self, message: str, choices: List[Dict[str, Any]]):
+        super().__init__(message)
+        self.message = message
+        self.choices = choices
 
 
 def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
@@ -371,9 +476,20 @@ def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
     servers often do not. Only http(s) is fetched, with time and size
     limits; what comes back still has to pass the project check.
 
+    A link to a file's page on a code hosting site (Bitbucket, Forgejo,
+    Gitea, GitHub, GitLab, SourceHut; see utils.raw_file_address) is read
+    through the raw file behind the page. Should that fail, the address as
+    given is read too, in case it held the map after all; when it does not
+    either, the error is the raw file's.
+
+    A Zenodo record's page or DOI is looked up in Zenodo's API, and the
+    record's JSON-LD file read (plain JSON when it has none). A record that
+    holds several asks which one (MapFileChoice).
+
     Raises:
         MapFetchError: the address is unusable, could not be fetched, or
             did not return a JSON object.
+        MapFileChoice: the address names a Zenodo record with several maps.
     """
     url = (url or "").strip()
     parts = urlsplit(url)
@@ -382,13 +498,128 @@ def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
             "Give a web address that starts with http:// or https://.",
             upstream=False,
         )
+    record = zenodo_record(url)
+    if record is not None:
+        return _map_from_zenodo(record)
+    file_name = os.path.basename(unquote(parts.path)) or "map.jsonld"
+    raw = raw_file_address(url)
+    if raw is None:
+        return _fetch_json(url), file_name
+    try:
+        return _fetch_json(raw), file_name
+    except MapFetchError as error:
+        raw_error = error
+    # A host that did not answer for the raw file will not for the page.
+    if raw_error.reason not in ("timeout", "unreachable"):
+        try:
+            return _fetch_json(url), file_name
+        except MapFetchError:
+            pass
+    raise _about_the_file(raw_error, raw, RAW_FILE, PRIVATE_HINT)
+
+
+def _map_from_zenodo(record: ZenodoRecord) -> Tuple[Dict[str, Any], str]:
+    """The map in a Zenodo record, and its file name."""
+    files, shared = _zenodo_files(record)
+    for suffix, kind in MAP_FILE_KINDS:
+        maps = [f for f in files if f["name"].lower().endswith(suffix)]
+        if maps:
+            break
+    else:
+        if not shared:
+            raise MapFetchError(
+                f"Zenodo record {record.record_id} does not share its files "
+                "openly: download the map from Zenodo and open the file instead."
+            )
+        raise MapFetchError(f"Zenodo record {record.record_id} holds no JSON-LD file.")
+    if len(maps) > 1:
+        raise MapFileChoice(
+            f"This Zenodo record holds {len(maps)} {kind} files.",
+            sorted(maps, key=lambda f: f["name"].lower()),
+        )
+    [only] = maps
+    try:
+        mapping = _fetch_json(only["url"])
+    except MapFetchError as error:
+        raise _about_the_file(
+            error, only["url"], ZENODO_FILE, RESTRICTED_HINT
+        ) from None
+    return mapping, os.path.basename(only["name"])
+
+
+def _zenodo_files(record: ZenodoRecord) -> Tuple[List[Dict[str, Any]], bool]:
+    """The files of a Zenodo record, as ``{"name", "url", "size"}``, and
+    whether the record shares its files openly.
+
+    A concept record (every version) answers as its latest version, whose
+    files these are. Zenodo's own form lists the files; InvenioRDM's, which
+    Zenodo runs on, keeps them under ``entries``.
+    """
+    try:
+        body = _fetch_json(record.api_address, accept=ZENODO_ACCEPT)
+    except MapFetchError as error:
+        raise _about_zenodo(error, record) from None
+    version = str(body.get("id") or "")
+    if not version.isdigit():
+        version = record.record_id
+    listed = body.get("files")
+    if isinstance(listed, dict):
+        listed = list((listed.get("entries") or {}).values())
+    files = []
+    for entry in listed if isinstance(listed, list) else []:
+        name = entry.get("key") if isinstance(entry, dict) else None
+        if not isinstance(name, str) or not name:
+            continue
+        size = entry.get("size")
+        files.append(
+            {
+                "name": name,
+                "url": record.file_address(version, name),
+                "size": size if isinstance(size, int) else None,
+            }
+        )
+    metadata = body.get("metadata") if isinstance(body.get("metadata"), dict) else {}
+    access = body.get("access") if isinstance(body.get("access"), dict) else {}
+    shared = (
+        metadata.get("access_right", "open") == "open"
+        and access.get("files", "public") == "public"
+    )
+    return files, shared
+
+
+def _about_zenodo(error: MapFetchError, record: ZenodoRecord) -> MapFetchError:
+    """``error``, met asking Zenodo's API for ``record``, worded about it."""
+    number = record.record_id
+    if error.status == 404:
+        message = f"Zenodo has no record {number}."
+    elif error.status == 410:
+        message = f"Zenodo record {number} has been removed."
+    elif error.reason == "status":
+        message = f"Zenodo answered with HTTP {error.status} for record {number}."
+    elif error.reason == "timeout":
+        message = "Zenodo did not answer in time."
+    elif error.reason == "unreachable":
+        message = "Flyover could not reach Zenodo."
+    else:
+        message = f"Zenodo's answer for record {number} could not be read."
+    return MapFetchError(message, reason=error.reason, status=error.status)
+
+
+def _fetch_json(url: str, accept: str = FETCH_ACCEPT) -> Dict[str, Any]:
+    """The JSON object at ``url``.
+
+    Raises:
+        MapFetchError: with the reason, worded about "that address".
+    """
     try:
         with requests.get(
-            url, timeout=FETCH_TIMEOUT, stream=True, headers={"Accept": FETCH_ACCEPT}
+            url, timeout=FETCH_TIMEOUT, stream=True, headers={"Accept": accept}
         ) as response:
             if response.status_code != 200:
                 raise MapFetchError(
-                    f"The address answered with HTTP {response.status_code}."
+                    f"The address answered with HTTP {response.status_code}.",
+                    reason="status",
+                    status=response.status_code,
                 )
             declared = response.headers.get("Content-Length", "")
             if declared.isdigit() and int(declared) > MAX_FETCHED_MAP_BYTES:
@@ -399,23 +630,49 @@ def fetch_map(url: str) -> Tuple[Dict[str, Any], str]:
                 if len(received) > MAX_FETCHED_MAP_BYTES:
                     raise _too_large()
     except requests.Timeout:
-        raise MapFetchError("The address did not answer in time.") from None
+        raise MapFetchError(
+            "The address did not answer in time.", reason="timeout"
+        ) from None
     except requests.RequestException as error:
         # The error repeats the URL, which may carry credentials.
         logger.info("Fetching a map failed (%s)", type(error).__name__)
-        raise MapFetchError("Flyover could not reach that address.") from None
+        raise MapFetchError(
+            "Flyover could not reach that address.", reason="unreachable"
+        ) from None
     try:
         mapping = json.loads(bytes(received).decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError):
         raise MapFetchError(
-            f"What that address returned is not JSON. {NOT_JSON_HINT}"
+            f"What that address returned is not JSON. {NOT_JSON_HINT}",
+            reason="not-json",
         ) from None
     if not isinstance(mapping, dict):
-        raise MapFetchError("What that address returned is not a JSON-LD map.")
-    file_name = os.path.basename(unquote(parts.path)) or "map.jsonld"
-    return mapping, file_name
+        raise MapFetchError(
+            "What that address returned is not a JSON-LD map.", reason="not-map"
+        )
+    return mapping
+
+
+def _about_the_file(
+    error: MapFetchError, address: str, the_file: str, hint: str
+) -> MapFetchError:
+    """``error``, met fetching the file at ``address`` that a page or record
+    led to, worded about that file; ``hint`` follows when access was
+    refused."""
+    message = FILE_FAILURES[error.reason].format(
+        The_file=the_file[0].upper() + the_file[1:],
+        the_file=the_file,
+        address=shown_address(address),
+        status=error.status,
+        limit=MAX_FETCHED_MAP_BYTES // (1024 * 1024),
+    )
+    if error.status in NO_ACCESS_ANSWERS or error.reason == "not-json":
+        message = f"{message} {hint}"
+    return MapFetchError(message, reason=error.reason, status=error.status)
 
 
 def _too_large() -> MapFetchError:
     limit = MAX_FETCHED_MAP_BYTES // (1024 * 1024)
-    return MapFetchError(f"The file at that address is larger than {limit} MB.")
+    return MapFetchError(
+        f"The file at that address is larger than {limit} MB.", reason="too-large"
+    )

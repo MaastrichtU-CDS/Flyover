@@ -32,16 +32,33 @@ https://github.com/user-attachments/assets/c6678684-4721-4963-83d1-a91582ce2fe1
 
 ## Quick Start
 
-Clone the repository and start the services:
+Clone the repository and start Flyover:
 
 ```bash
-docker compose up -d --pull always
+./flyover.sh                    # or: ./flyover.sh start --pull always, for the newest images
 ```
 
-| Service        | URL                                            | Description                             |
-|----------------|------------------------------------------------|-----------------------------------------|
-| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data           |
-| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store (active store)|
+The script works on Linux and macOS, and on Windows in WSL2 or Git Bash (`sh flyover.sh`). It creates every
+container, starts Flyover, and says where to find it. `./flyover.sh stop` stops Flyover and leaves the RDF store
+running for anything else that uses it (`--all` stops the store too, which then stays off until you click **Start** in
+Flyover), and `./flyover.sh status` shows which containers run and where the store stands. By hand, the same start is `docker compose create` followed by
+`docker compose up -d flyover`.
+
+Flyover starts the RDF store once you choose to work on it, in the pop-up it opens with: a project whose map names
+the store, or the standard RDF flow. Until then the store's container exists but does not run, so it takes no memory.
+Once started, the store comes back after a restart of the machine, until you stop it yourself; Flyover leaves a store
+someone stopped alone until you click **Start** in the strip at the top. You can also start it without Flyover, with
+`docker compose start rdf-store-graphdb` (or `docker start rdf-store`), or start everything at once with
+`docker compose up -d`, as before.
+
+To stop Flyover, use `./flyover.sh stop` (or `docker compose stop`). `docker compose down` removes the containers, the
+store's too, and Flyover can start a store but never create one: after a `down`, start Flyover with `./flyover.sh`,
+which creates them again.
+
+| Service        | URL                                            | Description                                     |
+|----------------|------------------------------------------------|-------------------------------------------------|
+| Web interface  | [http://localhost:5000](http://localhost:5000) | Upload and describe your data                   |
+| RDF repository | [http://localhost:7200](http://localhost:7200) | Browse the semantic store, once it has started  |
 
 > **Note:** On Windows, please use WSL2 with Docker. On macOS/Linux, Docker can be used directly.
 
@@ -56,7 +73,8 @@ behaves identically with any of them. The backend is selected with a single
 COMPOSE_PROFILES=qlever   # or: graphdb | rdf4j
 ```
 
-After changing the preset, recreate the stack with `docker compose up -d --build`.
+After changing the preset, recreate the stack: `docker compose down`, then `docker compose create --build` and
+`docker compose up -d flyover`.
 See [`stores/rdf/README.md`](stores/rdf/README.md) for the differences between the
 backends and details of the QLever integration.
 
@@ -73,9 +91,11 @@ on configuration and environment variables.
 Top-level directories are named after the *role* a container plays in the stack, not after the technology behind it:
 
 ```
+flyover.sh             # starts, stops and checks Flyover (Linux, macOS, Windows in WSL2 or Git Bash)
 docker-compose.yml     # orchestration: the flyover app + `include:` of every module
 app/                   # the Flyover application (Flask backend + Vue frontend, one image)
 stores/rdf/            # RDF store backends (graphdb/, rdf4j/, qlever/) + their compose.yml
+stores/launcher/       # starts a store's containers once a user chooses to work on it
 docs/                  # developer documentation
 example_data/          # synthetic datasets and JSON-LD mappings
 scripts/               # helper scripts (test stack, clearing GraphDB, ...)
@@ -110,13 +130,18 @@ A project is the JSON-LD semantic map a study shares with its sites. Its `schema
 site of the project uses; its `databases` section is the part each site fills in for its own data. When Flyover opens,
 it asks which project to work on:
 
-- **Open a project**: drop or browse for the project's JSON-LD map, or load it from a web address. You may start from
-  the project's empty template and upload your own filled-in map later, in any step.
+- **Open a project**: drop or browse for the project's JSON-LD map, or load it from a web address: the file's own, its
+  page on Codeberg, GitHub, GitLab or a similar site, or its Zenodo record or DOI. A Zenodo record that holds several
+  maps lists them to choose from. You may start from the project's empty template and upload your own filled-in map
+  later, in any step.
 - **Continue without a project**: the standard RDF flow, on Flyover's configured RDF store, as Flyover always worked.
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
 (red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it.
-Flyover checks the connection every minute while its tab is visible, on every step, and when you click the status.
+Until you choose, it says **Waiting for a project choice**. While the store starts it says **Starting** (amber dot),
+and the step pages that use the store wait in their place, opening once it answers; a page already open stays as it
+is. A store someone stopped reads **Stopped**, with a **Start** button there and on the pages that need it. Flyover checks the connection every minute while its tab is visible (every two seconds while the store starts), on
+every step, and when you click the status.
 Switching and leaving ask first and offer to download the current map, describe answers included. Working without a
 project lasts for the browser tab; an open project lasts until you switch or leave it.
 
@@ -130,6 +155,12 @@ While a project is open, every step works on the RDF store its map's top-level `
 An endpoint on `localhost` or `127.0.0.1` means the configured store with the repository the map names, because inside
 Flyover's container `localhost` is the container itself. Flyover never creates repositories: one the store lacks shows
 as unreachable in the strip.
+
+Flyover starts its own store only when you choose to work on it: by opening a project on it, or by continuing without
+a project. A store on another server is not Flyover's to start. Flyover never stops a store, as other tools may use it
+too. Flyover has no access to Docker itself: a small launcher service (`stores/launcher/`) starts only the containers
+the stack labels as a store. If the store runs elsewhere, set `FLYOVER_STORE_LAUNCHER_URL` empty and Flyover takes the
+store as running.
 
 A map uploaded in a step is checked against the open project. The project's own map (the same schema) replaces the
 working copy, after asking if you added describe answers since it was loaded; another project's map asks whether to

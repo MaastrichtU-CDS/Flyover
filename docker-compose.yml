@@ -1,9 +1,11 @@
 # ══════════════════════════════════════════════════════════════════════
 # Flyover stack
 #
-#   flyover     the application (Flask API + Vue SPA), defined below
-#   rdf-store   a swappable RDF store backend, defined in stores/rdf/compose.yml
-#               and selected through COMPOSE_PROFILES (graphdb | rdf4j | qlever)
+#   flyover          the application (Flask API + Vue SPA), defined below
+#   rdf-store        a swappable RDF store backend, defined in stores/rdf/compose.yml
+#                    and selected through COMPOSE_PROFILES (graphdb | rdf4j | qlever)
+#   store-launcher   starts a store once a user chooses to work on it, defined
+#                    in stores/launcher/compose.yml
 #
 # Every external module Flyover talks to lives in its own directory with its
 # own compose file and is pulled in through `include:`. The app reaches each
@@ -12,12 +14,20 @@
 # which implementation is running behind that name.
 #
 # Quick start (GraphDB is the default profile, see .env):
-#     docker compose up -d
-#     COMPOSE_PROFILES=rdf4j docker compose up -d      # alternative store
+#     ./flyover.sh                     # all of the below (also: stop, status)
+# or by hand:
+#     docker compose create            # every container, none started yet
+#     docker compose up -d flyover     # Flyover (and its store launcher)
+# Flyover starts the store once a user chooses to work on it: a project whose
+# map names it, or the standard RDF flow. `docker compose up -d` starts every
+# store straight away, as before; `docker compose start rdf-store-graphdb`
+# starts one without Flyover. A store that ran comes back after a restart.
+#     COMPOSE_PROFILES=rdf4j docker compose create      # alternative store
 # ══════════════════════════════════════════════════════════════════════
 
 include:
   - stores/rdf/compose.yml
+  - stores/launcher/compose.yml
 
 services:
   flyover:
@@ -32,8 +42,13 @@ services:
     hostname: data.local
     ports:
       - "127.0.0.1:5000:5000"
+    depends_on:
+      - store-launcher
     environment:
       - FLYOVER_RDF_STORE_URL=${FLYOVER_RDF_STORE_URL:-http://rdf-store:7200}
+      # Starts the store above once a user chooses to work on it. Set it empty
+      # when the store runs elsewhere: Flyover then takes it as running.
+      - FLYOVER_STORE_LAUNCHER_URL=${FLYOVER_STORE_LAUNCHER_URL-http://store-launcher:7290}
       # Where users reach the same store: the port stores/rdf/compose.yml
       # publishes for rdf-store. Shown in the UI; the app uses the URL above.
       - FLYOVER_RDF_STORE_PUBLIC_URL=${FLYOVER_RDF_STORE_PUBLIC_URL:-http://localhost:7200}

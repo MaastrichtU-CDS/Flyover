@@ -4,11 +4,18 @@
 # This file is pulled into the root docker-compose.yml via `include:`, so
 # all paths below are relative to stores/rdf/.
 #
-# GraphDB is the default: `docker compose up` (no flags) starts GraphDB.
-# The default is set by COMPOSE_PROFILES=graphdb in the committed .env
-# file at the repository root.  To use a different backend:
-#     COMPOSE_PROFILES=rdf4j   docker compose up   → Eclipse RDF4J (no reasoning)
-#     COMPOSE_PROFILES=qlever  docker compose up   → QLever        (no reasoning)
+# GraphDB is the default, set by COMPOSE_PROFILES=graphdb in the committed
+# .env file at the repository root. To use a different backend:
+#     COMPOSE_PROFILES=rdf4j   docker compose create   → Eclipse RDF4J (no reasoning)
+#     COMPOSE_PROFILES=qlever  docker compose create   → QLever        (no reasoning)
+#
+# `docker compose create` creates the store's container without starting it:
+# Flyover's store launcher starts it once a user chooses to work on it (a
+# project whose map names it, or the standard RDF flow). It finds the store's
+# containers by their `org.flyover.module` label, in their
+# `org.flyover.start-order`. `docker compose up -d` starts the store straight
+# away, as before. Once started, a store comes back after a restart of the
+# machine (restart: unless-stopped), until it is stopped on purpose.
 #
 # Always run `docker compose down` with the same COMPOSE_PROFILES value
 # that was used for `up`, so Compose can locate the right container.
@@ -21,6 +28,9 @@
 # Settings shared by whichever store ends up published as "rdf-store".
 x-rdf-store-common: &rdf-store-common
   container_name: rdf-store
+  restart: unless-stopped
+  labels:
+    org.flyover.module: rdf-store
   ports:
     - "127.0.0.1:7200:7200"
   networks:
@@ -67,6 +77,11 @@ services:
   qlever-engine:
     profiles: ["qlever"]
     container_name: qlever-engine
+    restart: unless-stopped
+    # Part of the RDF store module; the launcher starts it before the adapter.
+    labels:
+      org.flyover.module: rdf-store
+      org.flyover.start-order: "1"
     build:
       context: ./qlever/engine
     volumes:
@@ -80,6 +95,9 @@ services:
   rdf-store-qlever:
     <<: *rdf-store-common
     profiles: ["qlever"]
+    labels:
+      org.flyover.module: rdf-store
+      org.flyover.start-order: "2"
     build:
       context: ./qlever/adapter
     environment:

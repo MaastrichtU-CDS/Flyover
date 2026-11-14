@@ -4,20 +4,34 @@ import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import HoverTip from '@/components/HoverTip.vue'
 import StoreDatasetsMenu from '@/components/StoreDatasetsMenu.vue'
+import { useCyclingDots } from '@/composables/useCyclingDots'
 import { useProjectStore } from '@/stores/project'
 import { useStoreDatasetsStore } from '@/stores/storeDatasets'
 
 // The strip above the step bar: which RDF store Flyover works on (and
-// whether it answers; a click on it opens its datasets), which project is
+// where it stands; a click on it opens its datasets), which project is
 // open, and the way to switch.
-// Whether the store answers is asked again on every step, every minute
-// while the tab is visible (see the project store), and on a click.
+// Where the store stands is asked again on every step, every minute while
+// the tab is visible (every two seconds while it starts; see the project
+// store), and on a click. Until someone chooses a project, or the standard
+// RDF flow, Flyover starts no store and the strip says it is waiting.
 
 const projectStore = useProjectStore()
 const route = useRoute()
-const { store, storeStatus, project, name, version } = storeToRefs(projectStore)
+const { store, storeStatus, project, name, version, picker } = storeToRefs(projectStore)
 // While the datasets panel is open, the store's tooltip stays away from it.
 const { open: datasetsOpen } = storeToRefs(useStoreDatasetsStore())
+
+// Nobody has chosen what to work on: the server said so, or this tab's
+// start-up pop-up is still open.
+const waiting = computed(
+  () =>
+    storeStatus.value.state === 'waiting' ||
+    (picker.value.open && picker.value.mode === 'startup')
+)
+// The work uses no database (none does yet: a later workflow may keep
+// everything in memory).
+const noDatabase = computed(() => storeStatus.value.state === 'none')
 
 const dotClass = computed(() => [
   `is-${storeStatus.value.state}`,
@@ -30,13 +44,22 @@ watch(
 )
 
 // Said in words too, so the state never rests on the dot's colour alone.
+// Starting and connecting get the cycling dots: something is under way.
 const connectionLabel = computed(
   () =>
     ({
       reachable: 'Connected',
       unreachable: 'Not connected',
-    })[storeStatus.value.state] || 'Checking…'
+      starting: 'Starting',
+      stopped: 'Stopped',
+    })[storeStatus.value.state] || 'Connecting'
 )
+// Someone stopped Flyover's store: it stays so until the user starts it.
+const stopped = computed(() => storeStatus.value.state === 'stopped')
+const connectionUnderWay = computed(() =>
+  ['starting', 'unknown'].includes(storeStatus.value.state)
+)
+const dots = useCyclingDots(connectionUnderWay)
 
 // The store's hover: where it is, whose map named it, and why it cannot be
 // reached when it cannot.
@@ -44,7 +67,10 @@ const storeTip = computed(() => {
   if (!store.value) return 'Flyover has not heard from the server yet.'
   const lines = [store.value.url]
   if (store.value.source === 'project') lines.push("Named by the open project's map.")
-  if (storeStatus.value.state === 'unreachable' && storeStatus.value.reason) {
+  if (storeStatus.value.state === 'starting') {
+    lines.push('Flyover is starting the store; this can take a minute.')
+  }
+  if (['unreachable', 'stopped'].includes(storeStatus.value.state) && storeStatus.value.reason) {
     lines.push(storeStatus.value.reason)
   }
   return lines.join('\n')
@@ -70,6 +96,36 @@ const projectTip = computed(() => {
     <!-- The page content's container, so the strip lines up with it. -->
     <div class="container container-flyover statusbar-inner">
       <span
+        v-if="waiting"
+        id="statusbar-store"
+        class="statusbar-item statusbar-waiting"
+      >
+        <HoverTip
+          text="Flyover starts a store once you choose a project, or continue without one."
+          placement="below"
+          align="start"
+          wrap
+        >
+          <i
+            class="fas fa-hourglass-half"
+            aria-hidden="true"
+          />
+          Waiting for a project choice
+        </HoverTip>
+      </span>
+      <span
+        v-else-if="noDatabase"
+        id="statusbar-store"
+        class="statusbar-item"
+      >
+        <i
+          class="fas fa-database"
+          aria-hidden="true"
+        />
+        No database in use
+      </span>
+      <span
+        v-else
         id="statusbar-store"
         class="statusbar-item"
       >
@@ -107,10 +163,28 @@ const projectTip = computed(() => {
               :class="dotClass"
               aria-hidden="true"
             />
-            <span class="sr-only">Connection to the store:</span>
-            {{ connectionLabel }}
+            <!-- The space sits inside: the template drops those between tags. -->
+            <span class="sr-only">{{ 'Connection to the store: ' }}</span>
+            <!-- One flex item, so the dots sit right after the word. -->
+            <span>{{ connectionLabel }}<span
+              v-if="connectionUnderWay"
+              class="statusbar-dots"
+              aria-hidden="true"
+            >{{ '.'.repeat(dots) }}</span></span>
           </button>
         </HoverTip>
+        <template v-if="stopped">
+          <span aria-hidden="true">·</span>
+          <button
+            id="statusbar-start"
+            type="button"
+            class="statusbar-link"
+            :disabled="storeStatus.checking"
+            @click="projectStore.startStore()"
+          >
+            Start
+          </button>
+        </template>
       </span>
       <span
         id="statusbar-project"
@@ -237,8 +311,25 @@ const projectTip = computed(() => {
   background: #dc3545;
 }
 
-.statusbar-dot.is-checking {
+.statusbar-dot.is-starting {
+  background: #ffc107;
+}
+
+.statusbar-dot.is-checking,
+.statusbar-dot.is-starting,
+.statusbar-dot.is-unknown {
   animation: statusbar-pulse 1s ease-in-out infinite alternate;
+}
+
+/* Room for three dots, so the label does not shift as they count. */
+.statusbar-dots {
+  display: inline-block;
+  width: 1.1em;
+  text-align: left;
+}
+
+.statusbar-waiting {
+  font-style: italic;
 }
 
 @keyframes statusbar-pulse {
@@ -251,7 +342,9 @@ const projectTip = computed(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .statusbar-dot.is-checking {
+  .statusbar-dot.is-checking,
+  .statusbar-dot.is-starting,
+  .statusbar-dot.is-unknown {
     animation: none;
   }
 }

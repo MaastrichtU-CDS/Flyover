@@ -64,6 +64,34 @@ class TestSettingsFromTheEnvironment:
         assert settings.rdf_store_url == "http://rdf-store:7200"
         assert settings.rdf_store_public_url == shown
 
+    @pytest.mark.parametrize(
+        "environ, launcher_url, module",
+        [
+            ({}, "", "rdf-store"),
+            (
+                {"FLYOVER_STORE_LAUNCHER_URL": " http://store-launcher:7290 "},
+                "http://store-launcher:7290",
+                "rdf-store",
+            ),
+            ({"FLYOVER_RDF_STORE_MODULE": "rdf-store-2"}, "", "rdf-store-2"),
+            ({"FLYOVER_RDF_STORE_MODULE": " "}, "", "rdf-store"),
+        ],
+    )
+    def test_the_store_launcher_is_read_and_absent_without_its_address(
+        self, environ, launcher_url, module
+    ):
+        for base in (
+            {},
+            {
+                "FLYOVER_RDF_STORE_URL": "http://rdf-store:7200",
+                "FLYOVER_REPOSITORY_NAME": "r",
+            },
+        ):
+            settings = AppSettings.from_env({**base, **environ})
+
+            assert settings.store_launcher_url == launcher_url
+            assert settings.rdf_store_module == module
+
     def test_outside_docker_the_public_address_is_read_too(self):
         settings = AppSettings.from_env(
             {"FLYOVER_RDF_STORE_PUBLIC_URL": "http://graphdb.example.org"}
@@ -426,4 +454,4 @@ class TestTheGunicornEntryPoint:
         assert built["compress"] is True
         assert "/api/v1/suggestions/status" in built["routes"]
         assert "/<path:subpath>" in built["routes"]
-        assert len(built["routes"]) == 51
+        assert len(built["routes"]) == 52

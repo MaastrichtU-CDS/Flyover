@@ -4,26 +4,31 @@ This doc maps the running system — what processes exist, how a browser request
 
 ## System at a glance
 
-Flyover runs as **two containers plus a browser**, defined in [`docker-compose.yml`](../docker-compose.yml):
+Flyover runs as **three containers plus a browser**, defined in [`docker-compose.yml`](../docker-compose.yml):
 
 ```mermaid
 flowchart LR
     subgraph host["Developer / user machine"]
         browser["Browser<br/>http://localhost:5000/app/"]
+        docker[("Docker's socket")]
     end
     subgraph net["flyover_network (Docker bridge)"]
         flyover["flyover<br/>(Flask + Gunicorn)<br/>:5000<br/>image: flyover-app"]
+        launcher["store-launcher<br/>(Python, standard library)<br/>:7290, not published"]
         rdfstore["rdf-store<br/>(GraphDB 10.8.5)<br/>:7200<br/>image: flyover-graphdb"]
     end
     bind[("./stores/rdf/graphdb/data<br/>(host bind mount)")]
     browser -- "/app/* (SPA),<br/>/api/*, /upload, etc." --> flyover
     flyover -- "SPARQL over HTTP<br/>http://rdf-store:7200/repositories/userRepo" --> rdfstore
+    flyover -- "start the rdf-store module" --> launcher
+    launcher -- "start / inspect<br/>labelled containers" --> docker
     rdfstore <--> bind
 ```
 
 - The browser only ever talks to **`flyover`** on port 5000. Flask serves the Vue SPA bundle (from `/app/data_descriptor/spa/` inside the container) and exposes the JSON API. The SPA's `vue-router` lives at the base path `/app/`.
 - **`flyover`** talks to **`rdf-store`** over the internal Docker network using its hostname `rdf-store`. There is no `host` networking; the bridge `flyover_network` keeps everything isolated from the rest of the host.
 - The GraphDB home directory is persisted on the host at `./stores/rdf/graphdb/data` (bind mount). That's where the actual triples live across restarts.
+- **`rdf-store`** does not run until a user chooses to work on it. `docker compose create` creates it, and `docker compose up -d flyover` starts only Flyover and **`store-launcher`**. Flyover has no access to Docker; the launcher holds Docker's socket and does no more than start and inspect the containers of its own Compose project labelled `org.flyover.module` (see [Starting the store](#starting-the-store)).
 
 In **test mode**, [`docker-compose.test.yml`](../docker-compose.test.yml) overlays this stack to replace the bind mount with a tmpfs volume, so every test run starts from a clean GraphDB. See [`testing.md`](testing.md) for that story.
 
@@ -100,12 +105,19 @@ A project is a JSON-LD map the user opened on purpose (see the [README](../READM
 
 | Route | What it does |
 |---|---|
-| `GET /api/v1/project` | The open project (or none), the store in use and the configured store |
-| `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use |
-| `DELETE /api/v1/project` | Work without a project again |
+| `GET /api/v1/project` | The open project (or none), the route chosen (`project`, `standard` or none yet), the store in use and the configured store |
+| `PUT /api/v1/project` | Open the posted map as the project: it becomes the session's map, and the store its endpoint names the store in use, started if Flyover may |
+| `DELETE /api/v1/project` | Work without a project, in the standard RDF flow (also how a user chooses it at start-up); starts the configured store if Flyover may |
 | `POST /api/v1/project/check` | What opening a map would mean (can it be opened, which project, which store), changing nothing |
-| `GET /api/v1/project/store-status` | Whether the store in use answers one short `ASK`, and if not, why; the status bar asks every minute while its tab is visible |
-| `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB) |
+| `GET /api/v1/project/store-status` | Where the store in use stands: `waiting` (nobody chose yet), `starting`, `stopped` (someone stopped Flyover's store), `reachable` or `unreachable` (with why), from one short `ASK` and the launcher; a chosen store whose container never ran is started; the status bar asks every minute while its tab is visible |
+| `POST /api/v1/project/store-start` | Start the store in use at a user's request (the status bar's Start, for a store someone stopped); a 409 before anyone chose what to work on |
+| `POST /api/v1/project/fetch-map` | A map from an http(s) address, fetched by the server (5 s to connect, 30 s between bytes, at most 20 MB); a file's page on Bitbucket, Forgejo, Gitea, GitHub, GitLab or SourceHut is read through its raw file, and a Zenodo record or DOI through Zenodo's API ([`utils/raw_file_address.py`](../app/backend/data_descriptor/utils/raw_file_address.py)); a record that holds several maps answers with them to choose from |
+
+### Starting the store
+
+Flyover starts its own store only once a user has chosen to work on it: by opening a project whose map names it (a `localhost` endpoint, or none), or by continuing without a project (`DELETE /api/v1/project`). The project service remembers that choice, the route, in its state file, so a new worker knows it; the file names the run that wrote it, so a restart of Flyover forgets the choice (the browser still remembers the project and offers it first). Until someone chooses, the store status is `waiting`. [`services/store_lifecycle.py`](../app/backend/data_descriptor/services/store_lifecycle.py) decides what to start and where a store stands: a store on the configured store's server (any repository) is Flyover's to start, where the stack runs a launcher (`FLYOVER_STORE_LAUNCHER_URL`); a store elsewhere, or any store without a launcher, counts as running. [`services/store_launcher.py`](../app/backend/data_descriptor/services/store_launcher.py) asks the launcher ([`stores/launcher/`](../stores/launcher/launcher.py)) to start the module (`FLYOVER_RDF_STORE_MODULE`, default `rdf-store`) and what state it is in. A store that does not answer yet counts as `starting` for five minutes after its container started; after that, or when its container is missing, it is `unreachable`, with the reason. While the chosen store is not running, a container that never ran (created after the choice, with `docker compose create`) is started at the next status check, but one that someone stopped stays `stopped` until a user asks (`POST /api/v1/project/store-start`, the status bar's Start) or chooses again. Flyover never stops a store: it may serve others too. A future `none` state is reserved for work that uses no database (a mapped CSV export kept in memory).
+
+The launcher answers `GET /modules/<module>` (its state, when it last started, and whether it ever ran) and `POST /modules/<module>/start` on the stack's network only. It starts the module's containers that are not running, in their `org.flyover.start-order`, and never creates, stops or removes anything: after `docker compose down` removed the containers, `docker compose create` has to create them again (`docker compose stop` keeps them). Because a stopped store is a stopped container, people can also start one without Flyover (`docker compose start rdf-store-graphdb`), and `restart: unless-stopped` brings a store that ran back after a restart of the machine. Another module (an OMOP database under `stores/omop/`) needs only its compose service and the label.
 
 **The store's datasets** ([`services/store_datasets.py`](../app/backend/data_descriptor/services/store_datasets.py)) behind [`controllers/store_controller.py`](../app/backend/data_descriptor/controllers/store_controller.py), for the status bar's panel. A dataset is one ingested table: `http://data.local/<name>/`, `http://ontology.local/<name>/` (columns, positions, describe answers), `http://annotation.local/<name>/`, `http://materialized.local/<name>/`, and its rows' links in the shared `http://relationships.local/`.
 

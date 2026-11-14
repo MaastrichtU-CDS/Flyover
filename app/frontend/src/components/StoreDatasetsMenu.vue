@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { reloadPage } from '@/lib/browser'
+import { useCyclingDots } from '@/composables/useCyclingDots'
 import { useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 import { useStoreDatasetsStore } from '@/stores/storeDatasets'
@@ -28,15 +29,7 @@ const panel = ref(null)
 
 // While a delete runs, its button reads "Deleting" with the dots counting
 // up, one to three, so it is plain that something is happening.
-const dots = ref(1)
-let dotsTimer = null
-
-watch(busy, (isBusy) => {
-  clearInterval(dotsTimer)
-  dotsTimer = null
-  dots.value = 1
-  if (isBusy) dotsTimer = setInterval(() => (dots.value = (dots.value % 3) + 1), 400)
-})
+const dots = useCyclingDots(busy)
 
 const repository = computed(() => store.value?.repository || 'the store')
 
@@ -141,7 +134,6 @@ watch(open, async (isOpen) => {
 })
 
 onBeforeUnmount(() => {
-  clearInterval(dotsTimer)
   document.removeEventListener('pointerdown', onPointerDown)
   document.removeEventListener('keydown', onKeydown)
 })

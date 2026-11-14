@@ -1,0 +1,36 @@
+# ══════════════════════════════════════════════════════════════════════
+# STORE LAUNCHER — starts the store containers Flyover needs, when it needs
+# them.
+#
+# This file is pulled into the root docker-compose.yml via `include:`.
+#
+# Flyover starts a store only once a user has chosen to work on it: by
+# opening a project whose map names it, or by continuing without a project
+# in the standard RDF flow. Flyover itself has no access to Docker; this
+# small service holds Docker's socket and does no more than start, and
+# report on, the containers of this Compose project that carry the label
+# `org.flyover.module` (see stores/rdf/compose.yml). It publishes no port,
+# so only the services on Flyover's network can ask it.
+#
+# Compose creates those store containers without starting them:
+#     docker compose create            # every container, none started
+#     docker compose up -d flyover     # Flyover and this launcher
+# A store can always be started without Flyover too:
+#     docker compose start rdf-store-graphdb      (or: docker start rdf-store)
+# ══════════════════════════════════════════════════════════════════════
+
+services:
+  store-launcher:
+    build:
+      context: ./
+    container_name: store-launcher
+    # The launcher finds its own Compose project from its container's labels,
+    # which it looks up by its hostname (the container's id): do not set one.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - proxynet
+
+networks:
+  proxynet:
+    name: flyover_network

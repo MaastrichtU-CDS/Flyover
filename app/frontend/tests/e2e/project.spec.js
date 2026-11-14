@@ -191,6 +191,83 @@ test.describe('Projects', () => {
     await expect(page.getByRole('button', { name: /^\s*Skip\s*$/ })).toHaveCount(0)
   })
 
+  test('before anyone chooses, the strip and the step page wait for a project choice', async ({
+    page,
+  }) => {
+    await page.goto('/describe')
+    await expect(picker(page)).toBeVisible()
+    await expect(statusBar(page).locator('#statusbar-store')).toHaveText(
+      /Waiting for a project choice/
+    )
+    await expect(page.locator('.store-wait')).toContainText('Waiting for a project choice')
+
+    await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
+    await expect(page.locator('h1').first()).toContainText('Data Description')
+    await expect(statusBar(page).locator('#statusbar-connection')).toHaveText(/Connected$/)
+  })
+
+  test('a step page waits while the store starts, and opens once it answers', async ({
+    page,
+  }) => {
+    // The stack's store runs already: the server's answers say it starts
+    // until the test lets it answer.
+    let state = 'starting'
+    await page.route('**/api/v1/project/store-status', async (route) => {
+      const response = await route.fetch()
+      const body = await response.json()
+      await route.fulfill({ response, json: { ...body, state, reachable: state === 'reachable' } })
+    })
+    await page.goto('/describe')
+    await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
+
+    await expect(picker(page)).toBeHidden()
+    await expect(page.locator('.store-wait')).toContainText('Starting the RDF store')
+    await expect(statusBar(page).locator('#statusbar-connection')).toContainText('Starting')
+    await expect(statusBar(page).locator('.statusbar-dot')).toHaveClass(/is-starting/)
+
+    state = 'reachable'
+    await expect(page.locator('h1').first()).toContainText('Data Description')
+    await expect(page.locator('.store-wait')).toHaveCount(0)
+    await expect(statusBar(page).locator('#statusbar-connection')).toHaveText(/Connected$/)
+  })
+
+  test('a store someone stopped waits for Start, on the page and in the strip', async ({
+    page,
+  }) => {
+    // The stack's store runs: the server's answers say it was stopped until
+    // the user asks to start it.
+    let state = 'stopped'
+    let store = null
+    await page.route('**/api/v1/project/store-status', async (route) => {
+      const response = await route.fetch()
+      const body = await response.json()
+      store = body.store
+      const reason = state === 'stopped' ? 'The RDF store is not running: it was stopped.' : ''
+      await route.fulfill({
+        response,
+        json: { ...body, state, reachable: state === 'reachable', reason },
+      })
+    })
+    await page.route('**/api/v1/project/store-start', (route) => {
+      state = 'starting'
+      return route.fulfill({ json: { state, reachable: false, reason: '', store } })
+    })
+    await page.goto('/describe')
+    await picker(page).getByRole('button', { name: 'Continue without a project' }).click()
+
+    const notice = page.locator('.store-wait')
+    await expect(notice).toContainText('The RDF store is not running')
+    await expect(statusBar(page).locator('#statusbar-connection')).toContainText('Stopped')
+    await expect(statusBar(page).locator('#statusbar-start')).toBeVisible()
+
+    await notice.getByRole('button', { name: 'Start the RDF store' }).click()
+    await expect(notice).toContainText('Starting the RDF store')
+    await expect(statusBar(page).locator('#statusbar-start')).toHaveCount(0)
+
+    state = 'reachable'
+    await expect(page.locator('h1').first()).toContainText('Data Description')
+  })
+
   test('a map that cannot be fetched from a web address says why', async ({ page }) => {
     await page.goto('/')
     const dialog = picker(page)

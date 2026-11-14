@@ -40,6 +40,8 @@ from services.ingest_service import IngestService
 from services.project_service import ProjectService, fetch_map
 from services.rdf_store_service import RDFStoreService
 from services.store_datasets import StoreDatasets
+from services.store_launcher import StoreLauncher
+from services.store_lifecycle import StoreLifecycle
 from services.store_selection import (
     SelectedStoreService,
     StoreAddress,
@@ -71,6 +73,10 @@ class AppSettings:
             it, shown in the UI. Inside Docker the app reaches the store by
             its service name (``rdf-store``), which means nothing to a user;
             empty means the UI shows ``rdf_store_url``.
+        store_launcher_url: Where the stack's store launcher answers, which
+            starts the local store once a user chooses to work on it; empty
+            where the stack runs none, and then the store counts as running.
+        rdf_store_module: The launcher's name for the local RDF store.
     """
 
     rdf_store_url: str
@@ -79,6 +85,8 @@ class AppSettings:
     child_dir: str
     upload_folder: str
     rdf_store_public_url: str = ""
+    store_launcher_url: str = ""
+    rdf_store_module: str = "rdf-store"
 
     @property
     def state_file(self) -> str:
@@ -98,6 +106,11 @@ class AppSettings:
         )
         repo = env.get("FLYOVER_REPOSITORY_NAME")
         public_url = (env.get("FLYOVER_RDF_STORE_PUBLIC_URL") or "").strip()
+        launcher = {
+            "store_launcher_url": (env.get("FLYOVER_STORE_LAUNCHER_URL") or "").strip(),
+            "rdf_store_module": (env.get("FLYOVER_RDF_STORE_MODULE") or "").strip()
+            or "rdf-store",
+        }
         if rdf_store_url and repo:
             # Assume it is running in Docker
             child_dir = "data_descriptor"
@@ -108,6 +121,7 @@ class AppSettings:
                 child_dir=child_dir,
                 upload_folder=os.path.join(child_dir, "static", "files"),
                 rdf_store_public_url=normalise_rdf_store_base_url(public_url, repo),
+                **launcher,
             )
         # Assume it is not running in Docker
         child_dir = "."
@@ -118,6 +132,7 @@ class AppSettings:
             child_dir=child_dir,
             upload_folder=os.path.join(child_dir, "static", "files"),
             rdf_store_public_url=normalise_rdf_store_base_url(public_url, "userRepo"),
+            **launcher,
         )
 
 
@@ -233,6 +248,19 @@ def build_app_context(
         if "project_service" in overrides
         else ProjectService(session_cache, store_selection, settings.state_file)
     )
+    store_lifecycle = (
+        overrides["store_lifecycle"]
+        if "store_lifecycle" in overrides
+        else StoreLifecycle(
+            store_selection,
+            (
+                StoreLauncher(settings.store_launcher_url)
+                if settings.store_launcher_url
+                else None
+            ),
+            module=settings.rdf_store_module,
+        )
+    )
     suggestion_service = (
         overrides["suggestion_service"]
         if "suggestion_service" in overrides
@@ -270,6 +298,9 @@ def build_app_context(
         "store_selection": store_selection,
         "rdf_store_service": rdf_store_service,
         "project_service": project_service,
+        # Starts the local store once a user chooses to work on it, and
+        # tells the status bar where the store stands.
+        "store_lifecycle": store_lifecycle,
         "upload_folder": settings.upload_folder,
         "root_dir": root_dir,
         "child_dir": child_dir,

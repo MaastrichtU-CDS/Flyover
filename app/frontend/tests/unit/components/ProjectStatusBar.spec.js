@@ -171,9 +171,94 @@ describe('ProjectStatusBar', () => {
     })
     const storePart = wrapper.find('#statusbar-store')
 
-    expect(reads(storePart)).toBe('RDF store · Connection to the store: Checking…')
+    expect(reads(storePart)).toBe('RDF store · Connection to the store: Connecting.')
     expect(storePart.find('.statusbar-dot').classes()).toContain('is-unknown')
     expect(await tipOf(storePart)).toBe('Flyover has not heard from the server yet.')
+  })
+
+  it('waits for a project choice, naming no store, until someone chooses', async () => {
+    const { wrapper } = mountBar({ storeStatus: { state: 'waiting', reason: '', checking: false } })
+    const storePart = wrapper.find('#statusbar-store')
+
+    expect(reads(storePart)).toBe('Waiting for a project choice')
+    expect(storePart.find('.statusbar-dot').exists()).toBe(false)
+    expect(storePart.find('#statusbar-store-button').exists()).toBe(false)
+    expect(await tipOf(storePart)).toBe(
+      'Flyover starts a store once you choose a project, or continue without one.'
+    )
+  })
+
+  it("waits while this tab's start-up pop-up is open, whatever the server chose", () => {
+    const { wrapper } = mountBar({ picker: { open: true, mode: 'startup' } })
+
+    expect(reads(wrapper.find('#statusbar-store'))).toBe('Waiting for a project choice')
+  })
+
+  it('names the store again when the pop-up was opened to switch', () => {
+    const { wrapper } = mountBar({ picker: { open: true, mode: 'switch' } })
+
+    expect(reads(wrapper.find('#statusbar-store'))).toBe(
+      'RDF store · userRepo · Connection to the store: Connected'
+    )
+  })
+
+  it('says the store is starting, with the dots counting up', async () => {
+    vi.useFakeTimers()
+    try {
+      const { wrapper } = mountBar({
+        storeStatus: { state: 'starting', reason: '', checking: false },
+      })
+      const storePart = wrapper.find('#statusbar-store')
+
+      expect(reads(storePart)).toBe('RDF store · userRepo · Connection to the store: Starting.')
+      expect(storePart.find('.statusbar-dot').classes()).toContain('is-starting')
+      await vi.advanceTimersByTimeAsync(400)
+      expect(reads(storePart)).toMatch(/Starting\.\.$/)
+      await vi.advanceTimersByTimeAsync(800)
+      expect(reads(storePart)).toMatch(/Starting\.$/)
+      // Screen readers hear the word, not the dots.
+      expect(storePart.find('.statusbar-dots').attributes('aria-hidden')).toBe('true')
+      vi.useRealTimers()
+      expect(await tipOf(storePart)).toBe(
+        'http://rdf-store:7200/repositories/userRepo\nFlyover is starting the store; this can take a minute.'
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says the store was stopped, with its reason and a button to start it', async () => {
+    const { wrapper, project } = mountBar({
+      storeStatus: {
+        state: 'stopped',
+        reason: 'The RDF store is not running: it was stopped.',
+        checking: false,
+      },
+    })
+    const start = vi.spyOn(project, 'startStore').mockResolvedValue()
+    const storePart = wrapper.find('#statusbar-store')
+
+    expect(reads(storePart)).toBe('RDF store · userRepo · Connection to the store: Stopped · Start')
+    expect(await tipOf(storePart)).toBe(
+      'http://rdf-store:7200/repositories/userRepo\nThe RDF store is not running: it was stopped.'
+    )
+    await wrapper.get('#statusbar-start').trigger('click')
+    expect(start).toHaveBeenCalledOnce()
+  })
+
+  it('offers no Start for a store that runs or that Flyover cannot start', () => {
+    for (const state of ['reachable', 'unreachable', 'starting']) {
+      setActivePinia(createPinia())
+      const { wrapper } = mountBar({ storeStatus: { state, reason: '', checking: false } })
+      expect(wrapper.find('#statusbar-start').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  })
+
+  it('says when the work uses no database', () => {
+    const { wrapper } = mountBar({ storeStatus: { state: 'none', reason: '', checking: false } })
+
+    expect(reads(wrapper.find('#statusbar-store'))).toBe('No database in use')
   })
 
   it('shows "No project" without one, and the way to choose one', async () => {

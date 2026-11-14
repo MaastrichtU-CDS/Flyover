@@ -28,7 +28,7 @@ vi.mock('@/composables/useNavigation', () => ({
 import api from '@/services/api'
 import { refreshDataExists } from '@/composables/useNavigation'
 import { fingerprint } from '@/lib/project'
-import { useProjectStore } from '@/stores/project'
+import { STORE_START_CHECK_MS, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 
@@ -368,15 +368,20 @@ describe('the project store', () => {
   })
 
   describe('continuing without a project', () => {
-    it('remembers the choice for the tab and closes the pop-up', async () => {
+    it('tells the server, remembers the choice for the tab and closes the pop-up', async () => {
       const project = useProjectStore()
       await project.init()
+      api.get.mockClear()
 
       await project.continueWithoutProject()
 
+      // The server starts the standard RDF flow's store when it hears it.
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
       expect(sessionStorage.getItem('flyover.project.withoutProject')).toBe('1')
       expect(project.picker.open).toBe(false)
-      expect(api.delete).not.toHaveBeenCalled()
+      expect(api.get).toHaveBeenCalledWith('/api/v1/project/store-status')
+      // Nothing changed for other tabs: no project was open.
+      expect(FakeChannel.all[0].sent).toEqual([])
     })
 
     it('keeps the map and the review marks this browser holds', async () => {
@@ -567,6 +572,31 @@ describe('the project store', () => {
       expect(await planned).toEqual({ go: true, opened: true, storeChanged: true })
       expect(project.name).toBe('AYA mapping')
       expect(rows.get('semantic_map').data).toEqual(MAP)
+    })
+
+    it('waits, once opened, until the store it moved to has started', async () => {
+      checks()
+      const project = await openStore({ withProject: false })
+      const getStatus = api.get.getMockImplementation()
+      // The server says the store starts until it answers.
+      let state = 'starting'
+      api.get.mockImplementation(async (url) => {
+        if (url !== '/api/v1/project/store-status') return getStatus(url)
+        return { data: { state, reachable: state === 'reachable', reason: '', store: PROJECT_STORE } }
+      })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      let done = null
+
+      project.planUpload(MAP, 'aya.jsonld').then((plan) => (done = plan))
+      await vi.waitFor(() => expect(project.uploadQuestion).not.toBe(null))
+      project.answerUpload('open')
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS * 3)
+      expect(done).toBe(null)
+      expect(project.storeStatus.state).toBe('starting')
+
+      state = 'reachable'
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS)
+      expect(done).toEqual({ go: true, opened: true, storeChanged: true })
     })
 
     it('without a project, leaves a map no project can take to the step, as before', async () => {
@@ -763,6 +793,141 @@ describe('the project store', () => {
       await project.refreshStoreStatus()
 
       expect(refreshDataExists).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the store, once a user chooses', () => {
+    // A server that reports where its store stands, one answer after the
+    // other (the last one repeats), and that may have forgotten a choice.
+    function serveStates(states, { route = null } = {}) {
+      const answers = [...states]
+      let current = route
+      api.get.mockImplementation(async (url) => {
+        if (url === '/api/v1/project') {
+          return {
+            data: { project: null, route: current, store: CONFIGURED, configuredStore: CONFIGURED },
+          }
+        }
+        const state = answers.length > 1 ? answers.shift() : answers[0]
+        return { data: { state, reachable: state === 'reachable', reason: '', store: CONFIGURED } }
+      })
+      api.delete.mockImplementation(async () => {
+        current = 'standard'
+        return {
+          data: { project: null, route: current, store: CONFIGURED, configuredStore: CONFIGURED },
+        }
+      })
+    }
+
+    function storeChecks() {
+      return api.get.mock.calls.filter(([url]) => url === '/api/v1/project/store-status').length
+    }
+
+    it('reads the states the server reports, waiting until someone chooses', async () => {
+      serveStates(['waiting', 'starting', 'reachable', 'none'])
+      const project = useProjectStore()
+      await project.init()
+      expect(project.storeStatus.state).toBe('waiting')
+      expect(project.route).toBe(null)
+
+      for (const expected of ['starting', 'reachable', 'none']) {
+        await project.refreshStoreStatus()
+        expect(project.storeStatus.state).toBe(expected)
+      }
+    })
+
+    it('checks again soon while the store starts, then no more often than usual', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
+      serveStates(['waiting', 'starting', 'starting', 'reachable'])
+      const project = useProjectStore()
+      await project.init()
+      await project.continueWithoutProject()
+      expect(project.storeStatus.state).toBe('starting')
+      const before = storeChecks()
+
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS)
+      expect(storeChecks()).toBe(before + 1)
+      expect(project.storeStatus.state).toBe('starting')
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS)
+      expect(project.storeStatus.state).toBe('reachable')
+
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS * 5)
+      expect(storeChecks()).toBe(before + 2)
+    })
+
+    it("tells a server that forgot this tab's choice again, so its store starts", async () => {
+      sessionStorage.setItem('flyover.project.withoutProject', '1')
+      serveStates(['starting'], { route: null })
+      const project = useProjectStore()
+
+      await project.init()
+
+      expect(api.delete).toHaveBeenCalledWith('/api/v1/project')
+      expect(project.route).toBe('standard')
+      expect(project.picker.open).toBe(false)
+    })
+
+    it('leaves a server that knows the choice as it is', async () => {
+      sessionStorage.setItem('flyover.project.withoutProject', '1')
+      serveStates(['reachable'], { route: 'standard' })
+
+      await useProjectStore().init()
+
+      expect(api.delete).not.toHaveBeenCalled()
+    })
+
+    it('starts a store someone stopped when the user asks, and follows it', async () => {
+      serveStates(['stopped'], { route: 'standard' })
+      api.post.mockImplementation(async (url) => {
+        if (url !== '/api/v1/project/store-start') throw new Error(url)
+        return { data: { state: 'starting', reachable: false, reason: '', store: CONFIGURED } }
+      })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('stopped'))
+
+      await project.startStore()
+
+      expect(api.post).toHaveBeenCalledWith('/api/v1/project/store-start')
+      expect(project.storeStatus).toEqual({ state: 'starting', reason: '', checking: false })
+    })
+
+    it('says so when the store cannot be started, and keeps what it knew', async () => {
+      serveStates(['stopped'], { route: 'standard' })
+      api.post.mockRejectedValue({ response: { status: 409, data: { error: 'Choose first.' } } })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.state).toBe('stopped'))
+
+      await project.startStore()
+
+      expect(project.storeStatus.state).toBe('stopped')
+      expect(project.storeStatus.checking).toBe(false)
+      expect(useStatusStore().messages.at(-1).text).toBe(
+        'Flyover could not start the store: Choose first.'
+      )
+    })
+
+    it('lets a step wait until a fresh answer says the store has settled', async () => {
+      serveStates(['reachable'], { route: 'standard' })
+      const project = useProjectStore()
+      await project.init()
+      await vi.waitFor(() => expect(project.storeStatus.checking).toBe(false))
+      let state = 'starting'
+      api.get.mockImplementation(async () => ({
+        data: { state, reachable: state === 'reachable', reason: '', store: CONFIGURED },
+      }))
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      let settled = null
+
+      // The store answered before; what counts is a fresh answer.
+      project.whenStoreReady().then((answer) => (settled = answer))
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS * 3)
+      expect(settled).toBe(null)
+
+      state = 'unreachable'
+      await vi.advanceTimersByTimeAsync(STORE_START_CHECK_MS)
+      expect(settled).toBe('unreachable')
     })
   })
 

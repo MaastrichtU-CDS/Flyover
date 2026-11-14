@@ -17,9 +17,9 @@ app/frontend/
 ├── playwright.config.js             # E2E test config — see testing.md
 └── src/
     ├── main.js                      # app entry: createApp → use(pinia, router) → mount('#app')
-    ├── App.vue                      # shell: ProjectStatusBar, AppNav, <RouterView/>, AppFooter, StatusBanner, the project pop-ups
+    ├── App.vue                      # shell: ProjectStatusBar, AppNav, <RouterView/> (or StoreWait), AppFooter, StatusBanner, the project pop-ups
     ├── assets/main.css              # the only Vue-owned CSS (layout overrides)
-    ├── router/index.js              # the 11 routes (lazy-loaded), base path /app/
+    ├── router/index.js              # the 11 routes (lazy-loaded), base path /app/; meta.needsStore on the pages that use the store
     ├── views/                       # one component per route
     │   ├── HomeView.vue
     │   ├── IngestView.vue
@@ -33,7 +33,8 @@ app/frontend/
     │   ├── ShareMockView.vue
     │   └── SharePublishView.vue
     ├── components/                  # shared bits used across views
-    │   ├── ProjectStatusBar.vue     # strip above the steps: the store (with a reachability dot) and the project
+    │   ├── ProjectStatusBar.vue     # strip above the steps: the store and where it stands (waiting, starting, connected...), and the project
+    │   ├── StoreWait.vue            # what a page that needs the store shows in its place until the store is there (Start for a stopped one)
     │   ├── ProjectPicker.vue        # pop-up: open a project (file or web address) or continue without one
     │   ├── MapUploadDialog.vue      # the question a step's map upload raises against the open project
     │   ├── StoreDatasetsMenu.vue    # the status bar's store: a panel of its datasets, and their deletes
@@ -43,7 +44,9 @@ app/frontend/
     │   ├── StatusBanner.vue         # renders Pinia 'status' store messages
     │   └── MigrationStub.vue        # legacy placeholder, gone soon
     ├── composables/
+    │   ├── useCyclingDots.js        # the one-to-three dots that show something is under way
     │   ├── useModalFocus.js         # keyboard handling the pop-ups share (focus, Tab, Escape)
+    │   ├── useStoreGate.js          # whether the page on screen waits for the store, and why
     │   └── useNavigation.js         # workflow-step state (which steps are completed, disabled)
     ├── lib/
     │   ├── project.js               # which project a map belongs to, its name, a map fingerprint
@@ -161,7 +164,10 @@ Concrete example: adding `/describe/units`.
      component: () => import('@/views/DescribeUnitsView.vue') },
    ```
 
-   Keep the lazy-import pattern — it keeps the initial bundle small.
+   Keep the lazy-import pattern — it keeps the initial bundle small. A page that reads or writes the store also gets
+   `meta: STORE` (`{ needsStore: true }`): it then waits in its place while nobody has chosen a project, while the
+   store starts and until the first answer about it ([`composables/useStoreGate.js`](../app/frontend/src/composables/useStoreGate.js)),
+   so its own checks on mount always meet a store that is there.
 
 3. **(Optional) Surface it in the nav** by adding an entry to `STEPS` in [`composables/useNavigation.js`](../app/frontend/src/composables/useNavigation.js) if it's a top-level workflow step, or just link to it from another view with `<RouterLink to="/describe/units">`.
 

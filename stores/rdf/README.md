@@ -18,8 +18,18 @@ top-level [`.env`](../.env) file. Pick **one** preset, then recreate the stack:
 
 ```bash
 docker compose down
-docker compose up -d --build
+./flyover.sh start --build      # or: docker compose create --build, then docker compose up -d flyover
 ```
+
+`docker compose create` creates the store's container without starting it. Flyover's
+store launcher ([`../launcher/`](../launcher/compose.yml)) starts it once a user
+chooses to work on it: a project whose map names it, or the standard RDF flow.
+Every store container carries the label `org.flyover.module: rdf-store` (QLever's
+two in the order of `org.flyover.start-order`), which is how the launcher finds
+them. A store that has started comes back after a restart of the machine
+(`restart: unless-stopped`) until it is stopped on purpose. To start the store
+without Flyover, run `docker compose start rdf-store-graphdb` (or the service of
+your preset); `docker compose up -d` starts it with everything else, as before.
 
 Each preset also sets:
 
@@ -35,9 +45,9 @@ Each preset also sets:
 You can also select a profile ad-hoc without editing `.env`:
 
 ```bash
-COMPOSE_PROFILES=qlever docker compose up -d --build
+COMPOSE_PROFILES=qlever docker compose create --build
 # or
-docker compose --profile qlever up -d --build
+docker compose --profile qlever create --build
 ```
 
 ## Web interface
