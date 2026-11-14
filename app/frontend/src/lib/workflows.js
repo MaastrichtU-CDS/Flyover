@@ -2,11 +2,10 @@
 // and its own store. Only RDF is built; OMOP and CSV say they are under
 // development. A route belongs to a workflow through its meta.workflow.
 //
-// - `logo`: a third-party logo, in white, on the tile and in the navigation
-//   bar: the owner's own white version, or the logo turned white
-//   (`whiten`) where its owner allows other colours (see
+// - `logo`: an image in white on the tile and in the navigation bar: a
+//   third-party logo in its owner's own white version (see
 //   app/backend/data_descriptor/static/logos/README.md for its source and
-//   terms; W3C asks for the cube's alt text as given).
+//   terms), or Flyover's own drawing in black, turned white (`whiten`).
 // - `icon`: the Font Awesome icon used where there is no logo.
 // - `storeLabel`: what the workflow's store is called, where it has one.
 // - `standardName`: the standard its maps target (their targetStandard, the
@@ -22,13 +21,10 @@ export const WORKFLOWS = [
     iconClass: 'share-icon',
     storeLabel: 'RDF store',
     standardName: 'RDF',
-    logo: {
-      src: '/static/logos/w3c-semantic-web-cube.svg',
-      alt: 'W3C Semantic Web Logo',
-      whiten: true,
-    },
+    // A small knowledge graph; the tile's title names the workflow.
+    logo: { src: '/static/icons/knowledge-graph.svg', alt: '', whiten: true },
     description:
-      'Transform your data to F.A.I.R. resources using the flexibility of RDF, coupled with an RDF store.',
+      'Transform your data into knowledge graphs using the flexibility of RDF, coupled with an RDF store.',
     features: ['Flexible vocabularies', 'Flexible data schemas', 'Enables complex reasoning'],
     note: [
       [

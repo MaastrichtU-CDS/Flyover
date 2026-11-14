@@ -155,7 +155,7 @@ const rdf = workflowById('rdf')
   object-fit: contain;
 }
 
-/* A logo whose owner allows other colours (W3C's cube), turned white. */
+/* A drawing in black (RDF's knowledge graph), turned white. */
 .workflow-logo.is-whitened {
   filter: brightness(0) invert(1);
 }

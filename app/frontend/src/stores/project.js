@@ -23,14 +23,16 @@ import { useSuggestionsStore } from '@/stores/suggestions'
 // the describe pages fill in, and a record of the project next to it; the
 // server holds the map and works on the store the map names
 // (/api/v1/project). A project survives reloads and restarts here, in
-// IndexedDB, and the pop-up offers it first when a user enters the RDF
-// workflow again.
+// IndexedDB, and the pop-up offers it first when a user enters its workflow
+// (the one its map's target standard names) again.
 //
 // Opening Flyover starts nothing: a tab enters a workflow from the home page
 // (or a link to one of its pages), and the pop-up asks for the project then.
-// Which workflow a tab is in lasts for the tab (sessionStorage); a tab inside
-// the RDF workflow keeps its project, or the standard RDF flow, going on a
-// server that lost it (a restart).
+// Every choice names the workflow it is for, and the server keeps it with
+// the choice. Which workflow a tab is in lasts for the tab (sessionStorage);
+// a tab inside a workflow keeps its project, or the workflow's standard
+// flow, going on a server that lost it (a restart) or that works in another
+// workflow.
 
 const MAP_KEY = 'semantic_map'
 const PROJECT_KEY = 'project'
@@ -103,8 +105,8 @@ export const useProjectStore = defineStore('project', () => {
   // The store the app works on, and the one working without a project uses.
   const store = ref(null)
   const configuredStore = ref(null)
-  // What a user chose on the server: 'project', 'standard' (the standard RDF
-  // flow, without a project) or null while nobody has chosen.
+  // What a user chose on the server: 'project', 'standard' (the workflow's
+  // standard flow, without a project) or null while nobody has chosen.
   const route = ref(null)
   // The store's last answer (state: unknown until the first one, then
   // waiting | starting | stopped | reachable | unreachable | none) and
@@ -115,10 +117,11 @@ export const useProjectStore = defineStore('project', () => {
   const storeManaged = ref(false)
   // How many answers about the store have come in, to wait for a fresh one.
   const storeAnswers = ref(0)
-  // The pop-up: 'enter' when a tab enters the RDF workflow, 'switch' from
-  // the status bar inside it. Opened from the home page, `target` is the
-  // workflow's page to go to once the tab has chosen.
-  const picker = ref({ open: false, mode: 'enter', target: null })
+  // The pop-up: 'enter' when a tab enters a workflow, 'switch' from the
+  // status bar inside it. `workflow` is the one the choice is for. Opened
+  // from the home page, `target` is the workflow's page to go to once the
+  // tab has chosen.
+  const picker = ref({ open: false, mode: 'enter', workflow: null, target: null })
   // The workflow this tab is in ('rdf'), or null on the home page.
   const workflow = ref(tabSetting(WORKFLOW))
   // The question an upload in a step raises, while it waits for the user:
@@ -154,13 +157,31 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  async function putProject(map, details, token) {
+  // The workflow a choice is for: the one named, else the tab's (RDF for a
+  // tab outside every workflow, as every choice was before).
+  function workflowOf(id) {
+    return id || workflow.value || DEFAULT_TARGET_STANDARD
+  }
+
+  // Whether `record`, a project, is `id`'s: its map targets that standard.
+  function belongsTo(record, id) {
+    return Boolean(record && id && targetStandard(record) === id)
+  }
+
+  async function putProject(map, details, token, workflowId) {
     const { data } = await api.put('/api/v1/project', {
       mapping: map,
       fileName: details.fileName || '',
       sourceUrl: details.sourceUrl || '',
       token,
+      workflow: workflowId,
     })
+    return data
+  }
+
+  // Work without a project, in `workflowId`'s standard flow.
+  async function deleteProject(workflowId) {
+    const { data } = await api.delete('/api/v1/project', { params: { workflow: workflowId } })
     return data
   }
 
@@ -192,10 +213,12 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   // Bring the browser and the server to the same project. With `settle`, a
-  // tab inside the RDF workflow reopens the browser's project on a server
-  // that lost it (a restart), or closes a project this browser does not know
-  // when the tab works without one. A tab outside the workflow sends
-  // nothing, nor does a load without `settle` (another tab changed things).
+  // tab inside a workflow reopens the browser's project, if it is the
+  // workflow's, on a server that lost it (a restart), or, when the tab works
+  // without one, closes a project this browser does not know and tells a
+  // server that works in another workflow. A tab outside every workflow
+  // sends nothing, nor does a load without `settle` (another tab changed
+  // things).
   async function load({ settle = true } = {}) {
     const [record, held] = await Promise.all([readRow(PROJECT_KEY), readRow(MAP_KEY)])
     let mine = record?.data || null
@@ -208,10 +231,10 @@ export const useProjectStore = defineStore('project', () => {
         "The open project's map was no longer in this browser, so Flyover works without a project."
       )
     }
-    const inRdf = workflow.value === 'rdf'
-    if (settle && inRdf && mine && server && server.project?.token !== mine.token) {
+    const here = workflow.value
+    if (settle && belongsTo(mine, here) && server && server.project?.token !== mine.token) {
       try {
-        server = await putProject(held.data, mine, mine.token)
+        server = await putProject(held.data, mine, mine.token, here)
       } catch (e) {
         if (e?.response?.status === 400) {
           // The map no longer opens (a stricter release): keep it as a map
@@ -226,13 +249,18 @@ export const useProjectStore = defineStore('project', () => {
         }
       }
     }
-    // This tab works in the standard RDF flow: tell a server that has another
-    // project open, or that forgot the choice (a restart), so it closes the
-    // project and starts the store.
-    if (settle && inRdf && !mine && server && server.route !== 'standard') {
+    // This tab works in its workflow's standard flow: tell a server that has
+    // another project open, that forgot the choice (a restart) or that works
+    // in another workflow, so it closes the project and starts the store.
+    if (
+      settle &&
+      here &&
+      !belongsTo(mine, here) &&
+      server &&
+      (server.route !== 'standard' || server.workflow !== here)
+    ) {
       try {
-        const { data } = await api.delete('/api/v1/project')
-        server = data
+        server = await deleteProject(here)
       } catch {
         // The server keeps what it had; the status bar shows its store.
       }
@@ -434,42 +462,47 @@ export const useProjectStore = defineStore('project', () => {
     return { storeChanged }
   }
 
-  // Open `map` as the project, replacing any open project and any map this
-  // browser holds. Throws the API error when the server refuses the map.
-  async function openProject(map, { fileName = '', sourceUrl = '' } = {}) {
+  // Open `map` as the project of `workflow` (the tab's, unless named),
+  // replacing any open project and any map this browser holds. Throws the
+  // API error when the server refuses the map.
+  async function openProject(map, { fileName = '', sourceUrl = '', workflow: id } = {}) {
+    const chosen = workflowOf(id)
     const previousStore = store.value
-    const answer = await putProject(map, { fileName, sourceUrl }, newToken())
+    const answer = await putProject(map, { fileName, sourceUrl }, newToken(), chosen)
     const details = { ...answer.project, loadedFingerprint: fingerprint(map) }
     await db.saveData('metadata', { key: MAP_KEY, data: map, filename: fileName, timestamp: now() })
     await db.saveData('metadata', { key: PROJECT_KEY, data: details, timestamp: now() })
-    enterWorkflow('rdf')
+    enterWorkflow(chosen)
     project.value = details
     applyServer(answer)
     return settleChange(previousStore)
   }
 
-  // Work without a project: the server goes back to the configured store
-  // and the project's map leaves this browser.
-  async function leaveProject() {
+  // Work without a project in `workflow` (the tab's, unless named): the
+  // server goes back to the configured store and the project's map leaves
+  // this browser.
+  async function leaveProject({ workflow: id } = {}) {
+    const chosen = workflowOf(id)
     const previousStore = store.value
-    const { data } = await api.delete('/api/v1/project')
+    const data = await deleteProject(chosen)
     await db.deleteData('metadata', MAP_KEY)
     await db.deleteData('metadata', PROJECT_KEY)
-    enterWorkflow('rdf')
+    enterWorkflow(chosen)
     project.value = null
     applyServer(data)
     return settleChange(previousStore)
   }
 
-  // The choice to enter the RDF workflow without a project: the server
-  // hears it, closes a project still open from elsewhere, and starts the
-  // standard RDF flow's store if it is not running. The pop-up closes at
-  // once; the pages wait for the store.
-  async function continueWithoutProject() {
+  // The choice to enter `workflow` (the tab's, unless named) without a
+  // project: the server hears it, closes a project still open from
+  // elsewhere, and starts the standard flow's store if it is not running.
+  // The pop-up closes at once; the pages wait for the store.
+  async function continueWithoutProject({ workflow: id } = {}) {
+    const chosen = workflowOf(id)
     const hadProject = Boolean(serverToken)
     const previousStore = store.value
-    const { data } = await api.delete('/api/v1/project')
-    enterWorkflow('rdf')
+    const data = await deleteProject(chosen)
+    enterWorkflow(chosen)
     applyServer(data)
     let storeChanged = false
     if (hadProject) {
@@ -595,7 +628,7 @@ export const useProjectStore = defineStore('project', () => {
       throw e
     }
     const standard = check?.valid ? targetStandard(check.project) : null
-    if (standard && standard !== (workflow.value || DEFAULT_TARGET_STANDARD)) {
+    if (standard && standard !== workflowOf()) {
       await ask({ kind: 'other-standard', check, fileName, edited: false, standard })
       return { go: false, opened: false, otherStandard: standard }
     }
@@ -624,23 +657,25 @@ export const useProjectStore = defineStore('project', () => {
     return { go: true, opened: true, ...changed }
   }
 
-  // Enter the RDF workflow with the project this browser remembers. A
-  // server that still has it only makes sure its store runs (its work on
-  // the project stays); one that lost it (a restart) opens it again.
-  async function continueWithProject() {
+  // Enter `workflow` (the tab's, unless named) with the project this
+  // browser remembers. A server that still has it only makes sure its store
+  // runs (its work on the project stays); one that lost it (a restart) opens
+  // it again.
+  async function continueWithProject({ workflow: id } = {}) {
+    const chosen = workflowOf(id)
     const record = project.value
     const held = await readRow(MAP_KEY)
     if (!record || !held?.data) {
       throw new Error("This browser no longer holds the project's map.")
     }
     if (serverToken === record.token) {
-      enterWorkflow('rdf')
+      enterWorkflow(chosen)
       await startStore()
       return { storeChanged: false }
     }
     const previousStore = store.value
-    const answer = await putProject(held.data, record, record.token)
-    enterWorkflow('rdf')
+    const answer = await putProject(held.data, record, record.token, chosen)
+    enterWorkflow(chosen)
     applyServer(answer)
     return settleChange(previousStore, { mapChanged: false })
   }
@@ -660,8 +695,9 @@ export const useProjectStore = defineStore('project', () => {
     closePicker()
   }
 
-  function openPicker(mode = 'switch', { target = null } = {}) {
-    picker.value = { open: true, mode, target }
+  // `workflow`: the one the choice is for, the tab's unless named.
+  function openPicker(mode = 'switch', { workflow: id = null, target = null } = {}) {
+    picker.value = { open: true, mode, workflow: workflowOf(id), target }
   }
 
   function closePicker() {

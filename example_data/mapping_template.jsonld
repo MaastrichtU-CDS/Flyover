@@ -12,6 +12,7 @@
   },
   "@id": "REPLACE_WITH_YOUR_MAPPING_ID",
   "@type": "mapping:DataMapping",
+  "targetStandard": "rdf",
   "name": "REPLACE_WITH_YOUR_MAPPING_NAME",
   "description": "",
   "version": "1.0.0",

@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { reactive, ref } from 'vue'
 
-// The bar under the status strip: the workflows on the home page, and Home
-// (the RDF landing) with the steps inside the RDF workflow.
+// The bar under the status strip: the workflows on the home page, and,
+// inside a workflow, Home (the workflow's landing) with its steps.
 
 const route = reactive({ path: '/', meta: {} })
 const router = { push: vi.fn() }
@@ -39,6 +39,7 @@ vi.mock('@/composables/useNavigation', () => ({
 }))
 
 import AppNav from '@/components/AppNav.vue'
+import { workflowById } from '@/lib/workflows'
 import { useProjectStore } from '@/stores/project'
 import { useWorkflowsStore } from '@/stores/workflows'
 
@@ -69,15 +70,16 @@ describe('AppNav', () => {
     const wrapper = mount(AppNav)
     const disc = (id) => wrapper.find(`#${id}-workflow-step .workflow-disc`)
 
-    // W3C lets the cube take other colours; OHDSI publishes its own white logo.
-    const cube = disc('rdf').find('img')
-    expect(cube.attributes('src')).toBe('/static/logos/w3c-semantic-web-cube.svg')
-    expect(cube.classes()).toContain('is-whitened')
+    // RDF's knowledge graph is drawn in black and turned white; OHDSI
+    // publishes its own white logo.
+    const graph = disc('rdf').find('img')
+    expect(graph.attributes('src')).toBe('/static/icons/knowledge-graph.svg')
+    expect(graph.classes()).toContain('is-whitened')
     const ohdsi = disc('omop').find('img')
     expect(ohdsi.attributes('src')).toBe('/static/logos/ohdsi-logo-only-white.png')
     expect(ohdsi.classes()).not.toContain('is-whitened')
     // The name beside each disc says it; the logos add nothing to read out.
-    expect(cube.attributes('alt')).toBe('')
+    expect(graph.attributes('alt')).toBe('')
     expect(disc('csv').find('i').classes()).toContain('fa-file-csv')
   })
 
@@ -99,7 +101,12 @@ describe('AppNav', () => {
 
     await wrapper.find('#rdf-workflow-step').trigger('click')
 
-    expect(useProjectStore().picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(useProjectStore().picker).toEqual({
+      open: true,
+      mode: 'enter',
+      workflow: 'rdf',
+      target: '/rdf',
+    })
     expect(router.push).not.toHaveBeenCalled()
   })
 
@@ -114,6 +121,25 @@ describe('AppNav', () => {
     expect(home.find('i').classes()).toContain('fa-home')
     expect(home.classes()).toContain('active')
     expect(wrapper.find('#home-step').exists()).toBe(false)
+  })
+
+  it('shows Home alone inside a workflow whose steps are still to come', () => {
+    // Only RDF has steps yet; OMOP gets its landing page once it is built.
+    const omop = workflowById('omop')
+    omop.to = '/omop'
+    try {
+      route.path = '/omop'
+      route.meta = { workflow: 'omop' }
+      const wrapper = mount(AppNav)
+
+      expect(labels(wrapper)).toEqual(['Home'])
+      const home = wrapper.find('#omop-home-step')
+      expect(home.attributes('href')).toBe('/omop')
+      expect(home.classes()).toContain('active')
+      expect(wrapper.find('.step-separator').exists()).toBe(false)
+    } finally {
+      delete omop.to
+    }
   })
 
   it('points to Exit RDF when Home is clicked, as Home stays in the workflow', async () => {

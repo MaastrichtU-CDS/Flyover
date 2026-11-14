@@ -64,7 +64,7 @@ describe('HomeView', () => {
     const features = (id) => tile(id).findAll('.step-features li').map((item) => item.text())
 
     expect(tile('rdf').find('.step-description').text()).toBe(
-      'Transform your data to F.A.I.R. resources using the flexibility of RDF, coupled with an RDF store.'
+      'Transform your data into knowledge graphs using the flexibility of RDF, coupled with an RDF store.'
     )
     // RDF's flexibility against OMOP's standards, point for point.
     expect(features('rdf')).toEqual([
@@ -90,15 +90,15 @@ describe('HomeView', () => {
     ])
   })
 
-  it("shows W3C's and OHDSI's logos in white in the circles, and says Flyover is not OHDSI's", () => {
+  it("shows a knowledge graph and OHDSI's logo in white in the circles, and says Flyover is not OHDSI's", () => {
     const wrapper = mountHome()
 
-    // W3C asks for this alt text on its Semantic Web cube.
+    // Flyover's own drawing, in black, turned white; the title names it.
     const rdf = wrapper.find('#rdf-card .step-icon img')
-    expect(rdf.attributes('src')).toBe('/static/logos/w3c-semantic-web-cube.svg')
-    expect(rdf.attributes('alt')).toBe('W3C Semantic Web Logo')
-    // W3C lets the cube take other colours; OHDSI publishes its own white logo.
+    expect(rdf.attributes('src')).toBe('/static/icons/knowledge-graph.svg')
+    expect(rdf.attributes('alt')).toBe('')
     expect(rdf.classes()).toContain('is-whitened')
+    // OHDSI publishes its own white logo, shown as it is.
     const ohdsi = wrapper.find('#omop-card .step-icon img')
     expect(ohdsi.attributes('src')).toBe('/static/logos/ohdsi-logo-only-white.png')
     expect(ohdsi.classes()).not.toContain('is-whitened')
@@ -164,12 +164,12 @@ describe('HomeView', () => {
     await wrapper.find('#rdf-card').trigger('click')
 
     // The pop-up goes on to the RDF landing once the tab has chosen.
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: '/rdf' })
     expect(router.push).not.toHaveBeenCalled()
 
     project.closePicker()
     await wrapper.find('#home-start').trigger('click')
-    expect(project.picker).toEqual({ open: true, mode: 'enter', target: '/rdf' })
+    expect(project.picker).toEqual({ open: true, mode: 'enter', workflow: 'rdf', target: '/rdf' })
     expect(router.push).not.toHaveBeenCalled()
   })
 

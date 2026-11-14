@@ -11,15 +11,16 @@ import { useProjectStore } from '@/stores/project'
 import { useStoreDatasetsStore } from '@/stores/storeDatasets'
 import { useWorkflowsStore } from '@/stores/workflows'
 
-// The strip above the step bar: which RDF store Flyover works on (and
-// where it stands; a click on it opens its datasets), which project is
-// open, and the way to switch.
+// The strip above the step bar: which store Flyover works on (and where it
+// stands; a click on it opens its datasets), which project is open, and the
+// way to switch. The workflow list names the workflow and its store.
 // Where the store stands is asked again on every step, every minute while
 // the tab is visible (every two seconds while it starts; see the project
-// store), and on a click. Until someone chooses a project, or the standard
-// RDF flow, Flyover starts no store and the strip says it is waiting. On the
-// home page no workflow is chosen, so the strip names neither store nor
-// project; inside a workflow it offers to exit it, back to the home page.
+// store), and on a click. Until someone chooses a project, or the
+// workflow's standard flow, Flyover starts no store and the strip says it
+// is waiting. On the home page no workflow is chosen, so the strip names
+// neither store nor project; inside a workflow it offers to exit it, back to
+// the home page.
 
 const projectStore = useProjectStore()
 const route = useRoute()
@@ -51,7 +52,9 @@ function exitWorkflow() {
 // the user moves on.
 const workflows = useWorkflowsStore()
 const { exitNotice } = storeToRefs(workflows)
-const workflowName = computed(() => workflowById(route.meta?.workflow)?.label || '')
+const pageWorkflow = computed(() => workflowById(route.meta?.workflow))
+const workflowName = computed(() => pageWorkflow.value?.label || '')
+const storeLabel = computed(() => pageWorkflow.value?.storeLabel || 'Store')
 watch(
   () => route.path,
   (path) => {
@@ -109,7 +112,7 @@ const storeTip = computed(() => {
 
 const projectTip = computed(() => {
   const open = project.value
-  if (!open) return 'Flyover works without a project: the standard RDF flow.'
+  if (!open) return `Flyover works without a project: the standard ${workflowName.value} flow.`
   const lines = [[name.value, version.value].filter(Boolean).join(' · ')]
   if (open.description) lines.push(open.description)
   if (open.schemaName) lines.push(`Schema: ${open.schemaName}`)
@@ -184,7 +187,7 @@ const projectTip = computed(() => {
               class="fas fa-database"
               aria-hidden="true"
             />
-            RDF store<template v-if="store">
+            {{ storeLabel }}<template v-if="store">
               · <strong>{{ store.repository }}</strong>
             </template>
           </StoreDatasetsMenu>

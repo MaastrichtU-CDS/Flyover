@@ -11,6 +11,12 @@ project's working copy; the server keeps what it needs to work on it:
 - the RDF store the map's top-level ``endpoint`` names (the configured store
   when it names none), so every step works on the project's data.
 
+Every choice is for a workflow: a project for the one its map's
+``targetStandard`` names, or working without one for the one the user
+entered. Only the RDF workflow is built, so every choice is RDF's for now;
+the server keeps the workflow with the choice, so the browser can tell
+whether the choice it finds is its own workflow's.
+
 Whenever the project changes, the server forgets what it worked out for the
 previous map: the annotation status, pasted LLM answers, suggestion jobs and
 the describe answers the forms posted. When the store changes as well, it
@@ -58,8 +64,9 @@ STATE_FILE_VERSION = 1
 # so requests shares the run; a restart of Flyover starts a new one.
 RUN_ID = uuid.uuid4().hex
 
-# What a user chose to work on: a project, or the standard RDF flow without
-# one. Until someone chooses, there is no route and Flyover waits.
+# What a user chose to work on: a project, or the workflow's standard flow
+# (the standard RDF flow) without one. Until someone chooses, there is no
+# route and Flyover waits.
 PROJECT_ROUTE = "project"
 STANDARD_ROUTE = "standard"
 
@@ -87,16 +94,21 @@ ENDPOINT_SUGGESTION = (
 
 # The standard a map's data is transformed to, which names the workflow that
 # uses it (the map's top-level ``targetStandard``; the map schema allows only
-# these). A map without one is an RDF map, as every map was before. Only the
-# RDF workflow runs, so only an RDF map opens as a project.
+# these). A map without one is an RDF map, as every map was before.
 TARGET_STANDARDS = ("rdf", "omop", "csv")
 DEFAULT_TARGET_STANDARD = "rdf"
-OPENABLE_TARGET_STANDARDS = ("rdf",)
 _STANDARD_NAMES = {
     "rdf": "RDF",
     "omop": "the OMOP common data model",
     "csv": "CSV files",
 }
+
+# The workflows, one per standard: a workflow's id is its standard's. A
+# choice is for one that is built; one that names none is RDF's, as every
+# choice was before.
+WORKFLOW_LABELS = {"rdf": "RDF", "omop": "OMOP", "csv": "CSV"}
+BUILT_WORKFLOWS = ("rdf",)
+DEFAULT_WORKFLOW = DEFAULT_TARGET_STANDARD
 
 
 class ProjectError(Exception):
@@ -129,6 +141,24 @@ def target_standard(mapping: Dict[str, Any]) -> Tuple[str, bool]:
     if isinstance(declared, str) and declared in TARGET_STANDARDS:
         return declared, True
     return DEFAULT_TARGET_STANDARD, False
+
+
+def chosen_workflow(value: Any) -> str:
+    """The workflow a choice is for: ``value``, or RDF when it names none.
+
+    Raises:
+        ProjectError: Flyover has no such workflow, or has not built it yet.
+    """
+    if value is None or value == "":
+        return DEFAULT_WORKFLOW
+    if not isinstance(value, str) or value not in WORKFLOW_LABELS:
+        raise ProjectError(f"Flyover has no workflow called {str(value)[:40]!r}.")
+    if value not in BUILT_WORKFLOWS:
+        raise ProjectError(
+            f"The {WORKFLOW_LABELS[value]} workflow is under development, so "
+            "Flyover cannot work in it yet."
+        )
+    return value
 
 
 def project_details(mapping: Dict[str, Any]) -> Dict[str, Any]:
@@ -187,8 +217,10 @@ class ProjectService:
         self._state_file = state_file
         self._run_id = run_id or RUN_ID
         self._project: Optional[OpenProject] = None
-        # The standard RDF flow, once chosen without a project.
+        # The workflow's standard flow, once chosen without a project.
         self._standard = False
+        # The workflow the choice is for; None while nobody has chosen.
+        self._workflow: Optional[str] = None
         # (mtime, size) of the state file as this process last read or wrote
         # it; None while there is none.
         self._seen: Optional[Tuple[int, int]] = None
@@ -200,15 +232,15 @@ class ProjectService:
     @property
     def route(self) -> Optional[str]:
         """What a user chose to work on: ``project``, ``standard`` (the
-        standard RDF flow, without a project), or None while nobody has
-        chosen. Flyover starts no store before someone chooses."""
+        workflow's standard flow, without a project), or None while nobody
+        has chosen. Flyover starts no store before someone chooses."""
         if self._project is not None:
             return PROJECT_ROUTE
         return STANDARD_ROUTE if self._standard else None
 
     def describe(self) -> Dict[str, Any]:
-        """The open project (None without one), the route chosen and the
-        store the app is on.
+        """The open project (None without one), the route chosen, the
+        workflow it is for and the store the app is on.
 
         ``configuredStore`` is the store working without a project uses, so
         the browser can say so while a project's own store is in use.
@@ -216,6 +248,7 @@ class ProjectService:
         return {
             "project": self._project.describe() if self._project else None,
             "route": self.route,
+            "workflow": self._workflow,
             "store": self._selection.current.describe(),
             "configuredStore": self._selection.configured.describe(),
         }
@@ -246,24 +279,28 @@ class ProjectService:
         file_name: str = "",
         source_url: str = "",
         token: str = "",
+        workflow: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Work on ``mapping`` as the project from now on.
+        """Work on ``mapping`` as the project of ``workflow`` (RDF when it
+        names none) from now on.
 
         Opening replaces any open project, also one with the same schema (a
         site's filled-in map replacing the empty template it started from).
-        Only an RDF map opens: the RDF workflow is the one Flyover runs (the
-        browser offers to switch before it gets this far).
+        Only a map that targets the workflow's standard opens (the browser
+        offers to switch before it gets this far).
 
         Raises:
-            ProjectError: the map cannot be opened; nothing changed.
+            ProjectError: the workflow is not built, or the map cannot be
+                opened in it; nothing changed.
         """
+        workflow = chosen_workflow(workflow)
         store, parsed = self._examine(mapping)
         standard, _ = target_standard(mapping)
-        if standard not in OPENABLE_TARGET_STANDARDS:
+        if standard != workflow:
             raise ProjectError(
                 f"This JSON-LD targets {_STANDARD_NAMES[standard]} "
-                f'(its targetStandard is "{standard}"), so the RDF workflow '
-                "cannot open it as a project."
+                f'(its targetStandard is "{standard}"), so the '
+                f"{WORKFLOW_LABELS[workflow]} workflow cannot open it as a project."
             )
         project = OpenProject(
             token=_token(token),
@@ -276,22 +313,34 @@ class ProjectService:
         )
         self._apply(project)
         self._standard = False
-        self._write(project)
+        self._workflow = workflow
+        self._write(project, workflow)
         return self.describe()
 
-    def close(self) -> Dict[str, Any]:
-        """Work without a project, in the standard RDF flow: the configured
-        store, no project's map.
+    def close(self, workflow: Optional[str] = None) -> Dict[str, Any]:
+        """Work without a project in ``workflow`` (RDF when it names none),
+        in its standard flow: the configured store, no project's map.
 
-        It is also how a user chooses the standard RDF flow on entering the
-        RDF workflow.
+        It is also how a user chooses the standard flow on entering the
+        workflow.
         Without an open project there is nothing to close: the session keeps
         what the steps worked out without one (a map an upload put there).
+
+        Raises:
+            ProjectError: the workflow is not built; nothing changed.
         """
+        workflow = chosen_workflow(workflow)
         if self._project is not None:
             self._apply(None)
         self._standard = True
-        self._write_payload({"version": STATE_FILE_VERSION, "route": STANDARD_ROUTE})
+        self._workflow = workflow
+        self._write_payload(
+            {
+                "version": STATE_FILE_VERSION,
+                "route": STANDARD_ROUTE,
+                "workflow": workflow,
+            }
+        )
         return self.describe()
 
     def sync(self) -> None:
@@ -306,10 +355,10 @@ class ProjectService:
         if seen == self._seen:
             return
         self._seen = seen
-        project, standard = None, False
+        project, standard, workflow = None, False, None
         if seen is not None:
             try:
-                project, standard = self._read()
+                project, standard, workflow = self._read()
             except Exception:
                 logger.warning(
                     "The open project in %s could not be restored; waiting "
@@ -320,6 +369,7 @@ class ProjectService:
         if project != self._project:
             self._apply(project)
         self._standard = standard
+        self._workflow = workflow
 
     # ------------------------------------------------------------------
 
@@ -380,10 +430,11 @@ class ProjectService:
             return None
         return status.st_mtime_ns, status.st_size
 
-    def _write(self, project: OpenProject) -> None:
+    def _write(self, project: OpenProject, workflow: str) -> None:
         self._write_payload(
             {
                 "version": STATE_FILE_VERSION,
+                "workflow": workflow,
                 "token": project.token,
                 "fileName": project.file_name,
                 "sourceUrl": project.source_url,
@@ -402,10 +453,12 @@ class ProjectService:
         os.replace(partial, self._state_file)
         self._seen = self._signature()
 
-    def _read(self) -> Tuple[Optional[OpenProject], bool]:
-        """The project the file keeps, or (None, True) for the standard RDF
-        flow chosen without one; (None, False) for a choice an earlier run of
-        Flyover made, which a user has to make again."""
+    def _read(self) -> Tuple[Optional[OpenProject], bool, Optional[str]]:
+        """What the file keeps: the project (None without one), whether the
+        standard flow was chosen without one, and the workflow the choice is
+        for (a file that names none is RDF's). (None, False, None) for a
+        choice an earlier run of Flyover made, which a user has to make
+        again."""
         with open(self._state_file, encoding="utf-8") as handle:
             payload = json.load(handle)
         if payload.get("version") != STATE_FILE_VERSION:
@@ -414,9 +467,13 @@ class ProjectService:
             logger.info(
                 "The choice in %s is from an earlier run of Flyover", self._state_file
             )
-            return None, False
+            return None, False, None
+        try:
+            workflow = chosen_workflow(payload.get("workflow"))
+        except ProjectError as error:
+            raise ValueError(error.message) from None
         if "mapping" not in payload and payload.get("route") == STANDARD_ROUTE:
-            return None, True
+            return None, True, workflow
         store, parsed = self._examine(payload.get("mapping"))
         project = OpenProject(
             token=_token(payload.get("token")),
@@ -427,7 +484,7 @@ class ProjectService:
             store=store,
             parsed=parsed,
         )
-        return project, False
+        return project, False, workflow
 
 
 # ---------------------------------------------------------------------------

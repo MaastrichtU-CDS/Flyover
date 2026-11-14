@@ -2,16 +2,19 @@
 Project controller: the project the server works on.
 
 The browser opens a project when the user picks a JSON-LD map in the
-pop-up that asks for it on entering the RDF workflow, switches through the
+pop-up that asks for it on entering a workflow, switches through the
 status bar, or accepts the offer an upload in a step makes; it closes the
-project when the user continues without one. Routes are the ``/api/v1/project`` surface:
+project when the user continues without one. Each choice names the workflow
+it is for (only RDF is built). Routes are the ``/api/v1/project`` surface:
 
 - ``GET /api/v1/project``: the open project (or none), the route chosen (a
-  project, the standard RDF flow, or none yet), the store in use and the
-  configured store (the one working without a project uses);
-- ``PUT /api/v1/project``: open a map as the project, replacing any other;
-- ``DELETE /api/v1/project``: work without a project, in the standard RDF
-  flow (also how a user chooses it on entering the RDF workflow);
+  project, the workflow's standard flow, or none yet), the workflow it is
+  for, the store in use and the configured store (the one working without a
+  project uses);
+- ``PUT /api/v1/project``: open a map as the project of a workflow,
+  replacing any other;
+- ``DELETE /api/v1/project``: work without a project, in a workflow's
+  standard flow (also how a user chooses it on entering the workflow);
 - ``POST /api/v1/project/check``: what opening a map would mean, changing
   nothing, so the browser can ask the user before it switches;
 - ``GET /api/v1/project/store-status``: where the store in use stands
@@ -28,7 +31,7 @@ project when the user continues without one. Routes are the ``/api/v1/project`` 
 
 import logging
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 
 from services.project_service import MapFetchError, MapFileChoice, ProjectError
 from services.store_launcher import LauncherError
@@ -71,11 +74,12 @@ def get_project():
 def open_project():
     """Open the posted map as the project.
 
-    The body holds the map and what the browser knows of it:
-    ``{"mapping": {...}, "fileName": "...", "sourceUrl": "...", "token": "..."}``.
-    The token is the browser's name for this version of the project; it
-    comes back with every answer, so the browser can tell on a later visit
-    whether the server still works on the same project.
+    The body holds the map, what the browser knows of it and the workflow
+    it opens in (RDF when it names none):
+    ``{"mapping": {...}, "fileName": "...", "sourceUrl": "...", "token": "...",
+    "workflow": "rdf"}``. The token is the browser's name for this version of
+    the project; it comes back with every answer, so the browser can tell on
+    a later visit whether the server still works on the same project.
     """
     body, mapping = _mapping_from_body()
     if mapping is None:
@@ -86,6 +90,7 @@ def open_project():
             file_name=body.get("fileName"),
             source_url=body.get("sourceUrl"),
             token=body.get("token"),
+            workflow=body.get("workflow"),
         )
     except ProjectError as error:
         return (
@@ -101,9 +106,13 @@ def open_project():
 
 @project_bp.route("/api/v1/project", methods=["DELETE"])
 def close_project():
-    """Work without a project, in the standard RDF flow: the configured
+    """Work without a project, in the standard flow of the workflow the
+    query names (``?workflow=rdf``; RDF when it names none): the configured
     store, no project's map. Starts that store if Flyover may."""
-    described = _project_service().close()
+    try:
+        described = _project_service().close(workflow=request.args.get("workflow"))
+    except ProjectError as error:
+        return jsonify({"error": error.message}), 400
     _start_the_chosen_store()
     return jsonify(described)
 
@@ -129,7 +138,7 @@ def store_status():
     Answers ``{"state": "...", "reachable": bool, "reason": "...",
     "managed": bool, "store": {...}}``, where ``managed`` says whether
     Flyover may start and stop the store. The state is ``waiting`` (nobody
-    has chosen a project or the standard RDF flow yet, so no store was
+    has chosen a project or a workflow's standard flow yet, so no store was
     started), ``starting``, ``stopped`` (Flyover's to start, but someone
     stopped it), ``reachable`` or ``unreachable`` (see
     services/store_lifecycle.py; a later ``none`` will mean the work uses no

@@ -151,7 +151,8 @@ A project's JSON-LD names the standard its data is transformed to, in a top-leve
 `csv`. That decides which workflow uses it. A map for another workflow than the one you are in opens nothing: Flyover
 says which workflow it is for, and offers to switch there or to choose a different JSON-LD (OMOP and CSV are under
 development). The same holds for a map uploaded in a step. A map without `targetStandard` is taken as RDF, as every map
-was before, and Flyover says so when it opens it.
+was before, and Flyover says so when it opens it. The example maps in `example_data/`, the template among them, say
+`"targetStandard": "rdf"`.
 
 Cancelling leaves you on the home page, or takes you back to it.
 
@@ -333,12 +334,10 @@ window.MyFeatureApp = MyFeatureApp;
 
 ## Third-party logos
 
-The home page shows W3C's [Semantic Web logo](http://www.w3.org/2001/sw/) (the cube) for RDF and the logo of
-[OHDSI](https://www.ohdsi.org/), which maintains the OMOP Common Data Model, in white and under their owners' terms:
-OHDSI's own white version, and the cube turned white, which W3C allows. Neither W3C nor OHDSI endorses Flyover or is
-affiliated with it. See
-[`app/backend/data_descriptor/static/logos/README.md`](app/backend/data_descriptor/static/logos/README.md) for where
-they come from and the terms they are used under.
+The home page shows the logo of [OHDSI](https://www.ohdsi.org/), which maintains the OMOP Common Data Model, in
+OHDSI's own white version and under its terms. OHDSI does not endorse Flyover and is not affiliated with it. See
+[`app/backend/data_descriptor/static/logos/README.md`](app/backend/data_descriptor/static/logos/README.md) for where it
+comes from and the terms it is used under. The RDF workflow's knowledge graph is Flyover's own drawing.
 
 ## References
 

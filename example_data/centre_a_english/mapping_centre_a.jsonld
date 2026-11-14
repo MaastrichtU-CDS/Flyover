@@ -26,6 +26,7 @@
 
   "@id": "https://github.com/MaastrichtU-CDS/Flyover/example_data/centra_a_english/mapping_centre_a",
   "@type": "mapping:DataMapping",
+  "targetStandard": "rdf",
   "name": "Centre A - English Hospital Mapping",
   "description": "Local data mapping for Centre A (English language dataset)",
   "version": "1.0.0",

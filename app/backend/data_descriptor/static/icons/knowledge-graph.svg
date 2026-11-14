@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Flyover's own drawing of a small knowledge graph, for the RDF workflow.
+       Drawn in black and centred on 24,24; the pages turn it white with a
+       CSS filter. -->
+  <title>Knowledge graph</title>
+  <g stroke="#000" stroke-width="3" stroke-linecap="round">
+    <line x1="21.5" y1="24" x2="8.5" y2="12"/>
+    <line x1="21.5" y1="24" x2="35.5" y2="9"/>
+    <line x1="21.5" y1="24" x2="39.5" y2="30"/>
+    <line x1="21.5" y1="24" x2="13.5" y2="39"/>
+    <line x1="35.5" y1="9" x2="39.5" y2="30"/>
+  </g>
+  <g fill="#000">
+    <circle cx="21.5" cy="24" r="5.5"/>
+    <circle cx="8.5" cy="12" r="4"/>
+    <circle cx="35.5" cy="9" r="4"/>
+    <circle cx="39.5" cy="30" r="4"/>
+    <circle cx="13.5" cy="39" r="4"/>
+  </g>
+</svg>

@@ -186,6 +186,73 @@ describe('StoreDatasetsMenu', () => {
     expect(refreshDataExists).toHaveBeenCalled()
   })
 
+  describe('a long dataset name', () => {
+    const LONG = 'AYA_cancer_schema_NKI_EHR_C30_MISSING_values_export_2026'
+
+    // happy-dom lays nothing out, so the label says how far it overflows.
+    function overflowing(label, scroll, client) {
+      Object.defineProperty(label.element, 'scrollWidth', { configurable: true, value: scroll })
+      Object.defineProperty(label.element, 'clientWidth', { configurable: true, value: client })
+    }
+
+    beforeEach(() => {
+      api.get.mockImplementation(async (url) => {
+        if (url === '/api/v1/store/datasets') {
+          return {
+            data: {
+              datasets: [{ name: LONG, rows: 3, described: false, annotated: false }, DATASETS[0]],
+            },
+          }
+        }
+        return { data: { reachable: true, reason: '', store: { repository: 'userRepo' } } }
+      })
+    })
+
+    it('pans to its end in the confirm button while hovered or focused, and says it whole', async () => {
+      wrapper = mountMenu()
+      await openPanel(wrapper)
+      await wrapper.find(`button[aria-label="Delete ${LONG}"]`).trigger('click')
+      const confirm = wrapper.find('.store-panel-confirm-button')
+      const label = confirm.find('.store-panel-pan')
+      expect(label.text()).toBe(`Delete ${LONG}`)
+      expect(label.classes()).not.toContain('is-long')
+
+      overflowing(label, 420, 300)
+      await confirm.trigger('mouseenter')
+
+      expect(label.classes()).toContain('is-long')
+      expect(label.element.style.getPropertyValue('--pan-distance')).toBe('-120px')
+      expect(label.element.style.getPropertyValue('--pan-seconds')).toBe('3s')
+      expect(confirm.attributes('title')).toBe(`Delete ${LONG}`)
+      // The keyboard's focus measures it too.
+      overflowing(label, 300, 300)
+      await confirm.trigger('focus')
+      expect(label.classes()).not.toContain('is-long')
+    })
+
+    it('breaks anywhere in the question rather than widen the panel', async () => {
+      wrapper = mountMenu()
+      await openPanel(wrapper)
+      await wrapper.find(`button[aria-label="Delete ${LONG}"]`).trigger('click')
+
+      expect(text(wrapper.find('.store-panel-question'))).toBe(`Delete ${LONG}?`)
+    })
+
+    it('is measured again for the next question', async () => {
+      wrapper = mountMenu()
+      await openPanel(wrapper)
+      await wrapper.find(`button[aria-label="Delete ${LONG}"]`).trigger('click')
+      overflowing(wrapper.find('.store-panel-pan'), 420, 300)
+      await wrapper.find('.store-panel-confirm-button').trigger('mouseenter')
+      await button(wrapper, 'Cancel').trigger('click')
+
+      await wrapper.find('button[aria-label="Delete patients"]').trigger('click')
+
+      expect(wrapper.find('.store-panel-pan').classes()).not.toContain('is-long')
+      expect(wrapper.find('.store-panel-confirm-button').attributes('title')).toBeUndefined()
+    })
+  })
+
   it('names a dataset in its addresses safely', async () => {
     api.get.mockResolvedValue({
       data: { datasets: [{ name: 'a#b', rows: 0, described: false, annotated: false }] },

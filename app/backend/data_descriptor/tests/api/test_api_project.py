@@ -38,11 +38,12 @@ CONFIGURED_STORE = {
 NO_PROJECT = {
     "project": None,
     "route": None,
+    "workflow": None,
     "store": CONFIGURED_STORE,
     "configuredStore": CONFIGURED_STORE,
 }
 # The standard RDF flow, chosen without a project.
-STANDARD_FLOW = {**NO_PROJECT, "route": "standard"}
+STANDARD_FLOW = {**NO_PROJECT, "route": "standard", "workflow": "rdf"}
 
 
 def _put(client, mapping=None, **fields):
@@ -270,6 +271,7 @@ class TestOpeningAProject:
 
         saved = json.loads(open(state_file, encoding="utf-8").read())
         assert saved["version"] == 1
+        assert saved["workflow"] == "rdf"
         assert saved["token"] == "t1"
         assert saved["fileName"] == "aya.jsonld"
         assert saved["mapping"] == valid_mapping()
@@ -362,7 +364,12 @@ class TestClosingTheProject:
         # The next worker must know the standard RDF flow was chosen.
         with open(state_file, encoding="utf-8") as handle:
             saved = json.load(handle)
-        assert saved == {"version": 1, "route": "standard", "run": saved["run"]}
+        assert saved == {
+            "version": 1,
+            "route": "standard",
+            "workflow": "rdf",
+            "run": saved["run"],
+        }
 
     def test_without_a_project_the_sessions_own_map_stays(self, client, session_cache):
         # A map an upload put in the session while no project was open is
@@ -491,6 +498,71 @@ class TestTheStandardAMapTargets:
 
 
 # ---------------------------------------------------------------------------
+# The workflow a choice is for
+# ---------------------------------------------------------------------------
+
+UNDER_DEVELOPMENT = (
+    "The {} workflow is under development, so Flyover cannot work in it yet."
+)
+
+
+class TestTheWorkflowAChoiceIsFor:
+    @pytest.mark.parametrize("named", [{"workflow": "rdf"}, {}], ids=["rdf", "none"])
+    def test_a_project_opens_in_the_workflow_the_browser_names_rdf_by_default(
+        self, client, named
+    ):
+        response = _put(client, **named)
+
+        assert response.status_code == 200
+        assert response.get_json()["workflow"] == "rdf"
+        assert client.get("/api/v1/project").get_json()["workflow"] == "rdf"
+
+    def test_a_workflow_under_development_opens_no_project(self, client, state_file):
+        response = _put(client, mapping=_targeting("omop"), workflow="omop")
+
+        assert response.status_code == 400
+        assert response.get_json()["error"] == UNDER_DEVELOPMENT.format("OMOP")
+        assert client.get("/api/v1/project").get_json() == NO_PROJECT
+        assert not os.path.exists(state_file)
+
+    @pytest.mark.parametrize(
+        "workflow", ["sql", 7, ["rdf"]], ids=["name", "number", "list"]
+    )
+    def test_a_workflow_flyover_does_not_have_opens_no_project(self, client, workflow):
+        response = _put(client, workflow=workflow)
+
+        assert response.status_code == 400
+        assert response.get_json()["error"].startswith("Flyover has no workflow called")
+        assert client.get("/api/v1/project").get_json() == NO_PROJECT
+
+    def test_working_without_a_project_is_for_the_workflow_the_query_names(
+        self, client
+    ):
+        response = client.delete("/api/v1/project?workflow=rdf")
+
+        assert response.status_code == 200
+        assert response.get_json() == STANDARD_FLOW
+
+    @pytest.mark.route("DELETE", "/api/v1/project", "failure")
+    def test_a_workflow_under_development_cannot_be_chosen_and_nothing_changes(
+        self, client, state_file
+    ):
+        _put(client, token="t1")
+        with open(state_file, encoding="utf-8") as handle:
+            before = handle.read()
+
+        response = client.delete("/api/v1/project?workflow=csv")
+
+        assert response.status_code == 400
+        assert response.get_json() == {"error": UNDER_DEVELOPMENT.format("CSV")}
+        described = client.get("/api/v1/project").get_json()
+        assert described["project"]["token"] == "t1"
+        assert described["workflow"] == "rdf"
+        with open(state_file, encoding="utf-8") as handle:
+            assert handle.read() == before
+
+
+# ---------------------------------------------------------------------------
 # The state file: a project outlives the worker that opened it
 # ---------------------------------------------------------------------------
 
@@ -503,6 +575,7 @@ class TestAProjectOutlivesItsWorker:
 
         described = restarted.test_client().get("/api/v1/project").get_json()
         assert described["project"]["token"] == "t1"
+        assert described["workflow"] == "rdf"
         assert described["store"]["url"] == f"{PROJECT_STORE}/repositories/userRepo"
         context = restarted.config["APP_CONTEXT"]
         assert context["session_cache"].jsonld_mapping.name == "Shared fixture mapping"
@@ -563,26 +636,47 @@ class TestAProjectOutlivesItsWorker:
         "saved",
         [
             # The map no longer passes the validator (a stricter release).
-            {"version": 1, "token": "t", "mapping": {**valid_mapping(), "schema": 1}},
+            {"token": "t", "mapping": {**valid_mapping(), "schema": 1}},
             # Not a map at all.
-            {"version": 1, "token": "t", "mapping": ["a", "list"]},
+            {"token": "t", "mapping": ["a", "list"]},
             # Written by a release that kept it differently.
             {"version": 2, "token": "t", "mapping": valid_mapping()},
+            # A choice for a workflow this release has not built.
+            {"route": "standard", "workflow": "omop"},
         ],
-        ids=["invalid map", "not a map", "other version"],
+        ids=["invalid map", "not a map", "other version", "workflow not built"],
     )
     def test_a_saved_project_this_release_cannot_open_means_no_project(
-        self, doubles, spa_dir, state_file, saved
+        self, doubles, spa_dir, state_file, saved, caplog
     ):
+        # Written by this run, so it is read, not set aside as an earlier
+        # run's choice.
         os.makedirs(os.path.dirname(state_file), exist_ok=True)
         with open(state_file, "w", encoding="utf-8") as handle:
-            json.dump(saved, handle)
+            json.dump({"version": 1, "run": project_service.RUN_ID, **saved}, handle)
 
         restarted = create_app(doubles.settings, spa_dir=str(spa_dir))
 
         assert restarted.config["APP_CONTEXT"]["project_service"].project is None
         described = restarted.test_client().get("/api/v1/project").get_json()
         assert described == NO_PROJECT
+        assert "could not be restored" in caplog.text
+
+    def test_a_saved_choice_that_names_no_workflow_is_rdfs(
+        self, doubles, spa_dir, state_file
+    ):
+        os.makedirs(os.path.dirname(state_file), exist_ok=True)
+        with open(state_file, "w", encoding="utf-8") as handle:
+            json.dump(
+                {"version": 1, "route": "standard", "run": project_service.RUN_ID},
+                handle,
+            )
+
+        restarted = create_app(doubles.settings, spa_dir=str(spa_dir))
+
+        assert (
+            restarted.test_client().get("/api/v1/project").get_json() == STANDARD_FLOW
+        )
 
     def test_an_app_with_its_own_project_service_uses_it(self, doubles, spa_dir):
         class Recording:

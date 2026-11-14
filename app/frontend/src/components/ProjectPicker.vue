@@ -5,16 +5,23 @@ import { storeToRefs } from 'pinia'
 import { useModalFocus } from '@/composables/useModalFocus'
 import { reloadPage } from '@/lib/browser'
 import { useWorkflowEntry } from '@/composables/useWorkflowEntry'
-import { ASSUMED_RDF_NOTE, projectName, projectVersion, targetStandard } from '@/lib/project'
-import { WORKFLOWS, workflowById } from '@/lib/workflows'
+import {
+  ASSUMED_RDF_NOTE,
+  DEFAULT_TARGET_STANDARD,
+  projectName,
+  projectVersion,
+  targetStandard,
+} from '@/lib/project'
+import { workflowById } from '@/lib/workflows'
 import { errorMessage, useProjectStore } from '@/stores/project'
 import { useStatusStore } from '@/stores/status'
 
 // The pop-up that asks which project to work on. It opens when a tab enters
-// the RDF workflow, with the project this browser remembers as its first
-// choice: on the home page, which goes on to the workflow once the tab has
-// chosen, or over a page of the workflow a link led to. "Switch project" in
-// the status bar opens it again inside the workflow. Cancelled while
+// a workflow, with the project this browser remembers as its first choice
+// when that project is the workflow's: on the home page, which goes on to
+// the workflow once the tab has chosen, or over a page of the workflow a
+// link led to. "Switch project" in the status bar opens it again inside the
+// workflow. Every choice is for the pop-up's workflow. Cancelled while
 // entering, it leaves the user on, or takes them back to, the home page.
 
 const projectStore = useProjectStore()
@@ -50,7 +57,8 @@ const choices = shallowRef(null)
 
 const isOpen = computed(() => picker.value.open)
 const entering = computed(() => picker.value.mode === 'enter')
-// The project this browser remembers, offered first when entering.
+// The project this browser remembers, offered first when entering the
+// workflow its map targets.
 const rememberedLabel = computed(() =>
   [openName.value, openVersion.value].filter(Boolean).join(' · ')
 )
@@ -64,17 +72,18 @@ const pendingVersion = computed(() =>
   pending.value ? projectVersion(pending.value.check.project) : ''
 )
 
-// The workflow the pop-up is for: the one it opens (from the home page),
-// the one whose page is on screen, or the tab's. Its maps target its
+// The workflow the pop-up is for (see openPicker): its maps target its
 // standard; a map for another is that workflow's.
 const { enter } = useWorkflowEntry()
 const currentWorkflow = computed(
-  () =>
-    WORKFLOWS.find((workflow) => workflow.to && workflow.to === picker.value.target) ||
-    workflowById(route.meta?.workflow) ||
-    workflowById(projectStore.workflow) ||
-    workflowById('rdf')
+  () => workflowById(picker.value.workflow) || workflowById(DEFAULT_TARGET_STANDARD)
 )
+const rememberedFits = computed(
+  () => Boolean(project.value) && targetStandard(project.value) === currentWorkflow.value.id
+)
+// What the workflow and its store are called, from the workflow list.
+const workflowLabel = computed(() => currentWorkflow.value.label)
+const storeLabel = computed(() => currentWorkflow.value.storeLabel || 'store')
 const pendingWorkflow = computed(() => workflowById(pending.value?.standard) || {})
 
 function clearErrors() {
@@ -152,14 +161,15 @@ function finish(message) {
 function openedMessage() {
   const label = [projectStore.name, projectStore.version].filter(Boolean).join(' · ')
   const repository = store.value?.repository
-  const opened = `Flyover now works on the project ${label}${repository ? `, on the RDF store's repository ${repository}` : ''}.`
+  const opened = `Flyover now works on the project ${label}${repository ? `, on the ${storeLabel.value}'s repository ${repository}` : ''}.`
   // A map that names no standard is taken as RDF, and the user hears so.
   return project.value?.targetStandardDeclared === false ? `${opened} ${ASSUMED_RDF_NOTE}` : opened
 }
 
 function withoutProjectMessage() {
   const repository = standardStore.value?.repository
-  return `Flyover now works without a project: the standard RDF flow${repository ? ` on the configured RDF store's repository ${repository}` : ''}.`
+  const where = repository ? ` on the configured ${storeLabel.value}'s repository ${repository}` : ''
+  return `Flyover now works without a project: the standard ${workflowLabel.value} flow${where}.`
 }
 
 async function needsConfirmation(kind) {
@@ -276,7 +286,7 @@ async function continueWithRemembered() {
   clearErrors()
   busy.value = true
   try {
-    await projectStore.continueWithProject()
+    await projectStore.continueWithProject({ workflow: currentWorkflow.value.id })
     finish(openedMessage())
   } catch (e) {
     error.value = errorMessage(e)
@@ -289,7 +299,11 @@ async function openPending() {
   busy.value = true
   try {
     const { map, fileName, sourceUrl } = pending.value
-    await projectStore.openProject(map, { fileName, sourceUrl })
+    await projectStore.openProject(map, {
+      fileName,
+      sourceUrl,
+      workflow: currentWorkflow.value.id,
+    })
     finish(openedMessage())
   } catch (e) {
     step.value = 'open'
@@ -309,7 +323,9 @@ async function chooseWithoutProject() {
   busy.value = true
   const wasEntering = entering.value
   try {
-    const { storeChanged } = await projectStore.continueWithoutProject()
+    const { storeChanged } = await projectStore.continueWithoutProject({
+      workflow: currentWorkflow.value.id,
+    })
     // Entering, the tab goes on to the workflow either way; switching, only
     // another store calls for a fresh read.
     if (storeChanged || wasEntering) finish(storeChanged ? withoutProjectMessage() : '')
@@ -323,7 +339,7 @@ async function chooseWithoutProject() {
 async function leave() {
   busy.value = true
   try {
-    await projectStore.leaveProject()
+    await projectStore.leaveProject({ workflow: currentWorkflow.value.id })
     finish(withoutProjectMessage())
   } catch (e) {
     step.value = 'choose'
@@ -393,10 +409,10 @@ function back() {
 
       <div class="project-picker-body">
         <template v-if="step === 'choose'">
-          <p class="project-picker-intro">
-            A project is the JSON-LD semantic map that the sites of a study share: a general
-            schema, and each site's own part.
-          </p>
+          <div class="project-picker-intro">
+            <p>All sites in a project share one JSON-LD, with a common schema and a part for each site.</p>
+            <p>Choose one of the options below; you only need to create a new JSON-LD once per project.</p>
+          </div>
           <p
             v-if="project && !entering"
             class="project-picker-current"
@@ -407,7 +423,7 @@ function back() {
           <!-- The project this browser remembers, first: a row in the
                choices' style, the whole row the button. -->
           <button
-            v-if="project && entering"
+            v-if="entering && rememberedFits"
             id="project-picker-continue"
             type="button"
             class="project-picker-option project-picker-remembered"
@@ -468,8 +484,8 @@ function back() {
                 aria-hidden="true"
               /></span>
               <strong class="project-picker-option-title">Continue without a project</strong>
-              <span class="project-picker-option-text">The standard RDF flow, on Flyover's configured RDF
-                store<template v-if="standardStore">{{ ' (repository ' }}<strong>{{ standardStore.repository }}</strong>)</template></span>
+              <span class="project-picker-option-text">The standard {{ workflowLabel }} flow, on Flyover's
+                configured {{ storeLabel }}<template v-if="standardStore">{{ ' (repository ' }}<strong>{{ standardStore.repository }}</strong>)</template></span>
             </button>
           </div>
         </template>
@@ -492,7 +508,7 @@ function back() {
               Open a project
             </h6>
             <p class="small text-muted mb-2">
-              Flyover then works on the RDF store that the project's map names.
+              Flyover then works on the {{ storeLabel }} that the project's map names.
             </p>
             <div
               class="card p-3 border text-center project-drop"
@@ -615,7 +631,7 @@ function back() {
             </template>?
           </h6>
           <p>
-            Flyover will work on the RDF store's repository
+            Flyover will work on the {{ storeLabel }}'s repository
             <strong>{{ pending.check.store.repository }}</strong> at
             <code>{{ pending.check.store.url }}</code>.
           </p>
@@ -625,7 +641,7 @@ function back() {
               with the describe answers added since it was loaded.
             </template>
             <template v-else-if="pending.kind === 'other-store'">
-              This map belongs to the open project, but it names another RDF store. Flyover
+              This map belongs to the open project, but it names another {{ storeLabel }}. Flyover
               switches to that store; the data in the current one stays where it is. The map
               replaces the project's working copy.
             </template>
@@ -703,8 +719,8 @@ function back() {
             <i class="fas fa-sign-out-alt" /> Leave {{ openName }}?
           </h6>
           <p>
-            Flyover goes back to the standard RDF flow, on its configured RDF
-            store<template v-if="standardStore">
+            Flyover goes back to the standard {{ workflowLabel }} flow, on its configured
+            {{ storeLabel }}<template v-if="standardStore">
               — repository <strong>{{ standardStore.repository }}</strong>
             </template>.
           </p>
@@ -840,12 +856,25 @@ function back() {
   padding: 1rem;
 }
 
+/* What a project is, and what to do: in the dialog's own size and colour,
+   not as small print. */
 .project-picker-intro {
-  font-size: 0.85em;
+  margin-bottom: 1rem;
+  color: #343a40;
+  line-height: 1.5;
   border-left: 4px solid rgba(118, 75, 162, 0.75);
-  background: rgba(118, 75, 162, 0.06);
+  background: rgba(118, 75, 162, 0.07);
   border-radius: 4px;
-  padding: 0.6rem 0.8rem;
+  padding: 0.7rem 0.9rem;
+}
+
+/* What a project is, then what to do, each on a line of its own. */
+.project-picker-intro p {
+  margin: 0;
+}
+
+.project-picker-intro p + p {
+  margin-top: 0.3rem;
 }
 
 .project-picker-current {
