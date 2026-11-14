@@ -42,7 +42,7 @@ class TestUploadStrategies:
 
         response = _post_csv(client)
 
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=done")
         attempts = [(Path(u.file_path).name, u.method) for u in fake_curl.uploads]
         assert attempts == [
             (f"ontology_{TABLE}.owl", "data-binary"),
@@ -526,7 +526,7 @@ class TestPostgresIngest:
         response = client.post("/upload", data=_postgres_form(postgres))
 
         assert response.status_code == 302, response.headers.get("Location")
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=done")
         (output,) = session_cache.output_files
         assert output["table_name"] == "patients"
         data = Path(output["data_file"]).read_text()
@@ -567,7 +567,7 @@ class TestPostgresIngest:
 
         response = client.post("/upload", data=_postgres_form(postgres))
 
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=done")
 
     def test_wrong_form_credentials_are_logged_but_do_not_stop_the_ingest(
         self, client, postgres, session_cache
@@ -578,7 +578,7 @@ class TestPostgresIngest:
 
         # handle_postgres_connection fails; the controller ignores its result
         # and the env-driven triplifier still runs
-        assert response.headers["Location"].endswith("/describe")
+        assert response.headers["Location"].endswith("/describe?ingest=done")
         assert session_cache.output_files
 
     def test_an_empty_database_has_nothing_to_triplify(self, client, postgres):

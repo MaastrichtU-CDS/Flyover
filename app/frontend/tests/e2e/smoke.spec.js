@@ -6,7 +6,7 @@ import { test, expect } from './helpers/fixtures.js'
 const ROUTES = [
   { path: '/', heading: /Welcome to Flyover/ },
   { path: '/ingest', heading: /Ingest your data/ },
-  { path: '/describe', heading: /(Data submission finalised|No Data Found)/ },
+  { path: '/describe', heading: /Data Description/ },
   { path: '/describe/variables', heading: /Describe your data/ },
   { path: '/describe/variable-details', heading: /Describe categories and units/ },
   { path: '/annotate', heading: /Semantic Annotation/ },

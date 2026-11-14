@@ -99,6 +99,7 @@ describe('projectName and projectVersion', () => {
   it('fall back to the file name, then to a plain label', () => {
     expect(projectName({ name: '', schemaName: '', fileName: 'aya.jsonld' })).toBe('aya.jsonld')
     expect(projectName({})).toBe('Unnamed project')
+    expect(projectName({}, 'Unnamed semantic map')).toBe('Unnamed semantic map')
   })
 
   it('show a version that starts with a v once, and none when there is none', () => {

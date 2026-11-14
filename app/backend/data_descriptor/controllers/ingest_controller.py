@@ -30,6 +30,12 @@ def _safe_redirect_error(error: str) -> str:
 
 ingest_bp = Blueprint("ingest", __name__)
 
+# Where an ingest moves on to: the describe landing, told whether new data
+# came in. The landing says so once and drops the word from its address, so
+# arriving there any other way (or reloading it) says nothing of an ingest.
+DESCRIBE_AFTER_INGEST = "/describe?ingest=done"
+DESCRIBE_WITHOUT_NEW_DATA = "/describe?ingest=skipped"
+
 
 def get_app_context() -> dict:
     """Get application context (session_cache, rdf_store_service, etc.)."""
@@ -617,7 +623,7 @@ def upload_file():
             if file_type in ("CSV", "Excel") and start_background:
                 start_background(session_cache)
 
-        return redirect("/describe")
+        return redirect(DESCRIBE_AFTER_INGEST if upload else DESCRIBE_WITHOUT_NEW_DATA)
     else:
         return _safe_redirect_error(f"Error: {message}")
 

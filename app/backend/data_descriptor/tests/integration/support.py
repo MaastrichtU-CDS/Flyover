@@ -138,6 +138,9 @@ class FakeRdfStore:
     def __init__(self) -> None:
         self.tables: Dict[str, Dict[str, List[str]]] = {}
         self.ontology_graphs: Dict[str, str] = {}
+        # Any named graph's N-Triples, by graph IRI, for the Graph Store
+        # Protocol downloads (the datasets panel's exports).
+        self.graphs: Dict[str, str] = {}
         self.calls: List[StoreCall] = []
         self.outage: Optional[BaseException] = None
         self.outage_after: Optional[int] = None
@@ -287,6 +290,12 @@ class FakeRdfStore:
         return call
 
     def _serve_graph(self, graph_uri: str):
+        if graph_uri in self.graphs:
+            return (
+                200,
+                {"Content-Type": "application/n-triples; charset=utf-8"},
+                self.graphs[graph_uri],
+            )
         for database, content in self.ontology_graphs.items():
             # The empty database name is the legacy single ontology graph
             expected = (

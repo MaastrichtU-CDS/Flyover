@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // This test posts a real CSV through /upload, which runs the triplifier
-// and then redirects to /describe on success. It mutates the running
+// and then redirects to /describe?ingest=done on success. It mutates the running
 // GraphDB — after running, the graph holds an extra dataset until you
 // recreate the rdf-store container or wipe ./stores/rdf/graphdb/data/.
 
@@ -46,8 +46,14 @@ test.describe('Ingest flow', () => {
       submit.click(),
     ])
 
-    // Describe landing renders one of two h1s depending on data state.
-    await expect(page.locator('h1').first()).toContainText(/Data submission finalised|Describe/)
+    // The describe landing says the data came in, then drops the word from
+    // its address: a reload says nothing of an ingest.
+    await expect(page.locator('h1').first()).toContainText('Data Description')
+    await expect(page.locator('.ingest-outcome')).toContainText('Data uploaded successfully')
+    await expect(page).toHaveURL(/\/describe$/)
+    await page.reload()
+    await expect(page.locator('.store-datasets')).toContainText('The RDF store holds')
+    await expect(page.locator('.ingest-outcome')).toHaveCount(0)
 
     expect(errors, 'JS errors during ingest flow').toEqual([])
   })

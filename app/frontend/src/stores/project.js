@@ -148,6 +148,14 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  // The store's data changed under the app (datasets deleted): what the
+  // browser cached of it goes, and the step bar asks again what is there.
+  async function storeDataChanged() {
+    await forgetStoreRows()
+    refreshDataExists()
+    refreshStoreStatus()
+  }
+
   // Bring the browser and the server to the same project. With `settle`,
   // the browser's project is reopened on a server that lost it (a restart)
   // and a project this browser does not know is closed when this tab works
@@ -517,5 +525,6 @@ export const useProjectStore = defineStore('project', () => {
     openPicker,
     closePicker,
     noticeAfterReload,
+    storeDataChanged,
   }
 })

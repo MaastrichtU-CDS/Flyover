@@ -116,9 +116,14 @@ it asks which project to work on:
 
 A strip above the steps shows the RDF store Flyover works on, marked **Connected** (green dot) or **Not connected**
 (red dot, with the reason on hover), and the open project, with **Switch project** to open another one or to leave it.
-Flyover checks the connection every minute while its tab is visible, on every step, and when you click the status. Switching and leaving ask first and offer to download the
-current map, describe answers included. Working without a project lasts for the browser tab; an open project lasts
-until you switch or leave it.
+Flyover checks the connection every minute while its tab is visible, on every step, and when you click the status.
+Switching and leaving ask first and offer to download the current map, describe answers included. Working without a
+project lasts for the browser tab; an open project lasts until you switch or leave it.
+
+Clicking the store opens a small panel with the datasets in it (one per ingested table), their rows and whether they
+have been described and annotated. From there you can delete one dataset, every dataset (only Flyover's own graphs; the
+rest of the repository stays), or every annotation with the inferences materialised from them. Each delete asks first
+and offers to download what goes as a TriG file, which a store can import again.
 
 While a project is open, every step works on the RDF store its map's top-level `endpoint` names, for example
 `http://graphdb.example.org:7200/repositories/aya/statements`; without an endpoint, Flyover uses its configured store.
@@ -129,6 +134,10 @@ as unreachable in the strip.
 A map uploaded in a step is checked against the open project. The project's own map (the same schema) replaces the
 working copy, after asking if you added describe answers since it was loaded; another project's map asks whether to
 switch. Without a project, a map that belongs to a project offers to open it as one.
+
+The describe and annotate landings show the map the browser holds, the open project's or one uploaded in a step, and
+which of its data sources the RDF store holds, so you can go on with it or upload another. The describe landing says
+the data was uploaded only right after an ingest; any other visit names the datasets in the store.
 
 ### Example Data
 

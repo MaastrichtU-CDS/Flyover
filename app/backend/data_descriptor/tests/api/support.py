@@ -67,6 +67,7 @@ from services import (  # noqa: E402
     RDFStoreService,
     ShareService,
 )
+from services.store_datasets import StoreDatasets  # noqa: E402
 from services.suggestions import SuggestionConfig, SuggestionService  # noqa: E402
 from tests.fixtures.mappings import TABLE, valid_mapping  # noqa: E402,F401
 
@@ -87,6 +88,7 @@ HELPER_NAMES = (
     "name_matcher",
     "get_semantic_map",
     "fetch_map",
+    "store_datasets",
 )
 
 ROUTE_OUTCOMES = ("success", "failure")
@@ -257,7 +259,23 @@ def make_helper_doubles(reference: Dict[str, Any]) -> Dict[str, Any]:
     )
     helpers["get_semantic_map"].return_value = (None, None, False)
     helpers["fetch_map"].return_value = (valid_mapping(), "map.jsonld")
+    helpers["store_datasets"].return_value = make_datasets_double()
     return helpers
+
+
+def make_datasets_double() -> Any:
+    """The store's datasets: one, described, as the status bar's panel lists it."""
+    datasets = create_autospec(StoreDatasets, instance=True)
+    datasets.list.return_value = [
+        {"name": TABLE, "rows": 3, "described": True, "annotated": False}
+    ]
+    datasets.has.side_effect = lambda name: name == TABLE
+    datasets.export_dataset.return_value = "# Flyover's export\n"
+    datasets.export_all.return_value = "# Flyover's export\n"
+    datasets.export_annotations.return_value = "# Flyover's export\n"
+    datasets.delete_all.return_value = []
+    datasets.delete_annotations.return_value = []
+    return datasets
 
 
 def make_ingest_double() -> Any:

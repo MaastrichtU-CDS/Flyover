@@ -782,7 +782,7 @@ class TestUploadCsv:
         response = client.post("/upload", data=_csv_form("patients.csv"))
 
         assert response.status_code == 302
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         (files,), _ = ingest_service.validate_csv_files.call_args
         assert [f.filename for f in files] == ["patients.csv"]
         ingest_service.parse_csv_files.assert_called_once()
@@ -921,7 +921,7 @@ class TestUploadSpreadsheetAndDatabase:
             "/upload", data=_csv_form("book.xlsx", file_type="Excel")
         )
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         (files,), _ = ingest_service.parse_excel_files.call_args
         assert [f.filename for f in files] == ["book.xlsx"]
         assert session_cache.csvTableNames == [f"{TABLE}_Sheet1"]
@@ -966,7 +966,7 @@ class TestUploadSpreadsheetAndDatabase:
             },
         )
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         helpers["handle_postgres"].assert_called_once_with(
             "flyover", "s3cret", "db.example", "clinic", "patients"
         )
@@ -984,7 +984,7 @@ class TestUploadSpreadsheetAndDatabase:
 
         response = client.post("/upload", data={"fileType": "Postgres"})
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         helpers["run_triplifier"].assert_called_once_with("triplifierSQL.properties")
 
     def test_without_an_upload_helper_nothing_is_uploaded(self, make_app, helpers):
@@ -992,7 +992,7 @@ class TestUploadSpreadsheetAndDatabase:
 
         response = client.post("/upload", data=_csv_form("patients.csv"))
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         helpers["start_background"].assert_not_called()
 
 
@@ -1012,7 +1012,7 @@ class TestUploadWithoutNewData:
     ):
         response = client.post("/upload", data=form)
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=skipped"
         assert session_cache.StatusToDisplay.startswith(
             "You have opted to not submit any new data."
         )
@@ -1022,7 +1022,7 @@ class TestUploadWithoutNewData:
     def test_a_json_body_counts_as_no_data(self, client, helpers):
         response = client.post("/upload", json={"fileType": "CSV"})
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=skipped"
         helpers["run_triplifier"].assert_not_called()
 
     def test_an_unknown_source_type_with_a_file_is_an_error(self, client, helpers):
@@ -1097,7 +1097,7 @@ class TestUploadSizes:
             data={"fileType": "CSV", "csvFile": (io.BytesIO(payload), "big.csv")},
         )
 
-        assert response.headers["Location"] == "/describe"
+        assert response.headers["Location"] == "/describe?ingest=done"
         assert received == [payload]
 
     def test_a_relationship_field_over_500_kb_is_too_large(self, client, helpers):
