@@ -675,10 +675,13 @@ class TestAnnotationDepth:
         assert "sio:SIO_000235 ?component1" in annotation
         assert "?component2 sio:SIO_000253 ?component3" in annotation
         assert f"?component3 rdf:type db:{TABLE}.ehrClass" in annotation
-        # The after-class no longer hangs off the row directly
-        (removal,) = [
-            u for u in updates if "DELETE { ?tablerow sio:SIO_000253 ?variable . }" in u
-        ]
+        # The after-class no longer hangs off the row directly: the row's
+        # edges to it go, in the table's annotation graph
+        (removal,) = [u for u in updates if "?tablerow sio:SIO_000253 ?variable ." in u]
+        assert (
+            f"DELETE {{ GRAPH <http://annotation.local/{TABLE}/> "
+            "{ ?tablerow sio:SIO_000253 ?variable . } }" in removal
+        )
         assert f"?variable rdf:type db:{TABLE}.ehrClass" in removal
         # ... and the removal query was saved next to the annotation
         tmp = Path(app.config["APP_CONTEXT"]["root_dir"]).parent / "tmp"

@@ -44,6 +44,7 @@ RDF = frozenset(
         # integration
         "test_integration_annotate.py",
         "test_integration_annotation_cli.py",
+        "test_integration_annotation_statements.py",
         "test_integration_describe.py",
         "test_integration_ingest.py",
         "test_integration_ingest_uploads.py",
