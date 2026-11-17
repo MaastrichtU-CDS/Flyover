@@ -102,6 +102,18 @@ def safe_remove_file(filepath: str) -> None:
         logger.warning(f"Failed to remove file {filepath}: {e}")
 
 
+def _tables_the_map_does_not_name(databases, map_table_names, name_matcher) -> list:
+    """The store's tables that no table of the map names, which annotation
+    skips. A map that names no table at all applies to every table."""
+    if not map_table_names:
+        return []
+    return [
+        database
+        for database in databases
+        if not any(name_matcher(name, database) for name in map_table_names)
+    ]
+
+
 def _jsonld_table_names(json_data) -> list:
     """The tables a map defines: each table's sourceFile (else its key), or a
     legacy map's database_name.
@@ -335,6 +347,14 @@ def start_annotation():
             rdf_store_url, session_cache.repo, "/statements"
         )
         map_table_names = get_table_names(run_session)
+        skipped_tables = _tables_the_map_does_not_name(
+            databases, map_table_names, name_matcher
+        )
+        if skipped_tables:
+            logger.info(
+                "Not annotated, as no table of the map names them: %s",
+                ", ".join(skipped_tables),
+            )
 
         annotation_data = AnnotateService.prepare_annotation_data(
             databases,
@@ -350,6 +370,7 @@ def start_annotation():
                 {
                     "success": False,
                     "error": "No variables with local definitions found",
+                    "skipped_tables": skipped_tables,
                 }
             )
 
@@ -424,6 +445,7 @@ def start_annotation():
                 {
                     "success": False,
                     "error": "No variables were successfully annotated",
+                    "skipped_tables": skipped_tables,
                 }
             )
 
@@ -431,6 +453,7 @@ def start_annotation():
             {
                 "success": True,
                 "message": f"Annotated {total_annotated} variables across {len(annotation_data)} databases",
+                "skipped_tables": skipped_tables,
             }
         )
 

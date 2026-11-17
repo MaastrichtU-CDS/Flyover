@@ -434,6 +434,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": True,
             "message": "Annotated 1 variables across 1 databases",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status == {
             f"{TABLE}.biological_sex": {
@@ -484,9 +485,10 @@ class TestStartAnnotation:
         )
 
     def test_databases_are_reported_one_by_one(
-        self, client, session_cache, store, annotatable
+        self, client, session_cache, store, annotatable, helpers
     ):
         store.get_databases.return_value = [TABLE, "visits"]
+        helpers["get_table_names"].return_value = [TABLE, "visits"]
         annotatable.prepare_annotation_data.return_value = _prepared(TABLE, "visits")
 
         def execute(endpoint, database, prefixes, variables, temp_dir):
@@ -501,6 +503,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": True,
             "message": "Annotated 1 variables across 2 databases",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status["visits.biological_sex"] == {
             "success": False,
@@ -575,6 +578,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": False,
             "error": "No variables with local definitions found",
+            "skipped_tables": [],
         }
         annotatable.execute_annotation.assert_not_called()
 
@@ -588,6 +592,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status[f"{TABLE}.biological_sex"]["error"] == (
             "store unreachable"

@@ -204,6 +204,7 @@ class TestStartAnnotation:
         assert body == {
             "success": True,
             "message": "Annotated 3 variables across 1 databases",
+            "skipped_tables": [],
         }
         status = session_cache.annotation_status
         assert set(status) == {
@@ -311,6 +312,7 @@ class TestStartAnnotation:
         assert body == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert all(not e["success"] for e in session_cache.annotation_status.values())
 
@@ -348,6 +350,7 @@ class TestStartAnnotation:
         assert body == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert len(session_cache.annotation_status) == 3
         for entry in session_cache.annotation_status.values():
@@ -433,8 +436,25 @@ class TestStartAnnotation:
         assert body == {
             "success": False,
             "error": "No variables with local definitions found",
+            "skipped_tables": ["other_table"],
         }
         assert rdf_store.updates == []
+
+    def test_a_store_table_the_map_does_not_name_is_skipped_and_listed(
+        self, client, session_cache, annotate_ready
+    ):
+        annotate_ready.seed_table("visits", {"visit_id": ["V1"]})
+
+        body = client.post("/start-annotation").get_json()
+
+        assert body["success"] is True
+        assert body["skipped_tables"] == ["visits"]
+        assert set(session_cache.annotation_status) == {
+            f"{TABLE}.identifier",
+            f"{TABLE}.biological_sex",
+            f"{TABLE}.age_at_diagnosis",
+        }
+        assert not any("annotation.local/visits/" in u for u in annotate_ready.updates)
 
 
 # ---------------------------------------------------------------------------
@@ -716,6 +736,7 @@ class TestAnnotationDepth:
         assert body == {
             "success": True,
             "message": "Annotated 4 variables across 2 databases",
+            "skipped_tables": [],
         }
         status = session_cache.annotation_status
         assert status["visits.identifier"]["success"] is True

@@ -184,6 +184,7 @@ def test_the_rdf_flow_leaves_the_expected_graphs_in_the_store(
     assert response.get_json() == {
         "success": True,
         "message": "Annotated 3 variables across 1 databases",
+        "skipped_tables": [],
     }
     assert all(entry["success"] for entry in session_cache.annotation_status.values())
 
