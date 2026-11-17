@@ -257,8 +257,8 @@ def build_app_context(
         "name_matcher": lambda map_db, target_db: (
             RDFStoreService.graph_database_find_name_match(map_db, target_db)
         ),
-        "get_semantic_map": lambda sc, database_key=None: (
-            get_semantic_map_for_annotation(sc, database_key)
+        "get_semantic_map": lambda sc, database_key=None, table_key=None: (
+            get_semantic_map_for_annotation(sc, database_key, table_key)
         ),
     }
 

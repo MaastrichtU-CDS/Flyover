@@ -127,6 +127,20 @@ class TestGetSemanticMapForAnnotation(unittest.TestCase):
         self.assertTrue(is_jsonld)
         mock_mapping.to_legacy_format.assert_called_once()
 
+    def test_jsonld_mapping_for_one_table(self):
+        """The database and table keys reach the map: the variables are then
+        those of that one table."""
+        cache = MockSessionCache()
+        mock_mapping = MagicMock()
+        mock_mapping.to_legacy_format.return_value = {"variable_info": {}}
+        cache.jsonld_mapping = mock_mapping
+
+        get_semantic_map_for_annotation(cache, "hospital", "followup")
+
+        mock_mapping.to_legacy_format.assert_called_once_with(
+            database_key="hospital", table_key="followup"
+        )
+
     def test_jsonld_takes_precedence(self):
         """Test that jsonld_mapping takes precedence over global_semantic_map."""
         cache = MockSessionCache()
