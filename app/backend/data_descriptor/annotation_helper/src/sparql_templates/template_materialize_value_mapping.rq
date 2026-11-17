@@ -8,6 +8,11 @@
 # owl:intersectionOf list). A value class that several variables use, such
 # as "missing" or the answers of a questionnaire, otherwise gives a cell the
 # class that another variable maps the cell's value to.
+#
+# The cell's value is fetched through the cell and compared with the code,
+# not joined on: a join lets a store start from the code and walk every cell
+# in the store that holds it, as RDF4J chose to on an NKI table from 1,000
+# rows on.
 
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -37,7 +42,8 @@ WHERE {
     }
     GRAPH ?dataGraph {
         ?instance dbo:has_cell ?valueCell .
-        ?valueCell dbo:has_value ?localValue .
+        ?valueCell dbo:has_value ?cellValue .
     }
+    FILTER(?cellValue = ?localValue)
     FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))
 }
