@@ -2,6 +2,12 @@
 # For each ?term class defined in the value mapping (template_mapping.rq),
 # this query finds instances that match the owl:equivalentClass restriction
 # and materializes rdf:type ?term for those instances.
+#
+# A code is tied to the variable it was mapped for: its value and its
+# variable's class are read from the same restriction (the same
+# owl:intersectionOf list). A value class that several variables use, such
+# as "missing" or the answers of a questionnaire, otherwise gives a cell the
+# class that another variable maps the cell's value to.
 
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -22,6 +28,9 @@ WHERE {
         ?list rdf:rest*/rdf:first ?valueRestriction .
         ?valueRestriction owl:onProperty dbo:has_value ;
                           owl:hasValue ?localValue .
+        ?list rdf:rest*/rdf:first ?cellRestriction .
+        ?cellRestriction owl:onProperty dbo:cell_of ;
+                         owl:someValuesFrom ?superClass .
     }
     GRAPH <MATERIALIZED_GRAPH_URI> {
         ?instance rdf:type ?superClass .

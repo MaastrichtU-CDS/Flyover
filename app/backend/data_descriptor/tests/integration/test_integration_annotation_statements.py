@@ -8,7 +8,9 @@ each case, with rdflib behind the store's endpoints (:class:`SparqlStore`):
 - no statement sent while annotating asks the store for patterns that share
   nothing, which every store answers by pairing everything with everything;
 - the clean-up removes the edges the schema places elsewhere, in the table's
-  own annotation graph and nowhere else.
+  own annotation graph and nowhere else;
+- the materialisation gives a cell the value class of its own column's code,
+  never that of another column that maps the same class to another code.
 
 The data graph is written here in the triplifier's shape: a row
 ``…/data/<table>/<n>`` of class ``db:<table>`` has a column node
@@ -20,7 +22,7 @@ from typing import Dict, Iterator, List, Sequence
 
 import pytest
 import responses
-from rdflib import Graph, URIRef
+from rdflib import RDF, Graph, URIRef
 from rdflib.plugins.sparql.algebra import translateUpdate
 from rdflib.plugins.sparql.parser import parseUpdate
 from rdflib.plugins.sparql.parserutils import CompValue
@@ -286,3 +288,67 @@ def test_the_clean_up_removes_the_rows_edges_to_the_class_in_its_annotation_grap
     # Another table's annotation graph and the data are not touched.
     assert set(_graph(store, "http://annotation.local/followups/")) == followups_before
     assert set(_graph(store, "http://data.local/visits/")) == data_before
+
+
+# ---------------------------------------------------------------------------
+# The materialisation of value classes
+# ---------------------------------------------------------------------------
+
+EX = "http://example.org/hads/"
+
+
+def _item(local_definition: str, item_class: str, codes: Dict[str, str]) -> dict:
+    return {
+        "predicate": "sio:SIO_000008",
+        "class": f"ex:{item_class}",
+        "local_definition": local_definition,
+        "value_mapping": {
+            "terms": {
+                term: {"local_term": code, "target_class": f"ex:{term}"}
+                for term, code in codes.items()
+            }
+        },
+    }
+
+
+def test_a_cell_gets_the_value_class_of_its_own_columns_code(
+    store, endpoint, tmp_path, monkeypatch
+):
+    """Two items of one questionnaire share their answer classes, one of them
+    scored the other way round (as HADS does): "0" is "not at all" in the
+    first and "most of the time" in the second. Each cell gets the class its
+    own column maps its value to, and not the class another column maps the
+    same value to (assessment §16.5: one class, two codes)."""
+    from annotation_helper.src import miscellaneous
+
+    monkeypatch.setattr(miscellaneous, "materialize", True)
+    _load_table(store, "hads", {"item_a": ["0", "3"], "item_b": ["0", "3"]})
+
+    results = miscellaneous.add_annotation(
+        endpoint=endpoint,
+        database="hads",
+        prefixes=f"{PREFIXES}\nPREFIX ex: <{EX}>",
+        annotation_data={
+            "anxiety_item": _item(
+                "item_a", "AnxietyItem", {"not_at_all": "0", "most_of_the_time": "3"}
+            ),
+            "reversed_item": _item(
+                "item_b", "ReversedItem", {"not_at_all": "3", "most_of_the_time": "0"}
+            ),
+        },
+        path=str(tmp_path),
+        save_query=False,
+    )
+
+    assert all(entry["success"] for entry in results.values())
+    materialised = _graph(store, "http://materialized.local/hads/")
+    answers = {URIRef(f"{EX}not_at_all"), URIRef(f"{EX}most_of_the_time")}
+
+    def value_classes(row: int, column: str) -> set:
+        cell = URIRef(f"{_row('hads', row)}/{column}/value")
+        return set(materialised.objects(cell, RDF.type)) & answers
+
+    assert value_classes(0, "item_a") == {URIRef(f"{EX}not_at_all")}
+    assert value_classes(1, "item_a") == {URIRef(f"{EX}most_of_the_time")}
+    assert value_classes(0, "item_b") == {URIRef(f"{EX}most_of_the_time")}
+    assert value_classes(1, "item_b") == {URIRef(f"{EX}not_at_all")}
