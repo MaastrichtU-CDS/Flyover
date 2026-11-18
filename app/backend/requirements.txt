@@ -15,6 +15,6 @@ pytz==2025.2
 rdflib>=6.0.0
 requests==2.33.1
 six==1.17.0
-triplifier>=2.2.0
+triplifier>=2.2.0,<3
 # 3.1.9 stopped capping urlencoded forms at 500 KB, which refused wide describe forms
 Werkzeug>=3.1.9
