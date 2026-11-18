@@ -625,7 +625,7 @@ class TestVerifyState:
 
 
 # ---------------------------------------------------------------------------
-# Annotation depth: reconstruction shapes, parallel tables, materialisation
+# Annotation depth: reconstruction shapes, two tables, materialisation
 # ---------------------------------------------------------------------------
 
 

@@ -22,9 +22,8 @@ template_dir = os.path.join(script_dir, "sparql_templates")
 # read-only verification queries and the query construction of different
 # variables overlap instead of running strictly one after another), we serialize
 # only the *writes* that target a given annotation graph. Writes to different
-# graphs (e.g. different databases annotated in parallel by the controller) use
-# different locks and therefore still run concurrently, and read queries are
-# never locked.
+# graphs (e.g. two annotation runs at the same time) use different locks and
+# therefore still run concurrently, and read queries are never locked.
 _graph_write_locks = {}
 _graph_write_locks_guard = threading.Lock()
 

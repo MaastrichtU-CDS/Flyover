@@ -10,7 +10,6 @@ import logging
 import os
 import tempfile
 from typing import Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, redirect, request
 from werkzeug.utils import secure_filename
@@ -399,47 +398,46 @@ def start_annotation():
             )
             return database, data, annotation_results, error
 
-        # Annotation runs are I/O-bound (they fire HTTP requests at the RDF
-        # store and wait on the network), so the worker count is not tied to
-        # CPU cores. Fire all databases in parallel, capped to a sane upper
-        # bound to avoid overwhelming the store with too many connections.
-        max_workers = min(len(annotation_data), 32)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(_annotate_database, database, data): database
-                for database, data in annotation_data.items()
-            }
-            for future in as_completed(futures):
-                database, data, annotation_results, error = future.result()
+        # One table at a time. Each table already runs up to 32 variables at
+        # once against the store (annotation_helper's pool), so running tables
+        # side by side multiplies the open connections: NKI's 12 tables ran
+        # out of open files in the container ("Too many open files" at
+        # Docker's default limit of 1,024) and most variables failed. The
+        # store applies the writes one after another anyway, so tables side by
+        # side were also slower (403 s against 38 s for NKI's map at 50 rows).
+        for database, data in annotation_data.items():
+            database, data, annotation_results, error = _annotate_database(
+                database, data
+            )
 
-                for var_name in data["variables"]:
-                    status_key = f"{database}.{var_name}"
-                    if annotation_results is None:
-                        session_cache.annotation_status[status_key] = {
-                            "success": False,
-                            "error": error,
-                            "database": database,
-                        }
-                        continue
-
-                    result = annotation_results.get(var_name, {})
-                    is_success = result.get("success", False)
-
+            for var_name in data["variables"]:
+                status_key = f"{database}.{var_name}"
+                if annotation_results is None:
                     session_cache.annotation_status[status_key] = {
-                        "success": is_success,
-                        "message": (
-                            "Annotation completed successfully"
-                            if is_success
-                            else "Annotation failed"
-                        ),
+                        "success": False,
+                        "error": error,
                         "database": database,
-                        "details": result,
                     }
+                    continue
 
-                    if not is_success and error:
-                        session_cache.annotation_status[status_key]["error"] = error
+                result = annotation_results.get(var_name, {})
+                is_success = result.get("success", False)
 
-                    total_annotated += int(is_success)
+                session_cache.annotation_status[status_key] = {
+                    "success": is_success,
+                    "message": (
+                        "Annotation completed successfully"
+                        if is_success
+                        else "Annotation failed"
+                    ),
+                    "database": database,
+                    "details": result,
+                }
+
+                if not is_success and error:
+                    session_cache.annotation_status[status_key]["error"] = error
+
+                total_annotated += int(is_success)
 
         if total_annotated == 0:
             return jsonify(
