@@ -512,18 +512,20 @@ class TestValidatorDiagnostics:
 
         result = MappingValidator().validate(mapping_dict)
 
-        (issue,) = result.issues
-        assert issue.severity == "info"
+        assert result.issues == []
+        (issue,) = result.warnings
+        assert issue.severity == "warning"
         assert issue.path.endswith("columns.biological_sex.localMappings.diverse")
-        assert issue.message == "Local mapping key 'diverse' not in schema terms"
-        assert issue.suggestion == "Schema terms: female, male, missing_or_unspecified"
+        assert issue.message == (
+            f"Table '{TABLE}', column 'sex' maps the term 'diverse', which the "
+            "variable 'biological_sex' does not have"
+        )
+        assert issue.suggestion == (
+            "Its codes are not annotated. The variable's terms: "
+            "female, male, missing_or_unspecified"
+        )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="_check_cross_references files an unknown local term as an 'info' issue, but validate() "
-        "treats every non-warning issue as blocking, so an informational note invalidates the mapping",
-    )
-    def test_an_informational_issue_does_not_invalidate_the_mapping(self, mapping_dict):
+    def test_an_unknown_local_term_does_not_invalidate_the_mapping(self, mapping_dict):
         columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
         columns["biological_sex"]["localMappings"]["diverse"] = "D"
 

@@ -266,19 +266,45 @@ class TestCrossReferenceValidation(unittest.TestCase):
         result = self.validator.validate(mapping, check_references=False)
         self.assertEqual(len(result.warnings), 0)
 
-    def test_local_mapping_key_not_in_schema_terms_produces_info_issue(self):
-        """A localMappings key not in the schema's valueMapping terms must produce
-        an info-level issue in result.issues."""
+    def test_local_mapping_key_not_in_schema_terms_produces_a_warning(self):
+        """Rule 3: a localMappings key that is not one of the variable's terms
+        is a warning naming table and column; the map stays valid."""
         mapping = _make_valid_mapping()
         mapping["databases"]["db1"]["tables"]["t1"]["columns"]["sex_col"][
             "localMappings"
         ]["unknown_term"] = "?"
         result = self.validator.validate(mapping, check_references=True)
-        info_issues = [i for i in result.issues if i.severity == "info"]
-        self.assertGreaterEqual(
-            len(info_issues),
-            1,
-            "Expected at least one info-level issue for unknown localMappings key",
+        self.assertTrue(result.is_valid, result.issues)
+        (warning,) = result.warnings
+        self.assertEqual(
+            warning.path,
+            "databases.db1.tables.t1.columns.sex_col.localMappings.unknown_term",
+        )
+        self.assertEqual(
+            warning.message,
+            "Table 't1', column 'sex' maps the term 'unknown_term', which the "
+            "variable 'biological_sex' does not have",
+        )
+        self.assertEqual(
+            warning.suggestion,
+            "Its codes are not annotated. The variable's terms: female, male",
+        )
+
+    def test_a_term_on_a_variable_without_a_value_mapping_produces_a_warning(self):
+        """As in the NKI map: missing_or_unspecified on a variable that has no
+        value mapping at all."""
+        mapping = _make_valid_mapping()
+        mapping["databases"]["db1"]["tables"]["t1"]["columns"]["id_col"][
+            "localMappings"
+        ] = {"missing_or_unspecified": ""}
+        result = self.validator.validate(mapping, check_references=True)
+        self.assertTrue(result.is_valid, result.issues)
+        (warning,) = result.warnings
+        self.assertIn("maps the term 'missing_or_unspecified'", warning.message)
+        self.assertIn("variable 'identifier' does not have", warning.message)
+        self.assertEqual(
+            warning.suggestion,
+            "Its codes are not annotated: the variable has no value mapping.",
         )
 
     def test_multiple_undefined_references_each_produce_a_warning(self):

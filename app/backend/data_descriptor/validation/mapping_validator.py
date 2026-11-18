@@ -476,7 +476,8 @@ class MappingValidator:
         return self.validate(mapping_data, check_references=check_references)
 
     def _check_cross_references(self, data: dict) -> List[ValidationIssue]:
-        """Check that column mappings reference existing schema variables."""
+        """Check that column mappings reference existing schema variables and
+        terms."""
         issues: List[ValidationIssue] = []
 
         # Get defined variables
@@ -532,37 +533,52 @@ class MappingValidator:
                     )
                     var_key = var_key_match.group(1) if var_key_match else None
 
-                    if local_mappings and var_key and var_key in schema_vars:
+                    # A term the variable's value mapping does not have: its
+                    # codes are not annotated. That includes a variable without
+                    # a value mapping, which has no terms at all.
+                    if (
+                        isinstance(local_mappings, dict)
+                        and local_mappings
+                        and var_key
+                        and var_key in schema_vars
+                    ):
                         schema_var = data["schema"]["variables"].get(var_key, {})
-                        schema_terms = set()
-                        if (
-                            "valueMapping" in schema_var
-                            and "terms" in schema_var["valueMapping"]
-                        ):
-                            schema_terms = set(
-                                schema_var["valueMapping"]["terms"].keys()
-                            )
-
+                        value_mapping = schema_var.get("valueMapping") or {}
+                        schema_terms = set(value_mapping.get("terms") or {})
                         if schema_terms:
-                            for local_term in local_mappings.keys():
-                                if local_term not in schema_terms:
-                                    path = (
+                            available = ", ".join(sorted(schema_terms)[:5])
+                            if len(schema_terms) > 5:
+                                available += "..."
+                            consequence = (
+                                "Its codes are not annotated. The variable's "
+                                f"terms: {available}"
+                            )
+                        else:
+                            consequence = (
+                                "Its codes are not annotated: the variable has "
+                                "no value mapping."
+                            )
+                        for local_term in local_mappings.keys():
+                            if local_term in schema_terms:
+                                continue
+                            issues.append(
+                                ValidationIssue(
+                                    severity="warning",
+                                    path=(
                                         f"databases.{db_key}.tables"
                                         f".{table_key}.columns"
                                         f".{col_key}.localMappings"
                                         f".{local_term}"
-                                    )
-                                    available = ", ".join(sorted(schema_terms)[:5])
-                                    if len(schema_terms) > 5:
-                                        available += "..."
-                                    issues.append(
-                                        ValidationIssue(
-                                            severity="info",
-                                            path=path,
-                                            message=f"Local mapping key '{local_term}' not in schema terms",
-                                            suggestion=f"Schema terms: {available}",
-                                        )
-                                    )
+                                    ),
+                                    message=(
+                                        f"Table '{_table_name(table_key, table_data)}', "
+                                        f"column '{_column_name(col_key, col_data)}' "
+                                        f"maps the term '{local_term}', which the "
+                                        f"variable '{var_key}' does not have"
+                                    ),
+                                    suggestion=consequence,
+                                )
+                            )
 
         return issues
 
