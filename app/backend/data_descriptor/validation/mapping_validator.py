@@ -394,6 +394,7 @@ class MappingValidator:
         if check_references and result.is_valid:
             ref_issues = self._check_cross_references(mapping_data)
             ref_issues += self._check_variables_mapped_twice(mapping_data)
+            ref_issues += self._check_codes_under_two_terms(mapping_data)
             for issue in ref_issues:
                 if issue.severity == "warning":
                     result.warnings.append(issue)
@@ -599,6 +600,49 @@ class MappingValidator:
                         ),
                     )
                 )
+        return issues
+
+    def _check_codes_under_two_terms(self, data: dict) -> List[ValidationIssue]:
+        """Warn where one column lists a code under two terms.
+
+        A cell holding that code gets the class of each of the terms.
+        """
+        issues: List[ValidationIssue] = []
+        for db_key, table_key, table_data, columns in _tables(data):
+            for col_key, col_data in columns.items():
+                local_mappings = col_data.get("localMappings")
+                if not isinstance(local_mappings, dict):
+                    continue
+                terms_by_code: Dict[str, List[str]] = {}
+                for term, codes in local_mappings.items():
+                    for code in codes if isinstance(codes, list) else [codes]:
+                        if isinstance(code, str):
+                            terms = terms_by_code.setdefault(code, [])
+                            if term not in terms:
+                                terms.append(term)
+                for code, terms in terms_by_code.items():
+                    if len(terms) < 2:
+                        continue
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            path=(
+                                f"databases.{db_key}.tables.{table_key}"
+                                f".columns.{col_key}.localMappings"
+                            ),
+                            message=(
+                                f"Table '{_table_name(table_key, table_data)}', "
+                                f"column '{_column_name(col_key, col_data)}': the "
+                                f"code '{code}' is listed under the terms "
+                                f"{_quoted_list(terms)}"
+                            ),
+                            value=code,
+                            suggestion=(
+                                "A cell holding this code gets the class of each "
+                                "of these terms. List each code under one term."
+                            ),
+                        )
+                    )
         return issues
 
     def _collect_statistics(self, data: dict, result: ValidationResult) -> None:

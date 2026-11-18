@@ -360,6 +360,67 @@ class TestColumnsSharingAVariable(unittest.TestCase):
         self.assertEqual(self._warnings(mapping), [])
 
 
+class TestOneCodeUnderTwoTerms(unittest.TestCase):
+    """Rule 2: one column lists a code under two terms."""
+
+    def setUp(self):
+        self.validator = MappingValidator()
+
+    def _warnings(self, mapping):
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, result.issues)
+        return [w for w in result.warnings if "is listed under the terms" in w.message]
+
+    def test_a_code_under_two_terms_is_named_with_its_column(self):
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_col"]["localMappings"] = {"male": "M", "female": "M"}
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertEqual(
+            warning.path, "databases.db1.tables.t1.columns.sex_col.localMappings"
+        )
+        self.assertEqual(
+            warning.message,
+            "Table 't1', column 'sex': the code 'M' is listed under the terms "
+            "'male' and 'female'",
+        )
+        self.assertEqual(warning.value, "M")
+
+    def test_codes_in_lists_count_and_the_empty_code_too(self):
+        # As in the NKI map: t_stage lists "" under three terms.
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_col"]["localMappings"] = {
+            "male": ["M", ""],
+            "female": ["F", ""],
+        }
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertIn(
+            "the code '' is listed under the terms 'male' and 'female'", warning.message
+        )
+
+    def test_a_code_listed_twice_under_one_term_is_fine(self):
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_col"]["localMappings"] = {
+            "male": ["M", "M"],
+            "female": "F",
+        }
+
+        self.assertEqual(self._warnings(mapping), [])
+
+    def test_one_code_in_two_columns_is_fine(self):
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_again"] = {
+            "mapsTo": "schema:variable/biological_sex",
+            "localColumn": "gender",
+            "localMappings": {"male": "M", "female": "F"},
+        }
+
+        self.assertEqual(self._warnings(mapping), [])
+
+
 # ---------------------------------------------------------------------------
 # Semantic validation: predicate and class URI strings
 # ---------------------------------------------------------------------------
