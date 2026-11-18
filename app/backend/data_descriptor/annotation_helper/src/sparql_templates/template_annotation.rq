@@ -31,9 +31,11 @@ INSERT {
 }
 
 WHERE {
+    # The row is reached through its column node: the column's class already
+    # says which table the row is of. Asking for the row's type as well lets
+    # a store such as RDF4J pair every row with every column node of the
+    # class before it checks they belong together (rows squared).
     GRAPH ?dataGraph {
-        ?tablerow rdf:type db:databasename .
-
         ?tablerow dbo:has_column ?component0 .
 
         ?component0 rdf:type db:databasename.localvariable .

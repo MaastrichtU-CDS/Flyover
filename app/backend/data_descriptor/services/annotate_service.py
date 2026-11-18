@@ -100,6 +100,29 @@ class AnnotateService:
         return var_copy, has_local_def
 
     @staticmethod
+    def _place_in_map(session_cache: Any, database: str) -> Tuple[Any, Any]:
+        """
+        Where the JSON-LD map describes the store table ``database``.
+
+        A map table whose sourceFile names it is that place, and the table's
+        own variables are annotated: not those of every table in its
+        database, which annotated each table with its neighbours' variables
+        under their column names. A map that names no table falls back to
+        the database (today's "match everything"), whose variables are those
+        of all its tables.
+
+        Returns:
+            Tuple of (database key, table key); either may be None.
+        """
+        mapping = session_cache.jsonld_mapping
+        if not mapping:
+            return None, None
+        place = mapping.find_table_for_rdf_store(database)
+        if place:
+            return place
+        return mapping.find_database_key_for_rdf_store(database), None
+
+    @staticmethod
     def execute_annotation(
         endpoint: str,
         database: str,
@@ -189,16 +212,12 @@ class AnnotateService:
             if not matches:
                 continue
 
-            # Get database key for JSON-LD
-            db_key = None
-            if session_cache.jsonld_mapping:
-                db_key = session_cache.jsonld_mapping.find_database_key_for_rdf_store(
-                    database
-                )
+            # The map's place for this table: its own variables only
+            db_key, table_key = AnnotateService._place_in_map(session_cache, database)
 
             # Get semantic map
             semantic_map, _, is_jsonld = get_semantic_map_func(
-                session_cache, database_key=db_key
+                session_cache, database_key=db_key, table_key=table_key
             )
 
             if semantic_map is None:
@@ -268,15 +287,11 @@ class AnnotateService:
             if not matches:
                 continue
 
-            # Get semantic map
-            db_key = None
-            if session_cache.jsonld_mapping:
-                db_key = session_cache.jsonld_mapping.find_database_key_for_rdf_store(
-                    database
-                )
+            # Get semantic map: the table's own variables
+            db_key, table_key = AnnotateService._place_in_map(session_cache, database)
 
             semantic_map, _, is_jsonld = get_semantic_map_func(
-                session_cache, database_key=db_key
+                session_cache, database_key=db_key, table_key=table_key
             )
 
             if is_jsonld:
@@ -338,15 +353,11 @@ class AnnotateService:
 
         database, var_name = variable_name.split(".", 1)
 
-        # Get semantic map
-        db_key = None
-        if session_cache.jsonld_mapping:
-            db_key = session_cache.jsonld_mapping.find_database_key_for_rdf_store(
-                database
-            )
+        # Get semantic map: the table's own variables
+        db_key, table_key = AnnotateService._place_in_map(session_cache, database)
 
         semantic_map, _, is_jsonld = get_semantic_map_func(
-            session_cache, database_key=db_key
+            session_cache, database_key=db_key, table_key=table_key
         )
 
         if semantic_map is None:

@@ -319,10 +319,13 @@ class TestServiceBoundWork:
         assert elapsed < 1.0
 
 
-class TestParallelAnnotation:
-    def test_databases_are_annotated_in_parallel(
+class TestAnnotationOfManyTables:
+    def test_the_run_adds_little_to_the_tables_own_time(
         self, client, session_cache, store, helpers, annotate_service, perf
     ):
+        # Tables are annotated one after another (each runs its variables
+        # side by side), so the run takes the sum of the tables' times; what
+        # the controller adds on top should stay small.
         databases = [f"table_{i:02d}" for i in range(64)]
         helpers["has_semantic_map"].return_value = True
         store.get_databases.return_value = databases
@@ -335,7 +338,7 @@ class TestParallelAnnotation:
             with lock:
                 running["now"] += 1
                 running["peak"] = max(running["peak"], running["now"])
-            time.sleep(0.05)  # one store round trip
+            time.sleep(0.01)  # one table's annotation
             with lock:
                 running["now"] -= 1
             return {"v": {"success": True}}, None
@@ -347,14 +350,13 @@ class TestParallelAnnotation:
         elapsed = time.perf_counter() - start
 
         assert response.get_json()["success"] is True
-        sequential = 64 * 0.05
+        overhead = elapsed - 64 * 0.01
         perf.record(
-            "POST /start-annotation, 64 databases x 50 ms each",
-            elapsed * 1000,
+            "POST /start-annotation, 64 tables x 10 ms each, overhead",
+            overhead * 1000,
             "ms",
-            "< 1000 ms",
-            f"{sequential / elapsed:.0f}x faster than one at a time; "
-            f"{running['peak']} in flight at most",
+            "< 500 ms",
+            f"{running['peak']} table in flight at most",
         )
-        assert elapsed < 1.0
-        assert running["peak"] <= 32
+        assert overhead < 0.5
+        assert running["peak"] == 1

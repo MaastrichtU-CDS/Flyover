@@ -122,6 +122,7 @@ class TestUploadAnnotationMap:
             "non_matching_jsonld": [],
             "removed_columns": [],
             "cleaned_mapping": valid_mapping(),
+            "map_warnings": [],
         }
         assert _saved_files(app) == ["mapping.jsonld"]
         assert session_cache.annotation_json_path == os.path.join(
@@ -434,6 +435,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": True,
             "message": "Annotated 1 variables across 1 databases",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status == {
             f"{TABLE}.biological_sex": {
@@ -484,9 +486,10 @@ class TestStartAnnotation:
         )
 
     def test_databases_are_reported_one_by_one(
-        self, client, session_cache, store, annotatable
+        self, client, session_cache, store, annotatable, helpers
     ):
         store.get_databases.return_value = [TABLE, "visits"]
+        helpers["get_table_names"].return_value = [TABLE, "visits"]
         annotatable.prepare_annotation_data.return_value = _prepared(TABLE, "visits")
 
         def execute(endpoint, database, prefixes, variables, temp_dir):
@@ -501,6 +504,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": True,
             "message": "Annotated 1 variables across 2 databases",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status["visits.biological_sex"] == {
             "success": False,
@@ -575,6 +579,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": False,
             "error": "No variables with local definitions found",
+            "skipped_tables": [],
         }
         annotatable.execute_annotation.assert_not_called()
 
@@ -588,6 +593,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status[f"{TABLE}.biological_sex"]["error"] == (
             "store unreachable"
@@ -603,25 +609,24 @@ class TestStartAnnotation:
         assert response.status_code == 200
         assert response.get_json() == {"success": False, "error": "'biological_sex'"}
 
-    def test_the_run_is_capped_at_32_databases_in_parallel(
+    def test_the_tables_are_annotated_one_after_another(
         self, client, store, annotatable
     ):
-        databases = [f"table_{i:02d}" for i in range(40)]
+        # Each table runs its variables side by side already; tables side by
+        # side ran the container out of open files with NKI's 12 tables.
+        databases = [f"table_{i:02d}" for i in range(12)]
         store.get_databases.return_value = databases
         annotatable.prepare_annotation_data.return_value = _prepared(*databases)
         lock = threading.Lock()
         running = {"now": 0, "peak": 0}
-        enough_in_flight = threading.Event()
+        order = []
 
         def execute(endpoint, database, prefixes, variables, temp_dir):
             with lock:
                 running["now"] += 1
                 running["peak"] = max(running["peak"], running["now"])
-                if running["now"] >= 32:
-                    enough_in_flight.set()
-            # Hold the worker until the pool is full (or give up after 5 s).
-            enough_in_flight.wait(timeout=5)
-            time.sleep(0.01)
+            order.append(database)
+            time.sleep(0.01)  # time for a second table to start, if it would
             with lock:
                 running["now"] -= 1
             return {"biological_sex": {"success": True}}, None
@@ -631,9 +636,10 @@ class TestStartAnnotation:
         response = client.post("/start-annotation")
 
         assert response.get_json()["message"] == (
-            "Annotated 40 variables across 40 databases"
+            "Annotated 12 variables across 12 databases"
         )
-        assert running["peak"] == 32
+        assert running["peak"] == 1
+        assert order == databases
 
 
 class TestStartAnnotationWithAFilteredMap:

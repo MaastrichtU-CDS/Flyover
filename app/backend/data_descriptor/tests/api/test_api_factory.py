@@ -221,7 +221,8 @@ class TestTheDefaultHelpers:
         monkeypatch.setattr(
             app_factory,
             "get_semantic_map_for_annotation",
-            lambda sc, key: looked_up.append((sc, key)) or ("map", "db", True),
+            lambda sc, key, table: looked_up.append((sc, key, table))
+            or ("map", "db", True),
         )
         context = wiring["context"]
 
@@ -232,7 +233,14 @@ class TestTheDefaultHelpers:
         wiring["ingest"].get_table_names_from_mapping.assert_called_once_with(session)
         assert context["get_semantic_map"](session) == ("map", "db", True)
         assert context["get_semantic_map"](session, "centre_x") == ("map", "db", True)
-        assert looked_up == [(session, None), (session, "centre_x")]
+        assert context["get_semantic_map"](
+            session, database_key="centre_x", table_key="visits"
+        ) == ("map", "db", True)
+        assert looked_up == [
+            (session, None, None),
+            (session, "centre_x", None),
+            (session, "centre_x", "visits"),
+        ]
 
     @pytest.mark.parametrize(
         "map_db, target, expected",

@@ -266,19 +266,45 @@ class TestCrossReferenceValidation(unittest.TestCase):
         result = self.validator.validate(mapping, check_references=False)
         self.assertEqual(len(result.warnings), 0)
 
-    def test_local_mapping_key_not_in_schema_terms_produces_info_issue(self):
-        """A localMappings key not in the schema's valueMapping terms must produce
-        an info-level issue in result.issues."""
+    def test_local_mapping_key_not_in_schema_terms_produces_a_warning(self):
+        """Rule 3: a localMappings key that is not one of the variable's terms
+        is a warning naming table and column; the map stays valid."""
         mapping = _make_valid_mapping()
         mapping["databases"]["db1"]["tables"]["t1"]["columns"]["sex_col"][
             "localMappings"
         ]["unknown_term"] = "?"
         result = self.validator.validate(mapping, check_references=True)
-        info_issues = [i for i in result.issues if i.severity == "info"]
-        self.assertGreaterEqual(
-            len(info_issues),
-            1,
-            "Expected at least one info-level issue for unknown localMappings key",
+        self.assertTrue(result.is_valid, result.issues)
+        (warning,) = result.warnings
+        self.assertEqual(
+            warning.path,
+            "databases.db1.tables.t1.columns.sex_col.localMappings.unknown_term",
+        )
+        self.assertEqual(
+            warning.message,
+            "Table 't1', column 'sex' maps the term 'unknown_term', which the "
+            "variable 'biological_sex' does not have",
+        )
+        self.assertEqual(
+            warning.suggestion,
+            "Its codes are not annotated. The variable's terms: female, male",
+        )
+
+    def test_a_term_on_a_variable_without_a_value_mapping_produces_a_warning(self):
+        """As in the NKI map: missing_or_unspecified on a variable that has no
+        value mapping at all."""
+        mapping = _make_valid_mapping()
+        mapping["databases"]["db1"]["tables"]["t1"]["columns"]["id_col"][
+            "localMappings"
+        ] = {"missing_or_unspecified": ""}
+        result = self.validator.validate(mapping, check_references=True)
+        self.assertTrue(result.is_valid, result.issues)
+        (warning,) = result.warnings
+        self.assertIn("maps the term 'missing_or_unspecified'", warning.message)
+        self.assertIn("variable 'identifier' does not have", warning.message)
+        self.assertEqual(
+            warning.suggestion,
+            "Its codes are not annotated: the variable has no value mapping.",
         )
 
     def test_multiple_undefined_references_each_produce_a_warning(self):
@@ -290,6 +316,135 @@ class TestCrossReferenceValidation(unittest.TestCase):
             ] = f"schema:variable/missing_{col}"
         result = self.validator.validate(mapping, check_references=True)
         self.assertGreaterEqual(len(result.warnings), 2)
+
+
+# ---------------------------------------------------------------------------
+# Map rules that warn without blocking (plan part 3.3, rules 1 to 3)
+# ---------------------------------------------------------------------------
+
+
+def _columns(mapping: dict) -> dict:
+    return mapping["databases"]["db1"]["tables"]["t1"]["columns"]
+
+
+class TestColumnsSharingAVariable(unittest.TestCase):
+    """Rule 1: two columns of one table map to the same variable."""
+
+    def setUp(self):
+        self.validator = MappingValidator()
+
+    def _warnings(self, mapping):
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, result.issues)
+        return [w for w in result.warnings if "all map to the variable" in w.message]
+
+    def test_two_columns_of_one_table_with_one_variable_are_named(self):
+        mapping = _make_valid_mapping()
+        mapping["databases"]["db1"]["tables"]["t1"]["sourceFile"] = "therapy.csv"
+        _columns(mapping)["id_again"] = {
+            "mapsTo": "schema:variable/identifier",
+            "localColumn": "new_id",
+        }
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertEqual(warning.severity, "warning")
+        self.assertEqual(warning.path, "databases.db1.tables.t1.columns")
+        self.assertEqual(
+            warning.message,
+            "Table 'therapy.csv': columns 'id' and 'new_id' all map to the "
+            "variable 'identifier'",
+        )
+        self.assertTrue(warning.suggestion.startswith("Only column 'id' is annotated"))
+
+    def test_every_column_of_the_variable_is_listed_once(self):
+        mapping = _make_valid_mapping()
+        for name in ("hormone_therapy", "immunotherapy", "radiotherapy"):
+            _columns(mapping)[name] = {
+                "mapsTo": "schema:variable/identifier",
+                "localColumn": name,
+            }
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertIn(
+            "columns 'id', 'hormone_therapy', 'immunotherapy' and 'radiotherapy'",
+            warning.message,
+        )
+        # Without a sourceFile the table goes by its key
+        self.assertTrue(warning.message.startswith("Table 't1': "))
+
+    def test_one_variable_in_two_tables_is_fine(self):
+        mapping = _make_valid_mapping()
+        mapping["databases"]["db1"]["tables"]["t2"] = {
+            "@type": "mapping:Table",
+            "columns": {
+                "id_col": {"mapsTo": "schema:variable/identifier", "localColumn": "id"}
+            },
+        }
+
+        self.assertEqual(self._warnings(mapping), [])
+
+
+class TestOneCodeUnderTwoTerms(unittest.TestCase):
+    """Rule 2: one column lists a code under two terms."""
+
+    def setUp(self):
+        self.validator = MappingValidator()
+
+    def _warnings(self, mapping):
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, result.issues)
+        return [w for w in result.warnings if "is listed under the terms" in w.message]
+
+    def test_a_code_under_two_terms_is_named_with_its_column(self):
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_col"]["localMappings"] = {"male": "M", "female": "M"}
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertEqual(
+            warning.path, "databases.db1.tables.t1.columns.sex_col.localMappings"
+        )
+        self.assertEqual(
+            warning.message,
+            "Table 't1', column 'sex': the code 'M' is listed under the terms "
+            "'male' and 'female'",
+        )
+        self.assertEqual(warning.value, "M")
+
+    def test_codes_in_lists_count_and_the_empty_code_too(self):
+        # As in the NKI map: t_stage lists "" under three terms.
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_col"]["localMappings"] = {
+            "male": ["M", ""],
+            "female": ["F", ""],
+        }
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertIn(
+            "the code '' is listed under the terms 'male' and 'female'", warning.message
+        )
+
+    def test_a_code_listed_twice_under_one_term_is_fine(self):
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_col"]["localMappings"] = {
+            "male": ["M", "M"],
+            "female": "F",
+        }
+
+        self.assertEqual(self._warnings(mapping), [])
+
+    def test_one_code_in_two_columns_is_fine(self):
+        mapping = _make_valid_mapping()
+        _columns(mapping)["sex_again"] = {
+            "mapsTo": "schema:variable/biological_sex",
+            "localColumn": "gender",
+            "localMappings": {"male": "M", "female": "F"},
+        }
+
+        self.assertEqual(self._warnings(mapping), [])
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,6 @@ import logging
 import os
 import tempfile
 from typing import Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Blueprint, jsonify, redirect, request
 from werkzeug.utils import secure_filename
@@ -100,6 +99,18 @@ def safe_remove_file(filepath: str) -> None:
             os.remove(filepath)
     except OSError as e:
         logger.warning(f"Failed to remove file {filepath}: {e}")
+
+
+def _tables_the_map_does_not_name(databases, map_table_names, name_matcher) -> list:
+    """The store's tables that no table of the map names, which annotation
+    skips. A map that names no table at all applies to every table."""
+    if not map_table_names:
+        return []
+    return [
+        database
+        for database in databases
+        if not any(name_matcher(name, database) for name in map_table_names)
+    ]
 
 
 def _jsonld_table_names(json_data) -> list:
@@ -272,6 +283,7 @@ def upload_annotation_json():
                     "non_matching_jsonld": non_matching,
                     "removed_columns": removed_columns,
                     "cleaned_mapping": json_data,
+                    "map_warnings": validator.format_warnings_for_ui(result),
                 }
             )
             kept = True
@@ -335,6 +347,14 @@ def start_annotation():
             rdf_store_url, session_cache.repo, "/statements"
         )
         map_table_names = get_table_names(run_session)
+        skipped_tables = _tables_the_map_does_not_name(
+            databases, map_table_names, name_matcher
+        )
+        if skipped_tables:
+            logger.info(
+                "Not annotated, as no table of the map names them: %s",
+                ", ".join(skipped_tables),
+            )
 
         annotation_data = AnnotateService.prepare_annotation_data(
             databases,
@@ -350,6 +370,7 @@ def start_annotation():
                 {
                     "success": False,
                     "error": "No variables with local definitions found",
+                    "skipped_tables": skipped_tables,
                 }
             )
 
@@ -377,53 +398,53 @@ def start_annotation():
             )
             return database, data, annotation_results, error
 
-        # Annotation runs are I/O-bound (they fire HTTP requests at the RDF
-        # store and wait on the network), so the worker count is not tied to
-        # CPU cores. Fire all databases in parallel, capped to a sane upper
-        # bound to avoid overwhelming the store with too many connections.
-        max_workers = min(len(annotation_data), 32)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(_annotate_database, database, data): database
-                for database, data in annotation_data.items()
-            }
-            for future in as_completed(futures):
-                database, data, annotation_results, error = future.result()
+        # One table at a time. Each table already runs up to 32 variables at
+        # once against the store (annotation_helper's pool), so running tables
+        # side by side multiplies the open connections: NKI's 12 tables ran
+        # out of open files in the container ("Too many open files" at
+        # Docker's default limit of 1,024) and most variables failed. The
+        # store applies the writes one after another anyway, so tables side by
+        # side were also slower (403 s against 38 s for NKI's map at 50 rows).
+        for database, data in annotation_data.items():
+            database, data, annotation_results, error = _annotate_database(
+                database, data
+            )
 
-                for var_name in data["variables"]:
-                    status_key = f"{database}.{var_name}"
-                    if annotation_results is None:
-                        session_cache.annotation_status[status_key] = {
-                            "success": False,
-                            "error": error,
-                            "database": database,
-                        }
-                        continue
-
-                    result = annotation_results.get(var_name, {})
-                    is_success = result.get("success", False)
-
+            for var_name in data["variables"]:
+                status_key = f"{database}.{var_name}"
+                if annotation_results is None:
                     session_cache.annotation_status[status_key] = {
-                        "success": is_success,
-                        "message": (
-                            "Annotation completed successfully"
-                            if is_success
-                            else "Annotation failed"
-                        ),
+                        "success": False,
+                        "error": error,
                         "database": database,
-                        "details": result,
                     }
+                    continue
 
-                    if not is_success and error:
-                        session_cache.annotation_status[status_key]["error"] = error
+                result = annotation_results.get(var_name, {})
+                is_success = result.get("success", False)
 
-                    total_annotated += int(is_success)
+                session_cache.annotation_status[status_key] = {
+                    "success": is_success,
+                    "message": (
+                        "Annotation completed successfully"
+                        if is_success
+                        else "Annotation failed"
+                    ),
+                    "database": database,
+                    "details": result,
+                }
+
+                if not is_success and error:
+                    session_cache.annotation_status[status_key]["error"] = error
+
+                total_annotated += int(is_success)
 
         if total_annotated == 0:
             return jsonify(
                 {
                     "success": False,
                     "error": "No variables were successfully annotated",
+                    "skipped_tables": skipped_tables,
                 }
             )
 
@@ -431,6 +452,7 @@ def start_annotation():
             {
                 "success": True,
                 "message": f"Annotated {total_annotated} variables across {len(annotation_data)} databases",
+                "skipped_tables": skipped_tables,
             }
         )
 

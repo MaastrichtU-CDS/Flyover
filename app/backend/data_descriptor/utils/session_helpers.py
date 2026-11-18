@@ -254,7 +254,9 @@ def process_variable_for_annotation(
 
 
 def get_semantic_map_for_annotation(
-    session_cache: Any, database_key: Optional[str] = None
+    session_cache: Any,
+    database_key: Optional[str] = None,
+    table_key: Optional[str] = None,
 ) -> Tuple[Optional[dict], Optional[str], bool]:
     """
     Get the effective semantic map for annotation, preferring jsonld_mapping.
@@ -265,6 +267,8 @@ def get_semantic_map_for_annotation(
     Args:
         session_cache: The session cache object containing mappings
         database_key: Optional database key to filter local mappings
+        table_key: Optional table key, within that database, to filter local
+            mappings: the variables then are that one table's
 
     Returns:
         tuple: (semantic_map_dict, database_name, is_jsonld)
@@ -275,7 +279,7 @@ def get_semantic_map_for_annotation(
     # Prefer jsonld_mapping when available
     if session_cache.jsonld_mapping is not None:
         legacy_map = session_cache.jsonld_mapping.to_legacy_format(
-            database_key=database_key
+            database_key=database_key, table_key=table_key
         )
         db_name = session_cache.jsonld_mapping.get_first_database_name()
         return legacy_map, db_name, True

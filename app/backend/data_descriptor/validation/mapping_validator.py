@@ -81,6 +81,57 @@ class ValidationResult:
 # ============================================================================
 
 
+def _tables(data: dict):
+    """Each table of the map that is an object with columns, as
+    ``(database key, table key, table, columns)``."""
+    databases = data.get("databases") if isinstance(data, dict) else None
+    if not isinstance(databases, dict):
+        return
+    for db_key, db_data in databases.items():
+        tables = db_data.get("tables") if isinstance(db_data, dict) else None
+        if not isinstance(tables, dict):
+            continue
+        for table_key, table_data in tables.items():
+            if not isinstance(table_data, dict):
+                continue
+            columns = table_data.get("columns")
+            if isinstance(columns, dict):
+                columns = {
+                    key: col for key, col in columns.items() if isinstance(col, dict)
+                }
+                yield db_key, table_key, table_data, columns
+
+
+def _variable_key(maps_to: Any) -> Optional[str]:
+    """The variable a column's mapsTo names, e.g. 'age' for 'schema:variable/age'."""
+    if not isinstance(maps_to, str):
+        return None
+    match = re.match(r"schema:variable/(.+)$", maps_to)
+    return match.group(1) if match else None
+
+
+def _table_name(table_key: str, table_data: dict) -> str:
+    """A table as its users know it: its source file, else its key."""
+    source_file = table_data.get("sourceFile")
+    return source_file if isinstance(source_file, str) and source_file else table_key
+
+
+def _column_name(col_key: str, col_data: dict) -> str:
+    """A column as its data names it: its local column, else its key."""
+    local_column = col_data.get("localColumn")
+    if isinstance(local_column, list):
+        local_column = local_column[0] if local_column else None
+    return local_column if isinstance(local_column, str) and local_column else col_key
+
+
+def _quoted_list(names: List[str]) -> str:
+    """'a', 'b' and 'c'."""
+    quoted = [f"'{name}'" for name in names]
+    if len(quoted) < 2:
+        return "".join(quoted)
+    return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+
+
 def _format_path(path: list) -> str:
     """Format a JSON path for display."""
     if not path:
@@ -342,6 +393,8 @@ class MappingValidator:
         # Cross-reference checks
         if check_references and result.is_valid:
             ref_issues = self._check_cross_references(mapping_data)
+            ref_issues += self._check_variables_mapped_twice(mapping_data)
+            ref_issues += self._check_codes_under_two_terms(mapping_data)
             for issue in ref_issues:
                 if issue.severity == "warning":
                     result.warnings.append(issue)
@@ -423,7 +476,8 @@ class MappingValidator:
         return self.validate(mapping_data, check_references=check_references)
 
     def _check_cross_references(self, data: dict) -> List[ValidationIssue]:
-        """Check that column mappings reference existing schema variables."""
+        """Check that column mappings reference existing schema variables and
+        terms."""
         issues: List[ValidationIssue] = []
 
         # Get defined variables
@@ -479,38 +533,132 @@ class MappingValidator:
                     )
                     var_key = var_key_match.group(1) if var_key_match else None
 
-                    if local_mappings and var_key and var_key in schema_vars:
+                    # A term the variable's value mapping does not have: its
+                    # codes are not annotated. That includes a variable without
+                    # a value mapping, which has no terms at all.
+                    if (
+                        isinstance(local_mappings, dict)
+                        and local_mappings
+                        and var_key
+                        and var_key in schema_vars
+                    ):
                         schema_var = data["schema"]["variables"].get(var_key, {})
-                        schema_terms = set()
-                        if (
-                            "valueMapping" in schema_var
-                            and "terms" in schema_var["valueMapping"]
-                        ):
-                            schema_terms = set(
-                                schema_var["valueMapping"]["terms"].keys()
-                            )
-
+                        value_mapping = schema_var.get("valueMapping") or {}
+                        schema_terms = set(value_mapping.get("terms") or {})
                         if schema_terms:
-                            for local_term in local_mappings.keys():
-                                if local_term not in schema_terms:
-                                    path = (
+                            available = ", ".join(sorted(schema_terms)[:5])
+                            if len(schema_terms) > 5:
+                                available += "..."
+                            consequence = (
+                                "Its codes are not annotated. The variable's "
+                                f"terms: {available}"
+                            )
+                        else:
+                            consequence = (
+                                "Its codes are not annotated: the variable has "
+                                "no value mapping."
+                            )
+                        for local_term in local_mappings.keys():
+                            if local_term in schema_terms:
+                                continue
+                            issues.append(
+                                ValidationIssue(
+                                    severity="warning",
+                                    path=(
                                         f"databases.{db_key}.tables"
                                         f".{table_key}.columns"
                                         f".{col_key}.localMappings"
                                         f".{local_term}"
-                                    )
-                                    available = ", ".join(sorted(schema_terms)[:5])
-                                    if len(schema_terms) > 5:
-                                        available += "..."
-                                    issues.append(
-                                        ValidationIssue(
-                                            severity="info",
-                                            path=path,
-                                            message=f"Local mapping key '{local_term}' not in schema terms",
-                                            suggestion=f"Schema terms: {available}",
-                                        )
-                                    )
+                                    ),
+                                    message=(
+                                        f"Table '{_table_name(table_key, table_data)}', "
+                                        f"column '{_column_name(col_key, col_data)}' "
+                                        f"maps the term '{local_term}', which the "
+                                        f"variable '{var_key}' does not have"
+                                    ),
+                                    suggestion=consequence,
+                                )
+                            )
 
+        return issues
+
+    def _check_variables_mapped_twice(self, data: dict) -> List[ValidationIssue]:
+        """Warn where two columns of one table map to the same variable.
+
+        Annotation gives a variable one column per table, the first one the
+        map lists; the others are not annotated with it.
+        """
+        issues: List[ValidationIssue] = []
+        for db_key, table_key, table_data, columns in _tables(data):
+            by_variable: Dict[str, List[str]] = {}
+            for col_key, col_data in columns.items():
+                var_key = _variable_key(col_data.get("mapsTo"))
+                if var_key:
+                    by_variable.setdefault(var_key, []).append(
+                        _column_name(col_key, col_data)
+                    )
+            for var_key, names in by_variable.items():
+                if len(names) < 2:
+                    continue
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"databases.{db_key}.tables.{table_key}.columns",
+                        message=(
+                            f"Table '{_table_name(table_key, table_data)}': "
+                            f"columns {_quoted_list(names)} all map to the "
+                            f"variable '{var_key}'"
+                        ),
+                        suggestion=(
+                            f"Only column '{names[0]}' is annotated with it. Give "
+                            "each column a variable of its own, or leave out the "
+                            "columns that do not hold this variable."
+                        ),
+                    )
+                )
+        return issues
+
+    def _check_codes_under_two_terms(self, data: dict) -> List[ValidationIssue]:
+        """Warn where one column lists a code under two terms.
+
+        A cell holding that code gets the class of each of the terms.
+        """
+        issues: List[ValidationIssue] = []
+        for db_key, table_key, table_data, columns in _tables(data):
+            for col_key, col_data in columns.items():
+                local_mappings = col_data.get("localMappings")
+                if not isinstance(local_mappings, dict):
+                    continue
+                terms_by_code: Dict[str, List[str]] = {}
+                for term, codes in local_mappings.items():
+                    for code in codes if isinstance(codes, list) else [codes]:
+                        if isinstance(code, str):
+                            terms = terms_by_code.setdefault(code, [])
+                            if term not in terms:
+                                terms.append(term)
+                for code, terms in terms_by_code.items():
+                    if len(terms) < 2:
+                        continue
+                    issues.append(
+                        ValidationIssue(
+                            severity="warning",
+                            path=(
+                                f"databases.{db_key}.tables.{table_key}"
+                                f".columns.{col_key}.localMappings"
+                            ),
+                            message=(
+                                f"Table '{_table_name(table_key, table_data)}', "
+                                f"column '{_column_name(col_key, col_data)}': the "
+                                f"code '{code}' is listed under the terms "
+                                f"{_quoted_list(terms)}"
+                            ),
+                            value=code,
+                            suggestion=(
+                                "A cell holding this code gets the class of each "
+                                "of these terms. List each code under one term."
+                            ),
+                        )
+                    )
         return issues
 
     def _collect_statistics(self, data: dict, result: ValidationResult) -> None:
@@ -542,6 +690,31 @@ class MappingValidator:
         schema = data.get("schema")
         if isinstance(schema, dict) and isinstance(schema.get("variables"), dict):
             result.statistics["variables"] = len(schema["variables"])
+
+    def format_warnings_for_ui(self, result: ValidationResult) -> List[Dict[str, Any]]:
+        """
+        Format the map's warnings for the pages that open a map.
+
+        Warnings do not stop a map from being used; each says what it means
+        for annotation. The validator's notes about itself (a schema file or
+        package it could not load) are left out: they are not about the map.
+
+        Args:
+            result: ValidationResult from validate() or validate_file().
+
+        Returns:
+            List of dictionaries, each with the warning's path, message and
+            suggestion (a string, possibly empty).
+        """
+        return [
+            {
+                "path": warning.path,
+                "message": warning.message,
+                "suggestion": warning.suggestion or "",
+            }
+            for warning in result.warnings
+            if not warning.path.startswith("(")
+        ]
 
     def format_errors_for_ui(self, result: ValidationResult) -> List[Dict[str, Any]]:
         """

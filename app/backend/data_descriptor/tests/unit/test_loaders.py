@@ -713,6 +713,80 @@ class TestFindDatabaseKeyForRdfStore(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# find_table_for_rdf_store
+# ---------------------------------------------------------------------------
+
+
+def _two_tables_in_one_database() -> dict:
+    """One database listing two source files, and a second database whose
+    table has no sourceFile."""
+    return {
+        "databases": {
+            "hospital": {
+                "name": "Hospital records",
+                "tables": {
+                    "baseline": {"sourceFile": "baseline.csv", "columns": {}},
+                    "followup": {"sourceFile": "followup", "columns": {}},
+                },
+            },
+            "registry": {
+                "name": "registry",
+                "tables": {"unnamed": {"columns": {}}},
+            },
+        }
+    }
+
+
+class TestFindTableForRdfStore(unittest.TestCase):
+    """find_table_for_rdf_store must find the one table whose sourceFile
+    names the store table, not just its database."""
+
+    def setUp(self):
+        self.mapping = JSONLDMapping.from_dict(_two_tables_in_one_database())
+
+    def test_finds_the_table_among_the_tables_of_its_database(self):
+        self.assertEqual(
+            self.mapping.find_table_for_rdf_store("followup"),
+            ("hospital", "followup"),
+        )
+        self.assertEqual(
+            self.mapping.find_table_for_rdf_store("baseline"),
+            ("hospital", "baseline"),
+        )
+
+    def test_a_csv_extension_on_either_side_does_not_matter(self):
+        self.assertEqual(
+            self.mapping.find_table_for_rdf_store("baseline.csv"),
+            ("hospital", "baseline"),
+        )
+        self.assertEqual(
+            self.mapping.find_table_for_rdf_store("followup.csv"),
+            ("hospital", "followup"),
+        )
+
+    def test_names_are_compared_as_they_are_written(self):
+        self.assertIsNone(self.mapping.find_table_for_rdf_store("Followup"))
+
+    def test_a_database_name_or_a_table_key_alone_names_no_table(self):
+        self.assertIsNone(self.mapping.find_table_for_rdf_store("registry"))
+        self.assertIsNone(self.mapping.find_table_for_rdf_store("unnamed"))
+        self.assertIsNone(self.mapping.find_table_for_rdf_store("Hospital records"))
+
+    def test_the_first_of_two_tables_with_one_source_file_counts(self):
+        data = _two_tables_in_one_database()
+        data["databases"]["registry"]["tables"]["unnamed"]["sourceFile"] = "baseline"
+
+        mapping = JSONLDMapping.from_dict(data)
+
+        self.assertEqual(
+            mapping.find_table_for_rdf_store("baseline"), ("hospital", "baseline")
+        )
+
+    def test_returns_none_when_no_databases(self):
+        self.assertIsNone(JSONLDMapping.from_dict({}).find_table_for_rdf_store("x"))
+
+
+# ---------------------------------------------------------------------------
 # save() and round-trip
 # ---------------------------------------------------------------------------
 

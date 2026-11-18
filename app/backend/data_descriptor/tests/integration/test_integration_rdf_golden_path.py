@@ -21,6 +21,11 @@ The triplifier names the data after the machine it runs on
 (``socket.gethostname()``), and the annotation queries expect
 ``data.local``: the stack sets that hostname (docker-compose.yml), and so
 does this test.
+
+The flow runs twice: as the code's default has it, and with the
+materialisation on, as docker-compose.yml starts the stack. The second run
+also compares the materialised graph, the types and edges a store without a
+reasoner answers queries from.
 """
 
 import os
@@ -44,6 +49,7 @@ GRAPHS = {
     "ontology": f"http://ontology.local/{TABLE}/",
     "annotation": f"http://annotation.local/{TABLE}/",
 }
+MATERIALISED_GRAPH = {"materialised": f"http://materialized.local/{TABLE}/"}
 VARIABLES_STATE = "/api/v1/describe-variables-state"
 DETAILS_STATE = "/api/v1/describe-variable-details-state"
 
@@ -135,9 +141,17 @@ def _difference(name: str, actual: Graph) -> str:
     )
 
 
+@pytest.mark.parametrize(
+    "materialise", [False, True], ids=["as-the-code-defaults", "materialised"]
+)
 def test_the_rdf_flow_leaves_the_expected_graphs_in_the_store(
-    client, session_cache, rdf_store, fake_curl
+    client, session_cache, rdf_store, fake_curl, monkeypatch, materialise
 ):
+    from annotation_helper.src import miscellaneous
+
+    monkeypatch.setattr(miscellaneous, "materialize", materialise)
+    graphs = {**GRAPHS, **(MATERIALISED_GRAPH if materialise else {})}
+
     # Ingest: the CSV is triplified, and both graphs go to the store.
     response = _upload(
         client, "/upload", "csvFile", GOLDEN / "patients.csv", fileType="CSV"
@@ -170,12 +184,13 @@ def test_the_rdf_flow_leaves_the_expected_graphs_in_the_store(
     assert response.get_json() == {
         "success": True,
         "message": "Annotated 3 variables across 1 databases",
+        "skipped_tables": [],
     }
     assert all(entry["success"] for entry in session_cache.annotation_status.values())
 
     # The graphs the flow left, as RDF.
     differences = [
-        _difference(name, rdf_store.named_graph(uri)) for name, uri in GRAPHS.items()
+        _difference(name, rdf_store.named_graph(uri)) for name, uri in graphs.items()
     ]
     if UPDATE:
         pytest.skip(f"Wrote the expected graphs to {GOLDEN}; review their diff.")

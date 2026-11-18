@@ -386,6 +386,15 @@ class SparqlStore(FakeRdfStore):
     # Nor can it parse an escaped single quote, ``\'``, inside a string in
     # double quotes, where it is the same as a bare one; GraphDB can.
     _DOUBLE_QUOTED = re.compile(r'"(?:[^"\\\n\r]|\\.)*"')
+    # In RDF 1.1 a string typed xsd:string and the same string without a type
+    # are one term, and GraphDB and RDF4J match them as one. rdflib keeps
+    # them apart: a cell's "M" does not join with a value mapping's
+    # "M"^^xsd:string, although a FILTER finds them equal. Such strings are
+    # written without the type, as RDF 1.1 stores keep them.
+    _TYPED_STRING = re.compile(
+        r'("(?:[^"\\\n\r]|\\.)*")\^\^'
+        r"(?:xsd:string|<http://www\.w3\.org/2001/XMLSchema#string>)"
+    )
 
     def __init__(self) -> None:
         super().__init__()
@@ -405,9 +414,10 @@ class SparqlStore(FakeRdfStore):
 
     @classmethod
     def _for_rdflib(cls, text: str) -> str:
-        """``text`` with the two forms rdflib cannot read rewritten to their
-        equivalents (see above)."""
+        """``text`` with the forms rdflib reads otherwise than GraphDB
+        rewritten to their equivalents (see above)."""
         text = cls._BRACKETED_GROUP_BY.sub(r"GROUP BY \1", text)
+        text = cls._TYPED_STRING.sub(r"\1", text)
         return cls._DOUBLE_QUOTED.sub(
             lambda string: string.group(0).replace("\\'", "'"), text
         )

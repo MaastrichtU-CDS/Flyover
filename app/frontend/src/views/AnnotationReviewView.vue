@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { matchStoreTable } from '@/lib/jsonld'
+import MapWarnings from '@/components/MapWarnings.vue'
 
 const router = useRouter()
 const PAGE_SIZE = 10
@@ -15,6 +16,7 @@ const rdfStoreDatabases = ref([])
 const annotatedTableVariables = ref({})
 const nonMatchingJsonld = ref([])
 const nonMatchingRdfStore = ref([])
+const mapWarnings = ref([])
 const databasePages = reactive({})
 const expandedDatabases = reactive({})
 const selectedTables = reactive({})
@@ -249,6 +251,17 @@ function processAnnotationData(data) {
   loading.value = false
 }
 
+// What the map's rules warn about, from the server's validator. A warning
+// does not stop the annotation, and a failed check shows none.
+async function loadMapWarnings(map) {
+  try {
+    const { data } = await api.post('/api/v1/validate-mapping', map)
+    mapWarnings.value = data?.map_warnings || []
+  } catch {
+    mapWarnings.value = []
+  }
+}
+
 async function load() {
   try {
     let ok = await fetchAndStoreRdfStoreDatabases()
@@ -266,6 +279,7 @@ async function load() {
     }
     semanticMapData.value = r.data
     processAnnotationData(r.data)
+    loadMapWarnings(r.data)
   } catch (e) {
     showNoDataWarning(`An error occurred while loading: ${e.message || e}`)
   }
@@ -477,6 +491,8 @@ onMounted(load)
     />
 
     <div v-else>
+      <MapWarnings :warnings="mapWarnings" />
+
       <div
         v-if="nonMatchingJsonld.length || nonMatchingRdfStore.length"
         class="mb-4"

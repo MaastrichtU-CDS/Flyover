@@ -21,7 +21,7 @@ Usage:
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 
 # ============================================================================
@@ -700,6 +700,32 @@ class JSONLDMapping:
                 ):
                     return db_key
 
+        return None
+
+    def find_table_for_rdf_store(
+        self, rdf_store_name: str
+    ) -> Optional[Tuple[str, str]]:
+        """
+        Find the map table that describes a table in the RDF store.
+
+        A map table describes the store table whose name is its sourceFile,
+        with or without a .csv extension: the rule the annotate step matches
+        tables by. When several tables do, the first counts. A table without
+        a sourceFile describes none.
+
+        Args:
+            rdf_store_name: The table's name in the RDF store.
+
+        Returns:
+            The (database key, table key) of the map table, or None if no
+            table of the map describes it.
+        """
+        store_name = rdf_store_name.removesuffix(".csv")
+        for db_key, db in self.databases.items():
+            for table_key, table in db.tables.items():
+                source_file = table.source_file
+                if source_file and source_file.removesuffix(".csv") == store_name:
+                    return db_key, table_key
         return None
 
     # ========================================================================

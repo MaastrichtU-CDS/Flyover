@@ -70,6 +70,7 @@ class Flow:
     def __init__(self, client, rdf_store, fake_curl):
         self.client, self.store, self.curl = client, rdf_store, fake_curl
         self._loaded = 0
+        self._tables = []
 
     def ingest(self, table: str) -> None:
         response = self.client.post(
@@ -87,6 +88,8 @@ class Flow:
         uploads = self.curl.uploads
         self.store.load_uploads(uploads[self._loaded :])
         self._loaded = len(uploads)
+        if table not in self._tables:
+            self._tables.append(table)
 
     def annotate(self, table: str) -> Counter:
         """Load the map for ``table`` and annotate it; what the annotation
@@ -99,10 +102,16 @@ class Flow:
         assert response.get_json()["success"] is True
         before = len(self.store.calls)
         response = self.client.post("/start-annotation")
-        assert response.get_json() == {
+        body = response.get_json()
+        assert body == {
             "success": True,
             "message": "Annotated 3 variables across 1 databases",
+            # The map names this table only; the store's others are left.
+            "skipped_tables": body["skipped_tables"],
         }
+        assert sorted(body["skipped_tables"]) == sorted(
+            other for other in self._tables if other != table
+        )
         return Counter(call.kind for call in self.store.calls[before:])
 
 
