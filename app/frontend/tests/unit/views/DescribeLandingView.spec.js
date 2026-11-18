@@ -56,8 +56,12 @@ async function uploadMap(wrapper, map) {
   Object.defineProperty(input, 'files', { value: [file], configurable: true })
   await wrapper.find('input[type="file"]').trigger('change')
   await wrapper.find('form').trigger('submit')
-  // FileReader resolves on a later task than flushPromises alone covers.
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  // The page reads the file first, with a FileReader that resolves on a task
+  // of its own, sometimes later than the next one: wait for the validation
+  // request that follows it. Every later step is a promise the mocks resolve,
+  // so the upload has finished before the test goes on (and cannot run on
+  // into the next test).
+  await vi.waitFor(() => expect(api.post).toHaveBeenCalled())
   await flushPromises()
 }
 
