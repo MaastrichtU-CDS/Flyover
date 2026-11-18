@@ -691,6 +691,31 @@ class MappingValidator:
         if isinstance(schema, dict) and isinstance(schema.get("variables"), dict):
             result.statistics["variables"] = len(schema["variables"])
 
+    def format_warnings_for_ui(self, result: ValidationResult) -> List[Dict[str, Any]]:
+        """
+        Format the map's warnings for the pages that open a map.
+
+        Warnings do not stop a map from being used; each says what it means
+        for annotation. The validator's notes about itself (a schema file or
+        package it could not load) are left out: they are not about the map.
+
+        Args:
+            result: ValidationResult from validate() or validate_file().
+
+        Returns:
+            List of dictionaries, each with the warning's path, message and
+            suggestion (a string, possibly empty).
+        """
+        return [
+            {
+                "path": warning.path,
+                "message": warning.message,
+                "suggestion": warning.suggestion or "",
+            }
+            for warning in result.warnings
+            if not warning.path.startswith("(")
+        ]
+
     def format_errors_for_ui(self, result: ValidationResult) -> List[Dict[str, Any]]:
         """
         Format validation errors for UI display.

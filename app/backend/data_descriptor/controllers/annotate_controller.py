@@ -284,6 +284,7 @@ def upload_annotation_json():
                     "non_matching_jsonld": non_matching,
                     "removed_columns": removed_columns,
                     "cleaned_mapping": json_data,
+                    "map_warnings": validator.format_warnings_for_ui(result),
                 }
             )
             kept = True

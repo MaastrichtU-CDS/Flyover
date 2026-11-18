@@ -122,6 +122,7 @@ class TestUploadAnnotationMap:
             "non_matching_jsonld": [],
             "removed_columns": [],
             "cleaned_mapping": valid_mapping(),
+            "map_warnings": [],
         }
         assert _saved_files(app) == ["mapping.jsonld"]
         assert session_cache.annotation_json_path == os.path.join(

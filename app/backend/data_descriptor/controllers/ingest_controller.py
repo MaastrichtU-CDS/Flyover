@@ -142,6 +142,7 @@ def upload_semantic_map():
                 "message": "JSON-LD semantic mapping uploaded successfully",
                 "statistics": result.statistics,
                 "cleaned_mapping": mapping_data,
+                "map_warnings": validator.format_warnings_for_ui(result),
             }
         )
 
@@ -186,6 +187,7 @@ def submit_indexeddb_semantic_map():
                 "redirect_url": "/annotate/review",
                 "statistics": result.statistics,
                 "cleaned_mapping": mapping_data,
+                "map_warnings": validator.format_warnings_for_ui(result),
             }
         )
 
@@ -511,6 +513,8 @@ def validate_mapping():
             "csv_checked": csv_checked,
             "databases_checked": databases_checked,
             "cleaned_mapping": cleaned_mapping,
+            # What the map's rules warn about: shown, never blocking.
+            "map_warnings": validator.format_warnings_for_ui(result),
         }
     )
 

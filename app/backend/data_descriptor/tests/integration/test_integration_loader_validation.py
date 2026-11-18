@@ -13,6 +13,7 @@ annotation helper needs.
 
 import copy
 import json
+from io import BytesIO
 
 import pytest
 
@@ -555,3 +556,94 @@ class TestValidatorDiagnostics:
 
         assert result.is_valid is False
         assert "Error reading file" in result.issues[0].message
+
+
+# ---------------------------------------------------------------------------
+# The map's warnings reach the pages that open a map
+# ---------------------------------------------------------------------------
+
+
+def _open_with_validate_mapping(client, mapping):
+    return client.post("/api/v1/validate-mapping", json=mapping)
+
+
+def _open_with_upload_semantic_map(client, mapping):
+    return client.post(
+        "/upload-semantic-map",
+        data={"semanticMapFile": (BytesIO(json.dumps(mapping).encode()), "map.jsonld")},
+        content_type="multipart/form-data",
+    )
+
+
+def _open_with_submit_indexeddb_semantic_map(client, mapping):
+    return client.post("/submit-indexeddb-semantic-map", json=mapping)
+
+
+def _open_with_upload_annotation_json(client, mapping):
+    return client.post(
+        "/upload-annotation-json",
+        data={
+            "annotationJsonFile": (BytesIO(json.dumps(mapping).encode()), "map.jsonld")
+        },
+        content_type="multipart/form-data",
+    )
+
+
+OPENING_ROUTES = [
+    _open_with_validate_mapping,
+    _open_with_upload_semantic_map,
+    _open_with_submit_indexeddb_semantic_map,
+    _open_with_upload_annotation_json,
+]
+
+
+@pytest.mark.parametrize(
+    "open_map", OPENING_ROUTES, ids=lambda route: route.__name__[len("_open_with_") :]
+)
+class TestMapWarningsWhereAMapIsOpened:
+    """Every route that opens a map answers with the map's warnings, which
+    the pages show; a warning never stops the map from being opened."""
+
+    def test_the_maps_warnings_come_back_naming_table_and_column(
+        self, client, seeded_store, mapping_dict, open_map
+    ):
+        columns = mapping_dict["databases"]["centre_x"]["tables"][TABLE]["columns"]
+        columns["biological_sex"]["localMappings"]["diverse"] = "D"
+
+        response = open_map(client, mapping_dict)
+
+        assert response.status_code == 200, response.get_json()
+        assert response.get_json()["map_warnings"] == [
+            {
+                "path": (
+                    f"databases.centre_x.tables.{TABLE}.columns"
+                    ".biological_sex.localMappings.diverse"
+                ),
+                "message": (
+                    f"Table '{TABLE}', column 'sex' maps the term 'diverse', "
+                    "which the variable 'biological_sex' does not have"
+                ),
+                "suggestion": (
+                    "Its codes are not annotated. The variable's terms: "
+                    "female, male, missing_or_unspecified"
+                ),
+            }
+        ]
+
+    def test_a_map_without_warnings_has_none(
+        self, client, seeded_store, mapping_dict, open_map
+    ):
+        response = open_map(client, mapping_dict)
+
+        assert response.status_code == 200, response.get_json()
+        assert response.get_json()["map_warnings"] == []
+
+
+def test_the_validators_notes_about_itself_are_not_the_maps_warnings(
+    tmp_path, mapping_dict
+):
+    validator = MappingValidator(schema_path=tmp_path / "nope.json")
+    result = validator.validate(mapping_dict)
+
+    assert result.warnings  # "Schema file not found ..."
+    assert validator.format_warnings_for_ui(result) == []
