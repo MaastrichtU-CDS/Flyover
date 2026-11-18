@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { useNavigation } from '@/composables/useNavigation'
+import MapWarnings from '@/components/MapWarnings.vue'
 
 const router = useRouter()
 const { refreshDataExists } = useNavigation()
@@ -19,6 +20,7 @@ const uploadProcessing = ref(false)
 const selectedFileName = ref('')
 const jsonFile = ref(null)
 const uploadStatus = ref({ message: '', type: '' })
+const mapWarnings = ref([])
 const continueToReview = ref(false)
 const fileInput = ref(null)
 
@@ -189,6 +191,7 @@ async function handleJsonUpload() {
   }
   uploadProcessing.value = true
   uploadStatus.value = { message: '', type: '' }
+  mapWarnings.value = []
   try {
     const text = await readFileAsText(jsonFile.value)
     let json
@@ -232,6 +235,7 @@ async function handleJsonUpload() {
           ? 'warning'
           : 'success'
       showUploadStatus(msg, statusType)
+      mapWarnings.value = result.map_warnings || []
       showUploadInfo.value = false
       existingJsonldWarning.value = false
       indexedDbSection.value.show = false
@@ -341,6 +345,8 @@ onMounted(async () => {
             class="alert-compact"
             v-html="uploadStatusHtml"
           />
+
+          <MapWarnings :warnings="mapWarnings" />
 
           <div v-if="showUploadInfo">
             <div class="alert alert-info-highlight">

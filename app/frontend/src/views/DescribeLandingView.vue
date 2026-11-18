@@ -5,6 +5,7 @@ import * as db from '@/lib/db'
 import { useStatusStore } from '@/stores/status'
 import { useSuggestionsStore } from '@/stores/suggestions'
 import { useNavigation } from '@/composables/useNavigation'
+import MapWarnings from '@/components/MapWarnings.vue'
 
 const status = useStatusStore()
 const suggestions = useSuggestionsStore()
@@ -19,6 +20,7 @@ const selectedFileName = ref('')
 const uploading = ref(false)
 const validationErrors = ref([])
 const validationWarnings = ref([])
+const mapWarnings = ref([])
 
 async function readFileAsText(file) {
   return new Promise((resolve, reject) => {
@@ -43,6 +45,7 @@ async function uploadSemanticMap() {
   uploading.value = true
   validationErrors.value = []
   validationWarnings.value = []
+  mapWarnings.value = []
   try {
     const text = await readFileAsText(file)
     let jsonld
@@ -94,6 +97,7 @@ async function uploadSemanticMap() {
 
     // Store warnings if present (non-blocking)
     validationWarnings.value = validation.validation_warnings || []
+    mapWarnings.value = validation.map_warnings || []
 
     // Use cleaned mapping if available, otherwise use the original
     const mappingToSave = validation.cleaned_mapping || jsonld
@@ -111,7 +115,8 @@ async function uploadSemanticMap() {
     
     // If there are warnings, keep the card visible so users can see the warnings in the box
     // If no warnings, hide the card
-    const hasWarnings = validationWarnings.value.length > 0
+    const hasWarnings =
+      validationWarnings.value.length > 0 || mapWarnings.value.length > 0
     if (hasWarnings) {
       semanticMapVisible.value = true
     } else {
@@ -285,6 +290,8 @@ onMounted(async () => {
             class="alert alert-warning alert-compact validation-warnings"
             v-html="formatWarnings()"
           />
+
+          <MapWarnings :warnings="mapWarnings" />
 
           <div class="form-group">
             <button

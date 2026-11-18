@@ -55,6 +55,7 @@ function jsonResponse(body, { ok = true, status = 200 } = {}) {
 describe('AnnotationReviewView', () => {
   beforeEach(() => {
     api.get.mockReset()
+    api.post.mockReset()
     db.saveData.mockClear()
     db.getData.mockReset()
     db.getData.mockResolvedValue(null)
@@ -65,6 +66,41 @@ describe('AnnotationReviewView', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it("shows the map's warnings from the server's check", async () => {
+    const mapWarning = {
+      path: 'databases.db_a.tables.patients.columns.age_col.localMappings.x',
+      message: "Table 'patients.csv', column 'age' maps the term 'x', which the variable 'age' does not have",
+      suggestion: 'Its codes are not annotated: the variable has no value mapping.',
+    }
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    api.post.mockResolvedValue({ data: { valid: true, map_warnings: [mapWarning] } })
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'semantic_map' ? { data: SEMANTIC_MAP } : null
+    )
+
+    const w = mountView()
+    await flushPromises()
+
+    expect(api.post).toHaveBeenCalledWith('/api/v1/validate-mapping', SEMANTIC_MAP)
+    expect(w.find('.map-warnings').text()).toContain(mapWarning.message)
+    // The warning does not stop the review.
+    expect(w.text()).toContain('Start Annotation Process')
+  })
+
+  it('shows no warnings when the check cannot be made', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    api.post.mockRejectedValue(new Error('offline'))
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'semantic_map' ? { data: SEMANTIC_MAP } : null
+    )
+
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.map-warnings').exists()).toBe(false)
+    expect(w.text()).toContain('Start Annotation Process')
   })
 
   it('hydrates from api + IndexedDB and renders variable cards', async () => {

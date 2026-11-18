@@ -116,4 +116,42 @@ describe('DescribeLandingView — uploading a semantic map', () => {
 
     expect(store.isTouched('db_age')).toBe(true)
   })
+
+  it("shows the map's warnings and keeps the upload card open for them", async () => {
+    const mapWarning = {
+      path: 'databases.db.tables.t.columns',
+      message: "Table 't': columns 'a' and 'b' all map to the variable 'age'",
+      suggestion: "Only column 'a' is annotated with it.",
+    }
+    api.post.mockResolvedValue({
+      data: { valid: true, validation_warnings: [], map_warnings: [mapWarning] },
+    })
+
+    const wrapper = mountLanding()
+    await flushPromises()
+    await uploadMap(wrapper, EMPTY_MAP)
+
+    // The map was opened all the same ...
+    expect(db.saveData).toHaveBeenCalledWith(
+      'metadata',
+      expect.objectContaining({ key: 'semantic_map' }),
+    )
+    // ... and its warning shows in the card, which stays.
+    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.find('.map-warnings').text()).toContain(mapWarning.message)
+    expect(wrapper.find('.map-warnings').text()).toContain(mapWarning.suggestion)
+  })
+
+  it('closes the upload card when the map has no warnings', async () => {
+    api.post.mockResolvedValue({
+      data: { valid: true, validation_warnings: [], map_warnings: [] },
+    })
+
+    const wrapper = mountLanding()
+    await flushPromises()
+    await uploadMap(wrapper, EMPTY_MAP)
+
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.find('.map-warnings').exists()).toBe(false)
+  })
 })
