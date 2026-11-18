@@ -293,6 +293,74 @@ class TestCrossReferenceValidation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Map rules that warn without blocking (plan part 3.3, rules 1 to 3)
+# ---------------------------------------------------------------------------
+
+
+def _columns(mapping: dict) -> dict:
+    return mapping["databases"]["db1"]["tables"]["t1"]["columns"]
+
+
+class TestColumnsSharingAVariable(unittest.TestCase):
+    """Rule 1: two columns of one table map to the same variable."""
+
+    def setUp(self):
+        self.validator = MappingValidator()
+
+    def _warnings(self, mapping):
+        result = self.validator.validate(mapping)
+        self.assertTrue(result.is_valid, result.issues)
+        return [w for w in result.warnings if "all map to the variable" in w.message]
+
+    def test_two_columns_of_one_table_with_one_variable_are_named(self):
+        mapping = _make_valid_mapping()
+        mapping["databases"]["db1"]["tables"]["t1"]["sourceFile"] = "therapy.csv"
+        _columns(mapping)["id_again"] = {
+            "mapsTo": "schema:variable/identifier",
+            "localColumn": "new_id",
+        }
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertEqual(warning.severity, "warning")
+        self.assertEqual(warning.path, "databases.db1.tables.t1.columns")
+        self.assertEqual(
+            warning.message,
+            "Table 'therapy.csv': columns 'id' and 'new_id' all map to the "
+            "variable 'identifier'",
+        )
+        self.assertTrue(warning.suggestion.startswith("Only column 'id' is annotated"))
+
+    def test_every_column_of_the_variable_is_listed_once(self):
+        mapping = _make_valid_mapping()
+        for name in ("hormone_therapy", "immunotherapy", "radiotherapy"):
+            _columns(mapping)[name] = {
+                "mapsTo": "schema:variable/identifier",
+                "localColumn": name,
+            }
+
+        (warning,) = self._warnings(mapping)
+
+        self.assertIn(
+            "columns 'id', 'hormone_therapy', 'immunotherapy' and 'radiotherapy'",
+            warning.message,
+        )
+        # Without a sourceFile the table goes by its key
+        self.assertTrue(warning.message.startswith("Table 't1': "))
+
+    def test_one_variable_in_two_tables_is_fine(self):
+        mapping = _make_valid_mapping()
+        mapping["databases"]["db1"]["tables"]["t2"] = {
+            "@type": "mapping:Table",
+            "columns": {
+                "id_col": {"mapsTo": "schema:variable/identifier", "localColumn": "id"}
+            },
+        }
+
+        self.assertEqual(self._warnings(mapping), [])
+
+
+# ---------------------------------------------------------------------------
 # Semantic validation: predicate and class URI strings
 # ---------------------------------------------------------------------------
 

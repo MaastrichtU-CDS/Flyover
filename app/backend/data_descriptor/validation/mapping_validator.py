@@ -81,6 +81,57 @@ class ValidationResult:
 # ============================================================================
 
 
+def _tables(data: dict):
+    """Each table of the map that is an object with columns, as
+    ``(database key, table key, table, columns)``."""
+    databases = data.get("databases") if isinstance(data, dict) else None
+    if not isinstance(databases, dict):
+        return
+    for db_key, db_data in databases.items():
+        tables = db_data.get("tables") if isinstance(db_data, dict) else None
+        if not isinstance(tables, dict):
+            continue
+        for table_key, table_data in tables.items():
+            if not isinstance(table_data, dict):
+                continue
+            columns = table_data.get("columns")
+            if isinstance(columns, dict):
+                columns = {
+                    key: col for key, col in columns.items() if isinstance(col, dict)
+                }
+                yield db_key, table_key, table_data, columns
+
+
+def _variable_key(maps_to: Any) -> Optional[str]:
+    """The variable a column's mapsTo names, e.g. 'age' for 'schema:variable/age'."""
+    if not isinstance(maps_to, str):
+        return None
+    match = re.match(r"schema:variable/(.+)$", maps_to)
+    return match.group(1) if match else None
+
+
+def _table_name(table_key: str, table_data: dict) -> str:
+    """A table as its users know it: its source file, else its key."""
+    source_file = table_data.get("sourceFile")
+    return source_file if isinstance(source_file, str) and source_file else table_key
+
+
+def _column_name(col_key: str, col_data: dict) -> str:
+    """A column as its data names it: its local column, else its key."""
+    local_column = col_data.get("localColumn")
+    if isinstance(local_column, list):
+        local_column = local_column[0] if local_column else None
+    return local_column if isinstance(local_column, str) and local_column else col_key
+
+
+def _quoted_list(names: List[str]) -> str:
+    """'a', 'b' and 'c'."""
+    quoted = [f"'{name}'" for name in names]
+    if len(quoted) < 2:
+        return "".join(quoted)
+    return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+
+
 def _format_path(path: list) -> str:
     """Format a JSON path for display."""
     if not path:
@@ -342,6 +393,7 @@ class MappingValidator:
         # Cross-reference checks
         if check_references and result.is_valid:
             ref_issues = self._check_cross_references(mapping_data)
+            ref_issues += self._check_variables_mapped_twice(mapping_data)
             for issue in ref_issues:
                 if issue.severity == "warning":
                     result.warnings.append(issue)
@@ -511,6 +563,42 @@ class MappingValidator:
                                         )
                                     )
 
+        return issues
+
+    def _check_variables_mapped_twice(self, data: dict) -> List[ValidationIssue]:
+        """Warn where two columns of one table map to the same variable.
+
+        Annotation gives a variable one column per table, the first one the
+        map lists; the others are not annotated with it.
+        """
+        issues: List[ValidationIssue] = []
+        for db_key, table_key, table_data, columns in _tables(data):
+            by_variable: Dict[str, List[str]] = {}
+            for col_key, col_data in columns.items():
+                var_key = _variable_key(col_data.get("mapsTo"))
+                if var_key:
+                    by_variable.setdefault(var_key, []).append(
+                        _column_name(col_key, col_data)
+                    )
+            for var_key, names in by_variable.items():
+                if len(names) < 2:
+                    continue
+                issues.append(
+                    ValidationIssue(
+                        severity="warning",
+                        path=f"databases.{db_key}.tables.{table_key}.columns",
+                        message=(
+                            f"Table '{_table_name(table_key, table_data)}': "
+                            f"columns {_quoted_list(names)} all map to the "
+                            f"variable '{var_key}'"
+                        ),
+                        suggestion=(
+                            f"Only column '{names[0]}' is annotated with it. Give "
+                            "each column a variable of its own, or leave out the "
+                            "columns that do not hold this variable."
+                        ),
+                    )
+                )
         return issues
 
     def _collect_statistics(self, data: dict, result: ValidationResult) -> None:
