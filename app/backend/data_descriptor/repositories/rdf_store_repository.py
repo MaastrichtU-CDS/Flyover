@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 # QLever adapter and GraphDB all honour the q-values and return JSON.
 ASK_QUERY_ACCEPT = "application/sparql-results+json, application/json;q=0.9, */*;q=0.1"
 
+# Seconds Flyover waits beyond the time limit it sends with an ASK query.
+# The store stops the query at that limit itself and answers HTTP 503
+# (GraphDB and RDF4J; the QLever adapter ignores the limit), and Flyover
+# should hear that rather than give up first.
+STORE_TIMEOUT_MARGIN = 5
+
 
 class RDFStoreRepository:
     """
@@ -129,7 +135,7 @@ class RDFStoreRepository:
 
         Args:
             query: SPARQL ASK query string.
-            timeout: Request timeout in seconds.
+            timeout: Time limit in seconds, sent to the store as well.
             max_retries: Maximum number of retry attempts on transient errors.
 
         Returns:
@@ -139,11 +145,16 @@ class RDFStoreRepository:
 
         for attempt in range(max_retries + 1):
             try:
+                # The store gets the time limit too (the RDF4J protocol's
+                # timeout): a query Flyover stopped waiting for would
+                # otherwise run on in the store, and GraphDB Free, which
+                # runs two queries at a time, would queue every other read
+                # behind it.
                 response = requests.get(
                     build_repository_endpoint(self.rdf_store_url, self.repo),
-                    params={"query": query},
+                    params={"query": query, "timeout": timeout},
                     headers={"Accept": ASK_QUERY_ACCEPT},
-                    timeout=timeout,
+                    timeout=timeout + STORE_TIMEOUT_MARGIN,
                 )
                 if response.status_code == 200:
                     return response.json().get("boolean")
