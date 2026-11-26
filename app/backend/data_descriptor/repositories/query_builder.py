@@ -458,14 +458,19 @@ class QueryBuilder:
                     # An empty code stands for an empty cell, which the
                     # triplifier does not write: no cell can hold it (STRONG
                     # AYA maps missing_or_unspecified to [""]).
-                    for j, lt in enumerate(local_terms):
-                        if not lt:
-                            continue
-                        escaped_local_value = lt.replace("\\", "\\\\").replace(
-                            '"', '\\"'
-                        )
+                    codes = [
+                        '"'
+                        + lt.replace("\\", "\\\\").replace('"', '\\"')
+                        + '"^^xsd:string'
+                        for lt in local_terms
+                        if lt
+                    ]
+                    if len(codes) == 1:
+                        data_parts.append(f"?cell_{i} dbo:has_value {codes[0]} .")
+                    elif codes:
                         data_parts.append(
-                            f'?cell_{i}_{j} dbo:has_value "{escaped_local_value}"^^xsd:string .'
+                            f"VALUES ?code_{i} {{ {' '.join(codes)} }} "
+                            f"?cell_{i} dbo:has_value ?code_{i} ."
                         )
 
         # Build data graph query part

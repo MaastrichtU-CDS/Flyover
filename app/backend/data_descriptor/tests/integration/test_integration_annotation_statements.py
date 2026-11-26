@@ -12,7 +12,7 @@ each case, with rdflib behind the store's endpoints (:class:`SparqlStore`):
 - the materialisation gives a cell the value class of its own column's code,
   never that of another column that maps the same class to another code;
 - the verify page's check passes for a column once it is annotated, also when
-  its map codes an empty cell.
+  its map codes an empty cell or lists codes the data does not hold.
 
 The data graph is written here in the triplifier's shape: a row
 ``…/data/<table>/<n>`` of class ``db:<table>`` has a column node
@@ -422,3 +422,25 @@ def test_the_check_passes_for_a_column_whose_map_codes_an_empty_cell(
     assert _check_before_and_after(
         store, endpoint, tmp_path, ["M", "F", ""], codes
     ) == (False, True)
+
+
+def test_the_check_needs_one_of_a_terms_codes_not_all(store, endpoint, tmp_path):
+    """A term can list more than one code (``["M", "m"]``), of which the data
+    need not hold every one."""
+    codes = {"male": ["M", "m"], "female": "F"}
+
+    assert _check_before_and_after(store, endpoint, tmp_path, ["M", "F"], codes) == (
+        False,
+        True,
+    )
+
+
+def test_the_check_fails_while_no_cell_holds_any_of_a_terms_codes(
+    store, endpoint, tmp_path
+):
+    codes = {"male": ["M", "m"], "female": "F"}
+
+    assert _check_before_and_after(store, endpoint, tmp_path, ["F", "F"], codes) == (
+        False,
+        False,
+    )
