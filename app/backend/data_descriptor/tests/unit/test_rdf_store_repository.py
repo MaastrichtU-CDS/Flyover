@@ -163,6 +163,24 @@ class TestExecuteAskQuery(unittest.TestCase):
         self.assertEqual(kwargs["params"]["timeout"], 30)
         self.assertEqual(kwargs["timeout"], 30 + STORE_TIMEOUT_MARGIN)
 
+    @patch("time.sleep")
+    @patch("repositories.rdf_store_repository.requests.get")
+    def test_the_retry_log_counts_every_attempt(self, mock_get, _sleep):
+        """Three retries make four attempts, and the log says so."""
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_get.return_value = mock_response
+
+        with self.assertLogs("repositories.rdf_store_repository", "WARNING") as logs:
+            self.repo.execute_ask_query("ASK { ?s ?p ?o }", max_retries=3)
+
+        self.assertEqual(mock_get.call_count, 4)
+        retries = [line for line in logs.output if "retrying" in line]
+        self.assertEqual(
+            [line.split("(attempt ")[1].rstrip(")") for line in retries],
+            ["1/4", "2/4", "3/4"],
+        )
+
 
 class TestCheckDataGraphExists(unittest.TestCase):
     """Tests for check_data_graph_exists."""

@@ -169,7 +169,7 @@ class RDFStoreRepository:
                         attempt + 1
                     ) * 0.5  # Exponential backoff: 0.5s, 1s, 1.5s
                     logger.warning(
-                        f"ASK query returned status {response.status_code}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                        f"ASK query returned status {response.status_code}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries + 1})"
                     )
                     time.sleep(wait_time)
                     continue
@@ -184,7 +184,7 @@ class RDFStoreRepository:
                 if attempt < max_retries:
                     wait_time = (attempt + 1) * 0.5
                     logger.warning(
-                        f"ASK query execution error (attempt {attempt + 1}/{max_retries}): {e}, retrying in {wait_time}s"
+                        f"ASK query execution error (attempt {attempt + 1}/{max_retries + 1}): {e}, retrying in {wait_time}s"
                     )
                     time.sleep(wait_time)
                     continue
