@@ -409,7 +409,14 @@ class QueryBuilder:
             str: SPARQL ASK query.
         """
         ask_query_parts = []
-        data_parts = []
+        # Every part that asks for something unknown (a term's equivalent
+        # class, a cell holding one of its codes) is a check of its own: a
+        # lookup that stops at its first match. In one group, a store can
+        # pair the answers of all parts within a data graph before it finds a
+        # part with no answer there: on GraphDB, the check of a variable with
+        # six code groups, of which one table holds all, walked the cells of
+        # every table that holds some, and did not finish at 10,000 rows.
+        checks = []
 
         annotation_graph = f"http://annotation.local/{database}/"
 
@@ -449,11 +456,12 @@ class QueryBuilder:
 
                     # Also check that the target class has an equivalentClass statement
                     # This verifies the value mapping was created by the annotation
-                    ask_query_parts.append(
-                        f"{target_class} owl:equivalentClass ?equiv_{i} ."
+                    checks.append(
+                        f"FILTER EXISTS {{ GRAPH <{annotation_graph}> "
+                        f"{{ {target_class} owl:equivalentClass ?equiv_{i} . }} }}"
                     )
 
-                    # Check that there exists at least one cell with this value in the data graph.
+                    # Check that there exists at least one cell with this value in a data graph.
                     # When local_term is a list, any one of the listed values is sufficient.
                     # An empty code stands for an empty cell, which the
                     # triplifier does not write: no cell can hold it (STRONG
@@ -465,18 +473,18 @@ class QueryBuilder:
                         for lt in local_terms
                         if lt
                     ]
-                    if len(codes) == 1:
-                        data_parts.append(f"?cell_{i} dbo:has_value {codes[0]} .")
-                    elif codes:
-                        data_parts.append(
-                            f"VALUES ?code_{i} {{ {' '.join(codes)} }} "
-                            f"?cell_{i} dbo:has_value ?code_{i} ."
+                    if codes:
+                        if len(codes) == 1:
+                            cell = f"?cell_{i} dbo:has_value {codes[0]} ."
+                        else:
+                            cell = (
+                                f"VALUES ?code_{i} {{ {' '.join(codes)} }} "
+                                f"?cell_{i} dbo:has_value ?code_{i} ."
+                            )
+                        checks.append(
+                            f"FILTER EXISTS {{ GRAPH ?dataGraph_{i} {{ {cell} }} "
+                            f'FILTER(STRSTARTS(STR(?dataGraph_{i}), "http://data.local/")) }}'
                         )
-
-        # Build data graph query part
-        data_graph_query = ""
-        if data_parts:
-            data_graph_query = f' GRAPH ?dataGraph {{ {" ".join(data_parts)} }} FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))'
 
         return f"""
             {prefixes}
@@ -484,6 +492,7 @@ class QueryBuilder:
             GRAPH <{annotation_graph}>
              {{
               {' '.join(ask_query_parts)}
-             }}{data_graph_query}
+             }}
+            {' '.join(checks)}
             }}
         """

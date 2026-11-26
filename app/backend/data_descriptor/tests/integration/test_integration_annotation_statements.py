@@ -12,7 +12,8 @@ each case, with rdflib behind the store's endpoints (:class:`SparqlStore`):
 - the materialisation gives a cell the value class of its own column's code,
   never that of another column that maps the same class to another code;
 - the verify page's check passes for a column once it is annotated, also when
-  its map codes an empty cell or lists codes the data does not hold.
+  its map codes an empty cell or lists codes the data does not hold, and it
+  asks for each of its parts on its own.
 
 The data graph is written here in the triplifier's shape: a row
 ``…/data/<table>/<n>`` of class ``db:<table>`` has a column node
@@ -25,8 +26,8 @@ from typing import Dict, Iterator, List, Sequence
 import pytest
 import responses
 from rdflib import RDF, Graph, URIRef
-from rdflib.plugins.sparql.algebra import translateUpdate
-from rdflib.plugins.sparql.parser import parseUpdate
+from rdflib.plugins.sparql.algebra import translateQuery, translateUpdate
+from rdflib.plugins.sparql.parser import parseQuery, parseUpdate
 from rdflib.plugins.sparql.parserutils import CompValue
 from rdflib.term import Variable
 
@@ -444,3 +445,74 @@ def test_the_check_fails_while_no_cell_holds_any_of_a_terms_codes(
         False,
         False,
     )
+
+
+def test_the_check_finds_each_terms_codes_in_any_table(store, endpoint, tmp_path):
+    """Each term's codes are looked for on their own, in any table: the
+    check does not need one table that holds a code of every term."""
+    _load_table(store, "visits", {"sex": ["F"]})
+    codes = {"male": "M", "female": "F"}
+
+    assert _check_before_and_after(store, endpoint, tmp_path, ["M", "M"], codes) == (
+        False,
+        True,
+    )
+
+
+def _scopes(query: str) -> List[List[tuple]]:
+    """The triple patterns of ``query`` per scope a store answers on its
+    own: the query's group, and the body of each FILTER EXISTS."""
+    scopes: List[List[tuple]] = []
+
+    def walk(node, scope):
+        if isinstance(node, CompValue):
+            if node.name == "Builtin_EXISTS":
+                inner: List[tuple] = []
+                scopes.append(inner)
+                walk(node.get("graph"), inner)
+                return
+            if node.name == "BGP":
+                scope.extend(node.triples)
+                return
+            for value in node.values():
+                walk(value, scope)
+        elif isinstance(node, (list, tuple)):
+            for value in node:
+                walk(value, scope)
+
+    top: List[tuple] = []
+    scopes.append(top)
+    walk(translateQuery(parseQuery(query)).algebra, top)
+    return scopes
+
+
+def test_no_part_of_the_check_pairs_the_answers_of_another():
+    """The check asks for each equivalent class and each term's cells on its
+    own. In one group, patterns that share nothing but the graph they sit in
+    are answered together: on GraphDB, the check of a column with six code
+    groups walked every cell of the tables that hold some of the groups, and
+    did not finish at 10,000 rows."""
+    from repositories.query_builder import QueryBuilder
+
+    query = QueryBuilder.annotation_ask_query(
+        "intake",
+        "stage",
+        "ncit:C25728",
+        {
+            "terms": {
+                "x": {"local_term": "X", "target_class": "ncit:C48737"},
+                "1": {"local_term": ["1", "1A"], "target_class": "ncit:C48720"},
+                "missing": {"local_term": [""], "target_class": "ncit:C54031"},
+            }
+        },
+        QueryBuilder.build_prefixes(
+            {
+                "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+                "xsd": "http://www.w3.org/2001/XMLSchema#",
+            }
+        ),
+    )
+
+    for scope in _scopes(query):
+        asking = [p for p in scope if any(isinstance(t, Variable) for t in p)]
+        assert len(_unrelated_groups(asking)) <= 1, asking

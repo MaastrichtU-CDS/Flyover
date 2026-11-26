@@ -483,7 +483,12 @@ class TestVerifyAnnotation:
         assert "ncit:C20197 rdfs:subClassOf ncit:C28421" in query
         assert "ncit:C16576 rdfs:subClassOf ncit:C28421" in query
         assert '"M"^^xsd:string' in query and '"F"^^xsd:string' in query
-        assert 'FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))' in query
+        # Each term's cells are a check of their own, in any data graph
+        for term in (0, 1):
+            assert (
+                f'FILTER(STRSTARTS(STR(?dataGraph_{term}), "http://data.local/"))'
+                in query
+            )
         # Prefixes come from the mapping as well as the defaults
         assert "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>" in query
         assert "PREFIX dbo: <http://um-cds/ontologies/databaseontology/>" in query
