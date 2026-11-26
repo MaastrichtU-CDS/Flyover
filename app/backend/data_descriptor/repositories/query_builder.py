@@ -455,7 +455,12 @@ class QueryBuilder:
 
                     # Check that there exists at least one cell with this value in the data graph.
                     # When local_term is a list, any one of the listed values is sufficient.
+                    # An empty code stands for an empty cell, which the
+                    # triplifier does not write: no cell can hold it (STRONG
+                    # AYA maps missing_or_unspecified to [""]).
                     for j, lt in enumerate(local_terms):
+                        if not lt:
+                            continue
                         escaped_local_value = lt.replace("\\", "\\\\").replace(
                             '"', '\\"'
                         )

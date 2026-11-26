@@ -10,7 +10,9 @@ each case, with rdflib behind the store's endpoints (:class:`SparqlStore`):
 - the clean-up removes the edges the schema places elsewhere, in the table's
   own annotation graph and nowhere else;
 - the materialisation gives a cell the value class of its own column's code,
-  never that of another column that maps the same class to another code.
+  never that of another column that maps the same class to another code;
+- the verify page's check passes for a column once it is annotated, also when
+  its map codes an empty cell.
 
 The data graph is written here in the triplifier's shape: a row
 ``…/data/<table>/<n>`` of class ``db:<table>`` has a column node
@@ -352,3 +354,71 @@ def test_a_cell_gets_the_value_class_of_its_own_columns_code(
     assert value_classes(1, "item_a") == {URIRef(f"{EX}most_of_the_time")}
     assert value_classes(0, "item_b") == {URIRef(f"{EX}most_of_the_time")}
     assert value_classes(1, "item_b") == {URIRef(f"{EX}not_at_all")}
+
+
+# ---------------------------------------------------------------------------
+# The verify page's check
+# ---------------------------------------------------------------------------
+
+SEX_CLASSES = {
+    "female": "ncit:C16576",
+    "male": "ncit:C20197",
+    "missing_or_unspecified": "ncit:C54031",
+}
+
+
+def _check_before_and_after(
+    store: SparqlStore, endpoint: str, tmp_path, values: Sequence, codes: dict
+) -> tuple:
+    """The answers of the verify page's check (``/verify-annotation-ask``)
+    for the column ``sex`` holding ``values``, before and after annotating it
+    with ``codes`` per term."""
+    from annotation_helper.src import miscellaneous
+    from repositories.rdf_store_repository import RDFStoreRepository
+
+    _load_table(store, "intake", {"sex": values})
+    value_mapping = {
+        "terms": {
+            term: {"local_term": code, "target_class": SEX_CLASSES[term]}
+            for term, code in codes.items()
+        }
+    }
+    repository = RDFStoreRepository(store.base_url, store.repo)
+
+    def check() -> bool:
+        _, valid, _ = repository.verify_annotation(
+            "intake", "sex", "ncit:C28421", value_mapping
+        )
+        return valid
+
+    before = check()
+    results = miscellaneous.add_annotation(
+        endpoint=endpoint,
+        database="intake",
+        prefixes=PREFIXES,
+        annotation_data={
+            "biological_sex": {
+                "predicate": "sio:SIO_000008",
+                "class": "ncit:C28421",
+                "local_definition": "sex",
+                "value_mapping": value_mapping,
+            }
+        },
+        path=str(tmp_path),
+        save_query=False,
+    )
+    assert results["biological_sex"]["success"]
+    return before, check()
+
+
+def test_the_check_passes_for_a_column_whose_map_codes_an_empty_cell(
+    store, endpoint, tmp_path
+):
+    """STRONG AYA maps ``missing_or_unspecified`` to ``[""]``, an empty
+    cell. The triplifier writes no cell for an empty value, so no cell can
+    hold that code."""
+    codes = {"male": "M", "female": "F", "missing_or_unspecified": [""]}
+
+    assert _check_before_and_after(
+        store, endpoint, tmp_path, ["M", "F", ""], codes
+    ) == (False, True)
