@@ -51,6 +51,7 @@ services:
       - FLYOVER_SUGGESTION_THRESHOLD=${FLYOVER_SUGGESTION_THRESHOLD:-0.8}
       # Optional: Override default timeout settings
       # - GUNICORN_TIMEOUT=300
+      # - GUNICORN_MAX_REQUESTS=0
       # - RDF_REQUEST_TIMEOUT=3600
     networks:
       - proxynet
