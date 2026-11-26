@@ -870,6 +870,37 @@ class TestAnnotationDepth:
         # The materialisation came last
         assert annotate_ready.updates[-3:] == materialised
 
+    def test_the_progress_counts_each_variable_then_the_materialisation(
+        self, client, session_cache, annotate_ready, monkeypatch
+    ):
+        from annotation_helper.src import miscellaneous
+
+        monkeypatch.setattr(miscellaneous, "materialize", True)
+        materialise = miscellaneous.materialize_inferences
+        during_materialisation = []
+
+        def watched(**kwargs):
+            during_materialisation.append(dict(session_cache.annotation_progress))
+            return materialise(**kwargs)
+
+        monkeypatch.setattr(miscellaneous, "materialize_inferences", watched)
+
+        client.post("/start-annotation")
+
+        variables = len(session_cache.annotation_status)
+        (progress,) = during_materialisation
+        assert progress["variables_done"] == variables
+        assert progress["materialising"] is True
+        assert client.get("/api/v1/annotation-progress").get_json() == {
+            "running": False,
+            "variables_done": variables,
+            "variables_total": variables,
+            "tables_done": 1,
+            "tables_total": 1,
+            "table": TABLE,
+            "materialising": False,
+        }
+
     def test_materialisation_failure_does_not_fail_the_annotation(
         self, client, session_cache, annotate_ready, monkeypatch
     ):

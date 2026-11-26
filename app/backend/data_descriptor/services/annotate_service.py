@@ -8,7 +8,7 @@ including annotation execution and verification.
 import copy
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,7 @@ class AnnotateService:
         prefixes: str,
         annotated_variables: Dict[str, Any],
         temp_dir: str = "/tmp/annotation_temp",
+        on_progress: Optional[Callable[[str], None]] = None,
     ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """
         Execute annotation for variables.
@@ -139,6 +140,8 @@ class AnnotateService:
             prefixes: SPARQL prefixes.
             annotated_variables: Variables to annotate.
             temp_dir: Temporary directory for annotation files.
+            on_progress: Optional; told of each variable done and of the
+                materialisation (see add_annotation).
 
         Returns:
             Tuple of (annotation_results, error_message).
@@ -156,6 +159,7 @@ class AnnotateService:
                 path=temp_dir,
                 remove_has_column=False,
                 save_query=True,
+                on_progress=on_progress,
             )
 
             if isinstance(annotation_results, dict):

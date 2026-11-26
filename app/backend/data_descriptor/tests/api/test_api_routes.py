@@ -46,6 +46,7 @@ EXPECTED_ROUTES = {
     ("POST", "/upload-annotation-json"),
     ("GET", "/annotation-review"),
     ("POST", "/start-annotation"),
+    ("GET", "/api/v1/annotation-progress"),
     ("GET", "/annotation-verify"),
     ("GET", "/api/v1/annotation-verify-state"),
     ("POST", "/verify-annotation-ask"),

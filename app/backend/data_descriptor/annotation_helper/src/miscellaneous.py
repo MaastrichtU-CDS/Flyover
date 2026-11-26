@@ -79,6 +79,7 @@ def add_annotation(
     path,
     remove_has_column=False,
     save_query=True,
+    on_progress=None,
 ):
     """
     Add the annotation for a series of variables
@@ -229,6 +230,9 @@ def add_annotation(
     :param str path: path to the directory where queries should be saved and where the optional JSON file is located
     :param bool remove_has_column: whether to remove the has_column predicate for cleanliness in the graph
     :param bool save_query: whether to save the query generated for the mapping
+    :param callable on_progress: optional; called with "variable" each time a
+      variable is done and with "materialising" before the materialisation
+      starts, for a progress display
     """
     if dry_run:
         logging.info(
@@ -764,11 +768,15 @@ def add_annotation(
             # Re-raise any unexpected per-variable failure so it is reported
             # upstream, mirroring the original sequential behaviour.
             future.result()
+            if on_progress is not None:
+                on_progress("variable")
 
     # materialize inferences if enabled. This runs after the annotation has
     # already been written, so a failure here must not propagate and cause the
     # successful annotation to be reported as failed; log it and continue.
     if materialize and dry_run is False:
+        if on_progress is not None:
+            on_progress("materialising")
         try:
             materialize_inferences(
                 endpoint=endpoint,

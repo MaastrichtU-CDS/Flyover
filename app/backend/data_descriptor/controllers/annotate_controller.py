@@ -377,6 +377,27 @@ def start_annotation():
         session_cache.annotation_status = {}
         total_annotated = 0
 
+        # How far the run is, for the review page's progress bar
+        # (/api/v1/annotation-progress).
+        progress = {
+            "running": True,
+            "variables_done": 0,
+            "variables_total": sum(
+                len(data["variables"]) for data in annotation_data.values()
+            ),
+            "tables_done": 0,
+            "tables_total": len(annotation_data),
+            "table": None,
+            "materialising": False,
+        }
+        session_cache.annotation_progress = progress
+
+        def _on_progress(event):
+            if event == "variable":
+                progress["variables_done"] += 1
+            elif event == "materialising":
+                progress["materialising"] = True
+
         def _annotate_database(database, data):
             """Run annotation for a single database and return (database, results, error)."""
             logger.info(f"Processing annotation for database: {database}")
@@ -395,6 +416,7 @@ def start_annotation():
                 data["prefixes"],
                 data["variables"],
                 temp_dir=temp_dir,
+                on_progress=_on_progress,
             )
             return database, data, annotation_results, error
 
@@ -405,9 +427,19 @@ def start_annotation():
         # Docker's default limit of 1,024) and most variables failed. The
         # store applies the writes one after another anyway, so tables side by
         # side were also slower (403 s against 38 s for NKI's map at 50 rows).
+        variables_done = 0
         for database, data in annotation_data.items():
+            progress["table"] = database
             database, data, annotation_results, error = _annotate_database(
                 database, data
+            )
+            # All its variables are done now, also when the table failed as a
+            # whole and so reported none of them one by one.
+            variables_done += len(data["variables"])
+            progress.update(
+                variables_done=variables_done,
+                tables_done=progress["tables_done"] + 1,
+                materialising=False,
             )
 
             for var_name in data["variables"]:
@@ -459,6 +491,17 @@ def start_annotation():
     except Exception as e:
         logger.error(f"Annotation error: {e}")
         return jsonify({"success": False, "error": str(e)})
+
+    finally:
+        if session_cache.annotation_progress:
+            session_cache.annotation_progress["running"] = False
+
+
+@annotate_bp.route("/api/v1/annotation-progress", methods=["GET"])
+def api_annotation_progress():
+    """How far the latest annotation run is, for the review page."""
+    session_cache = get_app_context().get("session_cache")
+    return jsonify(session_cache.annotation_progress or {"running": False})
 
 
 @annotate_bp.route("/annotation-verify")

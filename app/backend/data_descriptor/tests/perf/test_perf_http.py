@@ -334,7 +334,7 @@ class TestAnnotationOfManyTables:
         }
         lock, running = threading.Lock(), {"now": 0, "peak": 0}
 
-        def execute(endpoint, database, prefixes, variables, temp_dir):
+        def execute(endpoint, database, prefixes, variables, temp_dir, on_progress):
             with lock:
                 running["now"] += 1
                 running["peak"] = max(running["peak"], running["now"])

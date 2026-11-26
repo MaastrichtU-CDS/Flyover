@@ -118,6 +118,7 @@ class SessionCache:
         cross_graph_link_data: Cross-graph linking relationship data
         cross_graph_link_status: Cross-graph processing status
         annotation_status: Annotation results by variable
+        annotation_progress: How far the latest annotation run is
         annotation_json_path: Path to uploaded annotation JSON file
         output_files: List of output files from triplification
 
@@ -159,6 +160,7 @@ class SessionCache:
 
         # Annotation state
         self.annotation_status = None  # Store annotation results
+        self.annotation_progress = None  # See /api/v1/annotation-progress
         self.annotation_json_path = None  # Store path to the uploaded JSON file
 
         # Output files from triplification
