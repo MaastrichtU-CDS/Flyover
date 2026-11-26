@@ -66,6 +66,7 @@ describe('AnnotationReviewView', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it("shows the map's warnings from the server's check", async () => {
@@ -170,6 +171,55 @@ describe('AnnotationReviewView', () => {
     // We send the filtered semantic map (all tables selected by default) to annotation endpoint
     const annotationBody = JSON.parse(fetch.mock.calls[1][1].body)
     expect(annotationBody).toEqual(SEMANTIC_MAP)
+    expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
+  })
+
+  it('shows how far the annotation is while it runs', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const progress = {
+      running: true,
+      variables_done: 312,
+      variables_total: 563,
+      tables_done: 3,
+      tables_total: 12,
+      table: 'survey',
+      materialising: true,
+    }
+    api.get.mockImplementation(async (url) =>
+      url === '/api/v1/annotation-progress'
+        ? { data: progress }
+        : { data: { success: true, databases: ['patients.csv'] } },
+    )
+    db.getData.mockImplementation(async (_store, key) => {
+      if (key === 'semantic_map') return { data: SEMANTIC_MAP }
+      return null
+    })
+    let finishAnnotation
+    fetch.mockResolvedValueOnce(jsonResponse({ success: true }))
+    fetch.mockReturnValueOnce(new Promise((resolve) => { finishAnnotation = resolve }))
+
+    const w = mountView()
+    await flushPromises()
+    await w.find('button.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(w.find('.annotation-progress').exists()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    const bar = w.find('.annotation-progress progress')
+    expect(bar.element.value).toBe(312)
+    expect(bar.element.max).toBe(563)
+    expect(w.find('.annotation-progress').text()).toContain('312 of 563 variables')
+    expect(w.find('.annotation-progress').text()).toContain(
+      'Table 4 of 12: survey, materialising',
+    )
+
+    finishAnnotation(jsonResponse({ success: true }))
+    await flushPromises()
+
+    expect(w.find('.annotation-progress').exists()).toBe(false)
     expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
   })
 
