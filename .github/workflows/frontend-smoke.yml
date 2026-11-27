@@ -10,7 +10,11 @@ on:
 jobs:
   smoke:
     name: Playwright smoke against tmpfs stack
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: that is Ubuntu 26.04 since November 2026, where
+    # Playwright 1.59 will not install Chromium ("Playwright does not support
+    # chromium on ubuntu26.04-x64"). Back to ubuntu-latest once a Playwright
+    # release supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     # The CI test stack always runs against GraphDB; activate its profile for
     # every step so build, up, logs and teardown all target the right service.

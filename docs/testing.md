@@ -184,7 +184,7 @@ docker compose -f ../../docker-compose.yml -f ../../docker-compose.test.yml down
 
 The specs are grouped in Playwright projects ([`playwright.config.js`](../app/frontend/playwright.config.js)): `flyover` for what every workflow shares (the pages loading, the home page, projects) and `rdf` for the RDF workflow's steps. Each spec is in exactly one. CI runs each project as a step of its own, so a failure reads as Flyover's or the RDF workflow's. A new workflow's specs get their own project.
 
-Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases.
+Playwright only ships Chromium for the Ubuntu releases it knows; on a newer one `npm run test:e2e:install` stops with "does not support chromium on ubuntuXX.XX". Set `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for the install and the test runs; the 24.04 build works on later releases. For the same reason CI's E2E jobs run on `ubuntu-24.04`, not `ubuntu-latest` (Ubuntu 26.04 since November 2026).
 
 The suggestion flows (`tests/e2e/suggestions.spec.js`) need the default `FLYOVER_SUGGESTION_TIERS=1` and upload their own semantic map; their "disabled" flow mocks `/api/v1/suggestions/status`. The real feature-off run is `tests/e2e/suggestions-disabled.spec.js`: start the stack with the flag empty and set `E2E_SUGGESTIONS_DISABLED=1` so an enabled stack fails instead of skipping. Each suggestion spec skips itself against a stack in the other state, so `npm run test:e2e` passes on either.
 
