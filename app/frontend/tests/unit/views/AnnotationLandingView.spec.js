@@ -119,4 +119,17 @@ describe('AnnotationLandingView — uploading a semantic map', () => {
     expect(wrapper.text()).toContain('Proceed to Annotation Review')
     expect(wrapper.find('.map-warnings').exists()).toBe(false)
   })
+
+  it('shows no warnings when the answer has no list of them', async () => {
+    fetch.mockResolvedValue(answer({ success: true, matching_databases: [], cleaned_mapping: MAP }))
+
+    const wrapper = mount(AnnotationLandingView, {
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+    await flushPromises()
+    await uploadMap(wrapper)
+
+    expect(wrapper.text()).toContain('Proceed to Annotation Review')
+    expect(wrapper.find('.map-warnings').exists()).toBe(false)
+  })
 })
