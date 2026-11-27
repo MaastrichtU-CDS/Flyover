@@ -29,7 +29,7 @@
           >
             <p class="footer-text">
               <i class="fas fa-code" />
-              <strong>Flyover</strong> v3.5.1
+              <strong>Flyover</strong> v3.5.2
             </p>
           </a>
         </div>

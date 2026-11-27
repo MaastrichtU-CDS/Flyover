@@ -1,0 +1,103 @@
+PREFIX dbo: <http://um-cds/ontologies/databaseontology/>
+PREFIX gsso: <http://purl.obolibrary.org/obo/>
+PREFIX mesh: <http://id.nlm.nih.gov/mesh/>
+PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX roo: <http://www.cancerdata.org/roo/>
+PREFIX sct: <http://purl.bioontology.org/ontology/SNOMEDCT/>
+PREFIX sio: <http://semanticscience.org/resource/>
+PREFIX strongaya: <https://strongaya.eu/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT
+	?p1
+	?p2
+    ?patientID
+    ?subClass
+    ?subClass2
+    (SAMPLE(?value) AS ?any_value)
+    (SAMPLE(?value2) AS ?any_value2)
+WHERE {
+
+  # 1) FETCH FIRST ATTRIBUTE
+  ?p1 sio:SIO_000255/sio:SIO_000008 ?attr .
+  ?attr rdf:type ncit:C28421 ;
+        rdf:type ?mainClass ;
+        dbo:has_cell ?subcell .
+  ?subcell dbo:has_value ?value .
+
+  FILTER STRSTARTS(STR(?mainClass), STR(ncit:))
+
+  OPTIONAL {
+    ?subcell rdf:type ?subClass .
+    FILTER (STRSTARTS(STR(?subClass), STR(ncit:)) || STRSTARTS(STR(?subClass), STR(strongaya:)))
+    ?subClass rdfs:subClassOf ?mainClass .
+    FILTER(!sameTerm(?subClass, ?mainClass))
+  }
+
+  
+
+  # 2) FETCH SECOND ATTRIBUTE
+  ?p2 sio:SIO_000255/sio:SIO_000008 ?attr2 .
+  ?attr2 rdf:type ncit:C156420 ;
+         rdf:type ?mainClass2 ;
+         dbo:has_cell ?subcell2 .
+  ?subcell2 dbo:has_value ?value2 .
+
+  FILTER STRSTARTS(STR(?mainClass2), STR(ncit:))
+
+  OPTIONAL {
+    ?subcell2 rdf:type ?subClass2 .
+    FILTER (STRSTARTS(STR(?subClass2), STR(ncit:)) || STRSTARTS(STR(?subClass2), STR(strongaya:)))
+    ?subClass2 rdfs:subClassOf ?mainClass2 .
+    FILTER(!sameTerm(?subClass2, ?mainClass2))
+  }
+
+  
+
+  # 3) RESOLVE PATIENT IDENTITY (foreign key, flat table or record URI)
+  # Both records are identified in the same manner, after which the two attributes are
+  # kept only when their records describe the same patient:
+  # - a record of a linked table is identified by the identifier that its foreign key
+  #   refers to, so that a record of a child table is identified by the identifier of
+  #   the record it refers to;
+  # - a record of a flat table is identified by its own identifier;
+  # - a record whose identifier cannot be retrieved is identified by its own URI, so
+  #   that it is still observed and counted, albeit only joinable with itself.
+  OPTIONAL {
+    ?p1 sio:SIO_000673 ?idNode1 .
+    ?idNode1 rdf:type ncit:C25364 ;
+             dbo:has_cell/dbo:has_value ?idValue1 .
+
+    OPTIONAL {
+      ?idNode1 dbo:fk_refers_to ?referencedIdNode1 .
+      ?referencedIdNode1 dbo:has_cell/dbo:has_value ?referencedIdValue1 .
+    }
+  }
+  BIND(COALESCE(?referencedIdValue1, ?idValue1, STR(?p1)) AS ?patientID)
+
+  OPTIONAL {
+    ?p2 sio:SIO_000673 ?idNode2 .
+    ?idNode2 rdf:type ncit:C25364 ;
+             dbo:has_cell/dbo:has_value ?idValue2 .
+
+    OPTIONAL {
+      ?idNode2 dbo:fk_refers_to ?referencedIdNode2 .
+      ?referencedIdNode2 dbo:has_cell/dbo:has_value ?referencedIdValue2 .
+    }
+  }
+  BIND(COALESCE(?referencedIdValue2, ?idValue2, STR(?p2)) AS ?patientID2)
+
+  FILTER(STR(?patientID) = STR(?patientID2))
+
+  # 4) CORRELATE RECORDINGS THAT SHARE THE SAME CONTAINER (PROM, EHR or HCPROM)
+  # When either attribute is bound to the container it was recorded within - a
+  # questionnaire answer and its own recording timestamp, for instance - the two are
+  # only kept together when they share that same container, so that an answer of one
+  # administration is not paired with the timestamp of another. Neither, or only one,
+  # of the two attributes may hold such a container, in which case they remain paired
+  # by patient alone, as before.
+  FILTER(!BOUND(?instance1) || !BOUND(?instance2) || STR(?instance1) = STR(?instance2))
+}
+GROUP BY ?p1 ?p2 ?patientID ?subClass ?subClass2

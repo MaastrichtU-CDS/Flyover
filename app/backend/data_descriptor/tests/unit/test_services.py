@@ -583,7 +583,7 @@ class TestAnnotateServiceVerification(unittest.TestCase):
         def mock_name_matcher(a, b):
             return a == b
 
-        def mock_get_semantic_map(cache, database_key=None):
+        def mock_get_semantic_map(cache, database_key=None, table_key=None):
             return (
                 {
                     "variable_info": {

@@ -1,0 +1,156 @@
+{
+  "@context": {
+    "@vocab": "https://github.com/MaastrichtU-CDS/Flyover/",
+    "sio": "http://semanticscience.org/resource/",
+    "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+    "mesh": "http://id.nlm.nih.gov/mesh/",
+    "roo": "http://www.cancerdata.org/roo/",
+    "schema": "schema/",
+    "mapping": "mapping/",
+    "variables": {
+      "@id": "schema:hasVariable",
+      "@container": "@index"
+    },
+    "schemaReconstruction": {
+      "@id": "schema:hasSchemaReconstruction",
+      "@container": "@list"
+    },
+    "valueMapping": {
+      "@id": "schema:hasValueMapping"
+    },
+    "terms": {
+      "@id": "schema:hasTerms",
+      "@container": "@index"
+    },
+    "targetClass": {
+      "@id": "schema:mapsToClass",
+      "@type": "@id"
+    },
+    "databases": {
+      "@id": "mapping:hasDatabase",
+      "@container": "@index"
+    },
+    "tables": {
+      "@id": "mapping:hasTable",
+      "@container": "@index"
+    },
+    "columns": {
+      "@id": "mapping:hasColumn",
+      "@container": "@index"
+    },
+    "localMappings": {
+      "@id": "mapping:hasLocalMappings",
+      "@container": "@index"
+    },
+    "mapsTo": {
+      "@id": "mapping:mapsToVariable",
+      "@type": "@id"
+    }
+  },
+  "@id": "mapping:golden-rdf",
+  "@type": "mapping:DataMapping",
+  "name": "Golden RDF mapping",
+  "description": "Three mapped variables and one unmapped column over one table",
+  "version": "1.0.0",
+  "created": "2026-10-28",
+  "endpoint": "http://rdf-store.test:7200/repositories/userRepo/statements",
+  "schema": {
+    "@id": "schema:golden-rdf/v1",
+    "@type": "schema:SemanticSchema",
+    "name": "Golden RDF schema",
+    "version": "1.0.0",
+    "prefixes": {
+      "sio": "http://semanticscience.org/resource/",
+      "ncit": "http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#",
+      "mesh": "http://id.nlm.nih.gov/mesh/",
+      "roo": "http://www.cancerdata.org/roo/"
+    },
+    "variables": {
+      "identifier": {
+        "@id": "schema:variable/identifier",
+        "@type": "schema:IdentifierVariable",
+        "dataType": "identifier",
+        "predicate": "sio:SIO_000673",
+        "class": "ncit:C25364"
+      },
+      "biological_sex": {
+        "@id": "schema:variable/biological_sex",
+        "@type": "schema:CategoricalVariable",
+        "dataType": "categorical",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C28421",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:ClassNode",
+            "predicate": "sio:SIO_000235",
+            "class": "mesh:D000091569",
+            "classLabel": "demographicClass",
+            "aestheticLabel": "Demographic"
+          }
+        ],
+        "valueMapping": {
+          "terms": {
+            "male": {
+              "targetClass": "ncit:C20197"
+            },
+            "female": {
+              "targetClass": "ncit:C16576"
+            },
+            "missing_or_unspecified": {
+              "targetClass": "ncit:C54031"
+            }
+          }
+        }
+      },
+      "age_at_diagnosis": {
+        "@id": "schema:variable/age_at_diagnosis",
+        "@type": "schema:ContinuousVariable",
+        "dataType": "continuous",
+        "predicate": "sio:SIO_000008",
+        "class": "ncit:C156420",
+        "schemaReconstruction": [
+          {
+            "@type": "schema:UnitNode",
+            "predicate": "sio:SIO_000221",
+            "class": "ncit:C29848",
+            "nodeLabel": "years",
+            "aestheticLabel": "Years"
+          }
+        ]
+      }
+    }
+  },
+  "databases": {
+    "centre_x": {
+      "@id": "mapping:database/centre_x",
+      "@type": "mapping:Database",
+      "name": "patients",
+      "tables": {
+        "patients": {
+          "@id": "mapping:table/patients",
+          "@type": "mapping:Table",
+          "sourceFile": "patients",
+          "columns": {
+            "identifier": {
+              "mapsTo": "schema:variable/identifier",
+              "localColumn": "id"
+            },
+            "biological_sex": {
+              "mapsTo": "schema:variable/biological_sex",
+              "localColumn": "sex",
+              "localMappings": {
+                "male": "M",
+                "female": "F",
+                "missing_or_unspecified": ""
+              }
+            },
+            "age_at_diagnosis": {
+              "mapsTo": "schema:variable/age_at_diagnosis",
+              "localColumn": "age"
+            }
+          }
+        }
+      }
+    }
+  }
+}

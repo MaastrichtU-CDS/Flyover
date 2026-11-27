@@ -56,8 +56,12 @@ async function uploadMap(wrapper, map) {
   Object.defineProperty(input, 'files', { value: [file], configurable: true })
   await wrapper.find('input[type="file"]').trigger('change')
   await wrapper.find('form').trigger('submit')
-  // FileReader resolves on a later task than flushPromises alone covers.
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  // The page reads the file first, with a FileReader that resolves on a task
+  // of its own, sometimes later than the next one: wait for the validation
+  // request that follows it. Every later step is a promise the mocks resolve,
+  // so the upload has finished before the test goes on (and cannot run on
+  // into the next test).
+  await vi.waitFor(() => expect(api.post).toHaveBeenCalled())
   await flushPromises()
 }
 
@@ -111,5 +115,43 @@ describe('DescribeLandingView — uploading a semantic map', () => {
     await uploadMap(wrapper, EMPTY_MAP)
 
     expect(store.isTouched('db_age')).toBe(true)
+  })
+
+  it("shows the map's warnings and keeps the upload card open for them", async () => {
+    const mapWarning = {
+      path: 'databases.db.tables.t.columns',
+      message: "Table 't': columns 'a' and 'b' all map to the variable 'age'",
+      suggestion: "Only column 'a' is annotated with it.",
+    }
+    api.post.mockResolvedValue({
+      data: { valid: true, validation_warnings: [], map_warnings: [mapWarning] },
+    })
+
+    const wrapper = mountLanding()
+    await flushPromises()
+    await uploadMap(wrapper, EMPTY_MAP)
+
+    // The map was opened all the same ...
+    expect(db.saveData).toHaveBeenCalledWith(
+      'metadata',
+      expect.objectContaining({ key: 'semantic_map' }),
+    )
+    // ... and its warning shows in the card, which stays.
+    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.find('.map-warnings').text()).toContain(mapWarning.message)
+    expect(wrapper.find('.map-warnings').text()).toContain(mapWarning.suggestion)
+  })
+
+  it('closes the upload card when the map has no warnings', async () => {
+    api.post.mockResolvedValue({
+      data: { valid: true, validation_warnings: [], map_warnings: [] },
+    })
+
+    const wrapper = mountLanding()
+    await flushPromises()
+    await uploadMap(wrapper, EMPTY_MAP)
+
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.find('.map-warnings').exists()).toBe(false)
   })
 })

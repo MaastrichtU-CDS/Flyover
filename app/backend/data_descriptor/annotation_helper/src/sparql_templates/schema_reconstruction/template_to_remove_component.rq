@@ -8,9 +8,16 @@ PREFIX roo: <http://www.cancerdata.org/roo/>
 PREFIX ncit: <http://ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#>
 PREFIX PLACEHOLDER: <>
 
-DELETE { ?tablerow dbo:has_column ?variable . }
+# Only the edges that exist are looked up, in the annotation graph they were
+# written to, from the nodes of the class to the rows that have them. Asking
+# for the table's rows and the class's nodes on their own, as two patterns
+# that share nothing, has every store pair each row with each node first.
+DELETE { GRAPH <http://annotation.local/databasename/> { ?tablerow dbo:has_column ?variable . } }
 
 WHERE {
-    ?tablerow rdf:type db:databasename .
-    ?variable rdf:type db:databasename.localvariable .
+    GRAPH <http://annotation.local/databasename/> {
+        ?variable rdf:type db:databasename.localvariable .
+        ?tablerow dbo:has_column ?variable .
+    }
+    GRAPH ?dataGraph { ?tablerow rdf:type db:databasename . }
 }

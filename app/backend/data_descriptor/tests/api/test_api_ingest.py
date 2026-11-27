@@ -588,6 +588,7 @@ class TestValidateMapping:
             "csv_checked": False,
             "databases_checked": [],
             "cleaned_mapping": None,
+            "map_warnings": [],
         }
 
     def test_a_map_wrapped_in_a_mapping_key_is_accepted(self, client):

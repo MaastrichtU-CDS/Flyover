@@ -1,12 +1,14 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import * as db from '@/lib/db'
 import { matchStoreTable } from '@/lib/jsonld'
+import MapWarnings from '@/components/MapWarnings.vue'
 
 const router = useRouter()
 const PAGE_SIZE = 10
+const PROGRESS_POLL_MS = 2000
 
 const loading = ref(true)
 const noDataMessage = ref('')
@@ -15,11 +17,15 @@ const rdfStoreDatabases = ref([])
 const annotatedTableVariables = ref({})
 const nonMatchingJsonld = ref([])
 const nonMatchingRdfStore = ref([])
+const mapWarnings = ref([])
 const databasePages = reactive({})
 const expandedDatabases = reactive({})
 const selectedTables = reactive({})
 const annotationProcessing = ref(false)
 const annotationButtonText = ref('Start Annotation Process')
+// How far the running annotation is (/api/v1/annotation-progress)
+const annotationProgress = ref(null)
+let progressTimer = null
 
 function escapeHtml(text) {
   if (!text) return ''
@@ -249,6 +255,17 @@ function processAnnotationData(data) {
   loading.value = false
 }
 
+// What the map's rules warn about, from the server's validator. A warning
+// does not stop the annotation, and a failed check shows none.
+async function loadMapWarnings(map) {
+  try {
+    const { data } = await api.post('/api/v1/validate-mapping', map)
+    mapWarnings.value = data?.map_warnings || []
+  } catch {
+    mapWarnings.value = []
+  }
+}
+
 async function load() {
   try {
     let ok = await fetchAndStoreRdfStoreDatabases()
@@ -266,6 +283,7 @@ async function load() {
     }
     semanticMapData.value = r.data
     processAnnotationData(r.data)
+    loadMapWarnings(r.data)
   } catch (e) {
     showNoDataWarning(`An error occurred while loading: ${e.message || e}`)
   }
@@ -369,6 +387,31 @@ function validateFilteredMapHasTables(filteredSemanticMap) {
   return true
 }
 
+const progressTable = computed(() => {
+  const progress = annotationProgress.value
+  if (!progress?.table) return ''
+  const number = Math.min(progress.tables_done + 1, progress.tables_total)
+  const step = progress.materialising ? ', materialising' : ''
+  return `Table ${number} of ${progress.tables_total}: ${progress.table}${step}`
+})
+
+function startProgressPolling() {
+  progressTimer = setInterval(async () => {
+    try {
+      const { data } = await api.get('/api/v1/annotation-progress')
+      if (progressTimer && data?.running) annotationProgress.value = data
+    } catch {
+      // Only the bar misses an update; the annotation goes on.
+    }
+  }, PROGRESS_POLL_MS)
+}
+
+function stopProgressPolling() {
+  clearInterval(progressTimer)
+  progressTimer = null
+  annotationProgress.value = null
+}
+
 function resetAnnotationProcessingState() {
   annotationProcessing.value = false
   annotationButtonText.value = 'Start Annotation Process'
@@ -436,7 +479,13 @@ async function startAnnotationProcess() {
     
     annotationButtonText.value = 'Processing Annotations...'
     
-    const annotationSuccess = await startAnnotationWithFilteredMap(filteredSemanticMap)
+    startProgressPolling()
+    let annotationSuccess
+    try {
+      annotationSuccess = await startAnnotationWithFilteredMap(filteredSemanticMap)
+    } finally {
+      stopProgressPolling()
+    }
     if (annotationSuccess) {
       router.push('/annotate/verify')
     } else {
@@ -450,6 +499,7 @@ async function startAnnotationProcess() {
 }
 
 onMounted(load)
+onBeforeUnmount(stopProgressPolling)
 </script>
 
 <template>
@@ -477,6 +527,8 @@ onMounted(load)
     />
 
     <div v-else>
+      <MapWarnings :warnings="mapWarnings" />
+
       <div
         v-if="nonMatchingJsonld.length || nonMatchingRdfStore.length"
         class="mb-4"
@@ -713,6 +765,21 @@ onMounted(load)
       >
         <i class="fas fa-backward" /> Back to Describe Variable Details
       </RouterLink>
+      <div
+        v-if="annotationProgress"
+        class="annotation-progress mt-3"
+      >
+        <progress
+          :value="annotationProgress.variables_done"
+          :max="annotationProgress.variables_total"
+        />
+        <span class="ms-2">
+          {{ annotationProgress.variables_done }} of {{ annotationProgress.variables_total }} variables
+        </span>
+        <div class="text-muted small">
+          {{ progressTable }}
+        </div>
+      </div>
       <br>
 
       <div class="mt-4">
@@ -733,6 +800,12 @@ onMounted(load)
 </template>
 
 <style scoped>
+.annotation-progress progress {
+  width: 100%;
+  max-width: 28rem;
+  vertical-align: middle;
+}
+
 .database-header {
   display: flex;
   align-items: center;

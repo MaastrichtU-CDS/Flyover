@@ -14,7 +14,10 @@ import polars as pl
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from repositories.rdf_store_repository import RDFStoreRepository
+from repositories.rdf_store_repository import (
+    STORE_TIMEOUT_MARGIN,
+    RDFStoreRepository,
+)
 
 
 def _make_repo() -> RDFStoreRepository:
@@ -143,6 +146,40 @@ class TestExecuteAskQuery(unittest.TestCase):
         mock_get.side_effect = ConnectionError("timeout")
         result = self.repo.execute_ask_query("ASK { ?s ?p ?o }")
         self.assertIsNone(result)
+
+    @patch("repositories.rdf_store_repository.requests.get")
+    def test_sends_its_time_limit_to_the_store(self, mock_get):
+        """The store stops the query at the time limit itself, so that it
+        does not run on once Flyover stops waiting; Flyover waits a little
+        longer, to hear the store say so."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"boolean": True}
+        mock_get.return_value = mock_response
+
+        self.repo.execute_ask_query("ASK { ?s ?p ?o }", timeout=30)
+
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["params"]["timeout"], 30)
+        self.assertEqual(kwargs["timeout"], 30 + STORE_TIMEOUT_MARGIN)
+
+    @patch("time.sleep")
+    @patch("repositories.rdf_store_repository.requests.get")
+    def test_the_retry_log_counts_every_attempt(self, mock_get, _sleep):
+        """Three retries make four attempts, and the log says so."""
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_get.return_value = mock_response
+
+        with self.assertLogs("repositories.rdf_store_repository", "WARNING") as logs:
+            self.repo.execute_ask_query("ASK { ?s ?p ?o }", max_retries=3)
+
+        self.assertEqual(mock_get.call_count, 4)
+        retries = [line for line in logs.output if "retrying" in line]
+        self.assertEqual(
+            [line.split("(attempt ")[1].rstrip(")") for line in retries],
+            ["1/4", "2/4", "3/4"],
+        )
 
 
 class TestCheckDataGraphExists(unittest.TestCase):

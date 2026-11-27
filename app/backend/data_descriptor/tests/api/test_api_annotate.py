@@ -15,12 +15,14 @@ import os
 import tempfile
 import threading
 import time
+from unittest import mock
 
 import pytest
 
 from loaders import JSONLDMapping
 from tests.api.support import REPO, STORE_URL, TABLE, valid_mapping
 
+PROGRESS = "/api/v1/annotation-progress"
 VERIFY_STATE = "/api/v1/annotation-verify-state"
 
 
@@ -122,6 +124,7 @@ class TestUploadAnnotationMap:
             "non_matching_jsonld": [],
             "removed_columns": [],
             "cleaned_mapping": valid_mapping(),
+            "map_warnings": [],
         }
         assert _saved_files(app) == ["mapping.jsonld"]
         assert session_cache.annotation_json_path == os.path.join(
@@ -434,6 +437,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": True,
             "message": "Annotated 1 variables across 1 databases",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status == {
             f"{TABLE}.biological_sex": {
@@ -464,6 +468,7 @@ class TestStartAnnotation:
             "PREFIX sio: <http://semanticscience.org/resource/>",
             {"biological_sex": {"local_definition": "biological_sex"}},
             temp_dir=os.path.join(tempfile.gettempdir(), "annotation_temp", TABLE),
+            on_progress=mock.ANY,
         )
 
     @pytest.mark.parametrize(
@@ -484,12 +489,13 @@ class TestStartAnnotation:
         )
 
     def test_databases_are_reported_one_by_one(
-        self, client, session_cache, store, annotatable
+        self, client, session_cache, store, annotatable, helpers
     ):
         store.get_databases.return_value = [TABLE, "visits"]
+        helpers["get_table_names"].return_value = [TABLE, "visits"]
         annotatable.prepare_annotation_data.return_value = _prepared(TABLE, "visits")
 
-        def execute(endpoint, database, prefixes, variables, temp_dir):
+        def execute(endpoint, database, prefixes, variables, temp_dir, on_progress):
             if database == "visits":
                 return None, "the store refused the update"
             return {"biological_sex": {"success": True}}, None
@@ -501,6 +507,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": True,
             "message": "Annotated 1 variables across 2 databases",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status["visits.biological_sex"] == {
             "success": False,
@@ -575,6 +582,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": False,
             "error": "No variables with local definitions found",
+            "skipped_tables": [],
         }
         annotatable.execute_annotation.assert_not_called()
 
@@ -588,6 +596,7 @@ class TestStartAnnotation:
         assert response.get_json() == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert session_cache.annotation_status[f"{TABLE}.biological_sex"]["error"] == (
             "store unreachable"
@@ -603,25 +612,24 @@ class TestStartAnnotation:
         assert response.status_code == 200
         assert response.get_json() == {"success": False, "error": "'biological_sex'"}
 
-    def test_the_run_is_capped_at_32_databases_in_parallel(
+    def test_the_tables_are_annotated_one_after_another(
         self, client, store, annotatable
     ):
-        databases = [f"table_{i:02d}" for i in range(40)]
+        # Each table runs its variables side by side already; tables side by
+        # side ran the container out of open files with NKI's 12 tables.
+        databases = [f"table_{i:02d}" for i in range(12)]
         store.get_databases.return_value = databases
         annotatable.prepare_annotation_data.return_value = _prepared(*databases)
         lock = threading.Lock()
         running = {"now": 0, "peak": 0}
-        enough_in_flight = threading.Event()
+        order = []
 
-        def execute(endpoint, database, prefixes, variables, temp_dir):
+        def execute(endpoint, database, prefixes, variables, temp_dir, on_progress):
             with lock:
                 running["now"] += 1
                 running["peak"] = max(running["peak"], running["now"])
-                if running["now"] >= 32:
-                    enough_in_flight.set()
-            # Hold the worker until the pool is full (or give up after 5 s).
-            enough_in_flight.wait(timeout=5)
-            time.sleep(0.01)
+            order.append(database)
+            time.sleep(0.01)  # time for a second table to start, if it would
             with lock:
                 running["now"] -= 1
             return {"biological_sex": {"success": True}}, None
@@ -631,9 +639,10 @@ class TestStartAnnotation:
         response = client.post("/start-annotation")
 
         assert response.get_json()["message"] == (
-            "Annotated 40 variables across 40 databases"
+            "Annotated 12 variables across 12 databases"
         )
-        assert running["peak"] == 32
+        assert running["peak"] == 1
+        assert order == databases
 
 
 class TestStartAnnotationWithAFilteredMap:
@@ -805,6 +814,88 @@ class TestStartAnnotationWithAFilteredMap:
             "error": "Filtered semantic map validation failed",
         }
         assert session_cache.jsonld_mapping is original
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/annotation-progress
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationProgress:
+    @pytest.mark.route("GET", PROGRESS, "success")
+    def test_the_progress_follows_the_run_variable_by_variable(
+        self, client, session_cache, store, annotatable, helpers
+    ):
+        store.get_databases.return_value = [TABLE, "visits"]
+        helpers["get_table_names"].return_value = [TABLE, "visits"]
+        annotatable.prepare_annotation_data.return_value = _prepared(
+            TABLE, "visits", variables=("biological_sex", "age_at_diagnosis")
+        )
+        seen = []
+
+        def execute(endpoint, database, prefixes, variables, temp_dir, on_progress):
+            for _ in variables:
+                on_progress("variable")
+                seen.append(dict(session_cache.annotation_progress))
+            on_progress("materialising")
+            seen.append(dict(session_cache.annotation_progress))
+            return {name: {"success": True} for name in variables}, None
+
+        annotatable.execute_annotation.side_effect = execute
+
+        client.post("/start-annotation")
+
+        assert [
+            (s["variables_done"], s["tables_done"], s["table"], s["materialising"])
+            for s in seen
+        ] == [
+            (1, 0, TABLE, False),
+            (2, 0, TABLE, False),
+            (2, 0, TABLE, True),
+            (3, 1, "visits", False),
+            (4, 1, "visits", False),
+            (4, 1, "visits", True),
+        ]
+        assert all(
+            s["running"] and s["variables_total"] == 4 and s["tables_total"] == 2
+            for s in seen
+        )
+        assert client.get(PROGRESS).get_json() == {
+            "running": False,
+            "variables_done": 4,
+            "variables_total": 4,
+            "tables_done": 2,
+            "tables_total": 2,
+            "table": "visits",
+            "materialising": False,
+        }
+
+    def test_a_table_that_fails_as_a_whole_counts_its_variables_as_done(
+        self, client, annotatable
+    ):
+        annotatable.prepare_annotation_data.return_value = _prepared(
+            TABLE, variables=("biological_sex", "age_at_diagnosis")
+        )
+        annotatable.execute_annotation.return_value = (None, "the store went away")
+
+        client.post("/start-annotation")
+
+        progress = client.get(PROGRESS).get_json()
+        assert progress["variables_done"] == progress["variables_total"] == 2
+
+    def test_a_run_that_breaks_off_is_no_longer_running(self, client, annotatable):
+        annotatable.execute_annotation.side_effect = RuntimeError("boom")
+
+        client.post("/start-annotation")
+
+        assert client.get(PROGRESS).get_json()["running"] is False
+
+    def test_before_any_run_nothing_is_running(self, client):
+        assert client.get(PROGRESS).get_json() == {"running": False}
+
+    @pytest.mark.route("POST", PROGRESS, "failure")
+    def test_posting_to_the_progress_is_not_allowed(self, client):
+        assert client.post(PROGRESS).status_code == 405
 
 
 # ---------------------------------------------------------------------------

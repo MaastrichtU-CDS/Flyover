@@ -202,6 +202,48 @@ class TestValueMappingAnnotations(unittest.TestCase):
             "?component1 rdf:type db:clinical_table.tumour_location .", insert_query
         )
 
+    @patch("annotation_helper.src.miscellaneous.materialize", False)
+    @patch("annotation_helper.src.miscellaneous.dry_run", False)
+    @patch("annotation_helper.src.miscellaneous.requests.post")
+    def test_add_annotation_reaches_the_row_through_its_column_node_only(
+        self, mock_post
+    ):
+        """The data graph is asked for two patterns, the row's column and the
+        column's class, and not for the row's type: with it, RDF4J pairs
+        every row with every column node of the class first, which grows
+        with the square of the rows (assessment §16.4)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = '{"boolean": true}'
+        mock_post.return_value = mock_response
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            add_annotation(
+                endpoint="http://localhost:7200/repositories/test/statements",
+                database="clinical_table",
+                prefixes="PREFIX sio: <http://semanticscience.org/resource/>",
+                annotation_data={
+                    "tumour_location": {
+                        "predicate": "sio:SIO_000008",
+                        "class": "sio:SIO_000614",
+                        "local_definition": "tumour_location",
+                    }
+                },
+                path=tmpdir,
+                save_query=False,
+            )
+
+        insert_query = mock_post.call_args_list[1][1]["data"]["update"]
+        data_graph = insert_query.split("GRAPH ?dataGraph {", 1)[1].split("}", 1)[0]
+        patterns = [line.strip() for line in data_graph.splitlines() if line.strip()]
+        self.assertEqual(
+            patterns,
+            [
+                "?tablerow dbo:has_column ?component1 .",
+                "?component1 rdf:type db:clinical_table.tumour_location .",
+            ],
+        )
+
     @patch("annotation_helper.src.miscellaneous.check_predicate")
     @patch("annotation_helper.src.miscellaneous.materialize", False)
     @patch("annotation_helper.src.miscellaneous.dry_run", False)

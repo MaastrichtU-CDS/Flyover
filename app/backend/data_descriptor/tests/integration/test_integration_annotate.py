@@ -204,6 +204,7 @@ class TestStartAnnotation:
         assert body == {
             "success": True,
             "message": "Annotated 3 variables across 1 databases",
+            "skipped_tables": [],
         }
         status = session_cache.annotation_status
         assert set(status) == {
@@ -311,6 +312,7 @@ class TestStartAnnotation:
         assert body == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert all(not e["success"] for e in session_cache.annotation_status.values())
 
@@ -348,6 +350,7 @@ class TestStartAnnotation:
         assert body == {
             "success": False,
             "error": "No variables were successfully annotated",
+            "skipped_tables": [],
         }
         assert len(session_cache.annotation_status) == 3
         for entry in session_cache.annotation_status.values():
@@ -433,8 +436,25 @@ class TestStartAnnotation:
         assert body == {
             "success": False,
             "error": "No variables with local definitions found",
+            "skipped_tables": ["other_table"],
         }
         assert rdf_store.updates == []
+
+    def test_a_store_table_the_map_does_not_name_is_skipped_and_listed(
+        self, client, session_cache, annotate_ready
+    ):
+        annotate_ready.seed_table("visits", {"visit_id": ["V1"]})
+
+        body = client.post("/start-annotation").get_json()
+
+        assert body["success"] is True
+        assert body["skipped_tables"] == ["visits"]
+        assert set(session_cache.annotation_status) == {
+            f"{TABLE}.identifier",
+            f"{TABLE}.biological_sex",
+            f"{TABLE}.age_at_diagnosis",
+        }
+        assert not any("annotation.local/visits/" in u for u in annotate_ready.updates)
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +483,12 @@ class TestVerifyAnnotation:
         assert "ncit:C20197 rdfs:subClassOf ncit:C28421" in query
         assert "ncit:C16576 rdfs:subClassOf ncit:C28421" in query
         assert '"M"^^xsd:string' in query and '"F"^^xsd:string' in query
-        assert 'FILTER(STRSTARTS(STR(?dataGraph), "http://data.local/"))' in query
+        # Each term's cells are a check of their own, in any data graph
+        for term in (0, 1):
+            assert (
+                f'FILTER(STRSTARTS(STR(?dataGraph_{term}), "http://data.local/"))'
+                in query
+            )
         # Prefixes come from the mapping as well as the defaults
         assert "PREFIX mesh: <http://id.nlm.nih.gov/mesh/>" in query
         assert "PREFIX dbo: <http://um-cds/ontologies/databaseontology/>" in query
@@ -605,7 +630,7 @@ class TestVerifyState:
 
 
 # ---------------------------------------------------------------------------
-# Annotation depth: reconstruction shapes, parallel tables, materialisation
+# Annotation depth: reconstruction shapes, two tables, materialisation
 # ---------------------------------------------------------------------------
 
 
@@ -675,10 +700,13 @@ class TestAnnotationDepth:
         assert "sio:SIO_000235 ?component1" in annotation
         assert "?component2 sio:SIO_000253 ?component3" in annotation
         assert f"?component3 rdf:type db:{TABLE}.ehrClass" in annotation
-        # The after-class no longer hangs off the row directly
-        (removal,) = [
-            u for u in updates if "DELETE { ?tablerow sio:SIO_000253 ?variable . }" in u
-        ]
+        # The after-class no longer hangs off the row directly: the row's
+        # edges to it go, in the table's annotation graph
+        (removal,) = [u for u in updates if "?tablerow sio:SIO_000253 ?variable ." in u]
+        assert (
+            f"DELETE {{ GRAPH <http://annotation.local/{TABLE}/> "
+            "{ ?tablerow sio:SIO_000253 ?variable . } }" in removal
+        )
         assert f"?variable rdf:type db:{TABLE}.ehrClass" in removal
         # ... and the removal query was saved next to the annotation
         tmp = Path(app.config["APP_CONTEXT"]["root_dir"]).parent / "tmp"
@@ -713,6 +741,7 @@ class TestAnnotationDepth:
         assert body == {
             "success": True,
             "message": "Annotated 4 variables across 2 databases",
+            "skipped_tables": [],
         }
         status = session_cache.annotation_status
         assert status["visits.identifier"]["success"] is True
@@ -846,6 +875,37 @@ class TestAnnotationDepth:
         # The materialisation came last
         assert annotate_ready.updates[-3:] == materialised
 
+    def test_the_progress_counts_each_variable_then_the_materialisation(
+        self, client, session_cache, annotate_ready, monkeypatch
+    ):
+        from annotation_helper.src import miscellaneous
+
+        monkeypatch.setattr(miscellaneous, "materialize", True)
+        materialise = miscellaneous.materialize_inferences
+        during_materialisation = []
+
+        def watched(**kwargs):
+            during_materialisation.append(dict(session_cache.annotation_progress))
+            return materialise(**kwargs)
+
+        monkeypatch.setattr(miscellaneous, "materialize_inferences", watched)
+
+        client.post("/start-annotation")
+
+        variables = len(session_cache.annotation_status)
+        (progress,) = during_materialisation
+        assert progress["variables_done"] == variables
+        assert progress["materialising"] is True
+        assert client.get("/api/v1/annotation-progress").get_json() == {
+            "running": False,
+            "variables_done": variables,
+            "variables_total": variables,
+            "tables_done": 1,
+            "tables_total": 1,
+            "table": TABLE,
+            "materialising": False,
+        }
+
     def test_materialisation_failure_does_not_fail_the_annotation(
         self, client, session_cache, annotate_ready, monkeypatch
     ):
@@ -882,6 +942,181 @@ class TestAnnotationDepth:
         assert age["schema_reconstruction"][0]["type"] == "node"
         assert age["schema_reconstruction"][0]["node_label"] == "years"
         assert age["data_type"] == "continuous"
+
+
+# ---------------------------------------------------------------------------
+# Several tables in one database: each table its own variables
+# ---------------------------------------------------------------------------
+
+FOLLOWUP = "followup"
+FOLLOWUP_COLUMNS = {"new_id": ["P1", "P2"], "gender": ["1", "2"]}
+
+
+def _followup_in_the_same_database(mapping_dict):
+    """A second table in centre_x, as a centre's map lists several files of
+    one database: the identifier under another column name, sex under
+    other codes, and no age."""
+    mapping_dict["databases"]["centre_x"]["tables"][FOLLOWUP] = {
+        "@id": f"mapping:table/{FOLLOWUP}",
+        "@type": "mapping:Table",
+        "sourceFile": FOLLOWUP,
+        "columns": {
+            "identifier": {
+                "mapsTo": "schema:variable/identifier",
+                "localColumn": "new_id",
+            },
+            "biological_sex": {
+                "mapsTo": "schema:variable/biological_sex",
+                "localColumn": "gender",
+                "localMappings": {"male": "1", "female": "2"},
+            },
+        },
+    }
+    return mapping_dict
+
+
+@pytest.fixture
+def two_tables(session_cache, rdf_store, mapping_dict):
+    rdf_store.seed_table(TABLE, {"id": ["P1"], "sex": ["M"], "age": ["1"]})
+    rdf_store.seed_table(FOLLOWUP, FOLLOWUP_COLUMNS)
+    session_cache.jsonld_mapping = JSONLDMapping.from_dict(
+        _followup_in_the_same_database(mapping_dict)
+    )
+    return rdf_store
+
+
+def _as_the_command_line_has_it(variables: dict) -> dict:
+    """What annotation does with each variable, in one shape for the app's
+    entries and the command line's: the edge, the class, the column, the
+    reconstruction, and the codes it writes a value class for. An empty
+    code is left out: the app writes one, the command line does not, and
+    it cannot match a cell either way (an empty cell has no value)."""
+
+    def node(entry):
+        entry = {key: value for key, value in entry.items() if value is not None}
+        if entry["type"] == "class":
+            entry.setdefault("placement", "before")
+        return entry
+
+    shaped = {}
+    for name, entry in variables.items():
+        terms = (entry.get("value_mapping") or {}).get("terms", {})
+        shaped[name] = {
+            "predicate": entry["predicate"],
+            "class": entry["class"],
+            "local_definition": entry["local_definition"],
+            "schema_reconstruction": [
+                node(n) for n in entry.get("schema_reconstruction") or []
+            ],
+            "codes": {
+                term: data["local_term"]
+                for term, data in terms.items()
+                if data.get("local_term") not in (None, "")
+            },
+        }
+    return shaped
+
+
+class TestEachTableItsOwnVariables:
+    def test_each_table_of_a_database_is_annotated_with_its_own_columns(
+        self, client, session_cache, two_tables
+    ):
+        body = client.post("/start-annotation").get_json()
+
+        assert body["success"] is True
+        assert body["skipped_tables"] == []
+        assert set(session_cache.annotation_status) == {
+            f"{TABLE}.identifier",
+            f"{TABLE}.biological_sex",
+            f"{TABLE}.age_at_diagnosis",
+            f"{FOLLOWUP}.identifier",
+            f"{FOLLOWUP}.biological_sex",
+        }
+        followup = "\n".join(
+            u for u in two_tables.updates if f"http://annotation.local/{FOLLOWUP}/" in u
+        )
+        # The follow-up table's own columns and codes ...
+        assert f"db:{FOLLOWUP}.new_id owl:equivalentClass ncit:C25364" in followup
+        assert f"db:{FOLLOWUP}.gender owl:equivalentClass ncit:C28421" in followup
+        assert '"1"^^xsd:string' in followup and '"2"^^xsd:string' in followup
+        # ... and none of the first table's, looked up under its names.
+        for column in ("id", "sex", "age"):
+            assert f"db:{FOLLOWUP}.{column} " not in followup
+        assert '"M"^^xsd:string' not in followup
+        patients = "\n".join(
+            u for u in two_tables.updates if f"http://annotation.local/{TABLE}/" in u
+        )
+        assert f"db:{TABLE}.new_id" not in patients
+        assert f"db:{TABLE}.gender" not in patients
+
+    def test_the_verify_page_lists_each_tables_own_variables(self, client, two_tables):
+        body = client.get(VERIFY_STATE).get_json()
+
+        assert set(body["annotated_variables"]) == {
+            f"{TABLE}.identifier",
+            f"{TABLE}.biological_sex",
+            f"{TABLE}.age_at_diagnosis",
+            f"{FOLLOWUP}.identifier",
+            f"{FOLLOWUP}.biological_sex",
+        }
+        sex = body["variable_data"][f"{FOLLOWUP}.biological_sex"]
+        assert sex["local_definition"] == "gender"
+        assert sex["value_mapping"]["terms"]["male"]["local_term"] == "1"
+
+    def test_a_check_asks_for_the_tables_own_column(self, client, two_tables):
+        query = client.post(
+            "/verify-annotation-ask", json={"variable": f"{FOLLOWUP}.identifier"}
+        ).get_json()["query"]
+
+        assert f"{FOLLOWUP}.new_id" in query
+        assert f"{FOLLOWUP}.id>" not in query and f"{FOLLOWUP}.id " not in query
+
+    def test_the_variables_are_those_the_command_line_annotates_per_table(
+        self, session_cache, two_tables
+    ):
+        from annotation_helper.main import parse_jsonld_for_table
+        from services import AnnotateService, IngestService, RDFStoreService
+        from utils.session_helpers import get_semantic_map_for_annotation
+
+        prepared = AnnotateService.prepare_annotation_data(
+            [TABLE, FOLLOWUP],
+            session_cache,
+            IngestService.get_table_names_from_mapping(session_cache),
+            RDFStoreService.graph_database_find_name_match,
+            get_semantic_map_for_annotation,
+            lambda database: {},
+        )
+
+        raw = session_cache.jsonld_mapping.raw_data
+        for table in (TABLE, FOLLOWUP):
+            _, name, _, by_the_command_line = parse_jsonld_for_table(
+                raw, "centre_x", table
+            )
+            assert name == table
+            assert _as_the_command_line_has_it(
+                prepared[table]["variables"]
+            ) == _as_the_command_line_has_it(by_the_command_line)
+
+    def test_a_map_that_names_no_table_still_applies_to_every_table(
+        self, client, session_cache, rdf_store, mapping_dict
+    ):
+        # Without a sourceFile, no table of the map names a store table: the
+        # map is a template for every table, as before (until the one table
+        # lookup of the plan's phase 1).
+        del mapping_dict["databases"]["centre_x"]["tables"][TABLE]["sourceFile"]
+        session_cache.jsonld_mapping = JSONLDMapping.from_dict(mapping_dict)
+        rdf_store.seed_table(TABLE, {"id": ["P1"], "sex": ["M"], "age": ["1"]})
+        rdf_store.seed_table("visits", {"id": ["V1"], "sex": ["F"], "age": ["7"]})
+
+        body = client.post("/start-annotation").get_json()
+
+        assert body["success"] is True
+        assert body["skipped_tables"] == []
+        assert set(session_cache.annotation_status) == {
+            f"{table}.{variable}"
+            for table in (TABLE, "visits")
+            for variable in ("identifier", "biological_sex", "age_at_diagnosis")
+        }
 
 
 # ---------------------------------------------------------------------------

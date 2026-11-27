@@ -52,9 +52,44 @@ function jsonResponse(body, { ok = true, status = 200 } = {}) {
   return { ok, status, json: async () => body }
 }
 
+// Starts an annotation that runs until finish() is called. The progress
+// polls get `answerPoll()`'s answers; poll() lets one poll go by.
+async function startLongAnnotation(answerPoll) {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  api.get.mockImplementation(async (url) =>
+    url === '/api/v1/annotation-progress'
+      ? answerPoll()
+      : { data: { success: true, databases: ['patients.csv'] } },
+  )
+  db.getData.mockImplementation(async (_store, key) =>
+    key === 'semantic_map' ? { data: SEMANTIC_MAP } : null
+  )
+  let finishAnnotation
+  fetch.mockResolvedValueOnce(jsonResponse({ success: true }))
+  fetch.mockReturnValueOnce(new Promise((resolve) => { finishAnnotation = resolve }))
+
+  const w = mountView()
+  await flushPromises()
+  await w.find('button.btn-primary').trigger('click')
+  await flushPromises()
+
+  return {
+    w,
+    poll: async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushPromises()
+    },
+    finish: async () => {
+      finishAnnotation(jsonResponse({ success: true }))
+      await flushPromises()
+    },
+  }
+}
+
 describe('AnnotationReviewView', () => {
   beforeEach(() => {
     api.get.mockReset()
+    api.post.mockReset()
     db.saveData.mockClear()
     db.getData.mockReset()
     db.getData.mockResolvedValue(null)
@@ -65,6 +100,56 @@ describe('AnnotationReviewView', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it("shows the map's warnings from the server's check", async () => {
+    const mapWarning = {
+      path: 'databases.db_a.tables.patients.columns.age_col.localMappings.x',
+      message: "Table 'patients.csv', column 'age' maps the term 'x', which the variable 'age' does not have",
+      suggestion: 'Its codes are not annotated: the variable has no value mapping.',
+    }
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    api.post.mockResolvedValue({ data: { valid: true, map_warnings: [mapWarning] } })
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'semantic_map' ? { data: SEMANTIC_MAP } : null
+    )
+
+    const w = mountView()
+    await flushPromises()
+
+    expect(api.post).toHaveBeenCalledWith('/api/v1/validate-mapping', SEMANTIC_MAP)
+    expect(w.find('.map-warnings').text()).toContain(mapWarning.message)
+    // The warning does not stop the review.
+    expect(w.text()).toContain('Start Annotation Process')
+  })
+
+  it('shows no warnings when the check cannot be made', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    api.post.mockRejectedValue(new Error('offline'))
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'semantic_map' ? { data: SEMANTIC_MAP } : null
+    )
+
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.map-warnings').exists()).toBe(false)
+    expect(w.text()).toContain('Start Annotation Process')
+  })
+
+  it('shows no warnings when the check answers without a list of them', async () => {
+    api.get.mockResolvedValue({ data: { success: true, databases: ['patients.csv'] } })
+    api.post.mockResolvedValue({ data: { valid: true } })
+    db.getData.mockImplementation(async (_store, key) =>
+      key === 'semantic_map' ? { data: SEMANTIC_MAP } : null
+    )
+
+    const w = mountView()
+    await flushPromises()
+
+    expect(w.find('.map-warnings').exists()).toBe(false)
+    expect(w.text()).toContain('Start Annotation Process')
   })
 
   it('hydrates from api + IndexedDB and renders variable cards', async () => {
@@ -134,6 +219,74 @@ describe('AnnotationReviewView', () => {
     // We send the filtered semantic map (all tables selected by default) to annotation endpoint
     const annotationBody = JSON.parse(fetch.mock.calls[1][1].body)
     expect(annotationBody).toEqual(SEMANTIC_MAP)
+    expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
+  })
+
+  it('shows how far the annotation is while it runs', async () => {
+    const progress = {
+      running: true,
+      variables_done: 312,
+      variables_total: 563,
+      tables_done: 3,
+      tables_total: 12,
+      table: 'survey',
+      materialising: true,
+    }
+    const { w, poll, finish } = await startLongAnnotation(async () => ({ data: progress }))
+
+    expect(w.find('.annotation-progress').exists()).toBe(false)
+
+    await poll()
+
+    const bar = w.find('.annotation-progress progress')
+    expect(bar.element.value).toBe(312)
+    expect(bar.element.max).toBe(563)
+    expect(w.find('.annotation-progress').text()).toContain('312 of 563 variables')
+    expect(w.find('.annotation-progress').text()).toContain(
+      'Table 4 of 12: survey, materialising',
+    )
+
+    await finish()
+
+    expect(w.find('.annotation-progress').exists()).toBe(false)
+    expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
+  })
+
+  it('names a table only once the run is in one, and materialising only while it does', async () => {
+    const run = { running: true, variables_total: 563, tables_total: 12, materialising: false }
+    const answers = [
+      // The run has started, but its first table has not.
+      { ...run, variables_done: 0, tables_done: 0, table: null },
+      { ...run, variables_done: 40, tables_done: 0, table: 'patients' },
+    ]
+    const { w, poll, finish } = await startLongAnnotation(async () => ({ data: answers.shift() }))
+
+    await poll()
+    expect(w.find('.annotation-progress').text()).toContain('0 of 563 variables')
+    expect(w.find('.annotation-progress .small').text()).toBe('')
+
+    await poll()
+    expect(w.find('.annotation-progress').text()).toContain('40 of 563 variables')
+    expect(w.find('.annotation-progress .small').text()).toBe('Table 1 of 12: patients')
+
+    await finish()
+    expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
+  })
+
+  it('shows no bar while the polls fail or find no run, and the annotation goes on', async () => {
+    const answers = [
+      () => Promise.reject(new Error('offline')),
+      // The server has no run of this session yet.
+      () => Promise.resolve({ data: { running: false } }),
+    ]
+    const { w, poll, finish } = await startLongAnnotation(() => answers.shift()())
+
+    await poll()
+    expect(w.find('.annotation-progress').exists()).toBe(false)
+    await poll()
+    expect(w.find('.annotation-progress').exists()).toBe(false)
+
+    await finish()
     expect(routerPush).toHaveBeenCalledWith('/annotate/verify')
   })
 
